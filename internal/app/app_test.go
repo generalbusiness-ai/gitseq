@@ -1216,6 +1216,12 @@ func TestActorViewsEnumerateDurableActorsWithoutLocalCustody(t *testing.T) {
 		Repo: workspace.Repo, GitDir: workspace.GitDir, CommonDir: workspace.CommonDir, MetaDir: t.TempDir(), Store: workspace.Store,
 		config: apphost.Config{Version: 0, Genesis: workspace.config.Genesis, ObjectFormat: workspace.config.ObjectFormat, ReadOnly: true},
 	}
+	// An attached view holds a stored record, created exactly as AttachConfig
+	// creates one: an update — the frontier advance below included — refuses
+	// to run where nothing is stored.
+	if err := apphost.CreateConfig(attached.MetaDir, attached.config); err != nil {
+		t.Fatal(err)
+	}
 	// An attached view reads the binding for itself, as opening it would: a
 	// workspace that never selected an interpreter has none to fold with.
 	if attached.selected, err = attached.selectHost(ctx); err != nil {
@@ -1426,7 +1432,7 @@ func TestColdStreamPublishesOnlyTheCompleteProjection(t *testing.T) {
 	}
 }
 
-func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvancing(t *testing.T) {
+func TestVerifiedFrontierPersistenceFailsClosedWheneverTheStoredWitnessIsUnreachable(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -1444,25 +1450,21 @@ func TestVerifiedFrontierPersistenceIsPassiveWhenUnchangedAndFailClosedWhenAdvan
 
 	// Make witness storage deterministically unusable without depending on
 	// chmod semantics or the user running the test. A path occupied by a file
-	// cannot contain config.json.tmp.
+	// cannot contain the configuration's lock sidecar.
 	blockedMeta := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(blockedMeta, []byte("occupied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	workspace.MetaDir = blockedMeta
-	workspace.config.ReadOnly = true
 
-	unchanged, err := workspace.Snapshot(ctx)
-	if err != nil {
-		t.Fatalf("unchanged snapshot rewrote its local witness: %v", err)
+	// Even a verification this workspace's memory already records is judged
+	// against the stored witness, so an unreachable witness refuses the
+	// snapshot rather than let stale memory answer for the file.
+	if _, err := workspace.Snapshot(ctx); err == nil || !strings.Contains(err.Error(), "local rollback witness could not advance") {
+		t.Fatalf("unchanged snapshot answered from memory without the stored witness: err = %v", err)
 	}
-	if unchanged.Head != trusted.Head || unchanged.Depth != trusted.Depth {
-		t.Fatalf("unchanged snapshot = %+v, want %+v", unchanged, trusted)
-	}
-	if verified, err := workspace.Verify(ctx); err != nil {
-		t.Fatalf("unchanged full audit rewrote its local witness: %v", err)
-	} else if verified.Head != trusted.Head || verified.Depth != trusted.Depth {
-		t.Fatalf("unchanged audit = %+v, want head %s depth %d", verified, trusted.Head, trusted.Depth)
+	if _, err := workspace.Verify(ctx); err == nil || !strings.Contains(err.Error(), "local rollback witness could not advance") {
+		t.Fatalf("unchanged full audit answered from memory without the stored witness: err = %v", err)
 	}
 
 	actRecord(t, ctx, external, "human", Act{

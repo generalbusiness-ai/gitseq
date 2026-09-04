@@ -822,10 +822,15 @@ func initHosted(ctx context.Context, repo, operatorName string, ceiling uint64, 
 			return nil, workroom.Record{}, err
 		}
 	}
-	workspace.configMu.Lock()
-	err = workspace.save()
-	workspace.configMu.Unlock()
-	if err != nil {
+	// Bootstrap is the stored record's only first write, and it is exclusive
+	// creation rather than replacement: of two concurrent initializers exactly
+	// one stores the record and the other is refused here instead of
+	// overwriting what that initializer stored. Every later change goes
+	// through updateConfig, which refuses where nothing is stored rather than
+	// recreate the record from memory. No configMu section is needed: nothing
+	// else holds a reference to this workspace yet.
+	initAbsenceGate()
+	if err := apphost.CreateConfig(metaDir, workspace.config); err != nil {
 		return nil, workroom.Record{}, err
 	}
 	return workspace, submission.Record, nil
@@ -864,16 +869,6 @@ func readActor(path string) (ed25519.PrivateKey, error) {
 	return ed25519.PrivateKey(decoded), nil
 }
 
-// save writes the whole remembered configuration. Only the bootstrap creation
-// path uses it — the workspace that runs init has just written this very file
-// itself, so there is no concurrent custody to lose — because writing a whole
-// Config held in memory would erase whatever custody another process
-// persisted since this one loaded. Every change to an existing configuration
-// goes through updateConfig.
-func (w *Workspace) save() error {
-	return apphost.SaveConfig(w.MetaDir, w.config)
-}
-
 // View is how a configuration leaves this workspace: as a value sharing no
 // mutable state with it. Handing out the config field itself would alias the
 // live actor map and frontier pointer, so a holder could mutate custody state
@@ -892,6 +887,13 @@ func (w *Workspace) View() apphost.Config {
 // concurrent creator into exactly that window; production leaves it empty.
 var attachAbsenceGate = func() {}
 
+// initAbsenceGate is the same seam for initialization: it runs after init has
+// observed no stored configuration and built everything the record names, and
+// immediately before the exclusive creation that stores it. It exists so a
+// test can store a configuration inside exactly that window and see the
+// creation refuse rather than overwrite; production leaves it empty.
+var initAbsenceGate = func() {}
+
 // updateConfig persists one declared change without losing what concurrent
 // processes wrote: the file is reloaded under the apphost lock, mutate
 // changes exactly what this save owns on that fresh copy, and only the
@@ -899,11 +901,12 @@ var attachAbsenceGate = func() {}
 // frontier — are adopted as the workspace's view, so stale memory refreshes
 // from disk even when this save itself changes nothing while the
 // written-once scalar fields stay exactly as opened. A failed update leaves
-// both the file and the workspace unchanged. This workspace's
-// own memory is only ever a starting point, and then solely for the metadata
-// directory that holds no configuration yet — an attached view recording its
-// first frontier — where someone must write a first file and nobody else's
-// custody can be lost.
+// both the file and the workspace unchanged. This workspace's own memory is
+// never a starting point for the stored record: it is passed in only as the
+// identity the transaction compares the stored file against, so a workspace
+// that opened a different configuration is refused, and an update that finds
+// nothing stored is refused too rather than resurrecting custody from
+// memory.
 //
 // configMu is taken here, around the base read and the adoption, and nowhere
 // else may callers hold it: configMu stays innermost, the apphost lock is
@@ -912,9 +915,9 @@ var attachAbsenceGate = func() {}
 // holding configMu, or they would deadlock against themselves.
 func (w *Workspace) updateConfig(mutate func(*apphost.Config) (bool, error)) error {
 	w.configMu.Lock()
-	base := w.config.Clone()
+	opened := w.config.Clone()
 	w.configMu.Unlock()
-	merged, err := apphost.UpdateConfig(w.MetaDir, base, mutate)
+	merged, err := apphost.UpdateConfig(w.MetaDir, opened, mutate)
 	if err != nil {
 		return err
 	}
@@ -2496,53 +2499,71 @@ func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.Verif
 	}
 }
 
+// rememberVerifiedFrontier advances the persisted frontier marker. Every
+// verification, a repeated one included, is judged inside the stored
+// record's transaction against the frontier the file holds, never against
+// this workspace's memory first: memory answering ahead of the file is
+// exactly the bypass the transaction exists to close, and it would let a
+// workspace that opened before another process advanced the marker report
+// success for a position the file has moved past. The frontier it judges
+// against is therefore the newest stored one, so a stale workspace can
+// neither roll the marker back nor store a position that does not continue
+// what the file records.
+//
+// Callers hold snapshotMu, which serializes frontier writers in this process;
+// configMu is taken inside updateConfig, around the base read and the
+// adoption only, so the store reads below run holding neither. Lock order is
+// snapshotMu, then the stored file's lock, then configMu.
 func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification kernel.Verification) error {
-	// The in-memory marker is only a fast path for the common unchanged case;
-	// the authoritative comparison happens against the freshly reloaded file
-	// inside updateConfig, so a frontier another process advanced is honoured
-	// rather than overwritten. Callers hold snapshotMu, which serializes
-	// frontier writers; configMu is taken inside updateConfig, and the store
-	// reads below acquire nothing further.
-	w.configMu.Lock()
-	previous := w.config.VerifiedFrontier
-	w.configMu.Unlock()
-	if previous != nil {
-		if verification.Depth < previous.Depth {
-			return fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
-		}
-		if verification.Head == previous.Head {
-			if verification.Depth != previous.Depth {
-				return errors.New("refuse inconsistent verified frontier depth")
+	// refused separates the judgement's own refusals, reported as they are,
+	// from storage failures, which must say the witness could not advance.
+	// UpdateConfig returns the mutation's error verbatim, so the comparison
+	// below recognizes it.
+	var refused error
+	err := w.updateConfig(func(c *apphost.Config) (bool, error) {
+		refused = nil
+		previous := c.VerifiedFrontier
+		if previous != nil {
+			if verification.Depth < previous.Depth {
+				refused = fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
+				return false, refused
 			}
-			return nil
+			if verification.Head == previous.Head {
+				if verification.Depth != previous.Depth {
+					refused = errors.New("refuse inconsistent verified frontier depth")
+					return false, refused
+				}
+				return false, nil
+			}
+			commits, err := w.Store.RevListAfter(ctx, previous.Head, verification.Head)
+			if err != nil {
+				refused = fmt.Errorf("compare verified frontier: %w", err)
+				return false, refused
+			}
+			if len(commits) == 0 {
+				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not contain previously verified head %s", verification.Head, previous.Head)
+				return false, refused
+			}
+			parents, err := w.Store.CommitParents(ctx, commits[0])
+			if err != nil {
+				refused = fmt.Errorf("compare verified frontier: %w", err)
+				return false, refused
+			}
+			if len(parents) != 1 || parents[0] != previous.Head || verification.Depth != previous.Depth+len(commits) {
+				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
+				return false, refused
+			}
 		}
-		commits, err := w.Store.RevListAfter(ctx, previous.Head, verification.Head)
-		if err != nil {
-			return fmt.Errorf("compare verified frontier: %w", err)
-		}
-		if len(commits) == 0 {
-			return fmt.Errorf("refuse non-descendant verified frontier: %s does not contain previously verified head %s", verification.Head, previous.Head)
-		}
-		parents, err := w.Store.CommitParents(ctx, commits[0])
-		if err != nil {
-			return fmt.Errorf("compare verified frontier: %w", err)
-		}
-		if len(parents) != 1 || parents[0] != previous.Head || verification.Depth != previous.Depth+len(commits) {
-			return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
-		}
+		c.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
+		return true, nil
+	})
+	if err == nil {
+		return nil
 	}
-	next := &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
-	if err := w.updateConfig(func(c *apphost.Config) (bool, error) {
-		merged, changed, err := mergeVerifiedFrontier(c.VerifiedFrontier, next)
-		if err != nil {
-			return false, err
-		}
-		c.VerifiedFrontier = merged
-		return changed, nil
-	}); err != nil {
-		return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
+	if refused != nil && errors.Is(err, refused) {
+		return err
 	}
-	return nil
+	return fmt.Errorf("persist verified frontier before returning data: local rollback witness could not advance: %w", err)
 }
 
 func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {

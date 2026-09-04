@@ -288,8 +288,15 @@ func TestCustodyRereadFrontierFollowsTheEstablishedMergeRule(t *testing.T) {
 
 // storeFrontier records one verified frontier in the configuration file the
 // way another process would, leaving every other stored field alone.
+// storeFrontier moves the stored frontier marker the way another process
+// would: opening the configuration first, then updating it, because an update
+// is refused unless the identity it opened matches the stored file.
 func storeFrontier(metaDir string, frontier *apphost.VerifiedFrontier) error {
-	_, err := apphost.UpdateConfig(metaDir, apphost.Config{}, func(c *apphost.Config) (bool, error) {
+	opened, err := apphost.LoadConfig(metaDir)
+	if err != nil {
+		return err
+	}
+	_, err = apphost.UpdateConfig(metaDir, opened, func(c *apphost.Config) (bool, error) {
 		c.VerifiedFrontier = frontier
 		return true, nil
 	})
@@ -299,7 +306,11 @@ func storeFrontier(metaDir string, frontier *apphost.VerifiedFrontier) error {
 // storeActorChange edits the actor map in the configuration file the way
 // another process would, leaving every other stored field alone.
 func storeActorChange(metaDir string, change func(actors map[string]apphost.Actor)) error {
-	_, err := apphost.UpdateConfig(metaDir, apphost.Config{}, func(c *apphost.Config) (bool, error) {
+	opened, err := apphost.LoadConfig(metaDir)
+	if err != nil {
+		return err
+	}
+	_, err = apphost.UpdateConfig(metaDir, opened, func(c *apphost.Config) (bool, error) {
 		if c.Actors == nil {
 			c.Actors = make(map[string]apphost.Actor)
 		}

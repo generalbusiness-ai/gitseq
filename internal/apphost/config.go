@@ -86,8 +86,33 @@ func (c Config) Validate() error {
 	return nil
 }
 
-// LoadConfig reads and validates the configuration in one metadata directory.
+// LoadConfig reads and validates the configuration in one metadata directory,
+// holding the shared side of the configuration lock across the read. An
+// update replaces the file by renaming over it, and rename atomicity toward a
+// reader that already opened the old file is not promised on every platform
+// this code runs on; exclusion is what makes a read complete-or-refused
+// everywhere. A reader that cannot take the shared lock refuses rather than
+// read uncoordinated — except where the lock file cannot exist at all,
+// because the metadata directory does not, which is the same "no
+// configuration here" the read itself would report.
 func LoadConfig(metaDir string) (Config, error) {
+	release, err := lockMetaFile(metaDir, configLockFile, lockFileShared)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return Config{}, fmt.Errorf("read gitseq config (run `gs init` first): %w", err)
+		}
+		return Config{}, fmt.Errorf("lock gitseq config for reading: %w", err)
+	}
+	defer release()
+	return readStoredConfig(metaDir)
+}
+
+// readStoredConfig reads and validates the stored file without coordinating.
+// Only a caller already holding the configuration lock — either side — may
+// use it, because flock is per open description: a locked caller that went
+// back through LoadConfig would open a second description and wait on itself.
+// Everyone else goes through LoadConfig.
+func readStoredConfig(metaDir string) (Config, error) {
 	content, err := os.ReadFile(filepath.Join(metaDir, ConfigFile))
 	if err != nil {
 		return Config{}, fmt.Errorf("read gitseq config (run `gs init` first): %w", err)
@@ -107,9 +132,11 @@ func LoadConfig(metaDir string) (Config, error) {
 // torn reads and nothing else: a writer saving a Config it loaded earlier
 // writes back its whole stale view and silently erases whatever other
 // processes persisted in between, which is exactly how recorded actor custody
-// was lost. SaveConfig is for creating the first configuration in a metadata
-// directory; every change to an existing one belongs in UpdateConfig, which
-// reloads and merges under a lock instead of trusting process memory.
+// was lost. It therefore takes no lock and is nobody's entry point. Production
+// stores a change only as UpdateConfig's step inside the exclusive lock, and
+// writes the first record only through CreateConfig, exclusively; SaveConfig
+// is otherwise for tests that seed stored state before any concurrency
+// begins.
 func SaveConfig(metaDir string, config Config) error {
 	content, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
@@ -217,38 +244,157 @@ var (
 // only what mutate changes can differ from what anyone else wrote, and
 // everything mutate leaves alone carries forward unchanged. Merge rules are
 // therefore the caller's declared intent, field by field, rather than
-// last-writer-wins over the file. mutate reports whether it changed anything:
-// an update that changes nothing rewrites no file, and the reloaded
-// configuration is returned either way so a caller may refresh its own memory
-// with custody other processes recorded meanwhile. When no configuration file
-// exists yet, base is what mutate starts from instead — some workspace must
-// write the first one — and because that choice is made under the same lock,
-// a second creator serialises behind the first and merges onto its file
-// rather than overwriting it. SaveConfig remains for creating a first
-// configuration outside this contract.
-func UpdateConfig(metaDir string, base Config, mutate func(*Config) (bool, error)) (Config, error) {
+// last-writer-wins over the file.
+//
+// opened is the configuration the caller opened. Every immutable field of it
+// — everything except the actor map and the frontier pointer — is compared
+// against the stored file before mutate runs, and any divergence refuses the
+// whole update without changing a stored byte: a workspace holding a
+// different identity is not stale, it opened a different configuration, and
+// no change to one may be applied to the other.
+//
+// An update never creates the record. The stored file's only first write is
+// initialization's exclusive CreateConfig, so a missing file here means the
+// record was never created or has been removed, and either way the honest
+// answer is refusal: creating it from the caller's in-memory snapshot would
+// resurrect whatever custody that snapshot still remembers.
+//
+// mutate reports whether it changed anything: an update that changes nothing
+// rewrites no file and returns the stored configuration as it was read — a
+// copy taken before mutate ran, so anything mutate wrote into its argument
+// before deciding nothing changed is discarded rather than adopted into the
+// caller's memory. Either way the returned configuration is the stored one, so
+// a caller may refresh its own memory with custody other processes recorded
+// meanwhile.
+func UpdateConfig(metaDir string, opened Config, mutate func(*Config) (bool, error)) (Config, error) {
 	return withConfigLock(metaDir, func() (Config, error) {
-		current, err := LoadConfig(metaDir)
+		current, err := readStoredConfig(metaDir)
 		if errors.Is(err, os.ErrNotExist) {
-			current = base
+			return Config{}, errors.New("refuse to update gitseq config: no configuration is stored here, and an update never creates one — only initialization does, exclusively")
 		} else if err != nil {
 			return Config{}, err
 		}
+		if immutableFieldsDiverge(current, opened) {
+			return Config{}, errors.New("refuse to update gitseq config: an immutable field of the stored file differs from the configuration this workspace opened")
+		}
+		stored := current.Clone()
 		changed, err := mutate(&current)
 		if err != nil {
 			return Config{}, err
 		}
-		if changed {
-			if err := current.Validate(); err != nil {
-				return Config{}, err
-			}
-			if err := SaveConfig(metaDir, current); err != nil {
-				return Config{}, err
-			}
+		if !changed {
+			return stored, nil
+		}
+		if err := current.Validate(); err != nil {
+			return Config{}, err
+		}
+		if err := SaveConfig(metaDir, current); err != nil {
+			return Config{}, err
 		}
 		return current, nil
 	})
 }
+
+// immutableFieldsDiverge compares every field of Config except the two the
+// update exists to change — the actor map and the frontier pointer. The
+// comparisons below follow Config's field order, so checking this list against
+// the struct is one read: a field missing here is either one of those two or
+// an omission to fix.
+func immutableFieldsDiverge(stored, opened Config) bool {
+	return stored.Version != opened.Version ||
+		stored.Genesis != opened.Genesis ||
+		stored.ObjectFormat != opened.ObjectFormat ||
+		stored.PayloadCeiling != opened.PayloadCeiling ||
+		stored.IdempotencyNamespace != opened.IdempotencyNamespace ||
+		stored.SequencerKey != opened.SequencerKey ||
+		stored.ReadOnly != opened.ReadOnly
+}
+
+// configLockFile guards the configuration file it sits beside. It is never
+// renamed, so a holder's advisory lock lives on one stable file for a whole
+// load-modify-store, and the kernel drops it if the process dies: a crash
+// cannot leave a stale lock behind. The lock lives on this sidecar rather
+// than on the configuration itself because the configuration is replaced by
+// rename, and a lock on the old file would guard an object the next writer no
+// longer opens. The sidecar is created on first use and never removed —
+// removing it would let a later locker lock a fresh file while an earlier one
+// still holds the removed one.
+const configLockFile = ".config.lock"
+
+// withConfigLock runs fn while holding the exclusive side of the
+// configuration lock in metaDir, so concurrent updaters serialise instead of
+// racing a lost update through the gap between reading ConfigFile and
+// renaming over it.
+func withConfigLock[T any](metaDir string, fn func() (T, error)) (T, error) {
+	return WithMetaLock(metaDir, configLockFile, fn)
+}
+
+// WithMetaLock runs fn while holding an exclusive advisory lock on the named
+// lock file inside metaDir. It is the one advisory-lock primitive in this
+// repository, and it names no application vocabulary: a caller says which
+// file it is serialising on, and the host layer says how a lock is taken and
+// released. A second helper elsewhere would be a second answer to the
+// crash-safety question this one already answers.
+//
+// The lock file is created if it does not exist and is never renamed, so the
+// kernel drops the lock when the process dies. Each distinct name is a
+// distinct lock: config updates take configLockFile and nothing else, so a
+// caller holding another name may still update its configuration inside fn.
+// A caller must never nest two acquisitions of the same name in one process
+// — the lock is per open description, so the inner acquisition would block on
+// the outer one forever.
+func WithMetaLock[T any](metaDir, lockFile string, fn func() (T, error)) (T, error) {
+	var zero T
+	if err := validateLockFile(lockFile); err != nil {
+		return zero, err
+	}
+	release, err := lockMetaFile(metaDir, lockFile, lockFileExclusively)
+	if err != nil {
+		return zero, err
+	}
+	// A failed unlock cannot un-happen a stored change, and reporting it as
+	// the operation's failure would tell the caller a stored change did not
+	// happen. The lock dies with its file handle or the process instead.
+	defer release()
+	return fn()
+}
+
+// lockMetaFile opens the named sidecar in metaDir and takes one side of its
+// advisory lock, returning the release that unlocks and closes the handle.
+// Writers pass lockFileExclusively and hold it for a whole transaction,
+// readers pass lockFileShared and hold it across one read, so shared readers
+// exclude exclusive writers and rename atomicity toward an open reader is
+// never relied on. On a platform with no lock implementation both sides fail
+// closed, and no coordinated path proceeds.
+func lockMetaFile(metaDir, lockFile string, lock func(*os.File) error) (release func(), err error) {
+	file, err := os.OpenFile(filepath.Join(metaDir, lockFile), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	if witness := lockAttemptWitness; witness != nil {
+		if err := witness(file); err != nil {
+			file.Close()
+			return nil, err
+		}
+	}
+	if err := lock(file); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return func() {
+		unlockFile(file)
+		file.Close()
+	}, nil
+}
+
+// lockAttemptWitness is nil in production, where lockMetaFile goes straight
+// from opening the sidecar to the blocking acquisition. The cross-process
+// tests in this package set it — in their child process only — to a probe
+// that runs between those two steps, on the very handle the blocking call
+// will use, so the child can prove its acquisition was refused while another
+// process held the lock. An error from the witness abandons the acquisition
+// before any lock is taken, exactly as a failed lock call does.
+var lockAttemptWitness func(*os.File) error
 
 // ValidateGenesis rejects an object id that cannot name a commit in the
 // declared format.

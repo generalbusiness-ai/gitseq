@@ -34,7 +34,7 @@ func TestUpdateConfigPreservesConcurrentCustody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	merged, err := UpdateConfig(dir, Config{}, func(c *Config) (bool, error) {
+	merged, err := UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
 		if c.Actors["second"].Fingerprint != sha1ID('b') {
 			t.Fatalf("update did not reload the custody another writer had persisted: %+v", c.Actors)
 		}
@@ -81,7 +81,7 @@ func TestUpdateConfigSerialisesConcurrentGrants(t *testing.T) {
 			defer wg.Done()
 			<-start
 			name := fmt.Sprintf("grant-%02d", i)
-			_, errs[i] = UpdateConfig(dir, Config{}, func(c *Config) (bool, error) {
+			_, errs[i] = UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
 				if c.Actors == nil {
 					c.Actors = map[string]Actor{}
 				}
@@ -124,7 +124,7 @@ func TestUpdateConfigNoChangeWritesNothing(t *testing.T) {
 	}
 
 	called := false
-	if _, err := UpdateConfig(dir, Config{}, func(c *Config) (bool, error) {
+	if _, err := UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
 		called = true
 		if c.Actors["second"].Name != "second" {
 			t.Fatalf("reload lost custody before mutate ran: %+v", c.Actors)
@@ -158,7 +158,7 @@ func TestUpdateConfigMutateErrorLeavesFileUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := errors.New("genuine conflict")
-	if _, err := UpdateConfig(dir, Config{}, func(c *Config) (bool, error) {
+	if _, err := UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
 		c.SequencerKey = "elsewhere"
 		return true, want
 	}); !errors.Is(err, want) {
@@ -173,23 +173,100 @@ func TestUpdateConfigMutateErrorLeavesFileUnchanged(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigCreatesFromBaseWhenNoFileExists(t *testing.T) {
+// An update never creates the record: where nothing is stored, it refuses
+// without running the mutation and without writing a file from the caller's
+// in-memory snapshot, which could resurrect custody a deletion just removed.
+func TestUpdateConfigFailsClosedWhereNothingIsStored(t *testing.T) {
 	dir := t.TempDir()
-	merged, err := UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
-		c.VerifiedFrontier = &VerifiedFrontier{Head: sha1ID('c'), Depth: 3}
-		return true, nil
+	remembered := baseTestConfig()
+	remembered.Actors = map[string]Actor{"ghost": {Name: "ghost", Fingerprint: sha1ID('e'), KeyFile: "actors/ghost.key"}}
+	_, err := UpdateConfig(dir, remembered, func(*Config) (bool, error) {
+		t.Error("the mutation ran with no stored record to run against")
+		return false, nil
+	})
+	if err == nil || !strings.Contains(err.Error(), "never creates") {
+		t.Fatalf("missing-record error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ConfigFile)); !os.IsNotExist(err) {
+		t.Fatalf("a refused update left a config file behind: %v", err)
+	}
+}
+
+// Every immutable field is identity: a divergence in any one of them refuses
+// the update before the mutation runs and without changing a stored byte.
+func TestUpdateConfigRefusesEveryImmutableFieldDivergence(t *testing.T) {
+	divergences := map[string]func(*Config){
+		"version":               func(c *Config) { c.Version = 1 },
+		"genesis":               func(c *Config) { c.Genesis = sha1ID('d') },
+		"object format":         func(c *Config) { c.ObjectFormat = "sha256" },
+		"payload ceiling":       func(c *Config) { c.PayloadCeiling = 42 },
+		"idempotency namespace": func(c *Config) { c.IdempotencyNamespace = "other/v0" },
+		"sequencer key":         func(c *Config) { c.SequencerKey = "elsewhere" },
+		"read only":             func(c *Config) { c.ReadOnly = true },
+	}
+	for name, diverge := range divergences {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			stored := baseTestConfig()
+			if err := SaveConfig(dir, stored); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.ReadFile(filepath.Join(dir, ConfigFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			opened := stored
+			diverge(&opened)
+			// A sha256 genesis is 64 hex characters, so the object-format
+			// divergence must carry one or the opened value would be
+			// invalid for reasons other than the divergence under test.
+			if opened.ObjectFormat == "sha256" {
+				opened.Genesis = strings.Repeat("a", 64)
+			}
+			_, err = UpdateConfig(dir, opened, func(*Config) (bool, error) {
+				t.Error("the mutation ran against a stored file whose identity its caller never opened")
+				return false, nil
+			})
+			if err == nil || !strings.Contains(err.Error(), "immutable field") {
+				t.Fatalf("divergence error = %v", err)
+			}
+			after, err := os.ReadFile(filepath.Join(dir, ConfigFile))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("a refused update changed the stored file")
+			}
+		})
+	}
+}
+
+// A mutation may write into its argument and then report that nothing
+// changed. Those writes were never stored, so they must not be returned
+// either: memory adopting an unstored value is the split between memory and
+// disk this transaction exists to prevent.
+func TestUpdateConfigUnchangedReturnsTheStoredStateNotTheMutationsWrites(t *testing.T) {
+	dir := t.TempDir()
+	stored := baseTestConfig()
+	stored.Actors = map[string]Actor{"held": {Name: "held", Fingerprint: sha1ID('b'), KeyFile: "actors/held.key"}}
+	if err := SaveConfig(dir, stored); err != nil {
+		t.Fatal(err)
+	}
+	result, err := UpdateConfig(dir, baseTestConfig(), func(c *Config) (bool, error) {
+		c.Actors["leaked"] = Actor{Name: "leaked", Fingerprint: sha1ID('c'), KeyFile: "actors/leaked.key"}
+		c.VerifiedFrontier = &VerifiedFrontier{Head: sha1ID('c'), Depth: 9}
+		return false, nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if merged.Genesis != sha1ID('a') || merged.VerifiedFrontier == nil {
-		t.Fatalf("first update did not build on the base it was given: %+v", merged)
+	if _, held := result.Actors["held"]; !held {
+		t.Fatal("an unchanged update did not return the stored state")
 	}
-	reread, err := LoadConfig(dir)
-	if err != nil {
-		t.Fatal(err)
+	if _, leaked := result.Actors["leaked"]; leaked {
+		t.Fatalf("an unchanged update returned the mutation's unstored writes: %+v", result.Actors)
 	}
-	if reread.Genesis != sha1ID('a') || reread.VerifiedFrontier.Depth != 3 {
-		t.Fatalf("created configuration is not what the update declared: %+v", reread)
+	if result.VerifiedFrontier != nil {
+		t.Fatalf("an unchanged update returned the mutation's unstored frontier: %+v", result.VerifiedFrontier)
 	}
 }

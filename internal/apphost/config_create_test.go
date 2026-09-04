@@ -477,15 +477,18 @@ func TestCreateConfigSuccessLeavesOnlyTheConfiguration(t *testing.T) {
 	if err := CreateConfig(metaDir, testConfig()); err != nil {
 		t.Fatalf("CreateConfig: %v", err)
 	}
+	// The directory is inspected before anything reads the configuration: a
+	// read takes the shared side of the configuration lock, which creates the
+	// lock sidecar, and this assertion is about what creation leaves.
+	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
+		t.Fatalf("successful creation left files behind: %v", names)
+	}
 	loaded, err := LoadConfig(metaDir)
 	if err != nil {
 		t.Fatalf("created configuration does not load: %v", err)
 	}
 	if !reflect.DeepEqual(loaded, testConfig()) {
 		t.Fatalf("stored configuration = %+v, want the configuration CreateConfig was given: %+v", loaded, testConfig())
-	}
-	if names := metaDirEntries(t, metaDir); !slices.Equal(names, []string{ConfigFile}) {
-		t.Fatalf("successful creation left files behind: %v", names)
 	}
 }
 
@@ -507,11 +510,13 @@ func TestCreateConfigReportsAStagingFileItCouldNotRemoveAfterStoring(t *testing.
 	if err == nil || !strings.Contains(err.Error(), "was stored") {
 		t.Fatalf("CreateConfig error = %v, want it to say the configuration was stored", err)
 	}
-	if _, loadErr := LoadConfig(metaDir); loadErr != nil {
-		t.Fatalf("the error reports the configuration stored, but loading it failed: %v", loadErr)
-	}
+	// Counted before the load below, which creates the lock sidecar the
+	// shared side of the configuration lock lives on.
 	names := metaDirEntries(t, metaDir)
 	if len(names) != 2 || !slices.Contains(names, ConfigFile) {
 		t.Fatalf("metadata directory holds %v, want the configuration and the one staging file the error reports", names)
+	}
+	if _, loadErr := LoadConfig(metaDir); loadErr != nil {
+		t.Fatalf("the error reports the configuration stored, but loading it failed: %v", loadErr)
 	}
 }

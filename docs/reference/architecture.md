@@ -568,8 +568,9 @@ keeps no such promise: nothing syncs the staging file or its directory before
 the link, so a power loss can persist the directory entry ahead of the data.
 
 **Replacing it is a rename.** A temporary file is written and renamed over the
-destination. That is how an initialization stores the file and how every later
-save publishes its result.
+destination. That is how an update publishes its result, inside the lock, and
+it is not a path any caller reaches on its own: initialization creates the
+first record exclusively, and every later change is an update.
 
 **Updating it takes a lock.** An update holds an exclusive advisory lock
 across one whole load-modify-store, reloading the file inside the lock and
@@ -580,6 +581,29 @@ prevents torn reads, not lost updates. The lock lives in a dedicated
 cannot leave a lock dangling: the kernel drops it when the process dies. Where
 no advisory locking exists, updates refuse loudly rather than lose updates
 silently, while creating a first configuration stays available.
+
+**An update never creates the record, and never changes a different one.**
+Where nothing is stored, the update refuses rather than write the caller's
+in-memory snapshot, which would resurrect whatever custody that snapshot still
+remembers after a deletion. And before the caller's change runs, every
+immutable field of the stored file — everything but the actor map and the
+verified frontier — is compared against the configuration the caller opened.
+A divergence in any one of them refuses the whole update without changing a
+stored byte: a workspace holding a different identity is not stale, it opened
+a different configuration.
+
+**Reading it takes the shared side of the same lock.** Rename atomicity toward
+a reader that already opened the old file is not promised on every platform
+this code runs on, so exclusion, not rename, is what makes a read
+complete-or-refused everywhere. Shared readers exclude exclusive updaters and
+not each other. A reader that cannot take the shared lock refuses rather than
+read uncoordinated.
+
+**An update that changes nothing returns what the file holds.** The caller
+declares whether it changed anything; where it did not, no file is rewritten
+and the configuration returned is a copy taken before the caller's change ran.
+Anything the caller wrote into its argument and then abandoned is discarded
+rather than adopted back into memory as if it had been stored.
 
 **The lock is one named, application-neutral primitive.** Its acquisition is
 exported and takes a bare lock-file name in the metadata directory. A surface
@@ -594,11 +618,12 @@ links within the metadata directory — a refused link is reported as the
 creation's failure, with no rename fallback — so an attach can be refused on a
 filesystem where an initialization succeeds.
 
-**Both ends fail closed.** Where exclusive creation, the update lock, or the
-rename is refused, the writer reports the failure and the writable
-configuration does not proceed. A missing or partially visible file never
-validates, so a reader refuses to open rather than acting on a configuration
-nobody stored.
+**Both ends fail closed.** Where exclusive creation, either side of the lock,
+or the rename is refused, the caller reports the failure and does not proceed.
+A missing or partially visible file never validates, so a reader refuses to
+open rather than acting on a configuration nobody stored. On a platform with
+no lock implementation of its own, both sides of the lock refuse, so no
+coordinated path runs unlocked there.
 
 **In memory, the configuration is copied out and locked inside.** A
 configuration leaves an open workspace only as a copy sharing no mutable state
