@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4191d82b6cb98381186b01a3962387eb5098b1e2","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/artifacts.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43333540a60cb1c70ac681d00a9c3c98cb824b6d","text":"Merge retired a covered predecessor; the successor is at internal/workroom/fold_test.go."}
