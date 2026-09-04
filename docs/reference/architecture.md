@@ -584,9 +584,10 @@ silently, while creating a first configuration stays available.
 **The lock is one named, application-neutral primitive.** Its acquisition is
 exported and takes a bare lock-file name in the metadata directory. A surface
 above with its own read-modify-write to serialize — `gs publish` and its
-outboxes — takes its own name through the same code rather than growing a
-second answer to the same crash-safety question. Each name is a separate lock,
-so a caller holding one may still update its configuration inside it.
+outboxes, or the complete mutating `gs merge` transaction — takes its own name
+through the same code rather than growing a second answer to the same
+crash-safety question. Each name is a separate lock, so a caller holding one
+may still update its configuration inside it.
 
 **The two paths do not accept the same filesystems.** Creation requires hard
 links within the metadata directory — a refused link is reported as the
@@ -1293,6 +1294,19 @@ a projection it may merge on. This carries the fold profile to
   Succession recording never re-applies that guard. Resuming an already-sealed
   receipt appends its recorded suffix without replanning, so the symmetric
   lineage rule of layer 5 keeps judging everything already admitted.
+
+  A mutating merge holds `.merge.lock` in the repository-shared metadata
+  directory before it looks for an existing receipt or validates and plans a
+  fresh one. It keeps that operating-system lock through target and frontier
+  remeasurement, approval reservation, the tentative merge, commit, receipt
+  publication, durable succession, and all returned-error cleanup. Linked
+  worktrees therefore serialize on the same boundary. The merge lock is
+  outermost and may enter `.config.lock` while a snapshot or append updates
+  custody. It never enters `.publication.lock`; publication likewise never
+  enters `.merge.lock`, though publication may independently enter
+  `.config.lock`. A process death releases the advisory lock, while any Git or
+  receipt state it left still fails closed for inspection. Direct Git commands
+  do not cooperate with this boundary.
 
   `reassign-if-unclaimed` composes the two guarded schemas and derives stable
   per-act idempotency keys from one required key. Batch exposes the same two

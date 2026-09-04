@@ -265,6 +265,30 @@ already present at the verdict still invalidates merge authority, a world that
 moved after the verdict is still recorded, and every other basis of the
 successor is read exactly as before.
 
+## One mutating merge at a time
+
+`gs merge` takes one exclusive `.merge.lock` in the repository-shared Gitseq
+metadata directory before it looks for an existing receipt or validates and
+plans a fresh merge. Every linked checkout of that repository uses the same
+lock. The command holds it through target and workroom remeasurement, approval
+reservation, the tentative Git merge, commit, receipt-ref publication, durable
+succession, and every returned-error cleanup. A second `gs merge` therefore
+waits until the first has either sealed the whole transaction or removed its
+reservation and aborted its tentative merge; it then reads the resulting HEAD
+and workroom frontier for itself.
+
+This is the host advisory-lock primitive, not a persistent ownership record.
+The operating system releases it if the process dies, so a crash cannot leave
+a stale lock file blocking all later work. Git or receipt state left by that
+crash remains visible and fails closed for inspection and recovery.
+
+The merge lock is outermost. Snapshot and append paths may take `.config.lock`
+inside it. Merge never takes `.publication.lock`, and publication never takes
+`.merge.lock`; publication may separately take `.config.lock`. On platforms
+without the required advisory file locking, mutating merge refuses instead of
+running without exclusion. Direct `git` commands are outside this cooperative
+boundary and can still disturb an in-flight merge.
+
 ## Why an object ID and not a branch
 
 `gs merge` passes the approved full object ID to `git merge --no-ff`,

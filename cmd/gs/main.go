@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
@@ -43,6 +44,13 @@ func (v *values) Set(value string) error {
 // actorEnvironment is how a concurrent instance is told which provisioned
 // identity it is. Every signing command reads it when --as is absent.
 const actorEnvironment = residentclient.ActorEnvironment
+
+// mergeLockFile serialises the complete mutating merge transaction across
+// every checkout that shares this repository's metadata directory. It is the
+// outer lock: merge may update configuration custody while appending durable
+// succession, but it never acquires the publication lock and no other command
+// nests this name. Direct Git commands remain outside this cooperative guard.
+const mergeLockFile = ".merge.lock"
 
 // signingActor resolves the identity an act is signed with. There is no
 // default name: the default was a name that several concurrent instances
@@ -651,6 +659,16 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	_, err = apphost.WithMetaLock(workspace.MetaDir, mergeLockFile, func() (struct{}, error) {
+		return struct{}{}, mergeLocked(ctx, workspace, as, checkout, candidate, approval, authorization, mergeText, serverURL)
+	})
+	return err
+}
+
+// mergeLocked owns every observation and mutation that can participate in a
+// merge transaction. Keeping the failure-cleanup defer inside this function
+// makes it run before mergeCommand's outer advisory lock is released.
+func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, candidate, approval, authorization, mergeText *string, serverURL string) error {
 	existing, found, err := existingGitMergeReceipt(ctx, *checkout, *approval)
 	if err != nil {
 		return err
