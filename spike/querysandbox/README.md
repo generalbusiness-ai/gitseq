@@ -27,12 +27,14 @@ denies.
 | Extension loading | SQLite authorizer rejects `load_extension` because it is not an allowed function | `SQLITE_DBCONFIG_ENABLE_LOAD_EXTENSION` is false. |
 | Unsafe functions | SQLite authorizer function allowlist | Nothing else. Adding a safe function requires changing this allowlist. |
 
-The tests execute representative statements from every class and separately
-walk every authorizer action currently exposed by the pinned binding. A future
-or unknown action is denied by the same default branch. The mutation proof
-opens a connection with authorizer installation actually disabled: the named
-PRAGMA-refusal assertion then fails. It opens a third connection with the
-guard restored and checks the assertion again.
+The tests execute representative statements from every class and require an
+intended refusal rather than a deadline cancellation. They separately walk
+every authorizer action currently exposed by the pinned binding. A future or
+unknown action is denied by the same default branch. The mutation proof
+requires SQLite's specific authorization-denied result for a PRAGMA, then opens
+a connection with authorizer installation actually disabled: the PRAGMA is
+admitted, rather than merely returning some unrelated error. It opens a third
+connection with the guard restored and checks the assertion again.
 
 ## Work, result, and concurrency bounds
 
@@ -47,6 +49,15 @@ then restores the decision and checks it again.
 The host wrapper returns no more than 32 complete rows or 8 KiB of SQLite value
 data and marks a clipped result as truncated. These two result caps are Go
 wrapper checks, not SQLite authorizer decisions or full process-memory quotas.
+
+Authorization, result-bound, and reader-concurrency tests use the spike's
+unexported options seam to disable only the internal wall-clock deadline. This
+keeps their semantic assertions independent of scheduler delay while leaving
+the public `Open` path and its 5 ms production default unchanged. A repeated
+regression poisons the unused test deadline with a one-nanosecond value, so
+accidentally re-enabling it fails deterministically instead of depending on a
+duration threshold. Cancellation behavior and its mutation proof remain
+separate tests with controlled deadlines.
 
 In WAL mode, a query reader completes while a separate `BEGIN IMMEDIATE` fold
 transaction is open. It sees the last committed value, never the writer's

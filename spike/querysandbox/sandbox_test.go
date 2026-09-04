@@ -17,7 +17,7 @@ import (
 )
 
 func TestApplicationQueryRefusals(t *testing.T) {
-	sandbox, _, _ := newFixture(t)
+	sandbox, _, _ := newSemanticFixture(t)
 
 	tests := []struct {
 		class string
@@ -42,8 +42,12 @@ func TestApplicationQueryRefusals(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.class, func(t *testing.T) {
-			if _, err := sandbox.Query(context.Background(), test.sql); err == nil {
+			_, err := sandbox.Query(context.Background(), test.sql)
+			if err == nil {
 				t.Fatalf("refusal assertion failed: %s was admitted", test.class)
+			}
+			if errors.Is(err, errQueryCancelled) {
+				t.Fatalf("refusal assertion failed: %s was cancelled instead of refused", test.class)
 			}
 		})
 	}
@@ -58,16 +62,24 @@ func TestApplicationQueryRefusals(t *testing.T) {
 	}
 }
 
+var errPRAGMAAdmitted = errors.New("named PRAGMA refusal assertion failed: PRAGMA was admitted")
+
 func TestAuthorizerMutationProof(t *testing.T) {
-	_, path, _ := newFixture(t)
+	_, path, _ := newSemanticFixture(t)
 	assertPRAGMARefused := func(sandbox *Sandbox) error {
-		if _, err := sandbox.Query(context.Background(), `PRAGMA table_info(inventory)`); err == nil {
-			return errors.New("named PRAGMA refusal assertion failed")
+		_, err := sandbox.Query(context.Background(), `PRAGMA table_info(inventory)`)
+		switch {
+		case errors.Is(err, sqlite3.AUTH):
+			return nil
+		case err == nil:
+			return errPRAGMAAdmitted
+		default:
+			return fmt.Errorf("named PRAGMA refusal assertion got %v, want authorization denied", err)
 		}
-		return nil
 	}
 
-	guarded, err := Open(path)
+	guardedOptions := semanticTestOptions()
+	guarded, err := open(path, guardedOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,18 +88,18 @@ func TestAuthorizerMutationProof(t *testing.T) {
 	}
 	guarded.Close()
 
-	mutantOptions := defaultOptions()
+	mutantOptions := guardedOptions
 	mutantOptions.installAuthorizer = false
 	mutant, err := open(path, mutantOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := assertPRAGMARefused(mutant); err == nil || !strings.Contains(err.Error(), "named PRAGMA refusal assertion failed") {
-		t.Fatalf("disabling the authorizer did not fail the named assertion: %v", err)
+	if err := assertPRAGMARefused(mutant); !errors.Is(err, errPRAGMAAdmitted) {
+		t.Fatalf("disabled-authorizer PRAGMA error = %v, want admitted query", err)
 	}
 	mutant.Close()
 
-	restored, err := Open(path)
+	restored, err := open(path, guardedOptions)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +159,7 @@ func TestCancellationMutationProof(t *testing.T) {
 }
 
 func TestResultRowsAndBytesAreBounded(t *testing.T) {
-	sandbox, _, _ := newFixture(t)
+	sandbox, _, _ := newSemanticFixture(t)
 
 	rows, err := sandbox.Query(context.Background(), `WITH RECURSIVE n(value) AS (VALUES(1) UNION ALL SELECT value + 1 FROM n WHERE value < 100) SELECT value FROM n`)
 	if err != nil {
@@ -166,6 +178,40 @@ func TestResultRowsAndBytesAreBounded(t *testing.T) {
 	}
 }
 
+func TestSemanticProofsIgnoreTheInternalDeadline(t *testing.T) {
+	options := semanticTestOptions()
+	options.deadline = time.Nanosecond
+
+	t.Run("authorization", func(t *testing.T) {
+		sandbox, _, _ := newFixtureWithOptions(t, options)
+		for iteration := range 64 {
+			if _, err := sandbox.Query(context.Background(), `PRAGMA table_info(inventory)`); !errors.Is(err, sqlite3.AUTH) {
+				t.Fatalf("iteration %d PRAGMA error = %v, want authorization denied", iteration, err)
+			}
+		}
+	})
+
+	t.Run("result bounds", func(t *testing.T) {
+		sandbox, _, _ := newFixtureWithOptions(t, options)
+		for iteration := range 64 {
+			rows, err := sandbox.Query(context.Background(), `WITH RECURSIVE n(value) AS (VALUES(1) UNION ALL SELECT value + 1 FROM n WHERE value < 100) SELECT value FROM n`)
+			if err != nil {
+				t.Fatalf("iteration %d row-bound query: %v", iteration, err)
+			}
+			if !rows.Truncated || len(rows.Rows) != MaxRows {
+				t.Fatalf("iteration %d row bound = %d rows, truncated %v; want %d and true", iteration, len(rows.Rows), rows.Truncated, MaxRows)
+			}
+			bytes, err := sandbox.Query(context.Background(), `SELECT description FROM inventory WHERE sku = 'oversize'`)
+			if err != nil {
+				t.Fatalf("iteration %d byte-bound query: %v", iteration, err)
+			}
+			if !bytes.Truncated || len(bytes.Rows) != 0 {
+				t.Fatalf("iteration %d byte bound returned %#v", iteration, bytes)
+			}
+		}
+	})
+}
+
 func TestColumnValueRejectsUnexpectedSQLiteDatatype(t *testing.T) {
 	_, _, err := columnValueOfType(nil, 0, sqlite3.Datatype(0))
 	if err == nil || !strings.Contains(err.Error(), "unexpected SQLite datatype 0") {
@@ -174,7 +220,7 @@ func TestColumnValueRejectsUnexpectedSQLiteDatatype(t *testing.T) {
 }
 
 func TestReaderProceedsWhileImmediateFoldTransactionIsOpen(t *testing.T) {
-	sandbox, _, writer := newFixture(t)
+	sandbox, _, writer := newSemanticFixture(t)
 	tx, err := writer.BeginTx(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -246,6 +292,20 @@ func assertCancelled(t *testing.T, sandbox *Sandbox) {
 }
 
 func newFixture(t *testing.T) (*Sandbox, string, *sql.DB) {
+	return newFixtureWithOptions(t, defaultOptions())
+}
+
+func newSemanticFixture(t *testing.T) (*Sandbox, string, *sql.DB) {
+	return newFixtureWithOptions(t, semanticTestOptions())
+}
+
+func semanticTestOptions() options {
+	options := defaultOptions()
+	options.enforceDeadline = false
+	return options
+}
+
+func newFixtureWithOptions(t *testing.T, options options) (*Sandbox, string, *sql.DB) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "projection.sqlite")
 	location := &url.URL{Scheme: "file", Path: path}
@@ -281,7 +341,7 @@ func newFixture(t *testing.T) (*Sandbox, string, *sql.DB) {
 		t.Fatal(err)
 	}
 
-	sandbox, err := Open(path)
+	sandbox, err := open(path, options)
 	if err != nil {
 		t.Fatal(err)
 	}
