@@ -1,1 +1,1 @@
-{"kind":"assert","text":"This request is not yet actionable. Its conditions require both adoption-design request 3522d423cca34525233df614ddb508d35b3b0ddd and ordered recovery request 3d1ff642341214855bbc8c9081e8f9e7a865abb3 to have landed before claim; neither prerequisite is presently a landed basis for this implementation. I will leave the request open and re-evaluate it when those exact gates change."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b08ed181662ab0ef514a202126ff44b8d73ded1d"}
