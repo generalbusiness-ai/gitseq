@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact pushed head 068f8dc1 proves receipt checkpoint settlement suppresses settled causes while preserving inherited causes.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/receipt_checkpoint_test.go"}}
+{"kind":"artifact","text":"Exact pushed head 068f8dc1 updates only already-stale legacy projection rows with their bounded causal explanation.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/testdata/legacy_projection.golden.json"}}
