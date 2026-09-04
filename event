@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-08-22-thread-actions.md","body":{"commit":"79e8400888a00a38ccdf96722eebcba2491a9780","path":"notes/2026-08-22-thread-actions.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2229ee1e53fb01b58e877761d2cf7ee16eb2e54","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-22-thread-actions.md."}
