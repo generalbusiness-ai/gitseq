@@ -59,6 +59,19 @@ export interface RecordIndex {
  */
 export const CITED_PROPOSAL_LIMIT = 1;
 
+/**
+ * How many records one composed reply may cite in total, prefilled and
+ * operator-named together.
+ *
+ * The kernel admits 4,096 causal references in one intent, so this is not
+ * that ceiling; it is the number a person can read before signing. The
+ * disclosure list above the send control is the whole point of resolving
+ * citations at all, and a list nobody finishes reading discloses nothing. The
+ * bound is applied to the list as a whole rather than to the operator's
+ * additions alone, because what has to stay readable is what will be signed.
+ */
+export const COMPOSED_CITATION_LIMIT = 8;
+
 export function buildRecordIndex(projection: Projection): RecordIndex {
   const statements = new Map(projection.statements.map((s) => [s.event, s]));
   const acts = new Map(projection.acts.map((a) => [a.event, a]));

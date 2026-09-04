@@ -1547,7 +1547,7 @@ layer 5 change: a fold rule, a projected field, and a fold version to carry the
 changed projection bytes. Until that exists, the browser does not have the
 fact and must not act as though it does.
 
-Two consequences follow, and both are visible in `ui/`:
+Three consequences follow, and all of them are visible in `ui/`:
 
 - **No affordance is gated on adoption.** An artifact row offers both the
   proposal and the review request, and the operator chooses which the decision
@@ -1561,6 +1561,21 @@ Two consequences follow, and both are visible in `ui/`:
   drive a record past the kernel's causal-reference ceiling or make several
   contradictory records appear to govern one act. The operator reads the
   citation in the composer before signing, and the fold judges it afterwards.
+- **A citation the operator names is not one the browser derived.** The
+  revision case in `docs/how-to/keep-decision-records.md` needs a review
+  request to rest on the proposal that adopted the decision, and that proposal
+  rests on the *earlier* artifact at that path. No projected edge connects it
+  to the revision, and joining the two would be the adoption relation this
+  layer does not project. So the browser does not join them. The operator names
+  the record — by the ticket number the screen already shows, or by the whole
+  event identifier a record's detail offers to copy — and the browser resolves
+  that name against the projection and no further: a name the projection does
+  not carry is refused at the composer rather than filed as a dangling
+  reference. What is added joins the same disclosed list, carries a control to
+  remove it again, and counts against one bound for the whole list, so an
+  operator's additions can no more outrun the reader than a prefill can.
+  Because a withdrawal names the record it retires rather than a basis, it
+  takes no operator citation at all.
 
 An affordance is also bounded by authority. The browser offers a ratification
 only when the fold's own published rule says this actor may make it: the

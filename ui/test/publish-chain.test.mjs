@@ -57,6 +57,7 @@ const { createServer } = await import("vite");
 const OPERATOR = "publisher";
 const DECISION_PATH = "docs/decisions/0001-use-the-fold.md";
 const DECISION_COMMIT = "0123456789abcdef0123456789abcdef01234567";
+const STAMPED_PATH = "docs/decisions/0000-the-decision-it-replaces.md";
 
 let workspace;
 let resident;
@@ -184,7 +185,7 @@ async function until(what, predicate, attempts = 80) {
   throw new Error(`timed out waiting for ${what}`);
 }
 
-test("the publish dialog keeps the focus contract and writes through the real fold", async () => {
+test("the publish dialog keeps the focus contract and writes both artifacts of a replacement through the real fold", async () => {
   // The actor is chosen before mounting so the join gate is already answered;
   // presence, and therefore the live lease, come from the real resident.
   localStorage.setItem("workroom.actor", OPERATOR);
@@ -274,6 +275,43 @@ test("the publish dialog keeps the focus contract and writes through the real fo
     // The dialog closes itself only once the projection carries the record, so
     // the thread it opens can never report a record it just filed as missing.
     await until("the dialog to close on its own", () => !dialog(), 200);
+
+    // 6. THE REPLACEMENT'S SECOND ARTIFACT. Step 6 of
+    //    docs/how-to/keep-decision-records.md records a replacement as two
+    //    artifacts: the new decision, and the stamped predecessor *resting on
+    //    it*, so a reader of either file reaches the other through the log as
+    //    well as through the front matter. The dialog's own checkbox is the
+    //    only way the browser can say that, and until this nothing proved the
+    //    box reached `rests_on` at all: it could have been read and dropped,
+    //    and every assertion above would still pass.
+    //
+    //    Filing the first artifact left the page on that record's thread,
+    //    which is where the offered basis comes from.
+    await click(publishButton());
+    await until("the dialog for the stamped predecessor", () => dialog());
+    const cite = dialog().querySelector('input[type="checkbox"]');
+    assert.ok(cite, "the thread offered no record to rest the stamped predecessor on");
+    await act(async () => {
+      cite.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    await type(field("what this artifact records"), "The superseded decision, stamped with its replacement");
+    await type(field("path"), STAMPED_PATH);
+    await type(field("commit"), DECISION_COMMIT);
+    await act(async () => {
+      dialog().dispatchEvent(new dom.window.Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    const stamped = await until(
+      "the fold to project the stamped predecessor",
+      async () => (await projection()).artifacts.find((artifact) => artifact.path === STAMPED_PATH),
+      100,
+    );
+    const provenance = (await projection()).provenance[stamped.event] ?? [];
+    assert.deepEqual(
+      provenance,
+      [landed.event],
+      "the fold recorded no edge from the stamped predecessor to its replacement: the checkbox was shown and dropped",
+    );
   } finally {
     // Unmounted here rather than in teardown, and on the failing path too, so
     // the page's parting call — the lease it departs — is always made while
