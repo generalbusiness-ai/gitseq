@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fca2cbb7019f34b07b197fe4b0c9b5fe3f5e7013","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/artifacts.md."}
+{"kind":"assert","text":"I9 is not yet actionable at frontier 6682feecea7397c505dc24764e0ac610826a1519. Its external inventory coordination prerequisite 3fa38b2b is still open with no promise or ratified report, and decision-records UI request 3d1ff642 is promised but has not landed. I will not claim or implement I9 until both durable conditions are satisfied."}
