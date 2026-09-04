@@ -14,6 +14,10 @@ export interface ThreadSummary {
 export interface ThreadIndex {
   summary: (event: string) => ThreadSummary;
   content: (event: string) => ThreadContent;
+  /** The conversational root selected by the same commitment-boundary rule. */
+  root: (event: string) => string;
+  /** Malformed reply cycles, with one deterministic representative per cycle. */
+  cycles: string[][];
 }
 
 // Build the provenance inversion and conversational reply tree once per
@@ -69,11 +73,57 @@ export function buildThreadIndex(projection: Projection): ThreadIndex {
     return commitment !== undefined && commitment !== commitmentOf.get(parent);
   };
   const replyChildren = new Map<string, string[]>();
+  const replyParent = new Map<string, string>();
   for (const event of actorByEvent.keys()) {
     const parent = (projection.provenance[event] ?? [])[0];
-    if (!parent || crossesCommitment(event, parent)) continue;
+    // An absent parent remains real provenance, but cannot be a navigable
+    // thread root. The graph reports that malformed edge separately.
+    if (!parent || !actorByEvent.has(parent) || crossesCommitment(event, parent)) continue;
+    replyParent.set(event, parent);
     replyChildren.set(parent, [...(replyChildren.get(parent) ?? []), event]);
   }
+
+  // Resolve each root once. Imported provenance can be cyclic; one stable
+  // representative keeps navigation bounded while callers expose the cycle.
+  const roots = new Map<string, string>();
+  const cycles: string[][] = [];
+  const cycleKeys = new Set<string>();
+  const resolveRoot = (event: string): string => {
+    const known = roots.get(event);
+    if (known) return known;
+    const path: string[] = [];
+    const position = new Map<string, number>();
+    let cursor = event;
+    while (true) {
+      const settled = roots.get(cursor);
+      if (settled) {
+        for (const member of path) roots.set(member, settled);
+        return settled;
+      }
+      const seen = position.get(cursor);
+      if (seen !== undefined) {
+        const cycle = path.slice(seen).sort();
+        const root = cycle[0];
+        const key = cycle.join("\u0000");
+        if (!cycleKeys.has(key)) {
+          cycleKeys.add(key);
+          cycles.push(cycle);
+        }
+        for (const member of path) roots.set(member, root);
+        return root;
+      }
+      position.set(cursor, path.length);
+      path.push(cursor);
+      const parent = replyParent.get(cursor);
+      if (!parent) {
+        for (const member of path) roots.set(member, cursor);
+        return cursor;
+      }
+      cursor = parent;
+    }
+  };
+  for (const event of [...actorByEvent.keys()].sort()) resolveRoot(event);
+  cycles.sort((left, right) => left[0].localeCompare(right[0]));
   const summaries = new Map<string, ThreadSummary>();
   const orderedEvents = projection.decisions.length > 0
     ? projection.decisions.map((decision) => decision.event)
@@ -91,6 +141,8 @@ export function buildThreadIndex(projection: Projection): ThreadIndex {
   }
 
   return {
+    root: resolveRoot,
+    cycles,
     summary: (event) => summaries.get(event) ?? { count: 0, people: [] },
     content: (event) => {
       const descendants = new Set<string>();

@@ -505,10 +505,11 @@ test("the everyday surface does not expose record taxonomy or authority roles", 
 
   assert.doesNotMatch(surface, /Only you are holding|remove citation|cites the parent message|formal statement/);
   assert.doesNotMatch(surface, /actor\.roles|roles\.join/);
-  // Two screens, and nothing that chooses between presentations of one of them.
-  // Named for the identifiers the deleted controls carried, so prose about
-  // their absence cannot satisfy the gate.
-  assert.doesNotMatch(surface, /setPresentation|WorkBoard|BoardCard|TopicList|TopicCounts|FilterCheck|PersonalFilter|PresentationButton/);
+  // Two screens still suffice: the board's Table and Graph are presentations
+  // of the list question, while a card opens the existing full thread. The old
+  // taxonomy and authority controls remain absent.
+  assert.doesNotMatch(surface, /WorkBoard|BoardCard|TopicList|TopicCounts|FilterCheck|PersonalFilter|PresentationButton/);
+  assert.match(read("components/RequestList.tsx"), /setPresentation/);
   assert.match(app, /kind: "list"/);
   assert.match(app, /kind: "thread"/);
 });
