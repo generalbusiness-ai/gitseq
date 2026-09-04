@@ -1,0 +1,1 @@
+Claude reported that the first merge was destroyed by concurrent git resets, produced no receipt, and left main unchanged; after explicit serialization, Claude reported the retry landed e2c29034, origin equal, and the checkout free.

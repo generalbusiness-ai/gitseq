@@ -1,0 +1,1 @@
+cmd/gs/main.go mergeCommand at main a30406b3 calls buildMergePlan, update-ref reservation, git merge --no-ff --no-commit, staged-path validation, preflight, git commit, receipt ref publication, and recordMergeSuccession without an outer checkout lock; failure cleanup may call git merge --abort.
