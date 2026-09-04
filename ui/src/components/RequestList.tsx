@@ -79,9 +79,19 @@ export function RequestList({
       ) as Record<Population, WorkRow[]>,
     [projection, context, ratification],
   );
+  // Search defines the population before a tab selects one slice. Keeping the
+  // filtered map beside the unfiltered map makes every tab count a preview of
+  // exactly what that tab will render under the current query.
+  const filteredPopulations = useMemo(
+    () =>
+      Object.fromEntries(
+        POPULATIONS.map(({ key }) => [key, matchingRows(populations[key], query)]),
+      ) as Record<Population, WorkRow[]>,
+    [populations, query],
+  );
   const rows = useMemo(
-    () => sortRows(matchingRows(populations[population], query), sort),
-    [populations, population, query, sort],
+    () => sortRows(filteredPopulations[population], sort),
+    [filteredPopulations, population, sort],
   );
 
   if (!projection) return <RebuildNotice />;
@@ -138,7 +148,7 @@ export function RequestList({
                 )}
               >
                 {label}
-                <span className="font-mono text-faint">{populations[key].length}</span>
+                <span className="font-mono text-faint">{filteredPopulations[key].length}</span>
               </button>
             ))}
           </div>
@@ -181,7 +191,7 @@ export function RequestList({
             </thead>
             <tbody>
               {rows.map((row) => (
-                <Row key={row.event} row={row} onOpen={() => onOpenThread(row.event)} />
+                <Row key={row.key} row={row} onOpen={() => onOpenThread(row.event)} />
               ))}
             </tbody>
           </table>
@@ -218,6 +228,7 @@ function Row({ row, onOpen }: { row: WorkRow; onOpen: () => void }) {
       data-state={row.state}
       data-waits={row.waitsOnName}
       data-group={row.group}
+      data-row-key={row.key}
       onClick={onOpen}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {

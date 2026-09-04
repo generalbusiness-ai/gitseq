@@ -68,7 +68,10 @@ function click(element) {
 
 function enterText(element, value) {
   return act(async () => {
-    const setter = Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value").set;
+    const prototype = element instanceof dom.window.HTMLInputElement
+      ? dom.window.HTMLInputElement.prototype
+      : dom.window.HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, "value").set;
     setter.call(element, value);
     element.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
   });
@@ -442,6 +445,38 @@ test("clicking a column sorts, clicking again reverses, and a third click restor
   }
 });
 
+test("age and ticket headers start recent first, reverse, then restore priority", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    await act(async () => {
+      root.render(React.createElement(ListHost, { RequestList, workroom: listRoom(), onOpenThread() {} }));
+    });
+    const priority = titlesOnScreen();
+
+    await click(headerNamed("age"));
+    assert.deepEqual(titlesOnScreen(), ["Middle work", "Alpha work", "Zebra work"]);
+    assert.equal(headerNamed("age").closest("th").getAttribute("aria-sort"), "ascending");
+    await click(headerNamed("age"));
+    assert.deepEqual(titlesOnScreen(), ["Zebra work", "Alpha work", "Middle work"]);
+    await click(headerNamed("age"));
+    assert.deepEqual(titlesOnScreen(), priority);
+
+    await click(headerNamed("#"));
+    assert.deepEqual(titlesOnScreen(), ["Middle work", "Alpha work", "Zebra work"]);
+    assert.equal(headerNamed("#").closest("th").getAttribute("aria-sort"), "descending");
+    await click(headerNamed("#"));
+    assert.deepEqual(titlesOnScreen(), ["Zebra work", "Alpha work", "Middle work"]);
+    await click(headerNamed("#"));
+    assert.deepEqual(titlesOnScreen(), priority);
+    assert.equal(headerNamed("#").closest("th").getAttribute("aria-sort"), "none");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
 test("exactly one number heads the list, and each other number opens to its own rows", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   const root = createRoot(document.getElementById("root"));
@@ -492,6 +527,97 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.equal(document.querySelector("h2").textContent, "1 act awaits ratification");
     assert.deepEqual(titlesOnScreen(), ["Bounded status"]);
   } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("search filters every tab count before the selected population", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.statements[0].text = "Needle open";
+    projection.statements.push(
+      { event: "e4", sequence: 4, actor: "hugh", kind: "request", text: "Needle completed", timestamp: NOW_S - 4 * 86400 },
+      { event: "e5", sequence: 5, actor: "hugh", kind: "request", text: "Unrelated completed", timestamp: NOW_S - 5 * 86400 },
+    );
+    projection.decisions.push(
+      { event: "e4", sequence: 4, verdict: "effective", reason: "recorded" },
+      { event: "e5", sequence: 5, verdict: "effective", reason: "recorded" },
+    );
+    projection.commitments.push(
+      { request: "e4", requester: "hugh", report: "r4", status: "satisfied" },
+      { request: "e5", requester: "hugh", report: "r5", status: "satisfied" },
+    );
+
+    await act(async () => {
+      root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
+    });
+    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    assert.equal(tabs()[0].textContent, "open3");
+    assert.equal(tabs()[3].textContent, "completed2");
+
+    const search = document.querySelector('[aria-label="Search requests"]');
+    await enterText(search, "needle");
+    assert.equal(tabs()[0].textContent, "open1");
+    assert.equal(tabs()[3].textContent, "completed1");
+    assert.deepEqual(titlesOnScreen(), ["Needle open"]);
+
+    await click(tabs()[3]);
+    assert.equal(document.querySelector("h2").textContent, "1 completed");
+    assert.deepEqual(titlesOnScreen(), ["Needle completed"]);
+
+    await enterText(search, "");
+    assert.equal(tabs()[0].textContent, "open3");
+    assert.equal(tabs()[3].textContent, "completed2");
+    assert.deepEqual(titlesOnScreen(), ["Unrelated completed", "Needle completed"]);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("repeated tab switches replace rows when one request has several commitment lifecycles", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const consoleError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args.join(" "));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.statements.push({ event: "e4", sequence: 4, actor: "hugh", kind: "request", text: "Repeated history", timestamp: NOW_S - 4 * 86400 });
+    projection.decisions.push({ event: "e4", sequence: 4, verdict: "effective", reason: "recorded" });
+    projection.commitments.push(
+      { request: "e4", requester: "hugh", promise: "p4a", report: "r4a", status: "satisfied" },
+      { request: "e4", requester: "hugh", promise: "p4b", report: "r4b", status: "satisfied" },
+    );
+
+    await act(async () => {
+      root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
+    });
+    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    for (let repetition = 0; repetition < 3; repetition++) {
+      await click(tabs()[3]);
+      assert.equal(document.querySelectorAll("tbody tr").length, 2);
+      assert.deepEqual(titlesOnScreen(), ["Repeated history", "Repeated history"]);
+      const completedKeys = [...document.querySelectorAll("tbody tr")].map((row) => row.dataset.rowKey);
+      assert.equal(new Set(completedKeys).size, completedKeys.length);
+
+      await click(tabs()[0]);
+      assert.equal(document.querySelectorAll("tbody tr").length, 3);
+      assert.deepEqual(titlesOnScreen(), ["Alpha work", "Middle work", "Zebra work"]);
+      assert.doesNotMatch(document.querySelector("tbody").textContent, /Repeated history/);
+      const openKeys = [...document.querySelectorAll("tbody tr")].map((row) => row.dataset.rowKey);
+      assert.equal(new Set(openKeys).size, openKeys.length);
+    }
+    assert.equal(errors.some((message) => message.includes("same key")), false, "React saw duplicate row identities");
+  } finally {
+    console.error = consoleError;
     await act(async () => root.unmount());
     await vite.close();
   }

@@ -569,7 +569,7 @@ test("a row says state, waits-on, age, title and ticket, and nothing else", () =
   );
   const [row] = workRows(projection, context(projection));
   assert.deepEqual(Object.keys(row).sort(), [
-    "attention", "event", "group", "moved", "search", "stale", "state", "ticket", "title", "waitsOn", "waitsOnHuman", "waitsOnName",
+    "attention", "event", "group", "key", "moved", "search", "stale", "state", "ticket", "title", "waitsOn", "waitsOnHuman", "waitsOnName",
   ]);
   assert.equal(row.state, "in progress");
   assert.equal(row.waitsOnName, "claude");
@@ -666,6 +666,49 @@ test("a third click on a column returns to priority order", () => {
   // Moving to a different column starts that column afresh rather than
   // inheriting the previous direction.
   assert.deepEqual(sortAfterClick({ key: "age", descending: true }, "title"), { key: "title", descending: false });
+});
+
+test("age and ticket sorts start with the most recent work", () => {
+  const projection = room(
+    [
+      { event: "old", kind: "request", actor: "hugh", ts: NOW - 2 * DAY },
+      { event: "new", kind: "request", actor: "hugh", ts: NOW - HOUR },
+    ],
+    {
+      commitments: [
+        { request: "old", requester: "hugh", status: "open" },
+        { request: "new", requester: "hugh", status: "open" },
+      ],
+    },
+  );
+  const rows = workRows(projection, context(projection));
+
+  const ageSort = sortAfterClick(undefined, "age");
+  assert.deepEqual(ageSort, { key: "age", descending: false });
+  assert.deepEqual(sortRows(rows, ageSort).map((row) => row.event), ["new", "old"]);
+
+  const ticketSort = sortAfterClick(undefined, "ticket");
+  assert.deepEqual(ticketSort, { key: "ticket", descending: true });
+  assert.deepEqual(sortRows(rows, ticketSort).map((row) => row.event), ["new", "old"]);
+  const reversed = sortAfterClick(ticketSort, "ticket");
+  assert.deepEqual(reversed, { key: "ticket", descending: false });
+  assert.deepEqual(sortRows(rows, reversed).map((row) => row.event), ["old", "new"]);
+  assert.equal(sortAfterClick(reversed, "ticket"), undefined);
+});
+
+test("each projected commitment row has a stable unique identity", () => {
+  const projection = room(
+    [{ event: "request", kind: "request", actor: "hugh", ts: NOW - DAY }],
+    {
+      commitments: [
+        { request: "request", requester: "hugh", promise: "promise-one", report: "report-one", status: "satisfied" },
+        { request: "request", requester: "hugh", promise: "promise-two", report: "report-two", status: "satisfied" },
+      ],
+    },
+  );
+  const rows = workRows(projection, context(projection), "done");
+  assert.equal(rows.length, 2);
+  assert.equal(new Set(rows.map((row) => row.key)).size, rows.length);
 });
 
 test("a sort reorders the rows that are there and hides none", () => {
