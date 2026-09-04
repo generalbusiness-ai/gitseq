@@ -1,0 +1,4 @@
+Current green: https://github.com/generalbusiness-ai/gitseq/actions/runs/33835008629 and https://github.com/generalbusiness-ai/gitseq/actions/runs/33835008726
+Bounds flake: https://github.com/generalbusiness-ai/gitseq/actions/runs/33644618388 — TestResultRowsAndBytesAreBounded: application query cancelled: context deadline exceeded
+Authorizer mutation flake: https://github.com/generalbusiness-ai/gitseq/actions/runs/33812233321 — disabling the authorizer did not fail the named assertion: <nil>
+Source inspection: queryTimeout is 5ms; newFixture uses Open/defaultOptions; assertPRAGMARefused treats every query error as a valid refusal.
