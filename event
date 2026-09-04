@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Rebuilt UI stylesheet at exact head 3cffb101173560e51c68f0240d5bf6ec4dc7ce89 (renamed from index-DXAbi57K.css); byte-reproduced by make ui-check.","body":{"commit":"3cffb101173560e51c68f0240d5bf6ec4dc7ce89","path":"internal/service/uidist/assets/index-D2hbOpZp.css"}}
+{"kind":"artifact","text":"Rebuilt UI entry page at exact head 3cffb101173560e51c68f0240d5bf6ec4dc7ce89 referencing the new bundle and stylesheet.","body":{"commit":"3cffb101173560e51c68f0240d5bf6ec4dc7ce89","path":"internal/service/uidist/index.html"}}
