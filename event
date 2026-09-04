@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Receipt checkpoint tests follow the simplified staleness result without changing receipt semantics.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"internal/workroom/receipt_checkpoint_test.go"}}
+{"kind":"artifact","text":"Reviewed projection fixture records the new fields only on stale rows.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"internal/workroom/testdata/legacy_projection.golden.json"}}
