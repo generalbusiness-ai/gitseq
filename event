@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at host/init_exclusive_internal_test.go","body":{"commit":"ac6d792bf5a40f539d16a9fc30cd0c87b8aab6a2","path":"host/init_exclusive_internal_test.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/app/app.go","body":{"commit":"ac6d792bf5a40f539d16a9fc30cd0c87b8aab6a2","path":"internal/app/app.go"}}
