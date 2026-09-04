@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8e6e344bfd66bf5d05fc48dc890e0d61ecde195","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-02-retirement-succession-safeguards.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54a38cc77a7b2301aec8f8dc6c0dc429e6af0c80","text":"Retired as carried into direct successor request 315b84d0; that chain ultimately landed the approved note at merge receipt 57c7ce73 and main ef55e913."}
