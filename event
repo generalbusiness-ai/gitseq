@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e1143096cc47e9f1151b004bc5fa3e6024c4ae09","text":"Retired as carried into direct successor request 315b84d0; that chain ultimately landed the approved note at merge receipt 57c7ce73 and main ef55e913."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:315b84d01cde1b846a31e6f782ac2b41df38c992","text":"Retired as carried into direct successor request d3b4366b, which is satisfied by the approved exact-head merge receipt 57c7ce73 at main ef55e913."}
