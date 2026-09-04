@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact pushed head 068f8dc1 proves governed cause selection, nearest citation-order ties, cycles, visited and four-hop exhaustion, truncation, and non-stale wire stability.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/fold_test.go"}}
+{"kind":"artifact","text":"Exact pushed head 068f8dc1 proves receipt checkpoint settlement suppresses settled causes while preserving inherited causes.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/receipt_checkpoint_test.go"}}
