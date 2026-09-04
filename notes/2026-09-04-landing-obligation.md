@@ -419,15 +419,17 @@ Enumeration sites that must change in one head (blocker 4):
 - `cmd/gitseq-mcp/main.go`: the `statuses` enum of the `work` tool;
 - `docs/concepts/work-loop.md`, `docs/reference/gs/status.md`,
   `docs/reference/gs/work.md`, `docs/reference/mcp/status.md`,
-  `docs/reference/mcp/work.md`, `docs/reference/architecture.md`, `SKILL.md`,
-  `AGENTS.md`;
+  `docs/reference/mcp/work.md`, `docs/reference/architecture.md`, `SKILL.md`;
 - `ui/src/lib/rows.ts` (`LIVE_STATUSES` and the state text), `ui/src/lib/spine.ts`
   (the thread spine's awaiting-merge branch, which Graph cards also read),
   `ui/src/lib/api.ts` (the status vocabulary comment and type), and
   `ui/test/interaction.test.mjs`.
 
-The list is what `grep -rn awaiting-merge` finds outside `notes/` at main
-d09a5a8d; the grep test in section 10 keeps it honest as the tree moves.
+The list is the 23 paths `grep -rln awaiting-merge` finds at main d09a5a8d
+outside `notes/` and outside the generated UI embed under
+`internal/service/uidist/assets/`, which `make ui` rebuilds from `ui/src`.
+`AGENTS.md` has no occurrence and is not on the list. The grep test in
+section 10 keeps the list honest as the tree moves.
 
 Follow-on requests, each filed on its own with this note as a basis.
 
