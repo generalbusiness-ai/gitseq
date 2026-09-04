@@ -3,8 +3,8 @@ package workroom
 import (
 	"bytes"
 	"fmt"
-	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -183,6 +183,36 @@ func TestStateV3RequestMustStateExactlyOneCheckableResult(t *testing.T) {
 		{
 			name: "bare branch name", verdict: Ineffective,
 			body:   landingBody(agent, "target_ref", "main"),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref carrying a traversal and a control byte", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/../../etc\npasswd"),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref with a control byte alone", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/ma\nin"),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref longer than the bound", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/"+strings.Repeat("x", 300)),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref with a path traversal alone", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/feature/../main"),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref with an empty component", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/team//main"),
+			reason: "target_ref must name a branch under refs/heads/",
+		},
+		{
+			name: "ref with a trailing slash", verdict: Ineffective,
+			body:   landingBody(agent, "target_ref", "refs/heads/main/"),
 			reason: "target_ref must name a branch under refs/heads/",
 		},
 		{
@@ -410,7 +440,7 @@ func TestReportsOnALandingRequest(t *testing.T) {
 			event(t, lid("report"), agent, SchemaState, State{Kind: KindReport, Text: "Done"}, fixture.promise))
 		projection := Fold(fixture.records)
 		decision := decisionFor(t, projection, lid("report"))
-		if decision.Verdict != Ineffective || decision.Reason != "request owes a landing to refs/heads/main; land it or supersede it" {
+		if decision.Verdict != Ineffective || decision.Reason != `request owes a landing to "refs/heads/main"; land it or supersede it` {
 			t.Fatalf("plain report on a landing request = %+v", decision)
 		}
 		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-review" || row.Report != fixture.artifact {
@@ -424,7 +454,7 @@ func TestReportsOnALandingRequest(t *testing.T) {
 				Body: map[string]string{"verdict": "approved", "head": approvedHead, "artifact": fixture.artifact}}, fixture.promise))
 		decision := decisionFor(t, Fold(fixture.records), lid("report"))
 		if decision.Verdict != Ineffective ||
-			decision.Reason != "request owes a landing to refs/heads/main; a review verdict belongs to its own review commitment" {
+			decision.Reason != `request owes a landing to "refs/heads/main"; a review verdict belongs to its own review commitment` {
 			t.Fatalf("verdict report on a landing request = %+v", decision)
 		}
 	})
@@ -500,7 +530,7 @@ func TestSupersedingARequestThatHoldsAnApprovedHead(t *testing.T) {
 		projection := Fold(fixture.records)
 		decision := decisionFor(t, projection, lid("retire"))
 		if decision.Verdict != Ineffective ||
-			decision.Reason != "request holds approved head "+approvedHead+"; carry it in the successor or declare abandoned" {
+			decision.Reason != `request holds approved head "`+approvedHead+`"; carry it in the successor or declare abandoned` {
 			t.Fatalf("bare supersession = %+v", decision)
 		}
 		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-landing" {
@@ -642,48 +672,231 @@ func TestRejectedRoundTransferDoesNotStaleItsSuccessor(t *testing.T) {
 // as an alias, so a site that still says it is a site that disagrees with the
 // fold. The literal is assembled here rather than written out, because this
 // test would otherwise find itself.
+//
+// The population is what git tracks, not what the working tree holds. Walking
+// the filesystem would have failed on any checkout carrying untracked scratch
+// that mentions the old word, which says nothing about whether this repository
+// still ships it.
 func TestNoSiteStillNamesTheReplacedArtifactCompletionStatus(t *testing.T) {
 	retired := []byte("awaiting-" + "merge")
 	root, err := filepath.Abs("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// notes/ is design history and says what the word was; the UI embed under
-	// internal/service/uidist is generated from ui/src, which this walk reads
-	// directly. Everything else in the tree is a live site.
-	skip := map[string]bool{
-		".git": true, "node_modules": true, "notes": true, "bin": true, "dist": true,
+	listing := exec.Command("git", "ls-files", "-z")
+	listing.Dir = root
+	tracked, err := listing.Output()
+	if err != nil {
+		t.Fatalf("git ls-files in %s: %v", root, err)
 	}
+	// notes/ is design history and says what the word was. The UI embed under
+	// internal/service/uidist/assets is generated from ui/src, which this
+	// listing reads directly. Everything else tracked here is a live site.
 	var offenders []string
-	err = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, name := range strings.Split(strings.TrimSuffix(string(tracked), "\x00"), "\x00") {
+		if name == "" || strings.HasPrefix(name, "notes/") || strings.HasPrefix(name, "internal/service/uidist/assets/") {
+			continue
 		}
-		name := entry.Name()
-		if entry.IsDir() {
-			if skip[name] || strings.HasPrefix(name, ".") || path == filepath.Join(root, "internal", "service", "uidist") {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil || info.Size() > 1<<22 {
-			return nil
-		}
-		content, err := os.ReadFile(path)
+		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
 		if err != nil || bytes.IndexByte(content, 0) >= 0 {
-			return nil
+			continue
 		}
 		if bytes.Contains(content, retired) {
-			relative, _ := filepath.Rel(root, path)
-			offenders = append(offenders, relative)
+			offenders = append(offenders, name)
 		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	if len(offenders) != 0 {
 		t.Fatalf("%q survives at %v; every enumeration site must move in the same head", retired, offenders)
 	}
+}
+
+// Blocker 1. A merge retires the predecessors at the paths it publishes, and
+// the discipline requires it, so an approved head that has been retired is the
+// ordinary case. Whether the commitment obtained an approval is a fact about
+// its history; reading liveness there lost the approved head from the audit
+// set and let it be superseded without being carried or abandoned.
+func TestARetiredApprovedHeadIsStillAnApprovedHead(t *testing.T) {
+	retire := func(t *testing.T, f landingFixture) landingFixture {
+		t.Helper()
+		f.records = append(f.records,
+			event(t, lid("artifact-retired"), agent, SchemaSupersede,
+				Supersede{Target: f.artifact, Text: "Another merge published over this path"}, f.artifact))
+		// The premise of every case below, asserted rather than assumed: if the
+		// retirement itself were refused, these would pass for the wrong reason.
+		if !artifactByEvent(t, Fold(f.records), f.artifact).Retired {
+			t.Fatal("the fixture did not retire the approved artifact")
+		}
+		return f
+	}
+	t.Run("a bare supersession is still refused", func(t *testing.T) {
+		fixture := retire(t, landingRound(t, landingBody(agent)).ratifiedApproval(t))
+		fixture.records = append(fixture.records,
+			event(t, lid("retire"), operator, SchemaSupersede, Supersede{Target: fixture.request, Text: "Refile it"}, fixture.request))
+		projection := Fold(fixture.records)
+		decision := decisionFor(t, projection, lid("retire"))
+		if decision.Verdict != Ineffective ||
+			decision.Reason != `request holds approved head "`+approvedHead+`"; carry it in the successor or declare abandoned` {
+			t.Fatalf("retirement of the artifact let the request be dropped = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status == "cancelled" {
+			t.Fatalf("the request was cancelled with an approved head outstanding = %+v", row)
+		}
+	})
+	t.Run("the obligation stays outstanding", func(t *testing.T) {
+		fixture := retire(t, landingRound(t, landingBody(agent)).ratifiedApproval(t))
+		row := commitmentForPromise(t, Fold(fixture.records), fixture.promise)
+		if !row.ApprovedNotLanded || row.Approval != fixture.approval || row.Candidate != approvedHead {
+			t.Fatalf("retiring the artifact discharged the landing = %+v", row)
+		}
+	})
+	t.Run("a landed row names its approval and candidate", func(t *testing.T) {
+		fixture := landingRound(t, landingBody(agent)).ratifiedApproval(t).receipt(t, "refs/heads/main")
+		row := commitmentForPromise(t, Fold(fixture.records), fixture.promise)
+		if row.Status != "satisfied" || row.Terminal != "landed" {
+			t.Fatalf("landed row = %+v", row)
+		}
+		if row.Approval != fixture.approval || row.Candidate != approvedHead {
+			t.Fatalf("the merge that retired the artifact emptied the row's approval = %+v", row)
+		}
+	})
+}
+
+// Should-fix 4. The delegation belongs to the request that made it.
+func TestHoldOwnerMayBeNamedOnlyWhereTheHoldIsStated(t *testing.T) {
+	parent := func(t testing.TB) Record {
+		return event(t, lid("parent"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Parent",
+			Body: landingBody(agent, "landing", "held", "hold_owner", other)}, lid("w0"))
+	}
+	t.Run("a child inherits the hold and its owner", func(t *testing.T) {
+		records := landingWorld(t, parent(t),
+			event(t, lid("child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Child",
+				Body: map[string]string{"to": agent, "conditions": "do it", "target": "inherit"}}, lid("parent")),
+			event(t, lid("child-promise"), agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, lid("child")),
+		)
+		projection := Fold(records)
+		if decision := decisionFor(t, projection, lid("child")); decision.Verdict != Effective {
+			t.Fatalf("inheriting child = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, lid("child-promise")); row.HoldOwner != other {
+			t.Fatalf("inherited hold owner = %+v", row)
+		}
+	})
+	t.Run("a child may not rename the owner it inherited", func(t *testing.T) {
+		records := landingWorld(t, parent(t),
+			event(t, lid("child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Child",
+				Body: map[string]string{"to": agent, "conditions": "do it", "target": "inherit", "hold_owner": agent}}, lid("parent")),
+		)
+		decision := decisionFor(t, Fold(records), lid("child"))
+		if decision.Verdict != Ineffective || decision.Reason != "hold_owner may be named only by the request that states the hold" {
+			t.Fatalf("child renamed an inherited hold owner = %+v", decision)
+		}
+	})
+	t.Run("a child may name the owner of a hold it states itself", func(t *testing.T) {
+		records := landingWorld(t,
+			event(t, lid("parent"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Parent", Body: landingBody(agent)}, lid("w0")),
+			event(t, lid("child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Child",
+				Body: map[string]string{"to": agent, "conditions": "do it", "target": "inherit", "landing": "held", "hold_owner": other}}, lid("parent")),
+			event(t, lid("child-promise"), agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, lid("child")),
+		)
+		projection := Fold(records)
+		if decision := decisionFor(t, projection, lid("child")); decision.Verdict != Effective {
+			t.Fatalf("child stating its own hold = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, lid("child-promise")); row.HoldOwner != other {
+			t.Fatalf("stated hold owner = %+v", row)
+		}
+	})
+}
+
+// Nit 9. A disposition the fold would drop is refused, not ignored: an author
+// who wrote one believes they have disposed of an approved head.
+func TestADispositionIsNeverSilentlyDiscarded(t *testing.T) {
+	t.Run("on a request holding no approved head", func(t *testing.T) {
+		fixture := landingRound(t, landingBody(agent))
+		fixture.records = append(fixture.records,
+			event(t, lid("abandon"), operator, SchemaSupersedeV1, SupersedeV1{
+				Target: fixture.request, Text: "Dropped",
+				Body: map[string]string{"disposition": "abandoned"},
+			}, fixture.request))
+		decision := decisionFor(t, Fold(fixture.records), lid("abandon"))
+		if decision.Verdict != Ineffective || decision.Reason != "disposition applies only to a request that holds an approved head" {
+			t.Fatalf("dropped disposition = %+v", decision)
+		}
+	})
+	t.Run("on a record that is not a landing request", func(t *testing.T) {
+		records := landingWorld(t,
+			event(t, lid("note"), operator, SchemaState, State{Kind: KindAssert, Text: "A note"}, lid("w0")),
+			event(t, lid("abandon"), operator, SchemaSupersedeV1, SupersedeV1{
+				Target: lid("note"), Text: "Dropped",
+				Body: map[string]string{"disposition": "abandoned"},
+			}, lid("note")))
+		decision := decisionFor(t, Fold(records), lid("abandon"))
+		if decision.Verdict != Ineffective || decision.Reason != "disposition applies only to a request that holds an approved head" {
+			t.Fatalf("dropped disposition on a note = %+v", decision)
+		}
+	})
+	t.Run("an unknown disposition word", func(t *testing.T) {
+		fixture := landingRound(t, landingBody(agent)).ratifiedApproval(t)
+		fixture.records = append(fixture.records,
+			event(t, lid("abandon"), operator, SchemaSupersedeV1, SupersedeV1{
+				Target: fixture.request, Text: "Dropped",
+				Body: map[string]string{"disposition": "parked"},
+			}, fixture.request))
+		decision := decisionFor(t, Fold(fixture.records), lid("abandon"))
+		if decision.Verdict != Ineffective || decision.Reason != `disposition must be "abandoned" when stated` {
+			t.Fatalf("unknown disposition = %+v", decision)
+		}
+	})
+}
+
+// Nit 11. One supersession can both qualify as a rejected-round transfer and
+// declare an approved head dropped. The declaration is the explicit one.
+func TestAnExplicitAbandonmentOutranksAQualifyingTransfer(t *testing.T) {
+	rounds := func(t testing.TB, supersession Record) []Record {
+		t.Helper()
+		return landingWorld(t,
+			event(t, lid("request"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Implement it", Body: landingBody(agent)}, lid("w0")),
+			event(t, lid("promise"), agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, lid("request")),
+			event(t, lid("rejected"), agent, SchemaState, State{Kind: KindArtifact, Text: "First head", Body: map[string]string{"path": "internal/workroom", "commit": repairHead}}, lid("promise")),
+			event(t, lid("review-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Review", Body: noArtifactBody(other)}, lid("rejected")),
+			event(t, lid("review-promise"), other, SchemaState, State{Kind: KindPromise, Text: "I will review"}, lid("review-request")),
+			event(t, lid("changes"), other, SchemaState, State{Kind: KindReport, Text: "Changes requested", Body: map[string]string{"verdict": "changes-requested", "head": repairHead, "artifact": lid("rejected")}}, lid("review-promise"), lid("rejected")),
+			event(t, lid("changes-ratified"), agent, SchemaRatify, Ratify{Target: lid("changes")}, lid("changes")),
+			event(t, lid("artifact"), agent, SchemaState, State{Kind: KindArtifact, Text: "Second head", Body: map[string]string{"path": "internal/workroom", "commit": approvedHead}}, lid("promise")),
+			event(t, lid("second-review"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Review again", Body: noArtifactBody(other)}, lid("artifact")),
+			event(t, lid("second-promise"), other, SchemaState, State{Kind: KindPromise, Text: "I will review"}, lid("second-review")),
+			event(t, lid("approval"), other, SchemaState, State{Kind: KindReport, Text: "Approved", Body: map[string]string{"verdict": "approved", "head": approvedHead, "artifact": lid("artifact")}}, lid("second-promise"), lid("artifact")),
+			event(t, lid("approval-ratified"), agent, SchemaRatify, Ratify{Target: lid("approval")}, lid("approval")),
+			// The child rests on both, so without a declaration this
+			// supersession qualifies twice over: as the rejected round's
+			// transfer, and as carrying the approved head forward.
+			event(t, lid("child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Repair it", Body: landingBody(agent)}, lid("request"), lid("artifact")),
+			supersession,
+		)
+	}
+	// The control. Without the declaration this exact supersession is a
+	// qualifying rejected-round transfer, so the case below is a contest
+	// between two readings rather than a test of one.
+	t.Run("without a disposition it is a transfer", func(t *testing.T) {
+		records := rounds(t, event(t, lid("both"), operator, SchemaSupersede,
+			Supersede{Target: lid("request"), Text: "Repair moved to the child"}, lid("request"), lid("child")))
+		row := commitmentForPromise(t, Fold(records), lid("promise"))
+		if row.Status != "superseded" || row.SuccessorRequest != lid("child") {
+			t.Fatalf("the fixture is not a qualifying transfer = %+v", row)
+		}
+	})
+	t.Run("with a disposition it is abandoned", func(t *testing.T) {
+		records := rounds(t, event(t, lid("both"), operator, SchemaSupersedeV1, SupersedeV1{
+			Target: lid("request"), Text: "The head is dropped, not carried",
+			Body: map[string]string{"disposition": "abandoned"},
+		}, lid("request"), lid("child")))
+		projection := Fold(records)
+		if decision := decisionFor(t, projection, lid("both")); decision.Verdict != Effective {
+			t.Fatalf("supersession that both qualifies and abandons = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, lid("promise"))
+		if row.Status != "abandoned" || row.SuccessorRequest != "" {
+			t.Fatalf("an abandoned head was projected as carried into a successor = %+v", row)
+		}
+	})
 }

@@ -79,10 +79,12 @@ than carrying into a successor. It is terminal, and distinct from `cancelled`:
 it says work that had been approved was given up, not that the request was
 withdrawn.
 
-`superseded` names a rejected implementation parent whose required repair was
-explicitly transferred to one qualifying child. Its JSON row carries
-`successor_request`; it is terminal history, not cancelled work and not a
-satisfied implementation.
+`superseded` names a request whose work explicitly moved to a successor: a
+rejected implementation parent whose required repair was transferred to one
+qualifying child, or a request whose approved head was carried into a successor
+that rests on it. Its JSON row carries `successor_request`; it is terminal
+history, not cancelled work and not a satisfied implementation. A supersession
+that dropped an approved head instead of carrying it reads `abandoned`.
 
 ## Two kinds of staleness
 

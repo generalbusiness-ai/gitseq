@@ -434,7 +434,11 @@ type foldState struct {
 	// authorizes_request by the request it names, so resolving the release in
 	// force for a held landing costs one lookup rather than a log scan per
 	// commitment row.
-	authorizations     map[string][]*parsedRecord
+	authorizations map[string][]*parsedRecord
+	// abandonments indexes every supersession that declared a request's
+	// approved head abandoned, by that request. Whether the declaration still
+	// stands is read at projection time; finding it is not.
+	abandonments       map[string][]*parsedRecord
 	dependents         map[dependentKey][]*parsedRecord
 	definitions        map[Kind]KindDefinition
 	definitionVersions map[Kind][]*parsedRecord
@@ -481,6 +485,7 @@ func NewFolder(records []Record) *Folder {
 		ratifications:      make(map[string][]string),
 		admittedClaims:     make(map[string]reportClaim),
 		authorizations:     make(map[string][]*parsedRecord),
+		abandonments:       make(map[string][]*parsedRecord),
 		dependents:         make(map[dependentKey][]*parsedRecord),
 		definitions:        starterCatalog(),
 		definitionVersions: make(map[Kind][]*parsedRecord),
@@ -600,6 +605,9 @@ func (f *foldState) append(index int, record Record) {
 			if target := f.byID[supersede.Target]; target != nil && target.result != nil && target.result.landing {
 				parsed.carriedSuccessorRequest, parsed.abandonedSuccession =
 					f.carriedOrAbandoned(parsed, *supersede, f.approvedHeldHead(target))
+				if parsed.abandonedSuccession {
+					f.abandonments[supersede.Target] = append(f.abandonments[supersede.Target], parsed)
+				}
 			}
 		}
 	}
@@ -3419,18 +3427,23 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 				// the landing. Reading either as open would show work already
 				// finished as work nobody took.
 				switch {
-				case successorRequest != "":
-					entry.Status = "superseded"
-					entry.SuccessorRequest = successorRequest
+				// Abandonment is judged first. A supersession may both qualify
+				// as a rejected-round transfer and declare an approved head
+				// dropped; the declaration is the explicit one, and reading it
+				// second would show the head as carried into a successor that
+				// was never given it.
+				case abandoned:
+					entry.Status = "abandoned"
+					entry.Terminal = "abandoned"
 					entry.WaitingOn = ""
 					if completion != nil {
 						entry.Performer = completion.record.Actor
 						entry.Report = completion.record.ID
 						entry.Stale = entry.Stale || stale[completion.record.ID]
 					}
-				case abandoned:
-					entry.Status = "abandoned"
-					entry.Terminal = "abandoned"
+				case successorRequest != "":
+					entry.Status = "superseded"
+					entry.SuccessorRequest = successorRequest
 					entry.WaitingOn = ""
 					if completion != nil {
 						entry.Performer = completion.record.Actor
@@ -3463,17 +3476,19 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			result, approved := f.landingFields(&entry, &requestRecord, promiseRecord, performer)
 			completion := f.latestCompletion(promiseRecord, performer, mergedArtifacts, result.landing && !result.legacy)
 			switch {
-			case successorRequest != "":
-				entry.Status = "superseded"
-				entry.SuccessorRequest = successorRequest
+			// See the direct-completion branch: an explicit abandonment
+			// outranks a transfer that also qualifies.
+			case abandoned:
+				entry.Status = "abandoned"
+				entry.Terminal = "abandoned"
 				entry.WaitingOn = ""
 				if completion != nil {
 					entry.Report = completion.record.ID
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
 				}
-			case abandoned:
-				entry.Status = "abandoned"
-				entry.Terminal = "abandoned"
+			case successorRequest != "":
+				entry.Status = "superseded"
+				entry.SuccessorRequest = successorRequest
 				entry.WaitingOn = ""
 				if completion != nil {
 					entry.Report = completion.record.ID
@@ -3508,8 +3523,8 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 }
 
 // landingFields fills the row's target, hold, approval and evidence fields and
-// returns the result in force for it alongside the newest live reporting
-// artifact at an approved head. Those two answers are what every landing rule
+// returns the result in force for it alongside the newest reporting artifact at
+// an approved head. Those two answers are what every landing rule
 // below reads; computing them once per row keeps the status word, the waiting
 // party and the audit fact from being derived three different ways.
 func (f *foldState) landingFields(entry *Commitment, request, claim *parsedRecord, performer string) (requestResult, *parsedRecord) {
@@ -3519,7 +3534,7 @@ func (f *foldState) landingFields(entry *Commitment, request, claim *parsedRecor
 	if resolution := f.latestResolution(claim); resolution != nil {
 		entry.LatestResolution = resolution.record.ID
 	}
-	_, approved, approval := f.reportingArtifacts(claim, performer)
+	approved, approval := f.approvedReportingArtifact(claim, performer)
 	if approved == nil {
 		return result, nil
 	}

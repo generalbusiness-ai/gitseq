@@ -1096,7 +1096,9 @@ descendants, so a review or authorization request sits under a landing parent
 without acquiring its obligation.
 
 A request that owes a landing may carry `landing=held`, whose owner is the
-requester unless `hold_owner` names another live actor. That naming changes one
+requester unless `hold_owner` names another live actor. Only the request that
+states the hold may name its owner: a request that inherited a hold keeps the
+owner it inherited, so a child cannot hand the release to its own performer. That naming changes one
 signing rule, and it is the only signing rule this design changes: a structured
 authorization report for a held landing request — one carrying
 `authorizes_request` — is admitted from exactly the hold owner and from nobody
@@ -1135,7 +1137,14 @@ rather than a side effect of refiling.
 never relative to `main`: true when a ratified approval names a reporting
 artifact, the request owes a landing, no sealed receipt names that artifact
 with a matching target repository and ref, and the commitment is not
-`abandoned`. A receipt carrying neither `merge_target_repo` nor
+`abandoned`. Whether that artifact is still live is not part of the question,
+and neither is it for the carried-or-abandoned rule. A merge retires the
+predecessors at the paths it publishes, so an approved head that another
+actor's merge retired is the ordinary case rather than an edge one; reading
+liveness there would drop it out of the audit set and let it be superseded
+without being carried or abandoned. Only the completion in the paragraph above
+asks which record answers the commitment now, and only that question reads
+liveness. A receipt carrying neither `merge_target_repo` nor
 `merge_target_ref` reads as `refs/heads/main` of this workroom's own
 repository.
 
@@ -1153,10 +1162,11 @@ a retirement's successor is the retired request's own rejected-round
 does not carry the retirement. It is keyed to that one edge and that one
 relation, and reaches neither carried nor abandoned successions.
 
-Layer 7 fills `target_head` at filing time and refuses to file when the ref
-does not resolve; the receipt fields, the merge refusals, the authorization
-guard bindings, and the status, work, inspect and worktree surfaces are their
-own later work. This head admits `state@3` and `supersede@1` in the fold and
+Filling `target_head` by resolving the ref at filing time, and refusing to file
+when it does not resolve, is layer-7 work in a later slice (I5); this head
+neither does it nor depends on it. The receipt fields, the merge refusals, the
+authorization guard bindings, and the status, work, inspect and worktree
+surfaces are their own later work too. This head admits `state@3` and `supersede@1` in the fold and
 leaves every filer on `state@2` and `supersede@0`, so no request already in
 flight acquires an obligation nobody stated. These admission and projection
 changes advance the profile to `workroom-fold@19`; a cache written under `@18`

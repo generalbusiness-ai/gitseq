@@ -2628,3 +2628,55 @@ func statementIndex(t *testing.T, projection workroom.Projection, event string) 
 	t.Fatalf("no statement projected for %s", event)
 	return -1
 }
+
+// A state@3 request names two actors, and the fold checks both against the
+// roster by fingerprint. Writing a bare name or an @address through would name
+// nobody and refuse the request at admission, which is a confusing way to say
+// "spell it as a fingerprint". On an older record the same field is opaque body
+// text, so nothing there is rewritten.
+func TestStateV3NormalizesTheHoldOwnerLikeThePerformer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer, _, err := workspace.AddActor(ctx, "human", "reviewer", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	landing := func(holdOwner string) workroom.State {
+		return workroom.State{Kind: workroom.KindRequest, Text: "Implement it", Body: map[string]string{
+			"to": "agent", "conditions": "the approved head lands", "hold_owner": holdOwner,
+			"landing": "held", "target_repo": "git:sha1:" + strings.Repeat("1", 40),
+			"target_ref": "refs/heads/main", "target_head": strings.Repeat("c", 40),
+		}}
+	}
+	for _, address := range []string{"reviewer", "@reviewer", reviewer.Fingerprint} {
+		normalized, err := workspace.normalizePayload(workroom.SchemaStateV3, landing(address))
+		if err != nil {
+			t.Fatalf("hold owner %q: %v", address, err)
+		}
+		body := normalized.(workroom.State).Body
+		if body["to"] != agent.Fingerprint || body["hold_owner"] != reviewer.Fingerprint {
+			t.Fatalf("hold owner %q normalized to %+v", address, body)
+		}
+	}
+	if _, err := workspace.normalizePayload(workroom.SchemaStateV3, landing("nobody")); err == nil ||
+		!strings.Contains(err.Error(), "hold owner") {
+		t.Fatalf("unknown hold owner error = %v, want it named", err)
+	}
+	// state@2 keeps its old reading: the name is body text and confers nothing,
+	// so rewriting it would change what an older record says.
+	normalized, err := workspace.normalizePayload(workroom.SchemaState, landing("reviewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalized.(workroom.State).Body["hold_owner"]; got != "reviewer" {
+		t.Fatalf("state@2 hold_owner rewritten to %q", got)
+	}
+}

@@ -1823,7 +1823,7 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 }
 
 func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {
-	if schema != workroom.SchemaState {
+	if schema != workroom.SchemaState && schema != workroom.SchemaStateV3 {
 		return payload, nil
 	}
 	var state workroom.State
@@ -1852,6 +1852,21 @@ func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {
 			return nil, fmt.Errorf("request performer: %w", err)
 		}
 		state.Body["to"] = actor.Fingerprint
+		// A hold owner is an actor reference like the performer, and the fold
+		// checks it against the roster by fingerprint. Writing a bare name
+		// through would name nobody and refuse the request at admission, which
+		// is a confusing way to say "spell it as a fingerprint". Only state@3
+		// reaches here: on an older record the field is opaque text and
+		// rewriting it would change what that record says.
+		if schema == workroom.SchemaStateV3 {
+			if owner := state.Body["hold_owner"]; owner != "" {
+				held, err := w.ResolveActorAddress(owner)
+				if err != nil {
+					return nil, fmt.Errorf("hold owner: %w", err)
+				}
+				state.Body["hold_owner"] = held.Fingerprint
+			}
+		}
 	}
 	return state, nil
 }

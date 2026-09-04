@@ -67,6 +67,45 @@ func workroomOf(event string) string {
 	return workroom
 }
 
+// quotedField renders an author-controlled body value into a refusal reason.
+// Quoting it means a value carrying newlines or terminal control bytes cannot
+// rewrite the line it appears in, and the bound means a long one cannot flood
+// the row it appears on. Both matter because the reason is durable and is read
+// back wherever decisions are shown.
+func quotedField(value string) string {
+	const limit = 96
+	if len(value) > limit {
+		value = value[:limit] + "..."
+	}
+	return fmt.Sprintf("%q", value)
+}
+
+// validBranchRef reports whether a value is a branch ref this fold will store.
+// It is deliberately not a reimplementation of git-check-ref-format: the fold
+// has no repository and resolves nothing. It refuses the shapes that would
+// make the stored string unusable or unsafe to carry — a ref outside
+// refs/heads/, an empty or dot component, "..", an ASCII control byte, and
+// anything long enough to be a payload rather than a name.
+func validBranchRef(ref string) bool {
+	if !strings.HasPrefix(ref, branchRefPrefix) || len(ref) > 256 {
+		return false
+	}
+	if strings.Contains(ref, "..") {
+		return false
+	}
+	for index := 0; index < len(ref); index++ {
+		if character := ref[index]; character < 0x20 || character == 0x7f {
+			return false
+		}
+	}
+	for _, component := range strings.Split(strings.TrimPrefix(ref, branchRefPrefix), "/") {
+		if component == "" || component == "." {
+			return false
+		}
+	}
+	return true
+}
+
 // isObjectID reports whether a value is a full lowercase Git object id. The
 // fold has no repository and resolves nothing; this is the whole check it can
 // make on target_head, and target_head is advisory in any case — the release
@@ -125,7 +164,7 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 		if workroom := workroomOf(record.record.ID); workroom == "" || repo != workroom {
 			return nil, "target_repo must be this workroom's genesis id"
 		}
-		if !strings.HasPrefix(ref, branchRefPrefix) || len(ref) == len(branchRefPrefix) {
+		if !validBranchRef(ref) {
 			return nil, "target_ref must name a branch under refs/heads/"
 		}
 		if !isObjectID(head) {
@@ -138,10 +177,14 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 			return nil, reason
 		}
 		// A hold travels with the target: a child of a held request is held by
-		// the same owner unless it says otherwise.
+		// the same owner.
 		*result = *inherited
 		result.inherited, result.legacy = true, false
 	}
+	// Whether the hold reached this request from its ancestry, which decides
+	// whether this request may name its owner. It is read before the body,
+	// because the body cannot make an inherited hold into a stated one.
+	inheritedHold := result.held
 	if value, stated := state.Body["landing"]; stated {
 		if value != "held" {
 			return nil, `landing must be "held" when stated`
@@ -154,6 +197,13 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 	if owner, stated := state.Body["hold_owner"]; stated {
 		if !result.held {
 			return nil, "hold_owner applies only to a held landing request"
+		}
+		// The delegation belongs to the request that made it. Letting a child
+		// rename the owner of a hold it merely inherited would let the
+		// performer's own child request hand the release to the performer,
+		// which is the one thing a hold exists to prevent.
+		if inheritedHold {
+			return nil, "hold_owner may be named only by the request that states the hold"
 		}
 		// Delegating the release is the author's decision, so any live actor
 		// may be named. An unknown or retired fingerprint names nobody who
@@ -316,19 +366,25 @@ func (f *foldState) ratifiedApproval(artifact *parsedRecord) *parsedRecord {
 	return newest
 }
 
-// reportingArtifacts returns the newest live reporting artifact on a claim and,
-// separately, the newest live one whose head carries a ratified approval,
-// alongside that approval. The first two are the second and third rungs of the
-// section-5 precedence ladder, and the approved one is what the landing
-// obligation is measured against however the commitment happens to have
-// closed. The approval travels with it so no caller has to assume it is there.
-func (f *foldState) reportingArtifacts(claim *parsedRecord, performer string) (newest, approved, approval *parsedRecord) {
+// approvedReportingArtifact returns the newest reporting artifact on a claim
+// whose head carries a ratified approval, alongside that approval.
+//
+// Retirement is deliberately not consulted. What the landing obligation and
+// the carried-or-abandoned rule ask is whether this commitment ever obtained
+// an approval for a head, and retirement does not erase that — the same
+// reasoning claimCarriedReportingArtifact runs on. It is the ordinary case,
+// not an edge one: a merge at the artifact's path retires it, and so does
+// another actor's merge over the same tree, and the discipline requires both.
+// Filtering on liveness here let a retired approved head be superseded without
+// carrying or abandoning it, and dropped it out of the approved-not-landed
+// set, which is exactly the loss the audit found.
+//
+// The section-5 completion is a different question — which record answers the
+// commitment now — and latestCompletion still asks it of live records only.
+func (f *foldState) approvedReportingArtifact(claim *parsedRecord, performer string) (approved, approval *parsedRecord) {
 	for _, record := range f.directDependents(claim.record.ID, LifecycleNone) {
-		if !f.isReportingArtifact(record, claim, performer) || f.retired(record.record.ID) {
+		if !f.isReportingArtifact(record, claim, performer) {
 			continue
-		}
-		if newest == nil || record.index > newest.index {
-			newest = record
 		}
 		ratified := f.ratifiedApproval(record)
 		if ratified == nil {
@@ -338,7 +394,7 @@ func (f *foldState) reportingArtifacts(claim *parsedRecord, performer string) (n
 			approved, approval = record, ratified
 		}
 	}
-	return newest, approved, approval
+	return approved, approval
 }
 
 // isReportingArtifact reports whether this record is the artifact that answered
@@ -419,13 +475,13 @@ func (f *foldState) landingReportRefusal(claim reportClaim, state State) string 
 		return ""
 	}
 	if state.Body["verdict"] != "" {
-		return fmt.Sprintf("request owes a landing to %s; a review verdict belongs to its own review commitment", result.targetRef)
+		return fmt.Sprintf("request owes a landing to %s; a review verdict belongs to its own review commitment", quotedField(result.targetRef))
 	}
-	return fmt.Sprintf("request owes a landing to %s; land it or supersede it", result.targetRef)
+	return fmt.Sprintf("request owes a landing to %s; land it or supersede it", quotedField(result.targetRef))
 }
 
-// approvedHeldHead returns the live reporting artifact at an approved head that
-// a request's commitment is holding, across the direct claim and every promise
+// approvedHeldHead returns the reporting artifact at an approved head that a
+// request's commitment is holding, across the direct claim and every promise
 // under it. It is what makes a supersession of that request a decision about
 // approved work rather than an ordinary retirement.
 func (f *foldState) approvedHeldHead(request *parsedRecord) *parsedRecord {
@@ -440,7 +496,7 @@ func (f *foldState) approvedHeldHead(request *parsedRecord) *parsedRecord {
 		performers = append(performers, promise.record.Actor)
 	}
 	for index, claim := range claims {
-		if _, approved, _ := f.reportingArtifacts(claim, performers[index]); approved != nil {
+		if approved, _ := f.approvedReportingArtifact(claim, performers[index]); approved != nil {
 			return approved
 		}
 	}
@@ -452,10 +508,13 @@ func (f *foldState) approvedHeldHead(request *parsedRecord) *parsedRecord {
 // this supersession also rests on and it rests on that artifact itself;
 // abandonment is stated in the supersession body with the reason in its text.
 func (f *foldState) carriedOrAbandoned(record *parsedRecord, supersede Supersede, artifact *parsedRecord) (successor string, abandoned bool) {
+	if artifact == nil {
+		return "", false
+	}
 	if record.supersedeBody["disposition"] == "abandoned" {
 		return "", true
 	}
-	if artifact == nil || len(record.record.RestsOn) < 2 || record.record.RestsOn[0] != supersede.Target {
+	if len(record.record.RestsOn) < 2 || record.record.RestsOn[0] != supersede.Target {
 		return "", false
 	}
 	for _, basis := range record.record.RestsOn[1:] {
@@ -479,31 +538,44 @@ func (f *foldState) carriedOrAbandoned(record *parsedRecord, supersede Supersede
 // admit, so that losing an approved head takes an explicit act rather than a
 // refile.
 func (f *foldState) carriedOrAbandonedRefusal(record *parsedRecord, supersede Supersede) string {
-	target := f.byID[supersede.Target]
-	if target == nil || target.result == nil || !target.result.landing {
-		return ""
+	disposition, declared := record.supersedeBody["disposition"]
+	if declared && disposition != "abandoned" {
+		return `disposition must be "abandoned" when stated`
 	}
-	artifact := f.approvedHeldHead(target)
+	target := f.byID[supersede.Target]
+	var artifact *parsedRecord
+	if target != nil && target.result != nil && target.result.landing {
+		artifact = f.approvedHeldHead(target)
+	}
 	if artifact == nil {
+		// A declaration the fold would drop is refused instead. An author who
+		// wrote one believes they have disposed of an approved head, and
+		// admitting the act while ignoring the field would let them believe it.
+		if declared {
+			return "disposition applies only to a request that holds an approved head"
+		}
 		return ""
 	}
 	if successor, abandoned := f.carriedOrAbandoned(record, supersede, artifact); successor != "" || abandoned {
 		return ""
 	}
 	state := artifact.body.(*State)
-	return fmt.Sprintf("request holds approved head %s; carry it in the successor or declare abandoned", state.Body["commit"])
+	return fmt.Sprintf("request holds approved head %s; carry it in the successor or declare abandoned", quotedField(state.Body["commit"]))
 }
 
 // abandonedRequest reports whether a surviving supersession declared this
 // request's approved head abandoned. Like the rejected-round transfer, the
-// answer was sealed when the supersession landed.
+// answer was sealed when the supersession landed; retiring the supersession
+// afterwards withdraws the declaration, so retirement is read now.
+//
+// The declarations are indexed at admission rather than found by scanning
+// every supersession per request. Scanning cost the product of the two, which
+// on the log this was measured against was a fifth of the whole cold fold.
 func (f *foldState) abandonedRequest(request string) bool {
-	for _, supersession := range f.supersessions {
-		value, ok := supersession.body.(*Supersede)
-		if !ok || value.Target != request || !supersession.abandonedSuccession || f.retired(supersession.record.ID) {
-			continue
+	for _, supersession := range f.abandonments[request] {
+		if !f.retired(supersession.record.ID) {
+			return true
 		}
-		return true
 	}
 	return false
 }
