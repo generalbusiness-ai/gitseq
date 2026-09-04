@@ -1,1 +1,1 @@
-{"kind":"assert","text":"Request #16922 is not yet actionable: its conditions require predecessor e1bede35 to land first. I will re-read and claim this request from then-current main after that predecessor merge."}
+{"kind":"assert","text":"Request #16924 is not yet actionable: its conditions require predecessor 72112af7 to land first. I will re-read and claim this request from then-current main after that predecessor merge."}
