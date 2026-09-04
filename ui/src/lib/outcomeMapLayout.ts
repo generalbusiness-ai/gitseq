@@ -5,6 +5,7 @@ import type { OutcomeNode } from "./outcomeMap.ts";
 // are placed in layer columns: bases to the left, their dependents to the
 // right. A layer may contain several independent roots.
 export const OUTCOME_CARD = { width: 248, height: 122, margin: 32, gapX: 88, gapY: 28 } as const;
+export const OUTCOME_SCALE = { min: Number.EPSILON, max: 2, step: 0.15, inset: 32 } as const;
 
 export interface OutcomePosition {
   x: number;
@@ -43,6 +44,17 @@ export function layoutOutcomeMap(nodes: readonly OutcomeNode[]): OutcomeLayout {
     width: Math.max(1, layers.length) * OUTCOME_CARD.width + Math.max(0, layers.length - 1) * OUTCOME_CARD.gapX + 2 * OUTCOME_CARD.margin,
     height: Math.max(1, tallest) * OUTCOME_CARD.height + Math.max(0, tallest - 1) * OUTCOME_CARD.gapY + 2 * OUTCOME_CARD.margin,
   };
+}
+
+export function clampOutcomeScale(value: number): number {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(OUTCOME_SCALE.max, Math.max(OUTCOME_SCALE.min, value));
+}
+
+export function fitOutcomeScale(layout: Pick<OutcomeLayout, "width" | "height">, viewportWidth: number, viewportHeight: number): number {
+  const usableWidth = viewportWidth > 0 ? Math.max(1, viewportWidth - OUTCOME_SCALE.inset) : layout.width;
+  const usableHeight = viewportHeight > 0 ? Math.max(1, viewportHeight - OUTCOME_SCALE.inset) : layout.height;
+  return clampOutcomeScale(Math.min(1, usableWidth / layout.width, usableHeight / layout.height));
 }
 
 // The arrow always starts at one card boundary and ends at the other. This is

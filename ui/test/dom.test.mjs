@@ -755,6 +755,62 @@ test("Graph uses the table population and search, selects a component, and opens
   }
 });
 
+test("Fit to view contains both maximum legal outcome-map shapes in a real viewport", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const widthDescriptor = Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, "clientWidth");
+  const heightDescriptor = Object.getOwnPropertyDescriptor(dom.window.HTMLElement.prototype, "clientHeight");
+  Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 800 });
+  Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 512 });
+  try {
+    const { OutcomeMap } = await vite.ssrLoadModule("/src/components/OutcomeMap.tsx");
+    const { layoutOutcomeMap, OUTCOME_SCALE } = await vite.ssrLoadModule("/src/lib/outcomeMapLayout.ts");
+    const node = (thread, layer, order) => ({
+      thread,
+      context: false,
+      title: thread,
+      kind: "request",
+      state: "unclaimed",
+      rootOfView: layer === 0,
+      recordedBasis: layer > 0,
+      basisOutsideView: false,
+      layer,
+      order,
+    });
+    const graphs = [
+      Array.from({ length: 160 }, (_, index) => node(`column-${index}`, 0, index)),
+      Array.from({ length: 160 }, (_, index) => node(`layer-${index}`, index, 0)),
+    ];
+
+    for (const nodes of graphs) {
+      await act(async () => {
+        root.render(React.createElement(OutcomeMap, {
+          graph: {
+            nodes,
+            relations: [],
+            warnings: [],
+            stats: { focalNodes: 160, contextNodes: 0, edges: 0, contributors: 0, omittedContextNodes: 0, omittedEdges: 0 },
+          },
+          nameOf: (actor) => actor,
+          onOpenThread() {},
+        }));
+      });
+      const scale = Number(document.querySelector('[aria-label="Outcome map viewport"]').dataset.scale);
+      const layout = layoutOutcomeMap(nodes);
+      assert.ok(scale > 0 && scale < 0.35, "Fit to view retained the old fixed minimum scale");
+      assert.ok(layout.width * scale <= 800 - OUTCOME_SCALE.inset + 1e-9);
+      assert.ok(layout.height * scale <= 512 - OUTCOME_SCALE.inset + 1e-9);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    if (widthDescriptor) Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", widthDescriptor);
+    else delete dom.window.HTMLElement.prototype.clientWidth;
+    if (heightDescriptor) Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", heightDescriptor);
+    else delete dom.window.HTMLElement.prototype.clientHeight;
+    await vite.close();
+  }
+});
+
 test("repeated population and presentation changes neither leak nor duplicate rows or graph nodes", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   const root = createRoot(document.getElementById("root"));

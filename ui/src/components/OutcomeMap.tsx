@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OutcomeMap as OutcomeMapData, OutcomeRelation, OutcomeRelationFamily } from "../lib/outcomeMap.ts";
-import { OUTCOME_CARD, layoutOutcomeMap, outcomeEdgePath } from "../lib/outcomeMapLayout.ts";
+import { clampOutcomeScale, fitOutcomeScale, OUTCOME_CARD, OUTCOME_SCALE, layoutOutcomeMap, outcomeEdgePath } from "../lib/outcomeMapLayout.ts";
 import { cn } from "../lib/util.ts";
 
 const RELATION_LABEL: Record<OutcomeRelationFamily, string> = {
@@ -64,10 +64,7 @@ export function OutcomeMap({
   const [selectedThread, setSelectedThread] = useState<string>();
   const fit = useCallback(() => {
     const box = viewport.current;
-    const usableWidth = box?.clientWidth ? Math.max(1, box.clientWidth - 32) : layout.width;
-    const usableHeight = box?.clientHeight ? Math.max(1, box.clientHeight - 32) : layout.height;
-    const nextScale = Math.min(1, Math.max(0.35, Math.min(usableWidth / layout.width, usableHeight / layout.height)));
-    setScale(nextScale);
+    setScale(fitOutcomeScale(layout, box?.clientWidth ?? 0, box?.clientHeight ?? 0));
     setOffset({ x: 16, y: 16 });
   }, [layout.height, layout.width]);
   useEffect(() => fit(), [fit]);
@@ -93,8 +90,8 @@ export function OutcomeMap({
         <span><span className="font-semibold text-accent">dotted</span> ratified by</span>
         <span><span className="font-semibold text-danger">dashed</span> superseded</span>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => setScale((value) => Math.min(2, Number((value + 0.15).toFixed(2))))} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Zoom in">Zoom in</button>
-          <button type="button" onClick={() => setScale((value) => Math.max(0.35, Number((value - 0.15).toFixed(2))))} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Zoom out">Zoom out</button>
+          <button type="button" onClick={() => setScale((value) => clampOutcomeScale(Number((value + OUTCOME_SCALE.step).toFixed(2))))} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Zoom in">Zoom in</button>
+          <button type="button" onClick={() => setScale((value) => clampOutcomeScale(Number((value - OUTCOME_SCALE.step).toFixed(2))))} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Zoom out">Zoom out</button>
           <button type="button" onClick={fit} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Fit graph to view">Fit to view</button>
           <button type="button" onClick={() => { setScale(1); setOffset({ x: 16, y: 16 }); }} className="rounded border border-border px-2 py-1 hover:bg-surface focus-visible:outline focus-visible:outline-accent" aria-label="Reset graph view">Reset</button>
         </div>

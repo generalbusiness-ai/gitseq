@@ -43,7 +43,7 @@ export interface OutcomeNode {
   order: number;
 }
 
-type OutcomeFocal = string | Pick<WorkRow, "event" | "state" | "title">;
+type OutcomeFocal = string | Pick<WorkRow, "event" | "key" | "state" | "title" | "waitsOn">;
 
 export interface OutcomeWarning {
   kind: "malformed" | "cycle" | "bounded";
@@ -180,13 +180,25 @@ export function buildOutcomeMap(
     (sequence.get(left) ?? Number.MAX_SAFE_INTEGER) - (sequence.get(right) ?? Number.MAX_SAFE_INTEGER) || left.localeCompare(right);
 
   const focalCandidates = new Set<string>();
-  const focalCards = new Map<string, Pick<WorkRow, "state" | "title">>();
+  const compareLifecycleEvents = (left: string, right: string): number =>
+    (sequence.get(left) ?? Number.MIN_SAFE_INTEGER) - (sequence.get(right) ?? Number.MIN_SAFE_INTEGER) || left.localeCompare(right);
+  const focalCards = new Map<string, Pick<WorkRow, "key" | "state" | "title" | "waitsOn">>();
   for (const focalRow of focalRows) {
     const event = typeof focalRow === "string" ? focalRow : focalRow.event;
     const root = rootOf(event);
     if (root) {
       focalCandidates.add(root);
-      if (typeof focalRow !== "string") focalCards.set(root, { state: focalRow.state, title: focalRow.title });
+      if (typeof focalRow !== "string") {
+        const existing = focalCards.get(root);
+        if (!existing || compareLifecycleEvents(existing.key, focalRow.key) < 0) {
+          focalCards.set(root, {
+            key: focalRow.key,
+            state: focalRow.state,
+            title: focalRow.title,
+            waitsOn: focalRow.waitsOn,
+          });
+        }
+      }
     }
     else warn({ kind: "malformed", message: `The selected event ${event} is not present in the projection.`, events: [event] });
   }
@@ -319,7 +331,25 @@ export function buildOutcomeMap(
 
   // After choosing the bounded view, retain its basis visibility facts and
   // materialise only relations wholly inside it.
-  const grouped = new Map<string, OutcomeRelation>();
+  const familyOrder: Record<OutcomeRelationFamily, number> = { "rests-on": 0, "ratified-by": 1, superseded: 2 };
+  const compareRelations = (left: OutcomeRelation, right: OutcomeRelation): number => {
+    const focalRank = (relation: OutcomeRelation) => (focal.has(relation.source) && focal.has(relation.target) ? 0 : 1);
+    return (
+      focalRank(left) - focalRank(right) ||
+      familyOrder[left.family] - familyOrder[right.family] ||
+      compareThreads(left.source, right.source) ||
+      compareThreads(left.target, right.target)
+    );
+  };
+  type RetainedRelation = OutcomeRelation & {
+    contributorKeys: Set<string>;
+    overflow: boolean;
+  };
+  const grouped = new Map<string, RetainedRelation>();
+  const visibleThreads = [...visible].sort(compareThreads);
+  const visibleRank = new Map(visibleThreads.map((thread, index) => [thread, index]));
+  const relationSlots = new Uint8Array(3 * visibleThreads.length * visibleThreads.length);
+  let seenRelationGroups = 0;
   const basisRoots = new Map<string, Set<string>>();
   const missingBasis = new Set<string>();
   for (const [dependent, bases] of Object.entries(projection.provenance ?? {})) {
@@ -338,54 +368,79 @@ export function buildOutcomeMap(
   forEachRelation(({ source, target, contributor }) => {
     if (!visible.has(source) || !visible.has(target)) return;
     const key = relationKey({ family: contributor.family, source, target });
-    const relation = grouped.get(key) ?? {
-      id: `${contributor.family}:${source}->${target}`,
-      family: contributor.family,
-      source,
-      target,
-      contributors: [],
-    };
+    let relation = grouped.get(key);
+    if (!relation) {
+      const slot =
+        (familyOrder[contributor.family] * visibleThreads.length + visibleRank.get(source)!) * visibleThreads.length +
+        visibleRank.get(target)!;
+      if (relationSlots[slot] === 1) return;
+      relationSlots[slot] = 1;
+      seenRelationGroups += 1;
+      const candidate: RetainedRelation = {
+        id: `${contributor.family}:${source}->${target}`,
+        family: contributor.family,
+        source,
+        target,
+        contributors: [],
+        contributorKeys: new Set<string>(),
+        overflow: false,
+      };
+      if (limits.edges === 0) return;
+      if (grouped.size >= limits.edges) {
+        let worstKey: string | undefined;
+        let worst: RetainedRelation | undefined;
+        for (const [candidateKey, retained] of grouped) {
+          if (!worst || compareRelations(retained, worst) > 0) {
+            worstKey = candidateKey;
+            worst = retained;
+          }
+        }
+        if (!worst || compareRelations(candidate, worst) >= 0) return;
+        grouped.delete(worstKey!);
+      }
+      grouped.set(key, candidate);
+      relation = candidate;
+    }
+    if (relation.overflow) return;
     const exact = contributorKey(contributor);
-    if (!relation.contributors.some((candidate) => contributorKey(candidate) === exact)) relation.contributors.push(contributor);
-    grouped.set(key, relation);
+    if (relation.contributorKeys.has(exact)) return;
+    if (relation.contributors.length >= limits.contributorsPerEdge) {
+      relation.overflow = true;
+      relation.contributors = [];
+      relation.contributorKeys.clear();
+      return;
+    }
+    relation.contributorKeys.add(exact);
+    relation.contributors.push(contributor);
   }, true, visible);
 
-  for (const relation of grouped.values()) {
-    relation.contributors.sort((left, right) => contributorKey(left).localeCompare(contributorKey(right)));
-  }
-  const familyOrder: Record<OutcomeRelationFamily, number> = { "rests-on": 0, "ratified-by": 1, superseded: 2 };
-  const compareRelations = (left: OutcomeRelation, right: OutcomeRelation): number => {
-    const focalRank = (relation: OutcomeRelation) => (focal.has(relation.source) && focal.has(relation.target) ? 0 : 1);
-    return (
-      focalRank(left) - focalRank(right) ||
-      familyOrder[left.family] - familyOrder[right.family] ||
-      compareThreads(left.source, right.source) ||
-      compareThreads(left.target, right.target)
-    );
-  };
   const completeRelations: OutcomeRelation[] = [];
-  let oversizedRelations = 0;
   for (const relation of [...grouped.values()].sort(compareRelations)) {
-    if (relation.contributors.length > limits.contributorsPerEdge) {
-      oversizedRelations += 1;
+    if (relation.overflow) {
       warn({
         kind: "bounded",
-        message: `The complete ${relation.family} relation ${relation.source} → ${relation.target} has ${relation.contributors.length} contributors and was omitted rather than truncated.`,
+        message: `The complete ${relation.family} relation ${relation.source} → ${relation.target} has more than ${limits.contributorsPerEdge} contributors and was omitted rather than truncated.`,
         events: [relation.source, relation.target],
-        omitted: relation.contributors.length,
       });
       continue;
     }
-    completeRelations.push(relation);
+    relation.contributors.sort((left, right) => contributorKey(left).localeCompare(contributorKey(right)));
+    completeRelations.push({
+      id: relation.id,
+      family: relation.family,
+      source: relation.source,
+      target: relation.target,
+      contributors: relation.contributors,
+    });
   }
-  const relations = completeRelations.slice(0, limits.edges);
-  if (completeRelations.length > relations.length) {
+  if (seenRelationGroups > grouped.size) {
     warn({
       kind: "bounded",
       message: `Visible relation groups were bounded at ${limits.edges}; omitted groups are not rendered as partial lines.`,
-      omitted: completeRelations.length - relations.length,
+      omitted: seenRelationGroups - grouped.size,
     });
   }
+  const relations = completeRelations;
 
   // A context card exists only with an incident complete line. This gives the
   // renderer an atomic node-and-edge population and prevents orphan arrows or
@@ -412,7 +467,11 @@ export function buildOutcomeMap(
   const commitmentByThread = new Map<string, Commitment>();
   for (const commitment of projection.commitments ?? []) {
     const thread = rootOf(commitment.request);
-    if (thread) commitmentByThread.set(thread, commitment);
+    if (!thread) continue;
+    const existing = commitmentByThread.get(thread);
+    const lifecycle = commitment.promise ?? commitment.report ?? commitment.request;
+    const existingLifecycle = existing?.promise ?? existing?.report ?? existing?.request;
+    if (!existing || compareLifecycleEvents(existingLifecycle!, lifecycle) < 0) commitmentByThread.set(thread, commitment);
   }
   const nodes = nodeIDs
     .map((thread): OutcomeNode => {
@@ -427,7 +486,7 @@ export function buildOutcomeMap(
         title: focalCard?.title ?? (statement ? firstLine(statement.text) : thread),
         kind: statement?.kind ?? "record",
         state: focalCard?.state ?? outcomeDisplayState(commitment),
-        waitsOn: commitment?.waiting_on,
+        waitsOn: focalCard ? (focalCard.waitsOn || undefined) : commitment?.waiting_on,
         rootOfView: !incoming.has(thread),
         recordedBasis: bases.size > 0 || missingBasis.has(thread),
         basisOutsideView,
@@ -455,7 +514,7 @@ export function buildOutcomeMap(
       edges: finalRelations.length,
       contributors: finalRelations.reduce((count, relation) => count + relation.contributors.length, 0),
       omittedContextNodes: contextCandidates.size - (nodes.length - focal.size),
-      omittedEdges: oversizedRelations + Math.max(0, completeRelations.length - relations.length),
+      omittedEdges: seenRelationGroups - finalRelations.length,
     },
   };
 }

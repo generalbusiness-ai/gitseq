@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { buildOutcomeMap, DEFAULT_OUTCOME_MAP_LIMITS } from "../src/lib/outcomeMap.ts";
-import { OUTCOME_CARD, layoutOutcomeMap, outcomeEdgePath } from "../src/lib/outcomeMapLayout.ts";
+import { fitOutcomeScale, OUTCOME_CARD, OUTCOME_SCALE, layoutOutcomeMap, outcomeEdgePath } from "../src/lib/outcomeMapLayout.ts";
 import { buildThreadIndex } from "../src/lib/threads.ts";
 
 const statement = (event, sequence, kind = "request", extra = {}) => ({
@@ -244,6 +244,34 @@ test("serialization order cannot change nodes, relations, or placement", () => {
   assert.deepEqual(buildOutcomeMap(left, ["c", "b"]), buildOutcomeMap(right, ["b", "c"]));
 });
 
+test("one deterministic lifecycle row supplies a focal card's title, state, and waiting actor", () => {
+  const statements = [
+    statement("request", 1),
+    statement("promise-old", 2, "promise"),
+    statement("report-new", 3, "report"),
+  ];
+  const older = commitment("request", { promise: "promise-old", status: "promised", waiting_on: "codex" });
+  const newer = commitment("request", { report: "report-new", status: "reported", waiting_on: "hugh" });
+  const olderRow = { event: "request", key: "promise-old", title: "Older lifecycle", state: "in progress", waitsOn: "codex" };
+  const newerRow = { event: "request", key: "report-new", title: "Newer lifecycle", state: "reported", waitsOn: "hugh" };
+
+  const forward = buildOutcomeMap(
+    projection({ statements, commitments: [older, newer] }),
+    [newerRow, olderRow],
+  );
+  const reversed = buildOutcomeMap(
+    projection({ statements: [...statements].reverse(), commitments: [newer, older] }),
+    [olderRow, newerRow],
+  );
+
+  assert.deepEqual(forward, reversed, "serialization order selected a different lifecycle row");
+  assert.deepEqual(
+    (({ title, state, waitsOn }) => ({ title, state, waitsOn }))(forward.nodes[0]),
+    { title: "Newer lifecycle", state: "reported", waitsOn: "hugh" },
+    "the focal card mixed fields from different projected lifecycle rows",
+  );
+});
+
 test("the presentation layout keeps multiple roots leftmost and every arrow on card boundaries", () => {
   const layout = layoutOutcomeMap([
     { thread: "second-root", focal: true, context: false, rootOfView: true, recordedBasis: false, basisVisible: false, basisOutsideView: false, layer: 0, order: 2 },
@@ -259,6 +287,35 @@ test("the presentation layout keeps multiple roots leftmost and every arrow on c
   const path = outcomeEdgePath(first, dependent);
   assert.match(path, new RegExp(`M ${first.x + OUTCOME_CARD.width} `), "arrow does not leave its source card edge");
   assert.match(path, new RegExp(`, ${dependent.x} ${dependent.y + OUTCOME_CARD.height / 2}$`), "arrow does not end at its target card edge");
+});
+
+test("fit uses the real largest legal layouts and nonzero viewport dimensions", () => {
+  const node = (thread, layer, order) => ({
+    thread,
+    context: false,
+    title: thread,
+    kind: "request",
+    state: "unclaimed",
+    rootOfView: layer === 0,
+    recordedBasis: layer > 0,
+    basisOutsideView: false,
+    layer,
+    order,
+  });
+  const maximumColumn = layoutOutcomeMap(
+    Array.from({ length: DEFAULT_OUTCOME_MAP_LIMITS.nodes }, (_, index) => node(`column-${index}`, 0, index)),
+  );
+  const maximumLayers = layoutOutcomeMap(
+    Array.from({ length: DEFAULT_OUTCOME_MAP_LIMITS.nodes }, (_, index) => node(`layer-${index}`, index, 0)),
+  );
+  const viewport = { width: 800, height: 512 };
+
+  for (const layout of [maximumColumn, maximumLayers]) {
+    const scale = fitOutcomeScale(layout, viewport.width, viewport.height);
+    assert.ok(scale > 0 && scale < 0.35, "the old fixed minimum still controls Fit to view");
+    assert.ok(layout.width * scale <= viewport.width - OUTCOME_SCALE.inset + 1e-9);
+    assert.ok(layout.height * scale <= viewport.height - OUTCOME_SCALE.inset + 1e-9);
+  }
 });
 
 test("cycles remain visible, share a stable layer, and produce a bounded warning", () => {
@@ -363,4 +420,54 @@ test("an oversized aggregate is omitted rather than lying with a partial contrib
   assert.equal(graph.nodes.some((node) => node.context), false);
   assert.equal(graph.stats.omittedEdges, 1);
   assert.match(graph.warnings.find((warning) => warning.kind === "bounded").message, /omitted rather than truncated/);
+});
+
+test("high-cardinality contributors are bounded while they are accumulated", () => {
+  const contributorCount = 4096;
+  const details = Array.from(
+    { length: contributorCount },
+    (_, index) => statement(`basis-detail-${String(index).padStart(4, "0")}`, index + 2, "assert"),
+  );
+  const provenance = Object.fromEntries(details.map(({ event }) => [event, ["basis"]]));
+  provenance.focal = details.map(({ event }) => event);
+  const value = projection({
+    statements: [statement("basis", 1), ...details, statement("focal", contributorCount + 2)],
+    commitments: [commitment("basis"), commitment("focal")],
+    provenance,
+  });
+
+  const started = performance.now();
+  const graph = buildOutcomeMap(value, ["focal"]);
+  const elapsed = performance.now() - started;
+
+  assert.equal(graph.relations.length, 0, "an oversized relation exposed a partial contributor list");
+  assert.equal(graph.stats.contributors, 0);
+  assert.equal(graph.stats.omittedEdges, 1);
+  assert.match(graph.warnings.find((warning) => warning.kind === "bounded").message, /more than 64 contributors/);
+  assert.ok(elapsed < 250, `bounded accumulation took ${elapsed.toFixed(1)} ms`);
+});
+
+test("relation-group selection stays bounded and deterministic before materialisation", () => {
+  const bases = Array.from({ length: 5 }, (_, index) => statement(`basis-${index}`, index + 1));
+  const focal = statement("focal", 6);
+  const commitments = [...bases, focal].map(({ event }) => commitment(event));
+  const provenance = { focal: bases.map(({ event }) => event) };
+  const left = buildOutcomeMap(
+    projection({ statements: [...bases, focal], commitments, provenance }),
+    [...bases.map(({ event }) => event), "focal"],
+    { edges: 2 },
+  );
+  const right = buildOutcomeMap(
+    projection({ statements: [focal, ...bases].reverse(), commitments: [...commitments].reverse(), provenance: { focal: [...provenance.focal].reverse() } }),
+    ["focal", ...bases.map(({ event }) => event).reverse()],
+    { edges: 2 },
+  );
+
+  assert.deepEqual(left, right);
+  assert.deepEqual(left.relations.map(({ source, target }) => [source, target]), [
+    ["basis-0", "focal"],
+    ["basis-1", "focal"],
+  ]);
+  assert.equal(left.stats.omittedEdges, 3);
+  assert.match(left.warnings.find((warning) => warning.kind === "bounded").message, /relation groups were bounded at 2/);
 });
