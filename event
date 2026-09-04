@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will retire exactly the two named stale generated-asset artifacts by bare supersession, verify both retirements, and report directly against this promise."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:96e2d2273eecc02fdeaabbf3ac2ad0a24c8d7894","text":"Retire this stale artifact at the deleted generated asset path. The decision-records UI merge removed internal/service/uidist/assets/index-BoOBW1Hh.js; this bare supersession records no successor at that exact old path."}
