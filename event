@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Typed UI wire includes the three optional staleness-cause fields.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"ui/src/lib/api.ts"}}
+{"kind":"artifact","text":"Architecture assigns cause selection to the authoritative fold and keeps general provenance in its side table.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"docs/reference/architecture.md"}}
