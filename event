@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c57e4cc19f2f017a93aaf0d783334de6bae47b8","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52b1fe2856737b8c3cd44434d17558c038823f4d","text":"Merge retired a covered predecessor; the successor is at go.mod."}
