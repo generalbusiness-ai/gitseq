@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/receipt_checkpoint_test.go","body":{"commit":"e8b33ca5923ebed108aa86f816763a46e893fee5","path":"internal/workroom/receipt_checkpoint_test.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/testdata/legacy_projection.golden.json","body":{"commit":"e8b33ca5923ebed108aa86f816763a46e893fee5","path":"internal/workroom/testdata/legacy_projection.golden.json"}}
