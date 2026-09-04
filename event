@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui/src/lib/api.ts","body":{"commit":"e8b33ca5923ebed108aa86f816763a46e893fee5","path":"ui/src/lib/api.ts"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b64d8b7efdb4a92d53940d20451ff18693e4a77","text":"Merge retired a covered predecessor; the successor is at internal/workroom/receipt_checkpoint_test.go."}
