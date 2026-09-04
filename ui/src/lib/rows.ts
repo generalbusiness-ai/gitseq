@@ -57,6 +57,8 @@ export const POPULATIONS: { key: Population; label: string }[] = [
 export const PRIORITY_GROUPS = ["needs attention", "unclaimed", "waiting on a human", "running"] as const;
 
 export interface WorkRow {
+  /** Stable identity for this projected commitment lifecycle. */
+  key: string;
   /** The request this row is about, and the thread a click opens. */
   event: string;
   ticket?: number;
@@ -202,6 +204,10 @@ export function workRows(projection: Projection, context: RowContext, population
     const waitsOn = commitment.waiting_on ?? (commitment.promise ? "" : commitment.addressed_to ?? "");
     const title = firstLine(request.text);
     rows.push({
+      // One request can have several historical commitment lifecycles. The
+      // promise or direct report distinguishes them while the request itself
+      // remains the identity of the thread a row opens.
+      key: commitment.promise ?? commitment.report ?? commitment.request,
       event: commitment.request,
       ticket: context.tickets.get(commitment.request),
       state: rowState(commitment, attention, population),
@@ -240,8 +246,9 @@ export interface Sort {
 }
 
 export function sortAfterClick(current: Sort | undefined, key: SortKey): Sort | undefined {
-  if (!current || current.key !== key) return { key, descending: false };
-  if (!current.descending) return { key, descending: true };
+  const firstDescending = key === "ticket";
+  if (!current || current.key !== key) return { key, descending: firstDescending };
+  if (current.descending === firstDescending) return { key, descending: !firstDescending };
   return undefined;
 }
 
@@ -390,6 +397,7 @@ export function ratificationRows(
     const waitsOn = candidates.length === 1 ? candidates[0] : "";
     const title = firstLine(statement.text);
     rows.push({
+      key: statement.event,
       event: statement.event,
       ticket: context.tickets.get(statement.event),
       state: "awaiting ratification",
