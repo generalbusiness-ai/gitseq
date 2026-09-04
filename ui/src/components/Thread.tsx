@@ -12,7 +12,7 @@ import { mentionFingerprints } from "../lib/mentions";
 import { actorTint, clock, cn, firstLine, interpretationNotice, kindLabel } from "../lib/util";
 import { RowToolbar, ToolbarButton, semanticActions, type SemanticAction, type SemanticReplyMode } from "./Toolbar";
 import { RecordDetail } from "./RecordDetail";
-import type { RecordIndex } from "../lib/records";
+import { COMPOSED_CITATION_LIMIT, type RecordIndex } from "../lib/records";
 
 export interface PendingSay {
   id: string;
@@ -530,6 +530,18 @@ function Composer({
   // they are asked for here rather than filed empty and refused.
   const [addressee, setAddressee] = useState("");
   const [conditions, setConditions] = useState("");
+  // Citations the operator named, beside the ones the row resolved. The
+  // revision case in docs/how-to/keep-decision-records.md is why this exists:
+  // a review request for a revised decision has to rest on the proposal that
+  // adopted the decision, and that proposal rests on the *earlier* artifact at
+  // the same path. Joining them would be the browser asserting that a decision
+  // at a path stays adopted across revisions, which is the one relation
+  // docs/reference/architecture.md forbids it to invent. So it does not join
+  // them: the operator names the record, and the browser only resolves the
+  // name against the projection and shows the result in the same list.
+  const [cited, setCited] = useState<string[]>([]);
+  const [citing, setCiting] = useState("");
+  const [citeError, setCiteError] = useState<string>();
   const retryKeys = useRef(new RetryKeys());
   const seenRoute = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -539,12 +551,54 @@ function Composer({
       setText(route.prefill);
       setAddressee("");
       setConditions("");
+      setCited([]);
+      setCiting("");
+      setCiteError(undefined);
     }
   }, [route]);
   const durable = type !== "say";
   const routed = route && type === route.mode ? route : undefined;
-  const bases = routed ? routed.bases : [root];
+  // A withdrawal names the record it retires in `bases[0]` and files no causal
+  // references at all, so an operator citation there would either be silently
+  // dropped or change what is retired. It is refused rather than either.
+  const citable = durable && type !== "withdraw";
+  const bases = [...(routed ? routed.bases : [root]), ...(citable ? cited : [])];
   const ready = type !== "request" || (addressee !== "" && conditions.trim() !== "");
+
+  // A name the operator typed, resolved against the projection and never past
+  // it. A ticket number is what the screen shows them; a whole event
+  // identifier is what a record's detail offers to copy. Anything the
+  // projection does not carry resolves to nothing, and the caller refuses it
+  // rather than putting an unresolvable string into `rests_on`.
+  const resolveCitation = (typed: string): string | undefined => {
+    const trimmed = typed.trim();
+    if (trimmed === "") return undefined;
+    if (index.has(trimmed)) return trimmed;
+    const digits = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+    if (!/^[0-9]+$/.test(digits)) return undefined;
+    const wanted = Number(digits);
+    for (const [event, ticket] of tickets) if (ticket === wanted) return event;
+    return undefined;
+  };
+
+  const addCitation = () => {
+    const resolved = resolveCitation(citing);
+    if (!resolved) {
+      setCiteError("no record in this workroom has that number or identifier");
+      return;
+    }
+    if (bases.includes(resolved)) {
+      setCiteError("this reply already cites that record");
+      return;
+    }
+    if (bases.length >= COMPOSED_CITATION_LIMIT) {
+      setCiteError(`a reply may cite at most ${COMPOSED_CITATION_LIMIT} records`);
+      return;
+    }
+    setCited((current) => [...current, resolved]);
+    setCiting("");
+    setCiteError(undefined);
+  };
 
   const send = async () => {
     if (!text.trim() || busy || !session.actor || !ready) return;
@@ -619,6 +673,9 @@ function Composer({
       setType("say");
       setAddressee("");
       setConditions("");
+      setCited([]);
+      setCiting("");
+      setCiteError(undefined);
       onClearRoute();
     } catch (thrown) {
       setError(thrown instanceof Error ? thrown.message : String(thrown));
@@ -645,6 +702,9 @@ function Composer({
                 setText("");
                 setAddressee("");
                 setConditions("");
+                setCited([]);
+                setCiting("");
+                setCiteError(undefined);
                 onClearRoute();
               }}
               className="text-[11px] text-faint hover:text-muted focus-visible:outline focus-visible:outline-accent"
@@ -662,6 +722,11 @@ function Composer({
 
           A withdrawal names the record it retires rather than a basis it
           rests on, so it says so: one list, two honest labels.
+
+          One list, not two, for the same reason: what the row resolved and
+          what the operator named are signed together and read together, and
+          only the operator's own additions carry a control to take them out
+          again.
         */}
         {durable && (
           <ul
@@ -670,19 +735,73 @@ function Composer({
             className="list-none space-y-0.5 text-[11px] text-faint"
           >
             {bases.map((basis) => {
-              const cited = index.statement(basis);
+              const record = index.statement(basis);
               const ticket = tickets.get(basis);
+              const mine = citable && cited.includes(basis);
               return (
                 <li key={basis} className="flex min-w-0 items-baseline gap-1">
                   <span aria-hidden>↳</span>
                   {ticket !== undefined && <span className="font-mono">#{ticket}</span>}
-                  {cited && <span className="uppercase tracking-wide">{kindLabel(cited.kind)}</span>}
-                  {cited && <span className="truncate text-muted">{firstLine(cited.text, 80)}</span>}
+                  {record && <span className="uppercase tracking-wide">{kindLabel(record.kind)}</span>}
+                  {record && <span className="truncate text-muted">{firstLine(record.text, 80)}</span>}
                   <span className="truncate font-mono text-faint">{basis}</span>
+                  {mine && (
+                    <button
+                      type="button"
+                      aria-label={`stop citing ${basis}`}
+                      onClick={() => setCited((current) => current.filter((event) => event !== basis))}
+                      className="shrink-0 text-faint hover:text-danger focus-visible:outline focus-visible:outline-accent"
+                    >
+                      remove
+                    </button>
+                  )}
                 </li>
               );
             })}
           </ul>
+        )}
+        {/*
+          One citation the row could not resolve, named by the operator.
+          Nothing here derives a relation: the operator says which record, by
+          the number the screen already shows them or by the whole identifier a
+          record's detail offers to copy, and the browser only looks that name
+          up in the projection. A name the projection does not carry is refused
+          here rather than filed as a dangling reference, and whatever is added
+          joins the disclosure list above before the send control is used.
+        */}
+        {citable && (
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              aria-label="cite another record"
+              placeholder="also cite… #12, or a whole event identifier"
+              value={citing}
+              onChange={(event) => {
+                setCiting(event.target.value);
+                setCiteError(undefined);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                event.preventDefault();
+                addCitation();
+              }}
+              className="h-7 min-w-0 flex-1 rounded border border-input bg-surface px-2 font-mono text-[11px] outline-none placeholder:text-faint focus:border-accent/60"
+            />
+            <button
+              type="button"
+              aria-label="add citation"
+              onClick={addCitation}
+              disabled={citing.trim() === ""}
+              className="h-7 rounded border border-input px-2 text-[11px] text-muted hover:text-foreground focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
+            >
+              cite
+            </button>
+          </div>
+        )}
+        {citeError && (
+          <p role="alert" aria-label="citation refused" className="flex items-center gap-1 text-[11px] text-danger">
+            <CircleSlash className="h-3 w-3 shrink-0" /> {citeError}
+          </p>
         )}
         {type === "request" && (
           <div className="flex flex-wrap items-center gap-2">
