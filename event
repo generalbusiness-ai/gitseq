@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/apphost/config_update_test.go","body":{"commit":"ac6d792bf5a40f539d16a9fc30cd0c87b8aab6a2","path":"internal/apphost/config_update_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c57e4cc19f2f017a93aaf0d783334de6bae47b8","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
