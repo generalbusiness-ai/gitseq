@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-09-04-workroom-delivery-efficiency-review.md","body":{"commit":"3f4c4969ad3afea608be521cf9b6e2422223c04e","path":"notes/2026-09-04-workroom-delivery-efficiency-review.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51be5e7d258a275fd038b31abb1d03b9190790e4","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-04-workroom-delivery-efficiency-review.md."}
