@@ -1,0 +1,6 @@
+path for a same-column edge: M 248 61 C 372 61, -124 961, 0 961
+x control points: 248, 372, -124, 0   (bend = 124)
+evaluated x range: -20.075 .. 268.075
+excursion left of the column: 20.075px; right of the card edge: 20.075px
+the -124 control point is NOT the extent: the curve reaches 20.075px, not 124px
+the curve does cross the full 248px column band once, entering the target from its left edge

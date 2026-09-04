@@ -1,0 +1,53 @@
+# tailapp, snapshot B, 2026-09-04T21:32:52Z
+frontier: genesis=da732b0bdaad4426ed4ad666b892d8a7c68f625f head=4140a2c0d1f1a306ee05e599a3132cd8b05d0acb depth=3443
+projection: decisions=3443 statements=2129 acts=1314 commitments=258
+effective supersede acts: 1167, of which cross-thread: 0
+commitments naming a successor_request: 0
+
+## Tab counts, search empty
+  open                         0   (key=live)
+  reasoning moved              0   (key=moved)
+  stale, not in flight         1   (key=stale)
+  completed                  178   (key=done)
+  closed, not completed       79   (key=closed)
+  awaiting ratification        0   (key=ratification)
+
+## Population "stale, not in flight"
+  rows=1 distinctThreads=1 focalCards=1 contextCards=2 totalCards=3
+  groups=1 cardsHoldingMoreThanOneLifecycle=0 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=1, adjacent / rests-on=1, same-column / rests-on=2
+  backward edges (drawn right to left): 0
+  same-column edges: 2 of 4; longest vertical span 150px; worst overlapping set 2 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=2 L1=1
+  canvas 648x336px; fit in the served 1022x510 pane = 1.0000 (card 248x122px, 12px title renders at 12.00px)
+  fit in a 1022x900 pane = 1.0000 (12px title renders at 12.00px)
+  permanent edge labels: 4; overlapping pairs 1; drawn inside a card 0
+  emphasis, undirected component: mean 3.0 of 3 (100%), worst 3
+  emphasis, directed lineage:     mean 3.0 of 3 (100%)
+
+## Population "completed"
+  rows=178 distinctThreads=177 focalCards=160 contextCards=0 totalCards=160
+  groups=99 cardsHoldingMoreThanOneLifecycle=1 focalThreadsOmitted=17 contextOmitted=63 relationGroupsOmitted=250
+  edge shapes: adjacent / rests-on=36, forward+2 / rests-on=5, forward+3 / rests-on=2, forward+4 / rests-on=7, same-column / rests-on=109
+  backward edges (drawn right to left): 0
+  same-column edges: 109 of 159; longest vertical span 3600px; worst overlapping set 40 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=99 L1=4 L2=9 L3=10 L4=29 L5=9
+  canvas 1992x14886px; fit in the served 1022x510 pane = 0.0321 (card 8x4px, 12px title renders at 0.39px)
+  fit in a 1022x900 pane = 0.0583 (12px title renders at 0.70px)
+  permanent edge labels: 159; overlapping pairs 98; drawn inside a card 56
+  emphasis, undirected component: mean 24.6 of 160 (15%), worst 62
+  emphasis, directed lineage:     mean 15.5 of 160 (10%)
+
+## Population "closed, not completed"
+  rows=79 distinctThreads=77 focalCards=77 contextCards=30 totalCards=107
+  groups=20 cardsHoldingMoreThanOneLifecycle=1 focalThreadsOmitted=0 contextOmitted=59 relationGroupsOmitted=222
+  edge shapes: adjacent / rests-on=64, forward+2 / rests-on=15, forward+3 / rests-on=8, forward+4 / rests-on=1, same-column / ratified-by=1, same-column / rests-on=70
+  backward edges (drawn right to left): 0
+  same-column edges: 71 of 159; longest vertical span 2700px; worst overlapping set 17 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=44 L1=18 L2=11 L3=18 L4=12 L5=4
+  canvas 1992x6636px; fit in the served 1022x510 pane = 0.0720 (card 18x9px, 12px title renders at 0.86px)
+  fit in a 1022x900 pane = 0.1308 (12px title renders at 1.57px)
+  permanent edge labels: 159; overlapping pairs 66; drawn inside a card 39
+  emphasis, undirected component: mean 31.7 of 107 (30%), worst 52
+  emphasis, directed lineage:     mean 11.0 of 107 (10%)
+  PROBE ...f7f10b1600a0c76b12c5fa8dd1177c730f4a254b: undirected 24 of 107; before 8, after 0, both 0, siblings 3; emphasised 9 of 107

@@ -1,0 +1,56 @@
+# chess, snapshot B, 2026-09-04T21:32:52Z
+frontier: genesis=1b96687964cbba5a6089c526d7136b32ba9488a5 head=975a1528a751f617e4e87ba4d006ee22c7b7f3aa depth=519
+projection: decisions=519 statements=344 acts=175 commitments=62
+effective supersede acts: 137, of which cross-thread: 0
+commitments naming a successor_request: 0
+
+## Tab counts, search empty
+  open                         5   (key=live)
+  reasoning moved              0   (key=moved)
+  stale, not in flight         0   (key=stale)
+  completed                   43   (key=done)
+  closed, not completed       14   (key=closed)
+  awaiting ratification        0   (key=ratification)
+
+## Population "open"
+  rows=5 distinctThreads=5 focalCards=5 contextCards=3 totalCards=8
+  groups=1 cardsHoldingMoreThanOneLifecycle=0 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=1, adjacent / rests-on=6, forward+2 / ratified-by=2, forward+2 / rests-on=3, forward+3 / rests-on=1, same-column / ratified-by=3, same-column / rests-on=4
+  backward edges (drawn right to left): 0
+  same-column edges: 7 of 20; longest vertical span 300px; worst overlapping set 5 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=3 L1=1 L2=3 L3=1
+  canvas 1320x486px; fit in the served 1022x510 pane = 0.7500 (card 186x92px, 12px title renders at 9.00px)
+  fit in a 1022x900 pane = 0.7500 (12px title renders at 9.00px)
+  permanent edge labels: 20; overlapping pairs 7; drawn inside a card 4
+  emphasis, undirected component: mean 8.0 of 8 (100%), worst 8
+  emphasis, directed lineage:     mean 6.8 of 8 (84%)
+  PROBE ...025a6e0168967478a876d5e6bb95afd36495d72c: undirected 8 of 8; before 4, after 1, both 0, siblings 2; emphasised 6 of 8
+
+## Population "completed"
+  rows=43 distinctThreads=42 focalCards=42 contextCards=19 totalCards=61
+  groups=1 cardsHoldingMoreThanOneLifecycle=1 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=7, adjacent / rests-on=26, forward+2 / ratified-by=2, forward+2 / rests-on=7, forward+3 / rests-on=1, same-column / ratified-by=17, same-column / rests-on=100
+  backward edges (drawn right to left): 0
+  same-column edges: 117 of 160; longest vertical span 3000px; worst overlapping set 26 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=23 L1=16 L2=15 L3=3 L4=3 L5=1
+  canvas 1992x3486px; fit in the served 1022x510 pane = 0.1371 (card 34x17px, 12px title renders at 1.65px)
+  fit in a 1022x900 pane = 0.2490 (12px title renders at 2.99px)
+  permanent edge labels: 160; overlapping pairs 101; drawn inside a card 49
+  emphasis, undirected component: mean 61.0 of 61 (100%), worst 61
+  emphasis, directed lineage:     mean 43.0 of 61 (70%)
+  PROBE ...1a9f848fdbd3e8ba1d502e8e9852cbdae5f1da61: undirected 61 of 61; before 30, after 9, both 7, siblings 0; emphasised 33 of 61
+  PROBE ...025a6e0168967478a876d5e6bb95afd36495d72c: undirected 61 of 61; before 35, after 1, both 0, siblings 2; emphasised 37 of 61
+
+## Population "closed, not completed"
+  rows=14 distinctThreads=13 focalCards=13 contextCards=12 totalCards=25
+  groups=4 cardsHoldingMoreThanOneLifecycle=1 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=4, adjacent / rests-on=10, forward+2 / rests-on=3, same-column / ratified-by=2, same-column / rests-on=25
+  backward edges (drawn right to left): 0
+  same-column edges: 27 of 44; longest vertical span 1800px; worst overlapping set 13 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=5 L1=15 L2=3 L3=2
+  canvas 1320x2286px; fit in the served 1022x510 pane = 0.2091 (card 52x26px, 12px title renders at 2.51px)
+  fit in a 1022x900 pane = 0.3797 (12px title renders at 4.56px)
+  permanent edge labels: 44; overlapping pairs 24; drawn inside a card 13
+  emphasis, undirected component: mean 16.4 of 25 (65%), worst 20
+  emphasis, directed lineage:     mean 8.5 of 25 (34%)
+  PROBE ...1a9f848fdbd3e8ba1d502e8e9852cbdae5f1da61: undirected 20 of 25; before 10, after 9, both 8, siblings 0; emphasised 12 of 25

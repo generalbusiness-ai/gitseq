@@ -1,0 +1,11 @@
+# tailapp, snapshot A, 2026-09-04T21:24Z (the open population was 4; at snapshot B it was 0)
+frontier: genesis=da732b0bdaad4426ed4ad666b892d8a7c68f625f head=54890ee31de9f06800b89848ab8ea30322cd4d7f depth=3396
+open population: 4 rows (#3370 #3373 #3393 #3396)
+whole population: 4 focal + 4 context = 8 cards, 14 edges, 1 group(s)
+every synthetic two-row subset:
+  #3370 + #3373: 2 focal + 6 context = 8 cards, 14 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #3370 + #3393: 2 focal + 6 context = 8 cards, 14 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #3370 + #3396: 2 focal + 6 context = 8 cards, 14 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #3373 + #3393: 2 focal + 3 context = 5 cards, 8 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #3373 + #3396: 2 focal + 3 context = 5 cards, 8 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #3393 + #3396: 2 focal + 2 context = 4 cards, 6 edges -> 1 group(s)   <== two open requests, ONE visible group

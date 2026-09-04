@@ -1,0 +1,15 @@
+# chess, snapshot B, 2026-09-04T21:32:52Z
+frontier: genesis=1b96687964cbba5a6089c526d7136b32ba9488a5 head=975a1528a751f617e4e87ba4d006ee22c7b7f3aa depth=519
+open population: 5 rows (#505 #506 #507 #511 #517)
+whole population: 5 focal + 3 context = 8 cards, 20 edges, 1 group(s)
+every synthetic two-row subset:
+  #505 + #506: 2 focal + 6 context = 8 cards, 20 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #505 + #507: 2 focal + 6 context = 8 cards, 20 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #505 + #511: 2 focal + 6 context = 8 cards, 20 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #505 + #517: 2 focal + 6 context = 8 cards, 20 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #506 + #507: 2 focal + 2 context = 4 cards, 6 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #506 + #511: 2 focal + 4 context = 6 cards, 11 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #506 + #517: 2 focal + 5 context = 7 cards, 18 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #507 + #511: 2 focal + 4 context = 6 cards, 11 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #507 + #517: 2 focal + 5 context = 7 cards, 18 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #511 + #517: 2 focal + 3 context = 5 cards, 9 edges -> 1 group(s)   <== two open requests, ONE visible group

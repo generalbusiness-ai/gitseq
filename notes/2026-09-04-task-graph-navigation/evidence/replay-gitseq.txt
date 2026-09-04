@@ -1,0 +1,52 @@
+# gitseq, snapshot B, 2026-09-04T21:32:52Z
+frontier: genesis=5d2622748872b7e2dec3fe5c59e4be73a35e0bc8 head=d93004541da179859f1a67112b179761d83a4372 depth=17533
+projection: decisions=17533 statements=11394 acts=6139 commitments=2349
+effective supersede acts: 4579, of which cross-thread: 0
+commitments naming a successor_request: 32
+
+## Tab counts, search empty
+  open                         5   (key=live)
+  reasoning moved              0   (key=moved)
+  stale, not in flight         0   (key=stale)
+  completed                 1419   (key=done)
+  closed, not completed      925   (key=closed)
+  awaiting ratification        1   (key=ratification)
+
+## Population "open"
+  rows=5 distinctThreads=5 focalCards=5 contextCards=8 totalCards=13
+  groups=4 cardsHoldingMoreThanOneLifecycle=0 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=1, adjacent / rests-on=9, forward+2 / ratified-by=1, forward+2 / rests-on=2, forward+3 / ratified-by=1, forward+3 / rests-on=1, same-column / ratified-by=1, same-column / rests-on=2
+  backward edges (drawn right to left): 0
+  same-column edges: 3 of 18; longest vertical span 150px; worst overlapping set 3 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=5 L1=5 L2=2 L3=1
+  canvas 1320x786px; fit in the served 1022x510 pane = 0.6081 (card 151x74px, 12px title renders at 7.30px)
+  fit in a 1022x900 pane = 0.7500 (12px title renders at 9.00px)
+  permanent edge labels: 18; overlapping pairs 5; drawn inside a card 2
+  emphasis, undirected component: mean 3.9 of 13 (30%), worst 5
+  emphasis, directed lineage:     mean 3.3 of 13 (25%)
+
+## Population "completed"
+  rows=1419 distinctThreads=1414 focalCards=160 contextCards=0 totalCards=160
+  groups=37 cardsHoldingMoreThanOneLifecycle=5 focalThreadsOmitted=1254 contextOmitted=182 relationGroupsOmitted=116
+  edge shapes: adjacent / rests-on=111, forward+10 / rests-on=2, forward+2 / rests-on=9, forward+3 / rests-on=6, forward+4 / rests-on=3, forward+5 / rests-on=2, forward+7 / rests-on=1, same-column / rests-on=26
+  backward edges (drawn right to left): 0
+  same-column edges: 26 of 160; longest vertical span 3450px; worst overlapping set 7 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=42 L1=19 L2=28 L3=25 L4=20 L5=5 L6=2 L7=2 L8=1 L9=1 L10=2 L11=5 L12=2 L13=1 L14=1 L15=1 L16=2 L17=1
+  canvas 6024x6336px; fit in the served 1022x510 pane = 0.0754 (card 19x9px, 12px title renders at 0.91px)
+  fit in a 1022x900 pane = 0.1370 (12px title renders at 1.64px)
+  permanent edge labels: 160; overlapping pairs 15; drawn inside a card 12
+  emphasis, undirected component: mean 83.2 of 160 (52%), worst 115
+  emphasis, directed lineage:     mean 14.6 of 160 (9%)
+
+## Population "closed, not completed"
+  rows=925 distinctThreads=905 focalCards=160 contextCards=0 totalCards=160
+  groups=94 cardsHoldingMoreThanOneLifecycle=19 focalThreadsOmitted=745 contextOmitted=262 relationGroupsOmitted=0
+  edge shapes: adjacent / ratified-by=3, adjacent / rests-on=53, forward+2 / rests-on=8, forward+3 / rests-on=1, same-column / ratified-by=1, same-column / rests-on=24
+  backward edges (drawn right to left): 0
+  same-column edges: 25 of 90; longest vertical span 13650px; worst overlapping set 8 (gutter lanes needed to draw them all separately)
+  column occupancy: L0=116 L1=31 L2=6 L3=5 L4=2
+  canvas 1656x17436px; fit in the served 1022x510 pane = 0.0274 (card 7x3px, 12px title renders at 0.33px)
+  fit in a 1022x900 pane = 0.0498 (12px title renders at 0.60px)
+  permanent edge labels: 90; overlapping pairs 19; drawn inside a card 16
+  emphasis, undirected component: mean 5.1 of 160 (3%), worst 18
+  emphasis, directed lineage:     mean 2.6 of 160 (2%)
