@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:666c42666790403c8be6d853c1fb0067c347ebb5","text":"Merge retired a covered predecessor; the successor is at internal/service/uidist/index.html."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:722b8267cfcb8fbec2d41b1072733dd6f0ca5df2","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/outcomeMap.ts."}
