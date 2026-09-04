@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/generalbusiness-ai/gitseq/internal/apphost"
 )
 
 func TestConcurrentLocalSavesUseUniqueTemporaryFiles(t *testing.T) {
@@ -33,7 +35,7 @@ func TestConcurrentLocalSavesUseUniqueTemporaryFiles(t *testing.T) {
 		go func(i int) {
 			defer group.Done()
 			<-start
-			if err := workspace.save(); err != nil {
+			if err := apphost.SaveConfig(workspace.MetaDir, workspace.View()); err != nil {
 				errors <- fmt.Errorf("save %d: %w", i, err)
 			}
 			if _, err := workspace.PublishResident(fmt.Sprintf("http://127.0.0.1:%d", 7800+i)); err != nil {

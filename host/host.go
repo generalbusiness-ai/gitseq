@@ -333,7 +333,12 @@ func Init(ctx context.Context, repo string, application Application, initializer
 		Version: 0, Genesis: genesis, ObjectFormat: format, PayloadCeiling: ceiling,
 		IdempotencyNamespace: application.Name, SequencerKey: sequencerKey,
 	}
-	if err := apphost.SaveConfig(metaDir, config); err != nil {
+	// Bootstrap is exclusive creation, not replacement: of two concurrent
+	// initializers exactly one stores the record and the other is refused
+	// here, and every later change is a locked transaction that refuses when
+	// the record is missing rather than recreate it from memory.
+	initAbsenceGate()
+	if err := apphost.CreateConfig(metaDir, config); err != nil {
 		return nil, err
 	}
 	workspace := newWorkspace(config, store)
@@ -814,3 +819,11 @@ func randomKey() (string, error) {
 	}
 	return hex.EncodeToString(data), nil
 }
+
+// initAbsenceGate runs after Init has observed no stored configuration and
+// built everything the record names, and immediately before the exclusive
+// creation that stores it. It exists so a test can store a configuration
+// inside exactly that window and see the creation refuse rather than
+// overwrite; production leaves it empty, and it is unexported, so it is no
+// part of this package's public boundary.
+var initAbsenceGate = func() {}

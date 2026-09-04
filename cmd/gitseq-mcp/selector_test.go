@@ -398,7 +398,7 @@ func TestSelectedAgentRefusesMissingMismatchedUnknownAndRetiredIdentity(t *testi
 		if err := os.WriteFile(key, []byte(base64.RawURLEncoding.EncodeToString(private)+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		_, err = apphost.UpdateConfig(workspace.MetaDir, apphost.Config{}, func(config *apphost.Config) (bool, error) {
+		_, err = apphost.UpdateConfig(workspace.MetaDir, openedConfig(t, workspace.MetaDir), func(config *apphost.Config) (bool, error) {
 			config.Actors["orphan"] = apphost.Actor{Name: "orphan", Fingerprint: intent.ActorFingerprint(public), KeyFile: key}
 			return true, nil
 		})
@@ -469,7 +469,7 @@ func TestAliasOnlySelectorKeepsCustodyLookupAndSigningBoundToTheMapKey(t *testin
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 1)
 	human := workspace.View().Actors["human"]
-	if _, err := apphost.UpdateConfig(workspace.MetaDir, apphost.Config{}, func(config *apphost.Config) (bool, error) {
+	if _, err := apphost.UpdateConfig(workspace.MetaDir, openedConfig(t, workspace.MetaDir), func(config *apphost.Config) (bool, error) {
 		delete(config.Actors, "human")
 		config.Actors["operator-alias"] = human
 		return true, nil
@@ -520,7 +520,7 @@ func TestSelectorRotationForwardAndBackNeverReusesLeaseState(t *testing.T) {
 
 	remap := func(actor apphost.Actor) {
 		t.Helper()
-		if _, err := apphost.UpdateConfig(workspace.MetaDir, apphost.Config{}, func(config *apphost.Config) (bool, error) {
+		if _, err := apphost.UpdateConfig(workspace.MetaDir, openedConfig(t, workspace.MetaDir), func(config *apphost.Config) (bool, error) {
 			config.Actors["builder"] = actor
 			return true, nil
 		}); err != nil {
@@ -599,7 +599,7 @@ func TestRetargetedSelectorPathDoesNotReuseRoomState(t *testing.T) {
 		}
 		return filepath.Join(newMeta, relative)
 	}
-	if _, err := apphost.UpdateConfig(newMeta, apphost.Config{}, func(config *apphost.Config) (bool, error) {
+	if _, err := apphost.UpdateConfig(newMeta, openedConfig(t, newMeta), func(config *apphost.Config) (bool, error) {
 		config.SequencerKey = relocate(config.SequencerKey)
 		for name, actor := range config.Actors {
 			actor.KeyFile = relocate(actor.KeyFile)
@@ -761,4 +761,17 @@ func TestInvalidStartupDefaultsNeverPreAttend(t *testing.T) {
 		t.Cleanup(func() { _ = os.WriteFile(builder.KeyFile, original, 0o600) })
 		assertRefused(t, workspace, "builder")
 	})
+}
+
+// openedConfig is the configuration a caller would have opened before
+// updating it. An update compares the stored file's immutable identity
+// against what its caller opened and refuses a divergence, so a test standing
+// in for another process reads the file first, exactly as that process would.
+func openedConfig(t *testing.T, metaDir string) apphost.Config {
+	t.Helper()
+	config, err := apphost.LoadConfig(metaDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return config
 }
