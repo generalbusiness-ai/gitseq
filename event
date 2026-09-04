@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact pushed head 068f8dc1 documents the layer-5 fold and layer-6 bounded-view stale-cause contract while retaining general provenance in the side table.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"docs/reference/architecture.md"}}
+{"kind":"artifact","text":"Exact pushed head 068f8dc1 documents the bounded CLI artifact-row stale-cause fields and truncation behavior.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"docs/reference/gs/artifacts.md"}}
