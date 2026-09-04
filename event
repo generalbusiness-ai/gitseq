@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact pushed head 068f8dc1 updates only already-stale legacy projection rows with their bounded causal explanation.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"internal/workroom/testdata/legacy_projection.golden.json"}}
+{"kind":"artifact","text":"Exact pushed head 068f8dc1 types the optional stale-cause event, path, and truncation fields without changing existing consumers.","body":{"commit":"068f8dc145f3097b549d1c39f594c5e67690bc48","path":"ui/src/lib/api.ts"}}
