@@ -1,0 +1,20 @@
+=== RUN   ExampleLoadApplication
+--- PASS: ExampleLoadApplication (0.00s)
+PASS
+ok  	github.com/generalbusiness-ai/tailapps/jsonataddl	0.393s
+verified github.com/generalbusiness-ai/tailapps/jsonataddl v0.1.1 through https://proxy.golang.org
+{
+	"Path": "github.com/generalbusiness-ai/tailapps/jsonataddl",
+	"Version": "v0.1.1",
+	"Info": "/Users/hughpyle/go/pkg/mod/cache/download/github.com/generalbusiness-ai/tailapps/jsonataddl/@v/v0.1.1.info",
+	"GoMod": "/Users/hughpyle/go/pkg/mod/cache/download/github.com/generalbusiness-ai/tailapps/jsonataddl/@v/v0.1.1.mod",
+	"Zip": "/Users/hughpyle/go/pkg/mod/cache/download/github.com/generalbusiness-ai/tailapps/jsonataddl/@v/v0.1.1.zip",
+	"Dir": "/Users/hughpyle/go/pkg/mod/github.com/generalbusiness-ai/tailapps/jsonataddl@v0.1.1",
+	"Sum": "h1:rzas2PYo0x3n9K6lLo42l3ZLyN16VwHpUjDMtRFZaRg=",
+	"GoModSum": "h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY=",
+	"Origin": {
+		"VCS": "git",
+		"Subdir": "jsonataddl",
+		"Hash": "9b11da6ad5b575e5637617f47ee9c87a493c1ada"
+	}
+}
