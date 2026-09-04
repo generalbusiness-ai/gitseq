@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Mutation-sensitive one-hop, multi-hop/tie, unrelated-edge, governed-mode, settled-retirement, cycle, bound/exhaustion, and byte-stability proofs at the exact head.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"internal/workroom/fold_test.go"}}
+{"kind":"artifact","text":"Receipt checkpoint tests follow the simplified staleness result without changing receipt semantics.","body":{"commit":"abe4b533be6d2d29459eaf60e9351cf02de389b6","path":"internal/workroom/receipt_checkpoint_test.go"}}
