@@ -311,3 +311,112 @@ Recommended and not done: file a separate request to restart that resident on
 the current binary, and consider whether the served page should state the build
 it started from, so a long-lived process cannot silently diverge from the
 binary on disk. Nothing here restarts anything.
+
+---
+
+# Source anchors
+
+Every behaviour the plan describes, at gitseq main
+`be3b069cc8e013e9ebff6b9e0a70ef5e10c2cf5b`. The plan keeps only the anchors
+that name what a change touches; the rest are here.
+
+## Counting and population
+
+| behaviour | anchor |
+| --- | --- |
+| one row per commitment; key is `promise ?? report ?? request` | `ui/src/lib/rows.ts:190-224`, `:210` |
+| tab count and headline print that row count | `ui/src/components/RequestList.tsx:163`, `:118-125` |
+| search filters the population, then both presentations | `RequestList.tsx:88-94`, `:102-106` |
+| the graph maps rows to thread roots, latest lifecycle wins | `ui/src/lib/outcomeMap.ts:186-204`, `:190`, `:192-200` |
+| focal threads capped at 160, warned but not headlined | `outcomeMap.ts:205-213`; `:512-517`; `OutcomeMap.tsx:222-226`, `:227-231` |
+| the graph subtitle that says nothing useful today | `RequestList.tsx:196` |
+| switching presentation to `table` | `RequestList.tsx:51` |
+| empty population short-circuits before either presentation | `RequestList.tsx:200-203` |
+| context cards stay outside the population count | `docs/reference/architecture.md:1508` |
+
+## Relations and the walk
+
+| behaviour | anchor |
+| --- | --- |
+| `provenance` contributor, the ordinary basis edge | `outcomeMap.ts:243` |
+| `successor-request` contributor, a projected transfer | `outcomeMap.ts:303` |
+| `supersede-act` contributor, a retirement | `outcomeMap.ts:274` |
+| transfers and retirements share the `superseded` family | `outcomeMap.ts:304`; `OutcomeMap.tsx:9`, `:15`, `:91` |
+| intra-thread relations are dropped before becoming edges | `outcomeMap.ts:231`, `:269` |
+| one-hop context, kept only with a complete relation | `outcomeMap.ts:314-323`, `:448-453` |
+| stable order used for every tie-break | `outcomeMap.ts:179-180` (`compareThreads`) |
+| thread identity refuses containment across a commitment | `ui/src/lib/threads.ts:71-84` |
+
+## Layout and geometry
+
+| behaviour | anchor |
+| --- | --- |
+| condensation, longest-path depth, one column per component | `outcomeMap.ts:578-615`, `:586-587`, `:602-612`, `:614-615` |
+| intra-column ordering built from `superseded` edges only | `outcomeMap.ts:623-625`, `:651-671` |
+| card geometry; 88px column gap; 32px margin | `ui/src/lib/outcomeMapLayout.ts:7`, `:21-47` |
+| fit scales by the tighter of width and height | `outcomeMapLayout.ts:54-58` |
+| one edge path for every case; the same-column curve | `outcomeMapLayout.ts:60-62`, `:63-70` |
+| graph pane, fixed at the `min-h-[32rem]` floor | `OutcomeMap.tsx:103` |
+| pane width capped by the reading column | `RequestList.tsx:144` (`max-w-5xl`) |
+| the scroll container the pane could fill | `RequestList.tsx:143` |
+| node order used for layout and DOM order | `outcomeMap.ts:497` |
+
+## Selection, view state and focus
+
+| behaviour | anchor |
+| --- | --- |
+| emphasis from an undirected connected component | `OutcomeMap.tsx:78-82`, `:30-46` |
+| dimming of cards and edges outside it | `OutcomeMap.tsx:145`, `:180`, `:192` |
+| card type sizes: 12px title, 10px badges | `OutcomeMap.tsx:199`, `:202-206` |
+| lineage tags on a card | `OutcomeMap.tsx:169-173` |
+| selection bar and `Open full thread` | `OutcomeMap.tsx:213-220` |
+| zoom, fit and reset controls | `OutcomeMap.tsx:93-96` |
+| selection, scale and offset held as local state | `OutcomeMap.tsx:60-64` |
+| fit forced in a mount effect | `OutcomeMap.tsx:70`, deps at `:69` |
+| a vanished selection is cleared | `OutcomeMap.tsx:71-74` |
+| view state that already survives a detour | `RequestList.tsx:11-21`, `:15-21` |
+| the list unmounts when a thread opens | `ui/src/App.tsx:262-288` |
+| `<svg>` before the cards in DOM order | `OutcomeMap.tsx:122-165` against `:166-210` |
+| edge focusability, hit path, accessible name | `OutcomeMap.tsx:139`, `:160`, `:141` |
+| permanent edge label and its placement | `OutcomeMap.tsx:161`, `:134-135` |
+| relation tooltip | `OutcomeMap.tsx:221` |
+
+## Contracts a change must update
+
+| statement | anchor |
+| --- | --- |
+| one card is one thread | `docs/reference/architecture.md:1498`; `notes/2026-08-30-outcome-map.md:55-61` |
+| the graph's documented presentation contract | `docs/reference/architecture.md:1505-1513` |
+| basis drawn left of dependent | `docs/reference/architecture.md:1509` |
+| what layer 7 may derive | `docs/reference/architecture.md:1533-1548` |
+| selection emphasises a connected component | `notes/2026-08-30-outcome-map.md:235-236` |
+| back restores population, search, selection, zoom, pan | `notes/2026-08-30-outcome-map.md:238-243` |
+| fit must not override a zoom the user made | `notes/2026-08-30-outcome-map.md:198-200` |
+| no permanent words on every line | `notes/2026-08-30-outcome-map.md:136-139` |
+| the map must not synthesize blocking | `notes/2026-08-30-outcome-map.md:263-276` |
+
+## Tests that already cover part of this
+
+| test | covers |
+| --- | --- |
+| `ui/test/dom.test.mjs:697-756` | graph uses the table population and search; component selection; opens the thread |
+| `ui/test/dom.test.mjs:758-812` | fit contains both maximum legal shapes in a real viewport |
+| `ui/test/dom.test.mjs:814-854` | two lifecycles collapse to one card; no leak across populations |
+| `ui/test/dom.test.mjs:715-723`, `:736-742` | context card membership; selection and open |
+| `ui/test/outcome-map.test.mjs:235-246` | placement is independent of serialization order |
+| `ui/test/outcome-map.test.mjs:275-291` | multiple roots leftmost; every arrow on a card boundary |
+| `ui/test/outcome-map.test.mjs:347-377` | bounded context and complete edges, atomically |
+
+---
+
+# Unresolved product choices
+
+Each with the recommendation the plan carries.
+
+| choice | recommendation | why |
+| --- | --- | --- |
+| one card per commitment, or per thread | **per thread** | per commitment would draw two identically titled cards with no edge between them for Chess #63, and would break `docs/reference/architecture.md:1498` and `notes/2026-08-30-outcome-map.md:55-61` |
+| render context cards, or count them only | **render them** | they are why two open tasks form one group; the plain line keeps them out of the task count and change 2 dims those off the path |
+| should a transfer keep the `superseded` family | **no** | a `successor_request` is continuation, not retirement; today only the tooltip distinguishes them (`outcomeMap.ts:304`, `OutcomeMap.tsx:9`, `:15`, `:91`). gitseq records 32, Chess and Tailapp none. If change 2 ships first, the walk must still follow `successor-request` contributors both ways |
+| does the `superseded` legend earn its place | **open, no recommendation** | all 5883 effective supersede acts in these three rooms are intra-thread, so the dashed style has never rendered there; three rooms are not enough to remove it |
+| is the stale `:7777` bundle part of this work | **no** | a deployment fix with its own request; see the observation above |
