@@ -89,18 +89,26 @@ type landingFixture struct {
 
 func landingRound(t testing.TB, requestBody map[string]string) landingFixture {
 	t.Helper()
+	return landingRoundFor(t, nil,
+		event(t, lid("request"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Implement it", Body: requestBody}, lid("w0")))
+}
+
+// landingRoundFor is landingRound with the request supplied, so a test can put
+// ancestry above it and still get the implementation round below it.
+func landingRoundFor(t testing.TB, ancestry []Record, request Record) landingFixture {
+	t.Helper()
 	fixture := landingFixture{
-		request: lid("request"), promise: lid("promise"),
+		request: request.ID, promise: lid("promise"),
 		artifact: lid("artifact"), approval: lid("approval"),
 	}
-	fixture.records = landingWorld(t,
-		event(t, fixture.request, operator, SchemaStateV3, State{Kind: KindRequest, Text: "Implement it", Body: requestBody}, lid("w0")),
+	records := append(append([]Record(nil), ancestry...), request)
+	fixture.records = landingWorld(t, append(records,
 		event(t, fixture.promise, agent, SchemaState, State{Kind: KindPromise, Text: "I will implement it"}, fixture.request),
 		event(t, fixture.artifact, agent, SchemaState, State{Kind: KindArtifact, Text: "Exact implementation head", Body: map[string]string{"path": "internal/workroom", "commit": approvedHead}}, fixture.promise),
 		event(t, lid("review-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Review the exact head", Body: noArtifactBody(other)}, fixture.artifact),
 		event(t, lid("review-promise"), other, SchemaState, State{Kind: KindPromise, Text: "I will review it"}, lid("review-request")),
 		event(t, fixture.approval, other, SchemaState, State{Kind: KindReport, Text: "Approved", Body: map[string]string{"verdict": "approved", "head": approvedHead, "artifact": fixture.artifact}}, lid("review-promise"), fixture.artifact),
-	)
+	)...)
 	return fixture
 }
 
@@ -115,14 +123,21 @@ func (f landingFixture) ratifiedApproval(t testing.TB) landingFixture {
 // performer's ratification of it.
 func (f landingFixture) release(t testing.TB, signer string) landingFixture {
 	t.Helper()
+	return f.releaseFiledBy(t, signer, agent)
+}
+
+// releaseFiledBy names who opened the authorization commitment. It is the
+// performer's to file; any other actor is the malformed shape.
+func (f landingFixture) releaseFiledBy(t testing.TB, signer, requester string) landingFixture {
+	t.Helper()
 	f.records = append(f.records,
-		event(t, lid("authorization-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(signer)}, f.request),
+		event(t, lid("authorization-request"), requester, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(signer)}, f.request),
 		event(t, lid("authorization-promise"), signer, SchemaState, State{Kind: KindPromise, Text: "I will decide"}, lid("authorization-request")),
 		event(t, lid("release"), signer, SchemaState, State{Kind: KindReport, Text: "Released", Body: map[string]string{
 			"authorizes_request": f.request, "authorizes_candidate": approvedHead,
 			"authorizes_approval": f.approval, "target_pre_head": filingHead,
 		}}, lid("authorization-promise")),
-		event(t, lid("release-ratified"), agent, SchemaRatify, Ratify{Target: lid("release")}, lid("release")),
+		event(t, lid("release-ratified"), requester, SchemaRatify, Ratify{Target: lid("release")}, lid("release")),
 	)
 	return f
 }
@@ -897,6 +912,324 @@ func TestAnExplicitAbandonmentOutranksAQualifyingTransfer(t *testing.T) {
 		row := commitmentForPromise(t, projection, lid("promise"))
 		if row.Status != "abandoned" || row.SuccessorRequest != "" {
 			t.Fatalf("an abandoned head was projected as carried into a successor = %+v", row)
+		}
+	})
+}
+
+// A hold is stated by a request that may itself have inherited its triple, so
+// it sits between a grandchild and the value triple the grandchild inherits.
+// Reading the hold from the triple's own request walked straight past it, and
+// every generation after the first lost the hold silently — the landing became
+// unheld without anyone deciding it should be.
+func TestAHoldSurvivesEveryInheritedGeneration(t *testing.T) {
+	inherit := func(fields ...string) map[string]string {
+		body := map[string]string{"to": agent, "conditions": "do it", "target": "inherit"}
+		for index := 0; index+1 < len(fields); index += 2 {
+			body[fields[index]] = fields[index+1]
+		}
+		return body
+	}
+	root := func(t testing.TB) Record {
+		return event(t, lid("root"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Root", Body: landingBody(agent)}, lid("w0"))
+	}
+	heldChild := func(t testing.TB, owner string) Record {
+		return event(t, lid("held-child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Held child",
+			Body: inherit("landing", "held", "hold_owner", owner)}, lid("root"))
+	}
+	grandchild := func(t testing.TB, bases ...string) Record {
+		return event(t, lid("grandchild"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Grandchild", Body: inherit()}, bases...)
+	}
+	round := func(t testing.TB, ancestry ...Record) landingFixture {
+		return landingRoundFor(t, ancestry, grandchild(t, lid("held-child")))
+	}
+
+	t.Run("the grandchild waits on the intervening owner", func(t *testing.T) {
+		fixture := round(t, root(t), heldChild(t, other)).ratifiedApproval(t)
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, fixture.request); decision.Verdict != Effective {
+			t.Fatalf("grandchild = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, fixture.promise)
+		if row.HoldOwner != other || row.Status != "awaiting-authorization" || row.WaitingOn != other {
+			t.Fatalf("the inherited hold disappeared a generation down = %+v", row)
+		}
+		if row.TargetRef != "refs/heads/main" || row.TargetRepo != landingWorkroom {
+			t.Fatalf("the triple did not come from the nearest value triple = %+v", row)
+		}
+	})
+	t.Run("the root requester cannot release it", func(t *testing.T) {
+		fixture := round(t, root(t), heldChild(t, other)).ratifiedApproval(t).release(t, operator)
+		projection := Fold(fixture.records)
+		decision := decisionFor(t, projection, lid("release"))
+		if decision.Verdict != Ineffective ||
+			decision.Reason != "only the hold owner may release the landing hold on "+fixture.request {
+			t.Fatalf("the root requester released an inherited hold = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-authorization" {
+			t.Fatalf("row after the refused release = %+v", row)
+		}
+	})
+	t.Run("the inherited owner can release it", func(t *testing.T) {
+		fixture := round(t, root(t), heldChild(t, other)).ratifiedApproval(t).release(t, other)
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, lid("release")); decision.Verdict != Effective {
+			t.Fatalf("release by the inherited owner = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, fixture.promise)
+		if row.Status != "awaiting-landing" || row.Release != lid("release") {
+			t.Fatalf("released row = %+v", row)
+		}
+	})
+	t.Run("two equally near holds naming one owner inherit", func(t *testing.T) {
+		second := event(t, lid("second-child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Second child",
+			Body: inherit("landing", "held", "hold_owner", other)}, lid("root"))
+		fixture := landingRoundFor(t, []Record{root(t), heldChild(t, other), second},
+			grandchild(t, lid("held-child"), lid("second-child")))
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, fixture.request); decision.Verdict != Effective {
+			t.Fatalf("agreeing hold ancestry = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.HoldOwner != other {
+			t.Fatalf("agreeing hold ancestry = %+v", row)
+		}
+	})
+	t.Run("two equally near holds naming different owners refuse", func(t *testing.T) {
+		second := event(t, lid("second-child"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Second child",
+			Body: inherit("landing", "held", "hold_owner", bystander)}, lid("root"))
+		fixture := landingRoundFor(t, []Record{root(t), heldChild(t, other), second},
+			grandchild(t, lid("held-child"), lid("second-child")))
+		decision := decisionFor(t, Fold(fixture.records), fixture.request)
+		if decision.Verdict != Ineffective ||
+			decision.Reason != "conflicting hold ownership in target ancestry; restate the hold" {
+			t.Fatalf("edge order decided who may release a landing = %+v", decision)
+		}
+	})
+}
+
+// A body field is free text, so a record of any kind can carry the four names a
+// release is written with. Recognising a release by those names alone let a
+// ratified proposal that merely mentioned them lift a hold. A release is one
+// durable shape: the hold owner's report answering an authorization commitment
+// the performer opened for exactly that purpose.
+func TestOnlyAnAuthorizationReportReleasesAHold(t *testing.T) {
+	held := func(t testing.TB) landingFixture {
+		return landingRound(t, landingBody(agent, "landing", "held", "hold_owner", other)).ratifiedApproval(t)
+	}
+	bindings := func(f landingFixture, fields ...string) map[string]string {
+		body := map[string]string{
+			"authorizes_request": f.request, "authorizes_candidate": approvedHead,
+			"authorizes_approval": f.approval, "target_pre_head": filingHead,
+		}
+		for index := 0; index+1 < len(fields); index += 2 {
+			body[fields[index]] = fields[index+1]
+		}
+		return body
+	}
+
+	// The positive control. Everything below is this shape with one thing wrong.
+	t.Run("the hold owner's authorization report releases it", func(t *testing.T) {
+		fixture := held(t).release(t, other)
+		row := commitmentForPromise(t, Fold(fixture.records), fixture.promise)
+		if row.Status != "awaiting-landing" || row.Release != lid("release") {
+			t.Fatalf("the authorization report did not release the hold = %+v", row)
+		}
+	})
+
+	for _, test := range []struct {
+		name string
+		kind Kind
+	}{
+		{name: "a proposal", kind: KindPropose},
+		{name: "an assertion", kind: KindAssert},
+	} {
+		t.Run(test.name+" naming the same fields releases nothing", func(t *testing.T) {
+			fixture := held(t)
+			// It rests exactly where the release report rests, and its author
+			// is exactly the hold owner, so the only thing between it and a
+			// release is that it is not a report.
+			fixture.records = append(fixture.records,
+				event(t, lid("authorization-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(other)}, fixture.request),
+				event(t, lid("claimed-release"), other, SchemaStateV3, State{Kind: test.kind,
+					Text: "About the release", Body: bindings(fixture)}, lid("authorization-request")),
+				event(t, lid("claimed-ratified"), operator, SchemaRatify, Ratify{Target: lid("claimed-release")}, lid("claimed-release")),
+			)
+			projection := Fold(fixture.records)
+			// Talking about the release is a legitimate act, so it is admitted;
+			// it simply is not the release.
+			if decision := decisionFor(t, projection, lid("claimed-release")); decision.Verdict != Effective {
+				t.Fatalf("%s was refused rather than merely powerless = %+v", test.name, decision)
+			}
+			row := commitmentForPromise(t, projection, fixture.promise)
+			if row.Status != "awaiting-authorization" || row.Release != "" {
+				t.Fatalf("%s released the hold = %+v", test.name, row)
+			}
+		})
+	}
+
+	// The kind gate carries the case on its own only when the performer also
+	// holds ratifier, which in this workroom several actors do: any other
+	// performer cannot ratify a proposal at all, and the release would fail for
+	// want of their acceptance instead. Here nothing else is wrong with it.
+	t.Run("a proposal a ratifier-performer accepted still releases nothing", func(t *testing.T) {
+		request, promise, artifact := lid("held-request"), lid("held-promise"), lid("held-artifact")
+		approval := lid("held-approval")
+		records := landingWorld(t,
+			event(t, request, operator, SchemaStateV3, State{Kind: KindRequest, Text: "Implement it",
+				Body: landingBody(bystander, "landing", "held", "hold_owner", other)}, lid("w0")),
+			event(t, promise, bystander, SchemaState, State{Kind: KindPromise, Text: "I will"}, request),
+			event(t, artifact, bystander, SchemaState, State{Kind: KindArtifact, Text: "Exact head", Body: map[string]string{"path": "internal/workroom", "commit": approvedHead}}, promise),
+			event(t, lid("held-review"), bystander, SchemaStateV3, State{Kind: KindRequest, Text: "Review", Body: noArtifactBody(other)}, artifact),
+			event(t, lid("held-review-promise"), other, SchemaState, State{Kind: KindPromise, Text: "I will review"}, lid("held-review")),
+			event(t, approval, other, SchemaState, State{Kind: KindReport, Text: "Approved", Body: map[string]string{"verdict": "approved", "head": approvedHead, "artifact": artifact}}, lid("held-review-promise"), artifact),
+			event(t, lid("held-approval-ratified"), bystander, SchemaRatify, Ratify{Target: approval}, approval),
+			event(t, lid("authorization-request"), bystander, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(other)}, request),
+			event(t, lid("claimed-release"), other, SchemaStateV3, State{Kind: KindPropose, Text: "About the release",
+				Body: map[string]string{"authorizes_request": request, "authorizes_candidate": approvedHead, "authorizes_approval": approval}}, lid("authorization-request")),
+			event(t, lid("claimed-ratified"), bystander, SchemaRatify, Ratify{Target: lid("claimed-release")}, lid("claimed-release")),
+		)
+		projection := Fold(records)
+		if decision := decisionFor(t, projection, lid("claimed-ratified")); decision.Verdict != Effective {
+			t.Fatalf("the fixture did not ratify the proposal = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, promise)
+		if row.Status != "awaiting-authorization" || row.Release != "" {
+			t.Fatalf("a proposal released the hold = %+v", row)
+		}
+	})
+
+	t.Run("an authorization request the performer did not file is refused", func(t *testing.T) {
+		fixture := held(t).releaseFiledBy(t, other, operator)
+		projection := Fold(fixture.records)
+		decision := decisionFor(t, projection, lid("release"))
+		if decision.Verdict != Ineffective ||
+			decision.Reason != "the authorization request for a landing hold is the performer's to file" {
+			t.Fatalf("release on somebody else's authorization = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Release != "" {
+			t.Fatalf("row after the refused release = %+v", row)
+		}
+	})
+	// The hold owner here is the performer, who may report on their own
+	// promise, so the report is admissible on its face. What refuses it is the
+	// commitment it answers: a landing commitment is not an authorization to
+	// release one, and without that distinction a performer who owns the hold
+	// could release it by reporting against the very work being held.
+	t.Run("a report answering the landing commitment itself is refused", func(t *testing.T) {
+		fixture := landingRound(t, landingBody(agent, "landing", "held", "hold_owner", agent)).ratifiedApproval(t)
+		fixture.records = append(fixture.records,
+			event(t, lid("release"), agent, SchemaState, State{Kind: KindReport, Text: "Released",
+				Body: bindings(fixture)}, fixture.promise))
+		projection := Fold(fixture.records)
+		decision := decisionFor(t, projection, lid("release"))
+		if decision.Verdict != Ineffective ||
+			decision.Reason != "a landing hold is released only on a no_git_artifact authorization request addressed to the hold owner" {
+			t.Fatalf("a release resting on the landing promise = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-authorization" || row.Release != "" {
+			t.Fatalf("row after the refused release = %+v", row)
+		}
+	})
+	t.Run("a mismatched target binding is refused", func(t *testing.T) {
+		fixture := held(t)
+		fixture.records = append(fixture.records,
+			event(t, lid("authorization-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(other)}, fixture.request),
+			event(t, lid("release"), other, SchemaState, State{Kind: KindReport, Text: "Released",
+				Body: bindings(fixture, "target_ref", "refs/heads/release-2")}, lid("authorization-request")),
+		)
+		decision := decisionFor(t, Fold(fixture.records), lid("release"))
+		if decision.Verdict != Ineffective || decision.Reason != "release target_ref does not match the request's target" {
+			t.Fatalf("mismatched target binding = %+v", decision)
+		}
+	})
+	t.Run("a report naming another candidate releases nothing", func(t *testing.T) {
+		fixture := held(t)
+		fixture.records = append(fixture.records,
+			event(t, lid("authorization-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(other)}, fixture.request),
+			event(t, lid("release"), other, SchemaState, State{Kind: KindReport, Text: "Released",
+				Body: bindings(fixture, "authorizes_candidate", repairHead)}, lid("authorization-request")),
+			event(t, lid("release-ratified"), agent, SchemaRatify, Ratify{Target: lid("release")}, lid("release")),
+		)
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, lid("release")); decision.Verdict != Effective {
+			t.Fatalf("a well-formed release for another candidate = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-authorization" || row.Release != "" {
+			t.Fatalf("a release for another candidate lifted this hold = %+v", row)
+		}
+	})
+	t.Run("an unratified release releases nothing", func(t *testing.T) {
+		fixture := held(t)
+		fixture.records = append(fixture.records,
+			event(t, lid("authorization-request"), agent, SchemaStateV3, State{Kind: KindRequest, Text: "Release the hold", Body: noArtifactBody(other)}, fixture.request),
+			event(t, lid("release"), other, SchemaState, State{Kind: KindReport, Text: "Released", Body: bindings(fixture)}, lid("authorization-request")),
+		)
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, lid("release")); decision.Verdict != Effective {
+			t.Fatalf("the unratified release = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-authorization" || row.Release != "" {
+			t.Fatalf("an unratified release lifted the hold = %+v", row)
+		}
+	})
+}
+
+// An explicit no_git_artifact=true request owes no Git artifact, so an artifact
+// resting on its claim answers nothing. It stays admitted and visible — an
+// artifact pointing at something is a perfectly good artifact — but it is never
+// the completion and never puts the row in one of the awaiting-* states, which
+// are the states of a landing that has not happened yet.
+func TestAnExplicitNoArtifactRequestHasNoArtifactCompletion(t *testing.T) {
+	t.Run("promised", func(t *testing.T) {
+		// The round carries a ratified approval of the artifact, so the audit
+		// fields would be filled if they were not gated on owing a landing.
+		fixture := landingRound(t, noArtifactBody(agent)).ratifiedApproval(t)
+		projection := Fold(fixture.records)
+		if decisionFor(t, projection, fixture.artifact).Verdict != Effective {
+			t.Fatal("the artifact was refused rather than merely powerless")
+		}
+		row := commitmentForPromise(t, projection, fixture.promise)
+		if row.Status != "promised" || row.Report != "" || row.Approval != "" || row.Candidate != "" {
+			t.Fatalf("no-artifact commitment gained an artifact completion = %+v", row)
+		}
+
+		fixture.records = append(fixture.records,
+			event(t, lid("report"), agent, SchemaState, State{Kind: KindReport, Text: "Decided"}, fixture.promise))
+		if row := commitmentForPromise(t, Fold(fixture.records), fixture.promise); row.Status != "reported" || row.Report != lid("report") {
+			t.Fatalf("the explicit report is the completion = %+v", row)
+		}
+		fixture.records = append(fixture.records,
+			event(t, lid("report-ratified"), operator, SchemaRatify, Ratify{Target: lid("report")}, lid("report")))
+		if row := commitmentForPromise(t, Fold(fixture.records), fixture.promise); row.Status != "satisfied" || row.Terminal != "reported" {
+			t.Fatalf("ratified report = %+v", row)
+		}
+	})
+	t.Run("direct", func(t *testing.T) {
+		records := landingWorld(t,
+			event(t, lid("request"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Decide it", Body: noArtifactBody(agent)}, lid("w0")),
+			event(t, lid("artifact"), agent, SchemaState, State{Kind: KindArtifact, Text: "A pointer", Body: map[string]string{"path": "docs", "commit": approvedHead}}, lid("request")),
+		)
+		row := commitmentForRequest(t, Fold(records), lid("request"))
+		if row.Status != "open" || row.Report != "" {
+			t.Fatalf("no-artifact request gained a direct artifact completion = %+v", row)
+		}
+		records = append(records,
+			event(t, lid("report"), agent, SchemaState, State{Kind: KindReport, Text: "Decided"}, lid("request")))
+		if row := commitmentForRequest(t, Fold(records), lid("request")); row.Status != "reported" || row.Report != lid("report") {
+			t.Fatalf("direct explicit report = %+v", row)
+		}
+	})
+	// The control that keeps the differential witness honest. The same shape
+	// filed before state@3 stated nothing, and the fold still reads it the way
+	// it always did: the artifact is the completion.
+	t.Run("an older request keeps its historical reading", func(t *testing.T) {
+		records := landingWorld(t,
+			event(t, lid("request"), operator, SchemaState, State{Kind: KindRequest, Text: "Decide it", Body: map[string]string{"to": agent, "conditions": "answer in the log"}}, lid("w0")),
+			event(t, lid("promise"), agent, SchemaState, State{Kind: KindPromise, Text: "I will"}, lid("request")),
+			event(t, lid("artifact"), agent, SchemaState, State{Kind: KindArtifact, Text: "A pointer", Body: map[string]string{"path": "docs", "commit": approvedHead}}, lid("promise")),
+		)
+		row := commitmentForPromise(t, Fold(records), lid("promise"))
+		if row.Status != "awaiting-review" || row.Report != lid("artifact") || !row.Legacy {
+			t.Fatalf("the historical reading changed = %+v", row)
 		}
 	})
 }

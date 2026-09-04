@@ -3415,7 +3415,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			performer := request.Body["to"]
 			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: performer, Status: "open", Stale: stale[requestRecord.record.ID]}
 			result, approved := f.landingFields(&entry, &requestRecord, claim, performer)
-			completion := f.latestCompletion(claim, performer, mergedArtifacts, result.landing && !result.legacy)
+			completion := f.latestCompletion(claim, performer, mergedArtifacts, result)
 			// With promises present but none live and nothing reported since,
 			// the request has no row of its own: the reneged rows below are the
 			// whole story, and an "open" row beside them would invite a second
@@ -3474,7 +3474,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			performer := promiseRecord.record.Actor
 			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: performer, Promise: promiseRecord.record.ID, Status: "promised", WaitingOn: performer}
 			result, approved := f.landingFields(&entry, &requestRecord, promiseRecord, performer)
-			completion := f.latestCompletion(promiseRecord, performer, mergedArtifacts, result.landing && !result.legacy)
+			completion := f.latestCompletion(promiseRecord, performer, mergedArtifacts, result)
 			switch {
 			// See the direct-completion branch: an explicit abandonment
 			// outranks a transfer that also qualifies.
@@ -3533,6 +3533,12 @@ func (f *foldState) landingFields(entry *Commitment, request, claim *parsedRecor
 	entry.HoldOwner = result.holdOwner
 	if resolution := f.latestResolution(claim); resolution != nil {
 		entry.LatestResolution = resolution.record.ID
+	}
+	if !result.landing {
+		// Approval, candidate and release are the landing obligation's fields.
+		// A request that owes no Git artifact has no head to land, so an
+		// artifact it happens to carry is not a candidate for anything.
+		return result, nil
 	}
 	approved, approval := f.approvedReportingArtifact(claim, performer)
 	if approved == nil {
@@ -3600,7 +3606,16 @@ func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResul
 // that actor's artifact resting on it with a commit, which serves as the
 // implementation report. Passing the claim rather than always a promise is
 // what keeps the two shapes one rule instead of two that drift.
-func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord, landing bool) *parsedRecord {
+func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord, result requestResult) *parsedRecord {
+	landing := result.landing && !result.legacy
+	// A state@3 request that stated no_git_artifact=true owes no Git artifact,
+	// so an artifact resting on its claim answers nothing: it is a pointer the
+	// performer chose to publish, admitted like any other artifact and kept
+	// visible, but never the completion and never a reason to project one of
+	// the awaiting-* states. An older request the fold merely read as owing
+	// nothing is a different case and keeps its historical reading, in which
+	// an artifact could be the completion.
+	statedNoArtifact := result.stated && !result.landing
 	var report, artifact, approved, merged *parsedRecord
 	candidates := append([]*parsedRecord(nil), f.directDependents(claim.record.ID, LifecycleReport)...)
 	candidates = append(candidates, f.directDependents(claim.record.ID, LifecycleNone)...)
@@ -3652,6 +3667,9 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 		if landing && isArtifactReport && (approved == nil || record.index > approved.index) && f.ratifiedApproval(record) != nil {
 			approved = record
 		}
+	}
+	if statedNoArtifact {
+		return report
 	}
 	if merged != nil {
 		return merged

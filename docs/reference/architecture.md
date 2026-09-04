@@ -1095,17 +1095,41 @@ refuses. A request stating `no_git_artifact=true` blocks the walk for its own
 descendants, so a review or authorization request sits under a landing parent
 without acquiring its obligation.
 
+The same walk answers a second question with a different nearest ancestor. A
+triple is only ever stated by value, so it comes from the nearest value triple.
+A hold is stated by a request that may itself have inherited its triple, and
+that request sits between the inheriting request and the value triple; reading
+the hold from the triple's own request walks past it and drops the hold on
+every later generation. So the hold, and its owner, come from the nearest
+ancestor on the same walk that states or carries one. Where several equally
+near ancestors carry holds naming different owners, the request refuses with
+"conflicting hold ownership in target ancestry; restate the hold" rather than
+taking the first: edge order is the order a signer wrote their citations in,
+and it must not decide who may release a landing.
+
 A request that owes a landing may carry `landing=held`, whose owner is the
 requester unless `hold_owner` names another live actor. Only the request that
 states the hold may name its owner: a request that inherited a hold keeps the
-owner it inherited, so a child cannot hand the release to its own performer. That naming changes one
-signing rule, and it is the only signing rule this design changes: a structured
-authorization report for a held landing request — one carrying
-`authorizes_request` — is admitted from exactly the hold owner and from nobody
-else. The three-way merge-authorization list of original requester, the actor
-named `planner`, and any live `ratifier` does not reach a held landing; a
+owner it inherited, so a child cannot hand the release to its own performer.
+That naming changes one signing rule, and it is the only signing rule this
+design changes: a release is admitted from exactly the hold owner and from
+nobody else. The three-way merge-authorization list of original requester, the
+actor named `planner`, and any live `ratifier` does not reach a held landing; a
 ratifier who wants the landing anyway supersedes the request, which stays
 visible as an act of authority.
+
+A release is one durable shape, not a set of body fields. Body fields are free
+text and any record can carry them, so the fold recognises a release only as a
+report — a record of kind `report` whose governing definition gives it the
+report lifecycle — that is authored by the hold owner, answers a
+`no_git_artifact=true` authorization request addressed to that owner and filed
+by the landing request's own performer, names this request, the approved
+artifact's exact commit and the ratified approval of that artifact, and is
+ratified by the actor who opened that authorization commitment. A `target_repo`
+or `target_ref` binding, where present, must equal the request's target. A
+proposal, an assertion, or any other record naming the same fields is talking
+about the release rather than performing it; it is admitted, and it lifts
+nothing.
 
 On a request that owes a landing, an explicit report cannot close the
 commitment. A plain report and a verdict-carrying report are refused; a report
@@ -1132,6 +1156,17 @@ body — a `workroom/supersede@1` payload, since a `@0` payload has no body —
 states `disposition=abandoned` with its reason in the text. Any other such
 supersession is refused, which makes losing an approved head an explicit act
 rather than a side effect of refiling.
+
+An explicit `no_git_artifact=true` request owes no Git artifact, so a reporting
+artifact resting on its claim answers nothing. It is admitted like any other
+artifact and stays visible, but it is never that commitment's completion and
+never puts the row in one of the awaiting-* states, which are the states of a
+landing that has not happened yet; only the newest live explicit report closes
+such a commitment. This is a fact about what the request stated, not about what
+its history contains, so it does not reach a request admitted before state@3:
+one the fold reads as owing nothing because its commitment never carried an
+artifact keeps its historical reading, in which an artifact could be the
+completion.
 
 `approved_not_landed` is projected per commitment relative to the destination,
 never relative to `main`: true when a ratified approval names a reporting

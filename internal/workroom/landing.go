@@ -47,6 +47,14 @@ type requestResult struct {
 	// legacy marks a result read from a pre-state@3 commitment's own history
 	// rather than stated by its author.
 	legacy bool
+	// stated marks a result the request itself declared under state@3. It
+	// separates an explicit no_git_artifact=true request, which owes no Git
+	// artifact and can only be closed by a report, from an older request the
+	// fold read as owing nothing because its commitment never carried an
+	// artifact. Both have landing false, and they are not the same fact: the
+	// first refuses an artifact completion, the second must keep reading
+	// exactly as it always did.
+	stated bool
 }
 
 func (r requestResult) sameTarget(other requestResult) bool {
@@ -176,8 +184,6 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 		if reason != "" {
 			return nil, reason
 		}
-		// A hold travels with the target: a child of a held request is held by
-		// the same owner.
 		*result = *inherited
 		result.inherited, result.legacy = true, false
 	}
@@ -216,6 +222,7 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 	if result.held && result.holdOwner == "" {
 		result.holdOwner = record.record.Actor
 	}
+	result.stated = true
 	return result, ""
 }
 
@@ -224,6 +231,20 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 // edge order, stopping at depth eight; the nearest triples are the value
 // triples found at the smallest depth at which any is found, and nothing
 // deeper is read.
+//
+// The walk answers two questions, and they have different nearest ancestors. A
+// triple is only ever stated by value, so it comes from the nearest value
+// triple. A hold is stated by a request that may itself have inherited its
+// triple, and that request sits between this one and the value triple; reading
+// the hold from the triple's own request would walk straight past it and drop
+// the hold on every later generation. So the hold comes from the nearest
+// ancestor on the same walk that states or carries one, which is at or above
+// the triple's depth.
+//
+// Where several equally near ancestors carry holds with different owners, the
+// walk refuses rather than picking one. Edge order is the order a signer wrote
+// their citations in, and letting it decide who may release a landing would
+// make the answer a property of how the request was typed.
 func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string) {
 	type step struct {
 		event string
@@ -241,8 +262,8 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 		}
 	}
 	enqueue(record.record.RestsOn, 1)
-	var nearest []*requestResult
-	nearestDepth := 0
+	var nearest, holds []*requestResult
+	nearestDepth, holdDepth := 0, 0
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
@@ -264,14 +285,21 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 		if result != nil && !result.landing {
 			continue
 		}
-		if result != nil && result.landing && !result.inherited {
-			nearestDepth = current.depth
-			nearest = append(nearest, result)
-			continue
+		if result != nil && result.landing {
+			if result.held && (holdDepth == 0 || current.depth == holdDepth) {
+				holdDepth = current.depth
+				holds = append(holds, result)
+			}
+			if !result.inherited {
+				nearestDepth = current.depth
+				nearest = append(nearest, result)
+				continue
+			}
 		}
 		// A request that stated no result of its own — one admitted before
-		// state@3, or one that inherited — carries no value triple and does
-		// not block: the walk passes through it to its own bases.
+		// state@3 — carries no value triple and does not block: the walk
+		// passes through it to its own bases. So does one that inherited,
+		// whose own hold this walk has just read.
 		enqueue(basis.record.RestsOn, current.depth+1)
 	}
 	if len(nearest) == 0 {
@@ -282,7 +310,17 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 			return nil, "conflicting target ancestry; restate all three target fields"
 		}
 	}
-	return nearest[0], ""
+	inherited := *nearest[0]
+	inherited.held, inherited.holdOwner = false, ""
+	if len(holds) != 0 {
+		for _, candidate := range holds[1:] {
+			if candidate.holdOwner != holds[0].holdOwner {
+				return nil, "conflicting hold ownership in target ancestry; restate the hold"
+			}
+		}
+		inherited.held, inherited.holdOwner = true, holds[0].holdOwner
+	}
+	return &inherited, ""
 }
 
 // landingResult returns the stated result of a state@3 request, or nil for a
@@ -295,6 +333,79 @@ func (f *foldState) landingResult(event string) *requestResult {
 	return record.result
 }
 
+// releaseClaim reads a record as a claim to release a landing hold, and says
+// whether its shape and authorship let it be one. A nil claim with no reason
+// means the record makes no such claim at all and is ordinary text; a reason
+// means it does and the fold refuses it.
+//
+// What counts is deliberately narrow. Body fields are free text: any record can
+// carry authorizes_request and the three bindings beside it, so recognising a
+// release by those fields alone made a ratified proposal that merely mentioned
+// them lift a hold. A release is one specific durable shape — the hold owner's
+// report answering an authorization commitment the performer opened for exactly
+// that purpose — and that shape is what this reads.
+type releaseClaim struct {
+	request   string
+	candidate string
+	approval  string
+	// authorization is the no-artifact commitment this report answers, and
+	// requester is who opened it. The ratification has to come from that
+	// actor, which is also who owes the landing.
+	authorization *parsedRecord
+	requester     string
+}
+
+func (f *foldState) readReleaseClaim(record *parsedRecord, state State) (*releaseClaim, string) {
+	request := state.Body["authorizes_request"]
+	if request == "" {
+		return nil, ""
+	}
+	result := f.landingResult(request)
+	// An unheld landing needs no release, and one filed anyway stays judged
+	// under the merge authorization rule until phase two retires it. Only a
+	// held request has a hold to lift, and only its owner may lift it.
+	if result == nil || !result.held {
+		return nil, ""
+	}
+	// A record of any other kind that names these fields is talking about the
+	// release, not performing it. Saying so is not the same as doing it, and
+	// the fold must not read the two the same way.
+	if state.Kind != KindReport || record.definition == nil || record.definition.Lifecycle != LifecycleReport {
+		return nil, ""
+	}
+	if record.record.Actor != result.holdOwner {
+		return nil, fmt.Sprintf("only the hold owner may release the landing hold on %s", request)
+	}
+	claim, refusal := f.reportClaim(record)
+	if refusal != nil {
+		// The report is being refused for its own reasons; let that reason
+		// stand rather than replacing it with this one.
+		return nil, ""
+	}
+	authorization := claim.request
+	owed := authorization.result
+	// The release answers a commitment, and the commitment says who asked for
+	// it and of whom. Without that the hold owner could release by reporting
+	// against anything at all, including the landing request itself.
+	if owed == nil || owed.landing || authorization.body.(*State).Body["to"] != result.holdOwner {
+		return nil, "a landing hold is released only on a no_git_artifact authorization request addressed to the hold owner"
+	}
+	if authorization.record.Actor != f.byID[request].body.(*State).Body["to"] {
+		return nil, "the authorization request for a landing hold is the performer's to file"
+	}
+	if repo, stated := state.Body["target_repo"]; stated && repo != result.targetRepo {
+		return nil, "release target_repo does not match the request's target"
+	}
+	if ref, stated := state.Body["target_ref"]; stated && ref != result.targetRef {
+		return nil, "release target_ref does not match the request's target"
+	}
+	return &releaseClaim{
+		request: request, candidate: state.Body["authorizes_candidate"],
+		approval:      state.Body["authorizes_approval"],
+		authorization: authorization, requester: authorization.record.Actor,
+	}, ""
+}
+
 // releaseAuthorshipRefusal is the section-10 rule, and it is the one signing
 // rule this design changes. A held landing request names exactly one actor who
 // may lift its hold. The three-way merge-authorization list — original
@@ -303,33 +414,36 @@ func (f *foldState) landingResult(event string) *requestResult {
 // wants the landing anyway supersedes the request rather than signing around
 // its author.
 func (f *foldState) releaseAuthorshipRefusal(record *parsedRecord, state State) string {
-	request := state.Body["authorizes_request"]
-	if request == "" {
-		return ""
-	}
-	result := f.landingResult(request)
-	if result == nil || !result.held {
-		return ""
-	}
-	if record.record.Actor == result.holdOwner {
-		return ""
-	}
-	return fmt.Sprintf("only the hold owner may release the landing hold on %s", request)
+	_, reason := f.readReleaseClaim(record, state)
+	return reason
 }
 
 // releaseFor returns the release in force for one candidate and one approval:
-// a live, ratified structured authorization report naming exactly this
-// request, candidate and approval.
+// the same claim admission checked, now live, ratified by the actor who opened
+// the authorization commitment, and naming exactly this candidate and approval.
 func (f *foldState) releaseFor(request, candidate, approval string) *parsedRecord {
 	for _, record := range f.authorizations[request] {
 		state, ok := record.body.(*State)
-		if !ok {
+		if !ok || record.decision.Verdict != Effective {
 			continue
 		}
-		if state.Body["authorizes_candidate"] != candidate || state.Body["authorizes_approval"] != approval {
+		claim, reason := f.readReleaseClaim(record, *state)
+		if claim == nil || reason != "" {
 			continue
 		}
-		if f.retired(record.record.ID) || !f.ratified(record.record.ID) {
+		if claim.candidate != candidate || claim.approval != approval {
+			continue
+		}
+		if f.retired(record.record.ID) {
+			continue
+		}
+		// The ratification is the performer accepting the release they asked
+		// for: without it the hold owner would lift a hold alone. Naming the
+		// actor restates what the report satisfier already enforces at the
+		// ratify act, so this predicate stands on its own rather than on a
+		// rule enforced somewhere else.
+		ratification := f.byID[f.activeRatification(record.record.ID)]
+		if ratification == nil || ratification.record.Actor != claim.requester {
 			continue
 		}
 		return record
@@ -424,7 +538,9 @@ func (f *foldState) claimCarriedReportingArtifact(claim *parsedRecord, performer
 }
 
 // commitmentResult reads the section-1 choice for one commitment row. A state@3
-// request stated it. An older one is read from its own admitted history — a
+// request stated it, and that is recorded, because an explicit no-artifact
+// request and an older request that merely never carried an artifact owe
+// different things and must not be read the same way. An older one is read from its own admitted history — a
 // commitment that ever carried a reporting artifact owed a landing to
 // refs/heads/main of this workroom's own repository, and says so as legacy —
 // and never from prose.
