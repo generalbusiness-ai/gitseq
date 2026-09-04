@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at notes/2026-09-02-retirement-succession-safeguards.md","body":{"commit":"ef55e913440e842a8d97ab238b40229b16b8f88f","path":"notes/2026-09-02-retirement-succession-safeguards.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8e6e344bfd66bf5d05fc48dc890e0d61ecde195","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-02-retirement-succession-safeguards.md."}
