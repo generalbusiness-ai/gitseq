@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b9568c64be7b14933853b6cf54c9e06214d5e1a","text":"Merge retired a covered predecessor; the successor is at internal/statusview/artifacts.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce10e4bb1194b0d72df379d349edeb649b08420","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/artifacts.md."}
