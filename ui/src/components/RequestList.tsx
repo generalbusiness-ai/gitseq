@@ -1,8 +1,10 @@
 import { useMemo } from "react";
 import { Search } from "lucide-react";
 import { ticketsOf, type Workroom } from "../lib/store";
+import { buildOutcomeMap } from "../lib/outcomeMap.ts";
 import { age, matchingRows, POPULATIONS, ratificationRows, sortAfterClick, sortRows, workRows, type Population, type Sort, type SortKey, type WorkRow } from "../lib/rows";
 import { cn } from "../lib/util";
+import { OutcomeMap } from "./OutcomeMap";
 import { RebuildNotice } from "./RebuildNotice";
 
 
@@ -14,8 +16,9 @@ export interface ListView {
   sort?: Sort;
   query: string;
   population: Population;
+  presentation?: "table" | "graph";
 }
-export const defaultListView: ListView = { query: "", population: "live" };
+export const defaultListView: ListView = { query: "", population: "live", presentation: "table" };
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "state", label: "state", className: "w-[9rem]" },
@@ -25,10 +28,8 @@ const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "ticket", label: "#", className: "w-[5rem] text-right" },
 ];
 
-// The default screen: one line per open request, in priority order. No filter
-// controls, no presentation switch, no grouping. A sort reorders the rows that
-// are there; a filter would decide which rows exist, and the operator cannot
-// tell from a filtered screen what they are not seeing.
+// The table and graph are two presentations of one selected, search-filtered
+// population. Sorting belongs to the table; it never changes graph membership.
 export function RequestList({
   workroom,
   onOpenThread,
@@ -43,9 +44,11 @@ export function RequestList({
   const projection = workroom.status?.durable.projection;
   const vocabulary = workroom.status?.durable.vocabulary;
   const { sort, query, population } = view;
+  const presentation = view.presentation ?? "table";
   const setSort = (update: (current?: Sort) => Sort | undefined) => onView({ ...view, sort: update(view.sort) });
   const setQuery = (query: string) => onView({ ...view, query });
   const setPopulation = (population: Population) => onView({ ...view, population });
+  const setPresentation = (presentation: "table" | "graph") => onView({ ...view, presentation });
   const tickets = useMemo(() => ticketsOf(projection), [projection]);
   const nameOf = useMemo(() => {
     const byFingerprint = new Map(workroom.actors.map((actor) => [actor.fingerprint, actor.name]));
@@ -93,6 +96,14 @@ export function RequestList({
     () => sortRows(filteredPopulations[population], sort),
     [filteredPopulations, population, sort],
   );
+  // The graph receives exactly the rows selected by the population and search.
+  // It intentionally ignores table order, so sorting cannot change layout or
+  // which lifecycle represents a collapsed thread card.
+  const graphRows = filteredPopulations[population];
+  const graph = useMemo(
+    () => (projection ? buildOutcomeMap(projection, graphRows) : undefined),
+    [projection, graphRows],
+  );
 
   if (!projection) return <RebuildNotice />;
 
@@ -134,67 +145,100 @@ export function RequestList({
           {/* One tab per population. Every count is one click from exactly
               the rows it counts, and the tab strip is the only place the
               operator chooses which rows exist. */}
-          <div role="tablist" aria-label="Request populations" className="flex flex-wrap gap-x-1 border-b border-border px-1">
-            {POPULATIONS.map(({ key, label }) => (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={population === key}
-                onClick={() => setPopulation(key)}
-                className={cn(
-                  "-mb-px flex items-baseline gap-1.5 border-b-2 px-2 py-1.5 text-[11px] focus-visible:outline focus-visible:outline-accent",
-                  population === key ? "border-accent font-medium text-foreground" : "border-transparent text-faint hover:text-muted",
-                )}
-              >
-                {label}
-                <span className="font-mono text-faint">{filteredPopulations[key].length}</span>
-              </button>
-            ))}
+          <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1 border-b border-border px-1">
+            <div role="tablist" aria-label="Request populations" className="flex flex-wrap gap-x-1">
+              {POPULATIONS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={population === key}
+                  onClick={() => setPopulation(key)}
+                  className={cn(
+                    "-mb-px flex items-baseline gap-1.5 border-b-2 px-2 py-1.5 text-[11px] focus-visible:outline focus-visible:outline-accent",
+                    population === key ? "border-accent font-medium text-foreground" : "border-transparent text-faint hover:text-muted",
+                  )}
+                >
+                  {label}
+                  <span className="font-mono text-faint">{filteredPopulations[key].length}</span>
+                </button>
+              ))}
+            </div>
+            <div role="tablist" aria-label="Board presentation" className="mb-1 flex rounded border border-border p-0.5 text-[11px]">
+              {(["table", "graph"] as const).map((choice) => (
+                <button
+                  key={choice}
+                  type="button"
+                  role="tab"
+                  aria-selected={presentation === choice}
+                  onClick={() => setPresentation(choice)}
+                  className={cn(
+                    "rounded px-2 py-1 capitalize focus-visible:outline focus-visible:outline-accent",
+                    presentation === choice ? "bg-accent text-background" : "text-faint hover:text-foreground",
+                  )}
+                >
+                  {choice === "table" ? "Table" : "Graph"}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="mt-2 flex flex-wrap items-baseline gap-3 px-1">
             <h2 className="font-serif text-base font-semibold" aria-live="polite">
               {headline}
             </h2>
-            <span className="text-[11px] text-faint">
-              sorted by <b className="font-semibold text-accent">{sort ? COLUMNS.find((c) => c.key === sort.key)?.label : "priority"}</b>
-              {" — click any column to re-sort"}
-            </span>
+            {presentation === "table" ? (
+              <span className="text-[11px] text-faint">
+                sorted by <b className="font-semibold text-accent">{sort ? COLUMNS.find((c) => c.key === sort.key)?.label : "priority"}</b>
+                {" — click any column to re-sort"}
+              </span>
+            ) : (
+              <span className="text-[11px] text-faint">same selected rows as the table, with bounded direct context</span>
+            )}
           </div>
 
-          <table className="mt-2 w-full table-fixed border-collapse text-xs">
-            <thead>
-              <tr>
-                {COLUMNS.map((column) => (
-                  <th
-                    key={column.key}
-                    scope="col"
-                    aria-sort={sort?.key === column.key ? (sort.descending ? "descending" : "ascending") : "none"}
-                    className={cn("border-y border-border bg-surface/40 p-0", column.className)}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSort((current) => sortAfterClick(current, column.key))}
-                      className={cn(
-                        "block w-full cursor-pointer px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.08em] focus-visible:outline focus-visible:outline-accent",
-                        column.className.includes("text-right") && "text-right",
-                        sort?.key === column.key ? "text-accent" : "text-faint hover:text-foreground",
-                      )}
+          {rows.length === 0 ? (
+            <p className="py-12 text-center text-xs text-faint">
+              {query ? "Nothing here matches that." : "Nothing is waiting."}
+            </p>
+          ) : presentation === "table" ? (
+            <table data-board-presentation="table" className="mt-2 w-full table-fixed border-collapse text-xs">
+              <thead>
+                <tr>
+                  {COLUMNS.map((column) => (
+                    <th
+                      key={column.key}
+                      scope="col"
+                      aria-sort={sort?.key === column.key ? (sort.descending ? "descending" : "ascending") : "none"}
+                      className={cn("border-y border-border bg-surface/40 p-0", column.className)}
                     >
-                      {column.label}
-                      {sort?.key === column.key && <span aria-hidden className="ml-1 font-mono font-normal opacity-60">{sort.descending ? "↓" : "↑"}</span>}
-                    </button>
-                  </th>
+                      <button
+                        type="button"
+                        onClick={() => setSort((current) => sortAfterClick(current, column.key))}
+                        className={cn(
+                          "block w-full cursor-pointer px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.08em] focus-visible:outline focus-visible:outline-accent",
+                          column.className.includes("text-right") && "text-right",
+                          sort?.key === column.key ? "text-accent" : "text-faint hover:text-foreground",
+                        )}
+                      >
+                        {column.label}
+                        {sort?.key === column.key && <span aria-hidden className="ml-1 font-mono font-normal opacity-60">{sort.descending ? "↓" : "↑"}</span>}
+                      </button>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => (
+                  <Row key={row.key} row={row} onOpen={() => onOpenThread(row.event)} />
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <Row key={row.key} row={row} onOpen={() => onOpenThread(row.event)} />
-              ))}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          ) : graph ? (
+            <OutcomeMap graph={graph} nameOf={nameOf} onOpenThread={onOpenThread} />
+          ) : (
+            <RebuildNotice />
+          )}
           {/* Who is expected to act, when the rows cannot say it themselves.
               A queue with no ratifier is not a discharged queue, and an empty
               screen reading "nothing is waiting" would say the opposite of
@@ -204,11 +248,6 @@ export function RequestList({
               {ratification.ratifiers.length === 0
                 ? "Nobody in this room holds `ratifier`, so nothing here can be discharged."
                 : `${ratification.ratifiers.length} actors hold \`ratifier\`, so no single actor is named as the next mover.`}
-            </p>
-          )}
-          {rows.length === 0 && (
-            <p className="py-12 text-center text-xs text-faint">
-              {query ? "Nothing here matches that." : "Nothing is waiting."}
             </p>
           )}
         </div>

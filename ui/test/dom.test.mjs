@@ -78,6 +78,7 @@ function enterText(element, value) {
 }
 
 const tabNamed = (name) => [...document.querySelectorAll("[role=tab]")].find((tab) => tab.textContent.trim() === name);
+const populationTabs = () => [...document.querySelectorAll('[aria-label="Request populations"] [role=tab]')];
 
 
 
@@ -503,7 +504,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.equal(heading.textContent, "3 open requests");
     assert.equal(document.querySelectorAll("tbody tr").length, 3);
 
-    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    const tabs = populationTabs;
     assert.deepEqual(tabs().map((tab) => tab.textContent), [
       "open3",
       "reasoning moved1",
@@ -556,7 +557,7 @@ test("search filters every tab count before the selected population", async () =
     await act(async () => {
       root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
     });
-    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    const tabs = populationTabs;
     assert.equal(tabs()[0].textContent, "open3");
     assert.equal(tabs()[3].textContent, "completed2");
 
@@ -600,7 +601,7 @@ test("repeated tab switches replace rows when one request has several commitment
     await act(async () => {
       root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
     });
-    const tabs = () => [...document.querySelectorAll("[role=tab]")];
+    const tabs = populationTabs;
     for (let repetition = 0; repetition < 3; repetition++) {
       await click(tabs()[3]);
       assert.equal(document.querySelectorAll("tbody tr").length, 2);
@@ -649,7 +650,7 @@ test("the ratification queue says when nobody, or nobody in particular, can disc
       await act(async () => {
         root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
       });
-      await click([...document.querySelectorAll("[role=tab]")][5]);
+      await click(populationTabs()[5]);
     };
 
     await show({ hugh: [], codex: [] });
@@ -687,6 +688,109 @@ test("clicking a row opens that request's thread", async () => {
     });
     await click(document.querySelector("tbody tr"));
     assert.deepEqual(opened, ["e2"]);
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("Graph uses the table population and search, selects a component, and opens the existing thread", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  const opened = [];
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.statements.unshift({ event: "basis", sequence: 0, actor: "hugh", kind: "assert", text: "Recorded basis", timestamp: NOW_S - 6 * 86400 });
+    projection.decisions.unshift({ event: "basis", sequence: 0, verdict: "effective", reason: "recorded" });
+    projection.provenance.e2 = ["basis"];
+    await act(async () => {
+      root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread: (event) => opened.push(event) }));
+    });
+
+    assert.ok(document.querySelector('[data-board-presentation="table"]'), "Table is not the default presentation");
+    await click(tabNamed("Graph"));
+    assert.equal(document.querySelector('[data-board-presentation="table"]'), null);
+    assert.equal(document.querySelectorAll("[data-outcome-card]").length, 4, "Graph did not start from all three table rows plus direct context");
+
+    await enterText(document.querySelector('input[aria-label="Search requests"]'), "Alpha");
+    assert.equal(document.querySelector("h2").textContent, "1 open request");
+    assert.deepEqual(
+      [...document.querySelectorAll("[data-outcome-card]")].map((card) => card.dataset.outcomeCard),
+      ["basis", "e2"],
+      "Graph did not use the searched table row and its bounded direct context",
+    );
+    const relation = document.querySelector('[data-relation="rests-on"]');
+    await click(relation);
+    assert.equal(relation.dataset.selected, "true", "touch activation did not select the edge");
+    assert.match(
+      document.querySelector('[role="tooltip"]').textContent,
+      /basis is a direct basis for e2\. Reverse: e2 rests on basis\./,
+      "the selected-edge summary lost an exact identifier or direction reading",
+    );
+    await click(tabNamed("Table"));
+    assert.deepEqual(titlesOnScreen(), ["Alpha work"], "Table and Graph do not share the search-filtered population");
+    await click(tabNamed("Graph"));
+
+    const card = document.querySelector('[data-outcome-card="e2"]');
+    await click(card);
+    assert.equal(card.dataset.selected, "true");
+    assert.match(document.querySelector('[role="status"]').textContent, /Selected: Alpha work/);
+    assert.deepEqual(opened, [], "selecting a graph component opened the thread immediately");
+    await click(card);
+    assert.deepEqual(opened, ["e2"], "activating the selected card did not open the existing full thread");
+
+    const viewport = document.querySelector('[aria-label="Outcome map viewport"]');
+    const fitted = viewport.dataset.scale;
+    await click(document.querySelector('button[aria-label="Zoom in"]'));
+    assert.notEqual(viewport.dataset.scale, fitted);
+    await click(document.querySelector('button[aria-label="Fit graph to view"]'));
+    assert.equal(viewport.dataset.scale, fitted);
+    await click(document.querySelector('button[aria-label="Reset graph view"]'));
+    assert.equal(viewport.dataset.scale, "1");
+  } finally {
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("repeated population and presentation changes neither leak nor duplicate rows or graph nodes", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const root = createRoot(document.getElementById("root"));
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const workroom = listRoom();
+    const projection = workroom.status.durable.projection;
+    projection.statements.push({ event: "e4", sequence: 4, actor: "hugh", kind: "request", text: "Repeated history", timestamp: NOW_S - 4 * 86400 });
+    projection.decisions.push({ event: "e4", sequence: 4, verdict: "effective", reason: "recorded" });
+    projection.commitments.push(
+      { request: "e4", requester: "hugh", promise: "p4a", report: "r4a", status: "satisfied" },
+      { request: "e4", requester: "hugh", promise: "p4b", report: "r4b", status: "satisfied" },
+    );
+    await act(async () => {
+      root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
+    });
+
+    await click(tabNamed("Graph"));
+    for (let repetition = 0; repetition < 3; repetition += 1) {
+      await click(populationTabs()[3]);
+      assert.equal(document.querySelector("h2").textContent, "2 completed");
+      const completed = [...document.querySelectorAll("[data-outcome-card]")];
+      assert.deepEqual(completed.map((card) => card.dataset.outcomeCard), ["e4"], "duplicate lifecycle rows did not collapse to one thread card");
+
+      await click(tabNamed("Table"));
+      assert.equal(document.querySelectorAll("tbody tr").length, 2);
+      const rowKeys = [...document.querySelectorAll("tbody tr")].map((row) => row.dataset.rowKey);
+      assert.equal(new Set(rowKeys).size, 2, "completed lifecycle rows lost their stable identities");
+
+      await click(populationTabs()[0]);
+      assert.equal(document.querySelectorAll("tbody tr").length, 3);
+      assert.doesNotMatch(document.querySelector("tbody").textContent, /Repeated history/);
+      await click(tabNamed("Graph"));
+      const open = [...document.querySelectorAll("[data-outcome-card]")].map((card) => card.dataset.outcomeCard);
+      assert.deepEqual(open, ["e1", "e2", "e3"], "a completed graph node leaked into Open");
+    }
   } finally {
     await act(async () => root.unmount());
     await vite.close();

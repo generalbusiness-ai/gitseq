@@ -15,11 +15,10 @@ import { firstLine } from "./lib/util";
 import { tabTitle } from "./lib/title";
 import { formatAddress, parseAddress, type Address } from "./lib/address";
 
-// Two screens. The list is the default and answers the whole question; the
-// thread answers "what does this one wait on?". There is no third
-// destination, and no presentation to choose between. A thread carries the
-// record the user clicked as focus when navigation resolved it into a wider
-// commitment, so arrival can name what was asked for.
+// Two screens. The board is the default and answers the whole question through
+// Table and Graph presentations of one population; the thread answers "what
+// does this one wait on?". A thread carries the record the user clicked as
+// focus when navigation resolved it into a wider commitment.
 type Screen = { kind: "list" } | { kind: "thread"; event: string; focus?: string };
 
 function screenOf(address: Address): Screen {

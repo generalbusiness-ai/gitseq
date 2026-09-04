@@ -395,6 +395,56 @@ test("every row is one line of exactly five fixed columns", async () => {
   }
 });
 
+test("the outcome graph preserves the table selection and exposes only recorded relations", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const { RequestList, defaultListView } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const statements = [
+      { event: "basis", sequence: 1, actor: "hugh", kind: "request", text: "Recorded basis", timestamp: 1 },
+      { event: "proposal", sequence: 2, actor: "hugh", kind: "propose", text: "Ratified proposal", timestamp: 2, ratified: true, ratified_by: "ratify-act" },
+      { event: "replacement", sequence: 4, actor: "hugh", kind: "request", text: "Replacement request", timestamp: 4 },
+      { event: "request", sequence: 6, actor: "hugh", kind: "request", text: "Selected request", body: { conditions: "waits on an invented condition" }, timestamp: 6 },
+    ];
+    const acts = [
+      { event: "ratify-act", sequence: 3, actor: "hugh", type: "ratify", target: "proposal", verdict: "effective", reason: "recorded" },
+      { event: "supersede-act", sequence: 5, actor: "hugh", type: "supersede", target: "request", verdict: "effective", reason: "recorded" },
+    ];
+    const projection = {
+      decisions: [...statements, ...acts].map(({ event, sequence }) => ({ event, sequence, verdict: "effective", reason: "recorded" })),
+      acts,
+      statements,
+      commitments: [
+        { request: "basis", requester: "hugh", addressed_to: "codex", status: "open" },
+        { request: "replacement", requester: "hugh", addressed_to: "codex", status: "open" },
+        { request: "request", requester: "hugh", performer: "codex", promise: "promise", status: "promised", waiting_on: "codex" },
+      ],
+      reviews: [], artifacts: [],
+      actors: { codex: { name: "codex", kind: "agent", roles: [], role_sources: {}, dormant_role_sources: {}, retired_role_sources: {} } },
+      provenance: { "ratify-act": ["proposal"], "supersede-act": ["replacement"], request: ["basis", "proposal"] },
+    };
+    const room = workroom({}, projection);
+    const table = renderToStaticMarkup(React.createElement(RequestList, { workroom: room, view: defaultListView, onView() {}, onOpenThread() {} }));
+    assert.match(table, /data-board-presentation="table"/, "Table is not the initial presentation");
+    const graph = renderToStaticMarkup(React.createElement(RequestList, { workroom: room, view: { ...defaultListView, query: "Selected", presentation: "graph" }, onView() {}, onOpenThread() {} }));
+    assert.doesNotMatch(graph, /data-board-presentation="table"/, "Graph left the table mounted beside it");
+    assert.match(graph, /data-outcome-card="request"/, "the searched table row was not a focal graph card");
+    assert.match(graph, /data-outcome-card="basis"/, "the exact direct basis was not shown as bounded context");
+    assert.match(
+      graph,
+      /aria-label="rests on: basis is a direct basis for request\. Reverse: request rests on basis\."/,
+      "the accessible relation label dropped an exact event id or its reverse reading",
+    );
+    assert.match(graph, /Waits on codex/, "the projected waiting_on value is not displayed");
+    assert.equal((graph.match(/Waits on codex/g) ?? []).length, 1, "an addressed request without waiting_on borrowed a next mover");
+    assert.doesNotMatch(graph, /invented condition/, "conditions prose became an inferred graph relation");
+    assert.match(graph, /solid.*rests on.*dotted.*ratified by.*dashed.*superseded/, "relation form, not colour alone, is not explained");
+    assert.match(graph, /data-relation="ratified-by"[\s\S]*?stroke-dasharray="2 5"/, "ratification is not drawn with the documented dotted line");
+    assert.match(graph, /data-relation="superseded"[\s\S]*?stroke-dasharray="8 5"/, "supersession is not drawn with the documented dashed line");
+  } finally {
+    await vite.close();
+  }
+});
+
 // Withdrawing a ratification must bring the action back. The toolbar used to
 // ask whether the viewer had ever ratified, which is a different question:
 // once withdrawn, the act is no longer in force, and a lawful re-ratification

@@ -1448,6 +1448,32 @@ a projection it may merge on. This carries the fold profile to
   as a repository with no remote does, so the page never distinguishes the
   two.
 
+  The board's layer-seven outcome map is a pure read over the existing
+  Workroom projection. It uses the same commitment-boundary thread identity as
+  the table and collapses only exact cross-thread `rests on`, `ratified by`,
+  and `superseded` relations. Every line retains all contributing event
+  identifiers and both direction readings. It does not parse conditions prose,
+  synthesize blocking, infer replacement chains, or change a server or fold
+  contract.
+
+  Table remains the default board presentation. The board-level
+  `Table | Graph` control gives both presentations the same selected
+  population after the same search; table sorting does not change graph
+  membership or placement. Context cards remain outside the population count.
+  The graph lays direct bases to the left of dependents, pans and zooms as one
+  drawing, exposes each complete relation to pointer, keyboard, and touch
+  users, and opens the existing full thread from a selected card. It presents
+  `waiting_on` only when the fold projected that field and distinguishes a
+  root of this view from missing or out-of-view bases.
+
+  Rendering is deterministic and bounded. A view admits at most 160 thread
+  cards, including at most 96 direct-context cards, 160 complete relation
+  groups, 64 exact contributors per group, and 20 warnings. Applying a bound
+  omits a whole context card or relation group and reports the omission; it
+  never leaves an orphan card, partial line, or line whose exact contributors
+  are unavailable. Malformed input and cycles produce bounded warnings and a
+  usable graph.
+
 These surfaces may evolve or be replaced without changing kernel validity.
 They must not infer application force that the selected interpreter did not
 produce.
@@ -1567,7 +1593,7 @@ the same result.
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
-| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes, as two screens: a sortable list of open requests and one thread drawn as a commitment spine. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Before opening an ordinary state composer route, it reads the projected participant role to show the fold's refusal early; the signing boundary and fold remain the guarantee. Direct ratification and own-author supersession keep their distinct fold rules. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
+| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes as two screens: a board and one thread drawn as a commitment spine. Table remains the default board presentation. Its read-only `Table | Graph` outcome-map control preserves the selected population and search, marks direct context outside focal counts, retains exact contributing event relations, and opens the same full thread; table sorting changes neither graph membership nor placement. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Before opening an ordinary state composer route, it reads the projected participant role to show the fold's refusal early; the signing boundary and fold remain the guarantee. Direct ratification and own-author supersession keep their distinct fold rules. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
 
 The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,
