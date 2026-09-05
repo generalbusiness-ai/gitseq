@@ -62,15 +62,26 @@ gs reassign-if-unclaimed --repo "$REPO" --as alice --to @second \
 The replacement request is signed as `workroom/reassign-if-unclaimed@1`, under
 which the fold reads its stated result exactly as it reads a
 `workroom/state@3` request. Nothing is inherited from the retired request: a
-replacement that states no result is refused before either act is appended, and
-a replacement of a legacy request must say in its own words what it owes.
+replacement of a legacy request must say in its own words what it owes.
+
+The pair is two acts in order, so a refusal the replacement earns after the
+retirement has landed would leave the old request withdrawn with nobody asked
+to do the work. Everything the replacement's own body can be judged on is
+therefore judged before the retirement is appended: a missing `--to` or
+`--conditions`, an address nobody holds, a reserved admission field, a missing
+or doubled result, a `target_ref` outside `refs/heads/`, one naming a ref that
+does not resolve here, and a supplied `target_repo` or `target_head`. Each of
+those refuses with nothing appended and the old request still open. What is
+not knowable then stays where it belongs: the guard on the old request — no
+admitted promise, no direct completion, no prior retirement — is judged when
+each act is appended, against the frontier that act actually joins.
 
 The command prints JSON containing the retirement and replacement request event
 identifiers. If the first act lands and the second loses a race, the error names
 the retirement. Re-read the old request, then retry the exact command only when
 the guard still describes what you intend. An exact retry replays the landed
 prefix instead of appending it again. The replacement is authored on the same
-path as [`gs state`](state.md#retrying-a-request-that-owes-a-landing), so its
+path as [`gs state`](state.md#retrying-a-request), so its
 retry is answered from the log before any ref is read: it replays even after
 the branch its `target_ref` named has gone, while a reused key naming a
 different branch is refused rather than answered with the accepted

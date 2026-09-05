@@ -1466,6 +1466,13 @@ for the common status, work, inspect and worktree shape. The additive
 verified event checkpoint so historical receipts gain the witness without
 rewriting signed records.
 
+`workroom/reassign-if-unclaimed@1` advances it again, to `workroom-fold@22`. A
+fold that does not know that schema cannot decode the record at all and rules
+it ineffective, so an `@21` projection at the same frontier holds no
+replacement request and no commitment for it. A cache written under `@21` is
+therefore rejected and replayed from the verified event checkpoint, which is
+what gives the replacement its request row and the destination it stated.
+
 Pending ratification is a separate attention lane, not a commitment state.
 `internal/statusview` selects effective, unratified, live proposals whose
 captured `role:<name>` satisfier is held by the actor being viewed. It reads the
@@ -1595,14 +1602,37 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   happens. The retry identity the kernel indexes — target log, actor key,
   idempotency namespace, idempotency key — needs nothing measured, so an act
   already accepted under this caller's key is recovered from the log first; the
-  request is rebuilt on the measurement that act stated and is used only when
-  it is byte for byte the accepted one. No ref is read on that path, so an
-  exact retry replays after the branch it named has moved or been deleted
-  outright. Only the server-derived half is recovered: `target_ref` stays
+  request is rebuilt as that act was written and is used only when it is byte
+  for byte the accepted one. No ref is read on that path, so an exact retry
+  replays after the branch it named has moved or been deleted outright. Only
+  the server-derived half of the triple is recovered: `target_ref` stays
   whatever the caller sent, so a reused key naming a different branch rebuilds
   a different act, falls through to a fresh measurement, and is refused as a
   reused key rather than answered with the request filed against the old
   destination. A fresh filing naming a ref that does not resolve is refused.
+
+  The accepted act's schema is recovered with it, and is what the rebuild is
+  signed under: `workroom/state@2` or `workroom/reassign-if-unclaimed@0` for a
+  record written before the obligation existed, `state@3` or
+  `reassign-if-unclaimed@1` for one written after. This is what makes an
+  existing workroom retryable. Every request already in every log states no
+  result, so re-signing one as `state@3` refuses it for stating none — the one
+  answer a caller who already holds the act must never get. A legacy
+  reproduction reads its body as the opaque text it was, and the gate for the
+  whole recovery is the idempotency key plus a request-lifecycle state or the
+  reassignment verb, never a field of the body, because the body of a legacy
+  request says nothing about whether one exists.
+
+  The guarded reassignment is two acts in order — the retirement, then the
+  replacement — so the same authoring rules run once before the pair begins and
+  again when the replacement is signed. Everything the replacement's own body
+  earns a refusal for is knowable before either act, and learning it after the
+  first one is what would leave the old request withdrawn with no successor and
+  the frontier moved. The preflight decides nothing: it is the same code, over
+  the caller's own body, and it answers a retry from the accepted act exactly
+  as the signing path does, so resuming a landed pair reads no ref there
+  either. The guard itself — no admitted promise, no direct completion — is not
+  knowable then and stays at append, against the frontier each act joins.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

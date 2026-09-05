@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -282,6 +283,99 @@ func TestMCPRequestMeasuresTheRefAtEachFiling(t *testing.T) {
 	}
 }
 
+// seedLegacyRequest puts one workroom/state@2 request into the log the way the
+// pre-obligation adapter wrote them: signed by this session's own actor, under
+// this key, stating no result at all.
+func (m mcpAuthoring) seedLegacyRequest(key, text string, body map[string]string) string {
+	m.t.Helper()
+	_, private, err := m.workspace.Actor("human")
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindRequest, Text: text, Body: body})
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	tree, err := m.workspace.Store.WritePayloadTree(m.ctx, payload, nil)
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	view := m.workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        []string{m.seed},
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: key,
+	}, private)
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	accepted, err := kernel.Submit(m.ctx, m.workspace.Store, kernel.Request{Signed: signed, Payload: payload},
+		kernel.Options{SigningKey: view.SequencerKey})
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	return m.workspace.EventID(accepted.Head)
+}
+
+// An agent retrying a request its workroom accepted before the landing
+// obligation existed gets that act back through the tool it actually calls,
+// and a fresh call stating no result is still refused.
+func TestMCPRequestReplaysAnExistingLegacyAct(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	agent, err := fixture.workspace.ResolveActor("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stated := map[string]string{"to": "@agent", "conditions": "the old way"}
+	event := fixture.seedLegacyRequest("mcp-legacy", "legacy request",
+		map[string]string{"to": agent.Fingerprint, "conditions": "the old way"})
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the legacy act was stored as %q", schema)
+	}
+
+	frontier := fixture.frontier()
+	replay, err := fixture.file("mcp-legacy", "legacy request", stated)
+	if err != nil {
+		t.Fatalf("exact retry of an accepted legacy request through the tool: %v", err)
+	}
+	if replay != event {
+		t.Fatalf("the legacy retry returned %s, want %s", replay, event)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the legacy retry appended: %s to %s", frontier, after)
+	}
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the replayed act reads as %q; a retry re-signed history", schema)
+	}
+
+	refused, err := fixture.file("mcp-legacy-fresh", "a new request written the old way", stated)
+	if err == nil {
+		t.Fatalf("a fresh request stating no result was filed as %s", refused)
+	}
+	if !strings.Contains(err.Error(), "request states no result") {
+		t.Fatalf("refusal %q does not name the missing result", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused fresh filing appended: %s to %s", frontier, after)
+	}
+
+	upgraded := map[string]string{"to": "@agent", "conditions": "the old way", "no_git_artifact": "true"}
+	event2, err := fixture.file("mcp-legacy", "legacy request", upgraded)
+	if err == nil {
+		t.Fatalf("a reused legacy key stating a new result was accepted as %s", event2)
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused reuse appended: %s to %s", frontier, after)
+	}
+}
+
 // The guarded replacement reaches the same authoring path through its own tool,
 // and states its result in the body argument this adapter passes through.
 func TestMCPReassignmentStatesTheReplacementResult(t *testing.T) {
@@ -296,26 +390,17 @@ func TestMCPReassignmentStatesTheReplacementResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// The guarded pair is retirement then replacement, so a refused replacement
-	// leaves its own fixture's old request retired. The two cases therefore get
-	// one fixture each rather than sharing a request one of them consumed.
-	refused := newMCPAuthoring(t)
-	if _, _, err := refused.workspace.AddActor(refused.ctx, "human", "second", "agent"); err != nil {
-		t.Fatal(err)
-	}
-	refusedOld, err := refused.file("mcp-reassign-old", "the old request", map[string]string{
-		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, err = refused.adapter.call(refused.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
-		"old_request": refusedOld, "to": "@second", "text": "ask again", "conditions": "do it",
+	// A replacement stating no result is refused before the guarded retirement
+	// is appended, so this leaves the old request untouched and the same
+	// fixture goes on to reassign it.
+	_, _, err = fixture.adapter.call(fixture.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
+		"old_request": old, "to": "@second", "text": "ask again", "conditions": "do it",
 		"idempotency_key": "mcp-reassign-no-choice",
 	}})
 	if err == nil || !strings.Contains(err.Error(), "request states no result") {
 		t.Fatalf("a replacement stating no result = %v", err)
 	}
-	for _, statement := range mcpStatements(t, refused) {
+	for _, statement := range mcpStatements(t, fixture) {
 		if statement.Kind == workroom.KindRequest && statement.Text == "ask again" {
 			t.Fatalf("a replacement with no stated result reached the log: %+v", statement)
 		}
@@ -346,6 +431,71 @@ func TestMCPReassignmentStatesTheReplacementResult(t *testing.T) {
 	}
 	if row := fixture.commitment(replacement.ID); row.TargetRef != "refs/heads/main" || row.Legacy {
 		t.Fatalf("the fold read the replacement as %+v", row)
+	}
+}
+
+// Every refusal a replacement's own body earns happens before the guarded
+// retirement is appended, so the old request keeps its addressee and the
+// frontier does not move. One fixture serves every case for that reason.
+func TestMCPReassignmentRefusesBeforeTheRetirement(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "human", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	old, err := fixture.file("mcp-reassign-old", "the old request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		name string
+		to   string
+		body map[string]any
+		want string
+	}{
+		{"no choice", "@second", nil, "request states no result"},
+		{"mixed choice", "@second",
+			map[string]any{"target_ref": "refs/heads/main", "no_git_artifact": "true"},
+			"request states more than one result"},
+		{"non-branch ref", "@second", map[string]any{"target_ref": "refs/tags/v1"},
+			"target_ref must name a branch under refs/heads/"},
+		{"missing ref", "@second", map[string]any{"target_ref": "refs/heads/nowhere"},
+			"does not resolve in"},
+		{"caller-supplied target_head", "@second",
+			map[string]any{"target_ref": "refs/heads/main", "target_head": strings.Repeat("a", 40)},
+			"target_head is resolved at filing and cannot be supplied"},
+		{"unknown addressee", "@nobody", map[string]any{"no_git_artifact": "true"},
+			"addresses no known actor"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			before := fixture.frontier()
+			arguments := map[string]any{
+				"old_request": old, "to": testCase.to, "text": "ask again: " + testCase.name,
+				"conditions": "do it", "idempotency_key": "mcp-reassign-refuse-" + testCase.name,
+			}
+			if testCase.body != nil {
+				arguments["body"] = testCase.body
+			}
+			_, _, err := fixture.adapter.call(fixture.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: arguments})
+			if err == nil {
+				t.Fatalf("%s was reassigned", testCase.name)
+			}
+			if !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("refusal %q does not name %q", err, testCase.want)
+			}
+			if strings.Contains(err.Error(), "guarded retirement") {
+				t.Fatalf("the retirement was appended before the replacement was judged: %v", err)
+			}
+			for _, statement := range mcpStatements(t, fixture) {
+				if statement.Event == old && statement.Retired {
+					t.Fatalf("the old request was retired with no successor: %+v", statement)
+				}
+			}
+			if after := fixture.frontier(); after != before {
+				t.Fatalf("the frontier moved from %s to %s on a refused reassignment", before, after)
+			}
+		})
 	}
 }
 

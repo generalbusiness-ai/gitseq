@@ -4044,9 +4044,12 @@ func TestReassignIfUnclaimedChecksTheCallingWorktreeBeforeResidentSubmission(t *
 	httpServer := httptest.NewServer(resident.Handler())
 	defer httpServer.Close()
 	before := fixture.snapshot().Depth
+	// The replacement states an admissible result, so the refusal under test is
+	// the citation the linked worktree carries and not the caller's own body.
 	err = reassignIfUnclaimedCommand(fixture.ctx, []string{
 		"--repo", linked, "--as", "operator", "--server", httpServer.URL,
 		"--to", "@worker", "--text", "replacement", "--conditions", "finish",
+		"--body", "no_git_artifact=true",
 		"--idempotency-key", "linked-reassign", old.ID,
 	})
 	if err == nil || !strings.Contains(err.Error(), "docs/reference/linked-request.md") {

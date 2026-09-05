@@ -52,8 +52,19 @@ or completed it.
 The replacement request is signed as `workroom/reassign-if-unclaimed@1`, under
 which the fold reads its stated result exactly as it reads a
 `workroom/state@3` request. Nothing is inherited from the retired request: a
-replacement that states no result is refused before either act is appended, and
-a replacement of a legacy request must say in its own words what it owes.
+replacement of a legacy request must say in its own words what it owes.
+
+The pair is two acts in order, so a refusal the replacement earns after the
+retirement has landed would leave the old request withdrawn with nobody asked
+to do the work. Everything the replacement's own body can be judged on is
+therefore judged before the retirement is appended: a missing `to` or
+`conditions`, an address nobody holds, a reserved admission field, a missing or
+doubled result, a `target_ref` outside `refs/heads/`, one naming a ref that
+does not resolve here, and a supplied `target_repo` or `target_head`. Each of
+those refuses with nothing appended and the old request still open. The guard
+on the old request — no admitted promise, no direct completion, no prior
+retirement — is not knowable then and is judged when each act is appended,
+against the frontier that act actually joins.
 
 The result contains `retirement` and `request` submission results. Unrelated
 durable traffic does not refuse the pair. A promise or direct completion before

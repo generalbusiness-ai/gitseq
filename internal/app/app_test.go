@@ -2485,7 +2485,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@21"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@22"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2552,7 +2552,7 @@ func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
 	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@21"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@22"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2628,10 +2628,97 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@21"
+	want := apphost.DefaultApplication + "\x00workroom-fold@22"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
+}
+
+// The replacement schema is the @21-to-@22 transition, and this is its
+// witness. workroom/reassign-if-unclaimed@1 is a schema an @21 fold cannot
+// decode at all: it rules the record ineffective, so the replacement request
+// is not in that projection and neither is the commitment it opens. The @22
+// fold reads it as a request and reads the result it states, so the
+// commitment carries the destination the replacement named. Serving the @21
+// cache at the same frontier would therefore hide a live open commitment and
+// the landing it owes.
+func TestReplacementSchemaRebuildsATwentyOneProfileCache(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fixture := newAuthoringWorkspace(t)
+	if _, _, err := fixture.workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	original := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "do it",
+		Body:    map[string]string{"to": "@agent", "conditions": "finish", "no_git_artifact": "true"},
+		RestsOn: []string{fixture.seed}, IdempotencyKey: "profile-original",
+	})
+	retirement := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbRetireIfUnclaimed, Target: original.ID,
+		Text: "retire before reassignment", IdempotencyKey: "profile-retirement",
+	})
+	replacement := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbReassignIfUnclaimed, Target: original.ID, Retirement: retirement.ID,
+		Text:           "ask the other agent",
+		Body:           map[string]string{"to": "@other", "conditions": "finish", "target_ref": "refs/heads/main"},
+		IdempotencyKey: "profile-replacement",
+	})
+	current := fixture.workspace.mustSnapshot(t, ctx)
+	row := commitmentRow(t, current, replacement.ID)
+	if row.TargetRef != "refs/heads/main" || row.Legacy {
+		t.Fatalf("current replacement commitment = %+v; the seeded cache below would not differ from a replay", row)
+	}
+
+	// What an @21 cache holds at this same frontier: the replacement record
+	// ruled ineffective for a schema that fold does not know, with no statement
+	// and no commitment anywhere in the projection.
+	old := current
+	old.Projection.Decisions = append([]workroom.Decision(nil), current.Projection.Decisions...)
+	for index := range old.Projection.Decisions {
+		if decision := &old.Projection.Decisions[index]; decision.Event == replacement.ID {
+			decision.Verdict = workroom.Ineffective
+			decision.Reason = "unsupported workroom schema under workroom-fold@21"
+		}
+	}
+	old.Projection.Statements = slices.DeleteFunc(append([]workroom.Statement(nil), current.Projection.Statements...), func(statement workroom.Statement) bool {
+		return statement.Event == replacement.ID
+	})
+	old.Projection.Commitments = slices.DeleteFunc(append([]workroom.Commitment(nil), current.Projection.Commitments...), func(commitment workroom.Commitment) bool {
+		return commitment.Request == replacement.ID
+	})
+	fixture.workspace.snapshotMu.Lock()
+	fixture.workspace.snapshotCache = &old
+	fixture.workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	fixture.workspace.snapshotProfile = apphost.DefaultApplication + "\x00workroom-fold@21"
+	fixture.workspace.snapshotMu.Unlock()
+
+	rebuilt, err := fixture.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, ok := rebuilt.Snapshot.Projection.Decision(replacement.ID)
+	if !ok || decision.Verdict != workroom.Effective {
+		t.Fatalf("rebuilt replacement decision = %+v, found=%v; the @21 cache was served", decision, ok)
+	}
+	if got := commitmentRow(t, rebuilt.Snapshot, replacement.ID); got.TargetRef != "refs/heads/main" || got.Legacy {
+		t.Fatalf("rebuilt replacement commitment = %+v, want the stated refs/heads/main target", got)
+	}
+	want := apphost.DefaultApplication + "\x00workroom-fold@22"
+	if fixture.workspace.snapshotProfile != want {
+		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
+	}
+}
+
+func commitmentRow(t *testing.T, snapshot Snapshot, request string) workroom.Commitment {
+	t.Helper()
+	for _, commitment := range snapshot.Projection.Commitments {
+		if commitment.Request == request {
+			return commitment
+		}
+	}
+	t.Fatalf("no commitment row for %s", request)
+	return workroom.Commitment{}
 }
 
 func statementIndex(t *testing.T, projection workroom.Projection, event string) int {

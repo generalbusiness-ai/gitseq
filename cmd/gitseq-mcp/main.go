@@ -1353,6 +1353,17 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	if retirementText == "" {
 		retirementText = "retire unclaimed request before reassignment"
 	}
+	body := replacementBody(call.Arguments)
+	// The pair is retirement then replacement, so a replacement refused for
+	// something its own body already said would leave the old request withdrawn
+	// with no successor. Everything knowable about it now is judged now,
+	// through the same authoring rules that will judge it again at signing.
+	if len(identity.private) == 0 {
+		return nil, errors.New("selected identity has no signing key")
+	}
+	if err := identity.workspace.PreflightGuardedReplacement(ctx, identity.private, identity.selector, key+"/request", body); err != nil {
+		return nil, err
+	}
 	retirement, err := s.submit(ctx, current, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: retirementText,
 		IdempotencyKey: key + "/retirement",
@@ -1367,7 +1378,7 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	replacement, err := s.submit(ctx, current, app.Act{
 		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirementRecord.ID,
 		Text:    stringValue(call.Arguments["text"]),
-		Body:    replacementBody(call.Arguments),
+		Body:    body,
 		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
 	}, identity)
 	if err != nil {

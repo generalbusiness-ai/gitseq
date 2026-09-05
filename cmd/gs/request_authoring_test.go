@@ -140,15 +140,20 @@ func (f authoringFixture) commitment(event string) workroom.Commitment {
 	return workroom.Commitment{}
 }
 
-func (f authoringFixture) body(event string) map[string]string {
+func (f authoringFixture) statement(event string) workroom.Statement {
 	f.t.Helper()
 	for _, statement := range f.statements() {
 		if statement.Event == event {
-			return statement.Body
+			return statement
 		}
 	}
 	f.t.Fatalf("no statement for %s", event)
-	return nil
+	return workroom.Statement{}
+}
+
+func (f authoringFixture) body(event string) map[string]string {
+	f.t.Helper()
+	return f.statement(event).Body
 }
 
 func (f authoringFixture) genesisID() string {
@@ -335,47 +340,59 @@ func TestCLIRequestMeasuresTheRefAtEachFiling(t *testing.T) {
 	}
 }
 
+// seedLegacyRequest puts one workroom/state@2 request into the log the way a
+// resident running the pre-obligation code wrote them: signed by this
+// fixture's own operator, under this key, with a body that states no result at
+// all. It is the shape every request in every existing workroom has, and the
+// only way to get one now is to sign it directly.
+func (f authoringFixture) seedLegacyRequest(key, text string, body map[string]string) string {
+	f.t.Helper()
+	_, private, err := f.workspace.Actor("operator")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindRequest, Text: text, Body: body})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	tree, err := f.workspace.Store.WritePayloadTree(f.ctx, payload, nil)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	view := f.workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        []string{f.seed},
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: key,
+	}, private)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	accepted, err := kernel.Submit(f.ctx, f.workspace.Store, kernel.Request{Signed: signed, Payload: payload},
+		kernel.Options{SigningKey: view.SequencerKey})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return f.workspace.EventID(accepted.Head)
+}
+
 // A request already in the log under state@2 keeps its bytes and its reading,
-// and an exact retry of it replays that act rather than re-signing it under the
-// new schema.
+// and an exact retry of it through the command anyone types replays that act
+// rather than being re-signed under the new schema and refused for stating no
+// result. Every workroom with any history at all is in this position, so the
+// retry has to work at the surface, not merely inside the kernel.
 func TestCLIRequestReplaysAnExistingLegacyAct(t *testing.T) {
 	fixture := newAuthoringFixture(t)
 	agent, err := fixture.workspace.ResolveActor("agent")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, private, err := fixture.workspace.Actor("operator")
-	if err != nil {
-		t.Fatal(err)
-	}
-	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindRequest, Text: "legacy request",
-		Body: map[string]string{"to": agent.Fingerprint, "conditions": "the old way"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	tree, err := fixture.workspace.Store.WritePayloadTree(fixture.ctx, payload, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	view := fixture.workspace.View()
-	signed, err := intent.Sign(intent.Intent{
-		Version: intent.Version,
-		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
-		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
-		RestsOn:        []string{fixture.seed},
-		IdempotencyNS:  view.IdempotencyNamespace,
-		IdempotencyKey: "legacy-request",
-	}, private)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request := kernel.Request{Signed: signed, Payload: payload}
-	first, err := kernel.Submit(fixture.ctx, fixture.workspace.Store, request,
-		kernel.Options{SigningKey: view.SequencerKey})
-	if err != nil {
-		t.Fatal(err)
-	}
-	event := fixture.workspace.EventID(first.Head)
+	stated := map[string]string{"to": "@agent", "conditions": "the old way"}
+	event := fixture.seedLegacyRequest("legacy-request", "legacy request",
+		map[string]string{"to": agent.Fingerprint, "conditions": "the old way"})
 	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
 		t.Fatalf("the legacy act was stored as %q", schema)
 	}
@@ -383,20 +400,86 @@ func TestCLIRequestReplaysAnExistingLegacyAct(t *testing.T) {
 		t.Fatalf("the legacy body was rewritten: %+v", body)
 	}
 
+	// The retry a person actually makes: the same words, the same body, the
+	// same key, through gs state.
 	frontier := fixture.frontier()
-	second, err := kernel.Submit(fixture.ctx, fixture.workspace.Store, request,
-		kernel.Options{SigningKey: view.SequencerKey})
+	replay, err := fixture.file("legacy-request", "legacy request", stated)
 	if err != nil {
-		t.Fatalf("exact retry of the legacy act: %v", err)
+		t.Fatalf("exact retry of an accepted legacy request at the command line: %v", err)
 	}
-	if fixture.workspace.EventID(second.Head) != event {
-		t.Fatalf("the legacy retry returned %s, want %s", fixture.workspace.EventID(second.Head), event)
+	if replay != event {
+		t.Fatalf("the legacy retry returned %s, want %s", replay, event)
 	}
 	if after := fixture.frontier(); after != frontier {
 		t.Fatalf("the legacy retry appended: %s to %s", frontier, after)
 	}
 	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
 		t.Fatalf("the replayed act reads as %q; a retry re-signed history", schema)
+	}
+
+	// Nothing here weakens the rule for new work. A fresh key stating no result
+	// is refused exactly as it was, and nothing is appended.
+	refused, err := fixture.file("legacy-fresh", "a new request written the old way", stated)
+	if err == nil {
+		t.Fatalf("a fresh request stating no result was filed as %s", refused)
+	}
+	if !strings.Contains(err.Error(), "request states no result") {
+		t.Fatalf("refusal %q does not name the missing result", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused fresh filing appended: %s to %s", frontier, after)
+	}
+
+	// A caller who reuses the accepted key to say something else — here, to
+	// state the result the legacy request never stated — is filing a different
+	// act and is refused as one, never answered with the legacy request.
+	upgraded := map[string]string{"to": "@agent", "conditions": "the old way", "no_git_artifact": "true"}
+	event2, err := fixture.file("legacy-request", "legacy request", upgraded)
+	if err == nil {
+		t.Fatalf("a reused legacy key stating a new result was accepted as %s", event2)
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused reuse appended: %s to %s", frontier, after)
+	}
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the accepted legacy act now reads as %q", schema)
+	}
+}
+
+// A legacy body could carry any field names it liked, including the ones the
+// obligation later gave meaning to, and they were opaque text there. An exact
+// retry of such a record must still replay it as the state@2 act it is: the
+// schema it was signed under is part of the act, not a detail the rebuild may
+// modernise because today's rules happen to accept the body.
+func TestCLIRequestReplaysALegacyActWhoseBodyReadsLikeAChoice(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	agent, err := fixture.workspace.ResolveActor("agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stated := map[string]string{"to": "@agent", "conditions": "the old way", "no_git_artifact": "true"}
+	event := fixture.seedLegacyRequest("legacy-worded", "legacy request with words that now mean something",
+		map[string]string{"to": agent.Fingerprint, "conditions": "the old way", "no_git_artifact": "true"})
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the legacy act was stored as %q", schema)
+	}
+
+	frontier := fixture.frontier()
+	replay, err := fixture.file("legacy-worded", "legacy request with words that now mean something", stated)
+	if err != nil {
+		t.Fatalf("exact retry of an accepted legacy request: %v", err)
+	}
+	if replay != event {
+		t.Fatalf("the legacy retry returned %s, want %s", replay, event)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the legacy retry appended: %s to %s", frontier, after)
+	}
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the replayed act reads as %q; a retry re-signed history under the new schema", schema)
 	}
 }
 
@@ -459,6 +542,74 @@ func TestCLIReassignmentStatesTheReplacementResult(t *testing.T) {
 			t.Fatalf("the fold read the replacement as %+v", row)
 		}
 	})
+}
+
+// The guarded pair is retirement then replacement, so a replacement refused for
+// something its own body already said would leave the old request withdrawn
+// with nobody asked to do the work. Every such refusal happens before the
+// retirement is appended, and one fixture serves every case here precisely
+// because none of them may append anything.
+func TestCLIReassignmentRefusesBeforeTheRetirement(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	old, err := fixture.file("reassign-old", "the old request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct {
+		name string
+		body []string
+		want string
+	}{
+		{"no choice", nil, "request states no result"},
+		{"mixed choice", []string{"target_ref=refs/heads/main", "no_git_artifact=true"},
+			"request states more than one result"},
+		{"mixed inherit", []string{"target=inherit", "no_git_artifact=true"},
+			"request states more than one result"},
+		{"non-branch ref", []string{"target_ref=refs/tags/v1"},
+			"target_ref must name a branch under refs/heads/"},
+		{"missing ref", []string{"target_ref=refs/heads/nowhere"}, "does not resolve in"},
+		{"caller-supplied target_head", []string{"target_ref=refs/heads/main",
+			"target_head=" + strings.Repeat("a", 40)},
+			"target_head is resolved at filing and cannot be supplied"},
+		{"caller-supplied target_repo", []string{"target_repo=" + fixture.genesisID(),
+			"target_ref=refs/heads/main"},
+			"target_repo is resolved at filing and cannot be supplied"},
+		{"unknown addressee", []string{"no_git_artifact=true"}, "addresses no known actor"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			before := fixture.frontier()
+			to := "@second"
+			if testCase.name == "unknown addressee" {
+				to = "@nobody"
+			}
+			arguments := []string{"--repo", fixture.repo, "--as", "operator", "--to", to,
+				"--text", "ask again: " + testCase.name, "--conditions", "do it",
+				"--idempotency-key", "reassign-refuse-" + testCase.name}
+			for _, field := range testCase.body {
+				arguments = append(arguments, "--body", field)
+			}
+			err := reassignIfUnclaimedCommand(fixture.ctx, append(arguments, old))
+			if err == nil {
+				t.Fatalf("%s was reassigned", testCase.name)
+			}
+			if !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("refusal %q does not name %q", err, testCase.want)
+			}
+			if strings.Contains(err.Error(), "guarded retirement") {
+				t.Fatalf("the retirement was appended before the replacement was judged: %v", err)
+			}
+			if row := fixture.statement(old); row.Retired {
+				t.Fatalf("the old request was retired with no successor: %+v", row)
+			}
+			if after := fixture.frontier(); after != before {
+				t.Fatalf("the frontier moved from %s to %s on a refused reassignment", before, after)
+			}
+		})
+	}
 }
 
 // An accepted act is recovered from the log before any ref is read, so a

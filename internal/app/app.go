@@ -1286,21 +1286,22 @@ func (w *Workspace) BuildActRequestReadOnly(ctx context.Context, snapshot Snapsh
 // buildActRequest resolves an accepted retry before it measures anything, then
 // builds the act.
 //
-// An act that names a destination by ref and carries an idempotency key is the
-// one act whose payload depends on a mutable read, so it is the one act whose
-// retry cannot simply be rebuilt. If a request already stands under this
-// caller's key, the measurement it stated is recovered from the log and the act
-// is rebuilt on that: no ref is read, so a moved or deleted branch cannot stand
-// between a caller and the act they already have. The rebuilt act is used only
-// when it is byte for byte the accepted one; anything else — a changed
-// destination, changed words, changed bases — falls through to an ordinary
-// fresh filing, which measures the ref as it stands now and leaves the kernel
-// to refuse the reused key.
+// A request is the one act whose payload depends on a mutable read, and the
+// one act whose rules have changed under logs that already hold it, so it is
+// the one act whose retry cannot simply be rebuilt from today's inputs. If an
+// act already stands under this caller's key, it is recovered from the log
+// first and the retry is rebuilt as that act was written: under its own
+// schema, on the measurement it stated. No ref is read on that path, so
+// neither a moved or deleted branch nor a rule written after the act was
+// accepted can stand between a caller and the act they already have. The
+// rebuilt act is used only when it is byte for byte the accepted one; anything
+// else — a changed destination, changed words, changed bases — falls through
+// to an ordinary fresh filing, which measures the ref as it stands now and
+// leaves the kernel to refuse the reused key.
 func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot) (kernel.Request, error) {
-	if act.IdempotencyKey != "" && act.Body["target_ref"] != "" &&
-		(act.Verb == VerbState || act.Verb == VerbReassignIfUnclaimed) {
-		if measurement, prior, found := w.acceptedRequestMeasurement(ctx, private, actorName, act.IdempotencyKey); found {
-			replay, err := w.buildAct(ctx, private, actorName, act, snapshot, measurement)
+	if w.mayReproduceAcceptedRequest(ctx, snapshot, act) {
+		if reproduction, prior, found := w.acceptedRequestReproduction(ctx, private, actorName, act.IdempotencyKey, act.Verb); found {
+			replay, err := w.buildAct(ctx, private, actorName, act, snapshot, reproduction)
 			if err == nil && replay.Signed.Equal(prior.Signed) {
 				return replay, nil
 			}
@@ -1309,10 +1310,36 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 	return w.buildAct(ctx, private, actorName, act, snapshot, nil)
 }
 
-// buildAct is the whole authoring path for one act. measurement, when it is not
-// nil, is the accepted target measurement buildActRequest recovered, and is the
-// only thing that keeps this path from reading a ref.
-func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot, measurement map[string]string) (kernel.Request, error) {
+// mayReproduceAcceptedRequest reports whether this act is one whose accepted
+// form has to be looked up before it is rebuilt.
+//
+// The gate is the idempotency key plus the request-authoring verbs, and
+// deliberately nothing about the body. An earlier gate also required
+// body.target_ref, on the reasoning that only a measured request needs
+// recovering; but a legacy request carries no target_ref at all, so that gate
+// sent every legacy retry down the fresh-filing path to be refused for stating
+// no result. What needs recovering is any act this path would sign
+// differently today than the log already holds it, and the caller's body
+// cannot say whether that is so.
+func (w *Workspace) mayReproduceAcceptedRequest(ctx context.Context, snapshot *Snapshot, act Act) bool {
+	if act.IdempotencyKey == "" {
+		return false
+	}
+	switch act.Verb {
+	case VerbReassignIfUnclaimed:
+		return true
+	case VerbState:
+		request, err := w.requestLifecycle(ctx, snapshot, act.Kind)
+		return err == nil && request
+	}
+	return false
+}
+
+// buildAct is the whole authoring path for one act. reproduction, when it is
+// not nil, is the accepted act buildActRequest recovered, and is the only
+// thing that changes the schema this path signs or keeps it from reading a
+// ref.
+func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot, reproduction *requestReproduction) (kernel.Request, error) {
 	var schema string
 	var payload any
 	guardedRetirement := false
@@ -1326,9 +1353,11 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		// A request states what it owes, and this is where it acquires the
 		// fields that say so. Everything a request-lifecycle state signs from
 		// here on is workroom/state@3, so the choice is never optional and
-		// never silently a legacy reading.
-		if request {
-			if body, err = w.resolveRequestChoice(ctx, act.Kind, body, measurement); err != nil {
+		// never silently a legacy reading. Reproducing a legacy act is the one
+		// exception, and it is not an exception to the rule: that act's body
+		// was opaque text when it was signed and stays opaque text now.
+		if request && reproduction.statesItsResult() {
+			if body, err = w.resolveRequestChoice(ctx, act.Kind, body, reproduction.accepted()); err != nil {
 				return kernel.Request{}, err
 			}
 		}
@@ -1364,7 +1393,7 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		}
 		schema = workroom.SchemaState
 		if request {
-			schema = workroom.SchemaStateV3
+			schema = reproduction.signedAs(workroom.SchemaStateV3)
 		}
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: body}
 	case VerbRatify:
@@ -1396,18 +1425,11 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		}
 		rests = append([]string{act.Target}, rests...)
 	case VerbReassignIfUnclaimed:
-		body, err := w.normalizeGuardedRequestShape(ctx, act.Body)
+		// The same preparation the surfaces run before they append the guarded
+		// retirement, applied again here against the frontier this act will
+		// actually join.
+		body, err := w.guardedReplacementBody(ctx, act.Body, reproduction)
 		if err != nil {
-			return kernel.Request{}, err
-		}
-		if err := refuseClientReservedFields(act.Body); err != nil {
-			return kernel.Request{}, err
-		}
-		// The replacement is a request like any other, so it states its own
-		// result. It is filed under reassign-if-unclaimed@1, which is what
-		// tells the fold to read that choice; @0 records already in the log
-		// keep reading their body as opaque text.
-		if body, err = w.resolveRequestChoice(ctx, workroom.KindRequest, body, measurement); err != nil {
 			return kernel.Request{}, err
 		}
 		rests = append([]string{act.Retirement}, rests...)
@@ -1422,7 +1444,7 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		if err != nil {
 			return kernel.Request{}, err
 		}
-		schema = workroom.SchemaReassignRequestV1
+		schema = reproduction.signedAs(workroom.SchemaReassignRequestV1)
 		payload = workroom.ReassignIfUnclaimed{
 			Text: act.Text, Body: body,
 			Expectation: workroom.UnclaimedExpectation{
@@ -1577,19 +1599,20 @@ func (w *Workspace) resolveHistoricalAddress(ctx context.Context, address string
 	return matches[0], nil
 }
 
-// normalizeRequestShape mirrors the fold's request-lifecycle field and actor
-// checks before the request is signed. The fold remains authoritative if the
-// log moves after this check. The active vocabulary matters: a declared kind
-// can participate in the request lifecycle just as the starter request kind
-// does.
-func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, bool, error) {
+// requestLifecycle reports whether a kind participates in the request
+// lifecycle here. The active vocabulary matters: a declared kind can
+// participate just as the starter request kind does, and only the projection
+// knows which. One rule serves both the shape check below and the retry
+// recovery in buildActRequest, so neither can decide that an act is a request
+// while the other decides it is not.
+func (w *Workspace) requestLifecycle(ctx context.Context, snapshot *Snapshot, kind workroom.Kind) (bool, error) {
 	lifecycle, starter := workroom.StarterLifecycle(kind)
 	if !starter {
 		current := snapshot
 		if current == nil {
 			loaded, err := w.Snapshot(ctx)
 			if err != nil {
-				return nil, false, fmt.Errorf("validate request shape: %w", err)
+				return false, fmt.Errorf("validate request shape: %w", err)
 			}
 			current = &loaded
 		}
@@ -1601,7 +1624,18 @@ func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapsho
 			}
 		}
 	}
-	if lifecycle != workroom.LifecycleRequest {
+	return lifecycle == workroom.LifecycleRequest, nil
+}
+
+// normalizeRequestShape mirrors the fold's request-lifecycle field and actor
+// checks before the request is signed. The fold remains authoritative if the
+// log moves after this check.
+func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, bool, error) {
+	request, err := w.requestLifecycle(ctx, snapshot, kind)
+	if err != nil {
+		return nil, false, err
+	}
+	if !request {
 		return body, false, nil
 	}
 	normalized := cloneBody(body)

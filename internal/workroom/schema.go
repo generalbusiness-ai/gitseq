@@ -13,7 +13,7 @@ const (
 	// ProfileVersion identifies the exact deterministic application projection
 	// contract. Kernel checkpoints are profile-independent verified event
 	// material; application projection caches use this value as their gate.
-	ProfileVersion    = "workroom-fold@21"
+	ProfileVersion    = "workroom-fold@22"
 	SchemaStateLegacy = "workroom/state@0"
 	SchemaStateV1     = "workroom/state@1"
 	SchemaState       = "workroom/state@2"
@@ -42,6 +42,11 @@ const (
 	// choice from its body. Under @0 those names are opaque text, exactly as
 	// they are on a state@2 record, which is what keeps every reassignment
 	// already in the log reading as it always did.
+	//
+	// A fold that does not know this schema cannot decode the record at all
+	// and rules it ineffective, so what the projection contains changes with
+	// it: ProfileVersion advances to workroom-fold@22, and a cache written
+	// under @21 replays rather than being served.
 	SchemaReassignRequestV1 = "workroom/reassign-if-unclaimed@1"
 )
 

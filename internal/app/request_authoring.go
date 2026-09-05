@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
@@ -113,49 +114,115 @@ func (w *Workspace) resolveTargetHead(ctx context.Context, ref string) (string, 
 	return head, nil
 }
 
-// acceptedRequestMeasurement answers the one problem a filing-time measurement
-// creates: a retry cannot measure the same world twice. The by-value target
-// head is read from the ref when the request is signed, so an exact retry after
-// the ref moved — or after the branch was deleted outright — would rebuild a
-// different payload, or fail to build at all, for an act the caller has every
-// right to see replayed.
+// requestReproduction is what an act already accepted under a caller's
+// idempotency key tells this layer about how to rebuild it: the schema it was
+// signed under, and the server-derived half of the target triple it stated,
+// when it stated one.
+//
+// The schema is half the answer and the harder half. A retry must reproduce
+// the act the log holds, not the act this version of the code would sign
+// today. A request filed before the landing obligation existed stands as
+// workroom/state@2 and states no result at all; rebuilding it as
+// workroom/state@3 refuses it for stating none, which is the one answer a
+// caller who already owns that act must never get.
+type requestReproduction struct {
+	schema      string
+	measurement map[string]string
+}
+
+// statesItsResult reports whether the schema being rebuilt is one the fold
+// reads a result choice from. On a legacy record the same field names are
+// opaque body text and confer nothing, so judging them as a choice would
+// refuse the retry of an act already in the log. A nil reproduction is an
+// ordinary fresh filing, which always states its result.
+func (r *requestReproduction) statesItsResult() bool {
+	return r == nil || r.schema == workroom.SchemaStateV3 || r.schema == workroom.SchemaReassignRequestV1
+}
+
+// accepted is the measurement to rebuild on, or nil to take a fresh one.
+func (r *requestReproduction) accepted() map[string]string {
+	if r == nil {
+		return nil
+	}
+	return r.measurement
+}
+
+// signedAs is the schema to sign the rebuild under: the accepted act's own,
+// or current when there is nothing to reproduce.
+func (r *requestReproduction) signedAs(current string) string {
+	if r == nil {
+		return current
+	}
+	return r.schema
+}
+
+// reproducibleRequestSchemas names, for one verb, every schema whose payload
+// shape this path can write. It is a table rather than a guard: an accepted
+// act under any other schema carries a different payload type, so a rebuild
+// could never be byte for byte that act anyway, and the key falls through to
+// an ordinary fresh filing where the kernel refuses it as a reused one.
+//
+// Reproducing a schema is not the same as signing one. A fresh filing is
+// always signed under the current schema; these older ones are reachable only
+// by rebuilding an act the log already holds, and only when the rebuild is
+// byte for byte that act, which means the submission replays and nothing is
+// appended.
+func reproducibleRequestSchemas(verb Verb) []string {
+	switch verb {
+	case VerbState:
+		return []string{workroom.SchemaStateLegacy, workroom.SchemaStateV1, workroom.SchemaState, workroom.SchemaStateV3}
+	case VerbReassignIfUnclaimed:
+		return []string{workroom.SchemaReassignRequest, workroom.SchemaReassignRequestV1}
+	}
+	return nil
+}
+
+// acceptedRequestReproduction answers the one problem a filing-time
+// measurement creates: a retry cannot measure the same world twice. The
+// by-value target head is read from the ref when the request is signed, so an
+// exact retry after the ref moved — or after the branch was deleted outright —
+// would rebuild a different payload, or fail to build at all, for an act the
+// caller has every right to see replayed. A legacy act has the same problem
+// from the other side: it states no result, and today's rules refuse one.
 //
 // So the accepted act is recovered from the log first, before any ref is read.
-// The retry identity the kernel indexes is target log, actor key, namespace and
-// key, and none of those needs the repository measured, so the question can be
-// asked with nothing resolved. When an act stands under it and stated a
-// by-value target, this returns the server-derived half of what it stated —
-// target_repo and target_head, never target_ref — for the caller's own body to
-// carry into an ordinary rebuild.
+// The retry identity the kernel indexes is target log, actor key, namespace
+// and key, and none of those needs the repository measured, so the question
+// can be asked with nothing resolved. What comes back is the schema that act
+// was signed under and, when it stated a by-value target, the server-derived
+// half of it — target_repo and target_head, never target_ref — for the
+// caller's own body to carry into an ordinary rebuild.
 //
-// The rebuild is used only if it is byte for byte the accepted act, so this can
-// produce an exact replay or nothing. It is not a retry cache, holds no state,
-// and cannot turn a different act into an accepted one: everything the caller
-// stated, the destination ref included, still has to agree.
-func (w *Workspace) acceptedRequestMeasurement(ctx context.Context, private ed25519.PrivateKey,
-	actorName, key string) (map[string]string, kernel.Event, bool) {
+// The rebuild is used only if it is byte for byte the accepted act, so this
+// can produce an exact replay or nothing. It is not a retry cache, holds no
+// state, and cannot turn a different act into an accepted one: everything the
+// caller stated, the destination ref included, still has to agree.
+func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed25519.PrivateKey,
+	actorName, key string, verb Verb) (*requestReproduction, kernel.Event, bool) {
+	allowed := reproducibleRequestSchemas(verb)
+	if key == "" || len(allowed) == 0 {
+		return nil, kernel.Event{}, false
+	}
 	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
 		w.idempotencyNamespace(actorName), key)
 	prior, exists, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !exists {
+	if err != nil || !exists || !slices.Contains(allowed, prior.Intent.Schema) {
 		return nil, kernel.Event{}, false
 	}
 	accepted, err := workroom.Decode(prior.Intent.Schema, prior.Payload)
 	if err != nil {
 		return nil, kernel.Event{}, false
 	}
-	measurement := requestMeasurementOf(accepted)
-	if measurement == nil {
-		return nil, kernel.Event{}, false
-	}
-	return measurement, prior, true
+	return &requestReproduction{schema: prior.Intent.Schema, measurement: requestMeasurementOf(accepted)}, prior, true
 }
 
 // requestMeasurementOf reads the server-derived half of the target triple an
 // accepted request stated, from either payload shape that carries one. The
 // caller-selected target_ref is deliberately not among the fields returned: it
 // is the caller's own intent, and recovering it would erase a difference that
-// has to be refused.
+// has to be refused. An act that stated no triple — an inheriting request, a
+// no-artifact one, a legacy one — measured nothing, and nil is the honest
+// answer for it.
 func requestMeasurementOf(payload any) map[string]string {
 	var body map[string]string
 	switch value := payload.(type) {
@@ -170,4 +237,53 @@ func requestMeasurementOf(payload any) map[string]string {
 		return nil
 	}
 	return map[string]string{"target_repo": body["target_repo"], "target_head": body["target_head"]}
+}
+
+// guardedReplacementBody prepares the caller-known half of a guarded
+// replacement request: the shape rules, the reserved-field refusal, and the
+// result the replacement states. It is exactly what a surface can judge before
+// it appends the guarded retirement, and exactly what buildAct applies again
+// when it signs, so the two cannot drift.
+func (w *Workspace) guardedReplacementBody(ctx context.Context, body map[string]string, reproduction *requestReproduction) (map[string]string, error) {
+	normalized, err := w.normalizeGuardedRequestShape(ctx, body)
+	if err != nil {
+		return nil, err
+	}
+	if err := refuseClientReservedFields(body); err != nil {
+		return nil, err
+	}
+	// The replacement is a request like any other, so it states its own
+	// result. It is filed under reassign-if-unclaimed@1, which is what tells
+	// the fold to read that choice; @0 records already in the log keep reading
+	// their body as opaque text.
+	if reproduction.statesItsResult() {
+		if normalized, err = w.resolveRequestChoice(ctx, workroom.KindRequest, normalized, reproduction.accepted()); err != nil {
+			return nil, err
+		}
+	}
+	return normalized, nil
+}
+
+// PreflightGuardedReplacement refuses a guarded replacement before its guarded
+// retirement is appended.
+//
+// The pair is two acts in order: the retirement, then the replacement. Every
+// refusal the replacement's own body earns — its required fields, an address
+// nobody holds, a reserved field, the result it states, and the ref that
+// result names — is knowable before either act. Learning it after the first
+// act is what leaves the original request withdrawn with no successor and the
+// frontier moved, so those rules run here, over the caller's own body, through
+// the same code that will judge it again at signing. The authoritative
+// judgement stays at append, where the frontier is fixed; nothing here decides
+// anything, and the guard on the old request is not this preflight's question.
+//
+// A retry is answered the way the signing path answers one: from the act
+// already accepted under the replacement's own key. Resuming a landed pair
+// therefore reads no ref here either, so a branch that has since gone cannot
+// refuse a caller the acts they already hold.
+func (w *Workspace) PreflightGuardedReplacement(ctx context.Context, private ed25519.PrivateKey,
+	actorName, key string, body map[string]string) error {
+	reproduction, _, _ := w.acceptedRequestReproduction(ctx, private, actorName, key, VerbReassignIfUnclaimed)
+	_, err := w.guardedReplacementBody(ctx, body, reproduction)
+	return err
 }

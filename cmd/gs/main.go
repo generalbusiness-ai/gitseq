@@ -1659,6 +1659,17 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	}
 	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
+	// The pair is retirement then replacement, so a replacement refused for
+	// something its own body already said would leave the old request withdrawn
+	// with no successor. Everything knowable about it now is judged now,
+	// through the same authoring rules that will judge it again at signing.
+	_, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	if err := workspace.PreflightGuardedReplacement(ctx, private, actor, *key+"/request", body); err != nil {
+		return explainLifecycleRefusal(err)
+	}
 	retirement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: *retirementText,
 		IdempotencyKey: *key + "/retirement", CitedOK: *citedOK,

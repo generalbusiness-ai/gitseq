@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -267,5 +268,96 @@ func TestResidentReusedKeyWithADifferentDestinationIsRefused(t *testing.T) {
 	}
 	if got := fixture.requestBody(first)["target_ref"]; got != fixture.ref {
 		t.Fatalf("the accepted request now names %q", got)
+	}
+}
+
+// seedLegacyRequest puts one workroom/state@2 request into this resident's log
+// the way the pre-obligation code wrote them: signed by the session's own
+// actor, under this key, stating no result at all.
+func (f authorizationFixture) seedLegacyRequest(key, text string, body map[string]string) string {
+	f.t.Helper()
+	_, private, err := f.workspace.Actor("reviewer")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{Kind: workroom.KindRequest, Text: text, Body: body})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	tree, err := f.workspace.Store.WritePayloadTree(f.ctx, payload, nil)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	view := f.workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: key,
+	}, private)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	accepted, err := kernel.Submit(f.ctx, f.workspace.Store, kernel.Request{Signed: signed, Payload: payload},
+		kernel.Options{SigningKey: view.SequencerKey})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return f.workspace.EventID(accepted.Head)
+}
+
+// A browser retrying a request this workroom accepted before the landing
+// obligation existed gets that act back from the endpoint it posts to, and a
+// fresh post stating no result is still refused.
+func TestResidentRequestReplaysAnExistingLegacyAct(t *testing.T) {
+	fixture := newAuthorizationFixture(t)
+	reviewer, err := fixture.workspace.ResolveActor("reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stated := map[string]string{"to": "reviewer", "conditions": "the old way"}
+	event := fixture.seedLegacyRequest("http-legacy", "legacy request",
+		map[string]string{"to": reviewer.Fingerprint, "conditions": "the old way"})
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the legacy act was stored as %q", schema)
+	}
+
+	frontier := fixture.snapshot().Head
+	replay, refusal := fixture.fileRequest("http-legacy", "legacy request", stated)
+	if refusal != "" {
+		t.Fatalf("exact retry of an accepted legacy request over HTTP: %s", refusal)
+	}
+	if replay != event {
+		t.Fatalf("the legacy retry returned %s, want %s", replay, event)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("the legacy retry appended: %s to %s", frontier, after)
+	}
+	if schema := fixture.schemaOf(event); schema != workroom.SchemaState {
+		t.Fatalf("the replayed act reads as %q; a retry re-signed history", schema)
+	}
+
+	fresh, refusal := fixture.fileRequest("http-legacy-fresh", "a new request written the old way", stated)
+	if refusal == "" {
+		t.Fatalf("a fresh request stating no result was filed as %s", fresh)
+	}
+	if !strings.Contains(refusal, "request states no result") {
+		t.Fatalf("refusal %q does not name the missing result", refusal)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("a refused fresh filing appended: %s to %s", frontier, after)
+	}
+
+	upgraded := map[string]string{"to": "reviewer", "conditions": "the old way", "no_git_artifact": "true"}
+	reused, refusal := fixture.fileRequest("http-legacy", "legacy request", upgraded)
+	if refusal == "" {
+		t.Fatalf("a reused legacy key stating a new result was accepted as %s", reused)
+	}
+	if !strings.Contains(refusal, "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", refusal)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("a refused reuse appended: %s to %s", frontier, after)
 	}
 }
