@@ -1,0 +1,103 @@
+{
+  "adoption": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b767b74ea8987a5c4282e7a6857cb698ea12f89b",
+  "target_rounds": 5,
+  "counting_rule": "Count each substantive correction round after adoption once when its corrected artifact and independent verdict exist. Retain pending round evidence; do not count unpublished repairs as complete. No inferred time saving. Separate outcome, conditions, performer, destination or authority changes still require assignment.",
+  "completed_rounds": [
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:101f64cd719c16bbd37b4bc15c6d5992a374fbf4",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9035d2b2249059668b57978d218cf3917d28532e",
+      "finding": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:996e88fa1d39a8e24b4cdded4c8f52f2e9facfd9",
+      "scope": "I2 post-CAS checkout cleanup must preserve later branch updates; unchanged original outcome/conditions/performer/destination/authority.",
+      "corrected_artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:229d182c9dd6d2ba8ffc4d834cdd21f33094ac9e",
+      "independent_verdict": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e75a9eb004294f29971d4b853bd1cf72874e28bb",
+      "replacement_requests_observed": 0,
+      "avoided_replacements": "Not a directly measured counterfactual; original commitment retained.",
+      "continuity_explanations_observed": 2,
+      "note": "Planner confirmed adopted continuity; Claude acknowledged retaining promise. Earlier 18b-to-28ff repair predates adoption and is excluded.",
+      "corrected_head": "a4f3b3c11afb8d58f14dae58684dc8e08b85c571",
+      "verdict": "approved",
+      "delivery": "sealed main b05ae36753ed5e6c35c5fb8563160c0d997a61bd, CI green, owned worktrees/local branches removed"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b397de0bc03da7544ea58446f663c295f233c11",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:408b41293a0aadbfab2b060d21642a685f9e2b1c",
+      "finding": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:228eadb9761b964496fe71f278d95fd20ced9327",
+      "scope": "Correct the instruction example to cite the review finding as its immediately preceding prose requires",
+      "corrected_artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3edb34dcaad65cafbe709c2ba59b4b372f4e9bd0",
+      "independent_verdict": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31c79693b26a6cbece2469ffcae1a6350b98c708",
+      "replacement_requests_observed": 0,
+      "corrected_head": "4f8e909ac64956d034d9a4174d37e6b1a7e02b3c",
+      "verdict": "approved",
+      "delivery": "sealed main ce18ec8742ddd8665afa284a9cde1ce946213435; CI green and owned cleanup verified",
+      "note": "Single example correction on retained commitment; no replacement request. Guard refusals occurred before append (extraneous acknowledgement and concurrent frontier movement), one effective verdict."
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bb9fc8f081384e4000a53663d7f63c1c669ef9",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53d0ab6228ccfaa863a4517c92cf270ec722d34c",
+      "finding": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b93d91139c7c264eb793bd5f50ae5d8ce1635930",
+      "scope": "I4 total association/iteration bound, satisfying existing CPU/memory condition",
+      "corrected_artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07fd103069eaa3929d2d917843982e4341913351",
+      "independent_verdict": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8802a4f0751a62affc6a73c0d0e80f3b0b2f0807",
+      "replacement_requests_observed": 0,
+      "corrected_head": "afe9d69b5f447729d44b6d1fc686ac0df620d3c7",
+      "verdict": "approved",
+      "delivery": "Sealed main 2348ebe66e226a889f08a1b90ccc3d6a45f437e4; exact composed tree and 35 paths verified, main and receipt pushed, CI green, owned cleanup verified.",
+      "note": "Original I4 promise retained; shared work budget, safe cancellation/partial reset and necessary cache invalidation remain within original outcome."
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:6dc34200b724ad9e537dbc52750b07677fc77257",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7882c3675091fe39bedf2b08596366b34904c8a2",
+      "finding": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:94881671b851ad0c80e1e4c72895b707adf3ecd9",
+      "scope": "Remove dead test assertion and retain restart diagnostics; unchanged original outcome/conditions/performer/destination/authority",
+      "corrected_artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:517fbf62575879fcdc4ec7538b6b6158175b61ac",
+      "corrected_head": "5f36f03239e4c4b33ae7855a0e76f76a33c86c29",
+      "review_request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1c046059c5daf135fee1fe1ff7ede449a036b4b1",
+      "replacement_requests_observed": 0,
+      "validation_observed": "Exact Linux CI33955714462 and Release33955714464 success; author full scripts race33.022/vet and deliberate diagnostic-failure evidence; independent re-review pending",
+      "note": "Both review repairs retained the original implementation commitment; independent exact-head regression/mutant and diagnostic review passed.",
+      "independent_verdict": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:71c4728addb5dcbd8008aaf17fdf78fa24ebc154",
+      "verdict": "approved",
+      "delivery": "Sealed main e0c83a898f106f048df8df5055e67f96d7fa0dbc; exact paths/remote receipt/main CI and owned cleanup verified."
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27970d2a80736c8e3d1ce83c36b4174985a6b97f",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:262c3f7e075c5e49308a22d1487c5272244f5eac",
+      "finding": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73f7635506eff8b9518f54a1bc9bc4888bef2c80",
+      "evidence": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cce36694634deb3d8dd4aa91e3767dc136c7cb4",
+      "rejected_head": "1481eca1272155c6608c5e40f2951d43f7b62400",
+      "scope": "Preserve exact accepted-report replay across target movement on CLI/MCP; original I3 outcome and authority unchanged. Independent controls reproduce both failures.",
+      "status": "correction independently approved; original implementation commitment retained",
+      "replacement_requests_observed": 0,
+      "corrected_head": "260efbef83a3ae2557623583264240032e6513d9",
+      "corrected_artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce2078c8fe7475ac8f3cfe8c8c0d7f8fafe2ad4",
+      "independent_verdict": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adfc545073bcbb72fc05968cef0a1aec1a65c972",
+      "verdict": "approved",
+      "delivery": "Exact-head ratification and sealed source delivery remain owed; correction-round counting requires artifact and independent verdict, not a delivered-source claim."
+    }
+  ],
+  "pending_rounds": [],
+  "five_round_observation_completeUTC": "2026-09-05T11:58:52.914641+00:00",
+  "additional_completed_observations": [
+    {
+      "room": "tailapp",
+      "authority_request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e919a5d70d7cd1429ff83d57e65f05fc570fb2aa",
+      "implementation_mode": "self-initiated under satisfied authority-bearing request chain; no implementation promise",
+      "finding": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c9183f34d14b1cf7c64259022e702ef9af5155f1",
+      "evidence": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c6b3b414ebf009881bf4a6f8d6ff83851c9598d8",
+      "rejected_head": "df7095298c48b248d2ca77826715a7865ccd7cb8",
+      "scope": "Host empty-MANY regression plus reproduced case-insensitive READ column type/nullability admission; existing I5 declared-input contract unchanged.",
+      "status": "Self-initiated correction independently approved under unchanged satisfied authority chain; source delivery remains owed.",
+      "replacement_requests_observed": 0,
+      "corrected_head": "c61e7f7c0eba433eabe134bc397d579fba7a0ab4",
+      "corrected_artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:ac10546c0e75b04ca5436922135eb4e6cfe3e527",
+      "independent_verdict": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8914d33db82ffc481ded30ebe610ace9eb57849d",
+      "verdict": "approved",
+      "counting_note": "Additional observation outside the five assigned-implementation correction rounds; no self-request/promise/report was invented."
+    }
+  ]
+}

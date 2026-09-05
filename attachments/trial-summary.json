@@ -1,0 +1,53 @@
+{
+  "atUTC": "2026-09-05T11:57:51.094103+00:00",
+  "startUTC": "2026-09-04T23:32:05.000Z",
+  "sealed_endUTC": "2026-09-05T11:31:46Z",
+  "delivered_candidates": 20,
+  "rooms": {
+    "gitseq": 12,
+    "gitseq-chess": 2,
+    "gitseq-inventory": 3,
+    "tailapp": 3
+  },
+  "metrics": {
+    "binding_only_repeat_reviews": {
+      "events": 0,
+      "candidates_with_nonzero": 0,
+      "known_candidates": 20
+    },
+    "unchanged_condition_refiles": {
+      "events": 6,
+      "candidates_with_nonzero": 5,
+      "known_candidates": 20
+    },
+    "coordinator_handoffs_after_approval": {
+      "events": 1,
+      "candidates_with_nonzero": 1,
+      "known_candidates": 20
+    },
+    "authorization_requests_after_approval": {
+      "events": 4,
+      "candidates_with_nonzero": 4,
+      "known_candidates": 20
+    },
+    "contained_but_open": {
+      "events": 0,
+      "candidates_with_nonzero": 0,
+      "known_candidates": 20
+    }
+  },
+  "approval_to_sealed_merge_seconds": {
+    "n": 20,
+    "median": 499.5,
+    "min": 133,
+    "max": 2217
+  },
+  "limits": [
+    "Convenience sample across different workrooms, including documentation and carry-in work; no baseline or counterfactual.",
+    "Full lifecycle refile counts can predate trial adoption; no causal improvement attribution.",
+    "Elapsed wall time is not active effort, cost or token use.",
+    "W1 publication intervention is recorded separately because the predeclared handoff metric counts additional third-actor requests, not every manual action.",
+    "Tail I7 receipt accounting defect and I4 live-scale classifier limitation remain observations even after repairs.",
+    "Five assigned repair-continuity rounds have corrected artifacts and independent approvals with original commitments retained; fifth I3 source delivery owed. Additional self-initiated Tail I5 correction is independently approved outside the five-round sample; its source delivery also owed."
+  ]
+}
