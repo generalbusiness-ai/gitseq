@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2349f4b8ff5852bbed888b0a620a34e60dce6e2d","text":"Merge retired a covered predecessor; the successor is at internal/statusview/actor_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2406a4b7e01c7dbaf8916cce30b62a190fa7724e","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/spine.ts."}
