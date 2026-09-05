@@ -611,14 +611,25 @@ func (f *foldState) append(index int, record Record) {
 			}
 		}
 	}
+	// Receipt testimony describes protection on the incoming frontier. Validate
+	// its independent authority and capture that protection before the receipt
+	// enters the fold: its own merge plan may settle the protecting commitment.
+	var incomingUnsettled map[string]bool
+	if state, ok := body.(*State); ok && state.Kind == KindAssert && decision.Verdict == Effective {
+		parsed.decision = decision
+		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
+		_, leftPresent := state.Body["merge_left_live"]
+		_, changedPresent := state.Body["merge_changed_paths"]
+		if parsed.mergePlan != nil && (leftPresent || changedPresent) {
+			incomingUnsettled = f.unsettledCommitmentEvents()
+		}
+	}
 	f.addDecision(record, parsed, index, decision)
 	if decision.Verdict != Effective {
 		return
 	}
 	if state, ok := body.(*State); ok && state.Kind == KindAssert {
-		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
 		stored := &f.records[len(f.records)-1]
-		stored.mergePlan = parsed.mergePlan
 		// A valid retirement plan remains the sole source of merge authority.
 		// Left-live testimony is parsed only after that authority is sealed and
 		// can neither widen nor invalidate it.
@@ -630,7 +641,7 @@ func (f *foldState) append(index int, record Record) {
 			parsed.mergeChangedPathsPresent = changedPresent
 			if parsed.mergeAccountingPresent {
 				parsed.mergeChangedPaths, parsed.mergeChangedPathsValid = parseMergeChangedPaths(changedRaw, changedPresent)
-				parsed.mergeLeftLive, parsed.mergeUnaccounted = f.validateMergeLeftLiveNow(parsed, leftRaw, leftPresent)
+				parsed.mergeLeftLive, parsed.mergeUnaccounted = f.validateMergeLeftLiveNow(parsed, leftRaw, leftPresent, incomingUnsettled)
 			}
 		}
 		stored.mergeAccountingPresent = parsed.mergeAccountingPresent
@@ -1644,7 +1655,7 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 // exact-head checks above. Its result is projection evidence, never retirement
 // authority: validateMergeReceiptNow does not read it and hasAuthorizedMergeReceipt
 // continues to consult mergePlan alone.
-func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, present bool) ([]leftLiveAccounting, map[string]int) {
+func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, present bool, unsettled map[string]bool) ([]leftLiveAccounting, map[string]int) {
 	if !present {
 		accounting := []leftLiveAccounting{{LeftLiveAccounting: LeftLiveAccounting{
 			Verified: false, Reason: "merge_left_live is absent",
@@ -1664,7 +1675,6 @@ func (f *foldState) validateMergeLeftLiveNow(receipt *parsedRecord, raw string, 
 		}}}, f.unaccountedAtReceipt(receipt, nil)
 	}
 
-	unsettled := f.unsettledCommitmentEvents()
 	ids := make([]string, 0, len(claims))
 	for id := range claims {
 		ids = append(ids, id)
@@ -1872,8 +1882,8 @@ func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
 
 // unsettledCommitmentEvents indexes each request, promise, and report event in
 // a commitment row which still expects an actor to move. The projection is
-// evaluated while the receipt is appended, so this answer is already scoped
-// to the receipt position and is then stored rather than recomputed.
+// evaluated at the caller's frontier: receipt admission captures the incoming
+// set once; current cleanup accounting asks again after later acts take effect.
 func (f *foldState) unsettledCommitmentEvents() map[string]bool {
 	succeeded := f.succeededRetirements()
 	result := f.stalenessNow().staleness(succeeded)

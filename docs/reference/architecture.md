@@ -965,6 +965,23 @@ facts at the receipt's position and fixes the successor's succession warning
 there; receipts without the two prospective fields retain the historical
 moving, current-fold calculation.
 
+Receipt protection is judged on the incoming frontier, before the receipt
+can settle its own protecting promise. Layer 5 validates the existing exact
+independent approval and retirement plan, then captures the shared unsettled
+commitment set once before appending the receipt. Left-live validation consumes
+that set; it does not run a second interpreter or temporarily remove admitted
+state. A promise already settled or retired at that frontier cannot protect a
+claim, and a newer commitment cannot repair historical testimony.
+
+Layer 6 retains the separate current cleanup calculation: a historically
+verified sibling stops suppressing debt immediately when its named promise
+settles, including settlement by this receipt. The signed receipt and its
+retirement authority remain unchanged. This correction changes accounting for
+existing logs and advances the profile to `workroom-fold@20`; application
+caches from `@19` are rejected and verified history is replayed. Kernel
+checkpoints remain profile-independent. Cleanup remains an explicit act by
+the old artifact's author or a ratifier.
+
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON
 transport limit when that surface is selected. Thus the application cannot
