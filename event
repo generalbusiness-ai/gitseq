@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a2b9a9e1f61b5de8b041a4f735f79bf099cefc5","text":"Merge retired a covered predecessor; the successor is at docs/how-to/run-a-work-loop.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:78bf628f4cda0f9b588016b56487900433893eca","text":"Merge retired a covered predecessor; the successor is at cmd/gs/succession.go."}
