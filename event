@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34cfccc631cc1c099e89075877d2d9da51cfe085","text":"Merge retired a covered predecessor; the successor is at internal/service/ui.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4621f60b7310a5b78b9b88568dab29eb59d85b0d","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main.go."}
