@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af54f4d552c165f8db14f6c28bbd061f94a7a320","text":"Merge retired a covered predecessor; the successor is at internal/statusview/actor.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b0d0a79706c00704417fa5a339643b3e1072c81f","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/status.md."}
