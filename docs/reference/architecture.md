@@ -774,6 +774,31 @@ the reader cannot truthfully say what force it has. Consumers must surface
 that gap and must not invent fallback meaning from field names, prose, an old
 fold, or UI expectations.
 
+#### Inventory lives in its own module
+
+The JSONata inventory experiment has moved to
+`github.com/generalbusiness-ai/gitseq-inventory`. Its application sources,
+record dialect, SQLite adapters, runtime identity and replay evidence belong
+there. It uses the independently released
+`github.com/generalbusiness-ai/tailapps/jsonataddl` module; Gitseq does not
+embed a JSONata compiler, evaluator, application or corpus copy for it.
+
+The former `spike/jsonataddl`, `spike/cmd/jsonata-inventory` and
+`spike/cmd/jsonata-inventory-ui` packages are removed, together with Gitseq's
+unused `github.com/jsonata-go/jsonata` dependency. This changes the available
+layer-5 experimental interpreter and its layer-7 command surface. It does not
+change the kernel, public host APIs, Workroom fold or SQLite query sandbox.
+Existing records remain kernel-verifiable; their inventory meaning requires
+the external application with a matching binding and runtime identity.
+
+The delivered external application is still a closed demonstration fixture.
+Its input admission happens before evaluation or storage; it does not grant
+production authority to arbitrary JSONata programs. The accepted external
+corpus and mutation evidence proves the shared core is used. Gitseq's
+`internal/boundary` tests separately check the absence of the removed source
+trees, packages and module dependency, including test imports, while requiring
+the unrelated `spike/querysandbox` package to remain.
+
 #### Workroom, the current application
 
 `internal/workroom` is the Workroom profile and interpreter.
@@ -1631,6 +1656,10 @@ kernel while sharing none of Workroom's tools.
 Consumers negotiate or pin the axes they depend on. They must not use surface
 similarity as evidence that an interpreter is available or that two folds give
 the same result.
+
+The inventory spike removal affects the interpreter and surface axes: the
+local JSONata interpreter and inventory commands are no longer shipped here.
+It introduces no replacement Gitseq command or automatic binding migration.
 
 ## Current package boundaries and coupling
 
