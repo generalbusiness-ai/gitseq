@@ -1269,9 +1269,15 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			checkout = current.workspace.Repo
 		}
 		_, resident := current.endpoint()
+		signer := mergeplan.Signer{Name: identity.selector, Private: identity.private}
+		if resident {
+			// The merge will submit through the resident, so the preflight
+			// judges the resident's own request-size cap as well.
+			signer.ResidentCeiling = service.ValidateSubmissionRequestSize
+		}
 		return mergeplan.Build(ctx, current.workspace, checkout,
 			stringValue(call.Arguments["candidate"]), stringValue(call.Arguments["approval"]), identity.actor.Fingerprint,
-			mergeplan.Signer{Name: identity.selector, Private: identity.private, CheckResidentCeiling: resident}), nil
+			signer), nil
 	case "say":
 		arguments := residentArguments(call.Arguments)
 		arguments["credential"] = current.credentialValue()
