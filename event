@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/app/worktree_landing_test.go","body":{"commit":"7cd1c87702c20a9794b9b061dd0f769d94b9c3cb","path":"internal/app/worktree_landing_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03b4d75049162316278cedb6f1149a590147807b","text":"Merge retired a covered predecessor; the successor is at internal/app/landing_details.go."}
