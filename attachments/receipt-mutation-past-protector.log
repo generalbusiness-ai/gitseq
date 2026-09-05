@@ -1,8 +1,0 @@
---- FAIL: TestReceiptProtectionCannotBorrowPastOrFutureCommitments (0.00s)
-    --- FAIL: TestReceiptProtectionCannotBorrowPastOrFutureCommitments/retired_before (0.00s)
-        receipt_protection_test.go:111: historical protection = [{Artifact:older Class:sibling Commitment:side-promise Verified:true Reason:}], want verified=false
-    --- FAIL: TestReceiptProtectionCannotBorrowPastOrFutureCommitments/satisfied_before (0.00s)
-        receipt_protection_test.go:111: historical protection = [{Artifact:older Class:sibling Commitment:side-promise Verified:true Reason:}], want verified=false
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.276s
-FAIL
