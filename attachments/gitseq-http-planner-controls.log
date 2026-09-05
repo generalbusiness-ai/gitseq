@@ -1,0 +1,34 @@
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport
+=== PAUSE TestActEndpointReresolvesTheTargetOfAnAuthorizationReport
+=== RUN   TestActEndpointReplaysAnAcceptedAuthorizationOverHTTPAfterTheTargetMoves
+=== PAUSE TestActEndpointReplaysAnAcceptedAuthorizationOverHTTPAfterTheTargetMoves
+=== RUN   TestActEndpointLeavesOrdinaryActsAndCredentialCheckingAlone
+=== PAUSE TestActEndpointLeavesOrdinaryActsAndCredentialCheckingAlone
+=== RUN   TestPlannerAuthorizationRetryThroughListeningHTTPServer
+--- PASS: TestPlannerAuthorizationRetryThroughListeningHTTPServer (1.66s)
+=== RUN   TestValidateSubmissionRequestSizeMatchesResidentJSONCap
+=== PAUSE TestValidateSubmissionRequestSizeMatchesResidentJSONCap
+=== RUN   TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey
+=== PAUSE TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey
+=== CONT  TestActEndpointReresolvesTheTargetOfAnAuthorizationReport
+=== CONT  TestActEndpointLeavesOrdinaryActsAndCredentialCheckingAlone
+=== CONT  TestActEndpointReplaysAnAcceptedAuthorizationOverHTTPAfterTheTargetMoves
+=== CONT  TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey
+=== CONT  TestValidateSubmissionRequestSizeMatchesResidentJSONCap
+--- PASS: TestValidateSubmissionRequestSizeMatchesResidentJSONCap (0.05s)
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/the_ref_moved_under_the_measurement
+--- PASS: TestActEndpointUsesSessionCustodyAndReplaysSameIdempotencyKey (1.21s)
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/no_measurement_at_all
+--- PASS: TestActEndpointLeavesOrdinaryActsAndCredentialCheckingAlone (1.58s)
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/a_remeasurement_from_off_the_ref
+--- PASS: TestActEndpointReplaysAnAcceptedAuthorizationOverHTTPAfterTheTargetMoves (1.79s)
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/the_ref_where_the_signer_measured_it
+=== RUN   TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/a_stated_disjoint-paths_remeasurement_over_an_ancestor
+--- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport (2.88s)
+    --- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/the_ref_moved_under_the_measurement (0.78s)
+    --- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/no_measurement_at_all (0.34s)
+    --- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/a_remeasurement_from_off_the_ref (0.33s)
+    --- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/the_ref_where_the_signer_measured_it (0.43s)
+    --- PASS: TestActEndpointReresolvesTheTargetOfAnAuthorizationReport/a_stated_disjoint-paths_remeasurement_over_an_ancestor (0.46s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	5.857s

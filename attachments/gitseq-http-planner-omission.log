@@ -1,0 +1,6 @@
+=== RUN   TestPlannerAuthorizationRetryThroughListeningHTTPServer
+    planner_socket_test.go:39: fresh stale report: "git:sha1:fe459cfd84e8e7a996ba107362106d770ddbdf60#git:sha1:a9d4349420085a53e2efa80cb389e78bcf7394d2" ""
+--- FAIL: TestPlannerAuthorizationRetryThroughListeningHTTPServer (3.05s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/service	3.390s
+FAIL
