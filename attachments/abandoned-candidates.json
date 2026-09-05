@@ -1,0 +1,107 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:159434ec234200ecb911f40a144c1d7f0c8ff503",
+    "path": "internal/workroom/fold.go",
+    "commit": "50cffa6af392fee45c7c0cb5f16618b62892ec09",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:222d19f67f2d7d45ef7ecba6522c6ac04557d8be",
+    "path": "internal/app",
+    "commit": "f6489c78a4e9c11460ebe95e3312f1acd1d0de2c",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:352f2b9694890cf2024eae96b6b6224f7025aace",
+    "path": "internal/workroom",
+    "commit": "93f0b2a6fe2431b42dc38fbd2a03cd65132f0b3e",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:46207effd0fdb719ba79d91884dc144771b20ab8",
+    "path": "docs/reference/gs/merge.md",
+    "commit": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53131ac4d5e67070e43e9c335342aeaf8c411d64",
+    "path": "internal/app",
+    "commit": "93f0b2a6fe2431b42dc38fbd2a03cd65132f0b3e",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5d42f1604e6906a08a048b1c74803e44babb0e8f",
+    "path": "internal/workroom",
+    "commit": "477637589ee395b996dd1c16ca7c93ee132de486",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:62e1a14a21ece9cf23dca95479a77f8f03dd590a",
+    "path": "internal/app/app_test.go",
+    "commit": "50cffa6af392fee45c7c0cb5f16618b62892ec09",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d222f944b87bac8ba81a5994cb39b78a5ac3810",
+    "path": "internal/app",
+    "commit": "477637589ee395b996dd1c16ca7c93ee132de486",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8cdc84946fda3788632c770445b94e9dc1f2166e",
+    "path": "internal/workroom/schema.go",
+    "commit": "50cffa6af392fee45c7c0cb5f16618b62892ec09",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90f43d2bbbb8bdd1b88a4fac1a412bf1f06a3790",
+    "path": "internal/workroom",
+    "commit": "f6489c78a4e9c11460ebe95e3312f1acd1d0de2c",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9a568da3cd9771acf3d6cc7e52f6b77e070c784d",
+    "path": "internal/app",
+    "commit": "7da8b753682d38aa118e709943df0ee8c03e5c37",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce73d30548bc4949fb81b1b236e57e12c37026b",
+    "path": "internal/app",
+    "commit": "6e29fa9935c262f8b3a2eb232a8fe80324f346ff",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f176c2feb9fbbd367190abfdb96e08f33481c4b",
+    "path": "internal/workroom",
+    "commit": "6e29fa9935c262f8b3a2eb232a8fe80324f346ff",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be7408a0b9a784e9f3625d8ae221eed6c85360b5",
+    "path": "internal/app",
+    "commit": "d465b450ea3d81a78fe86a7c89d861ad49563f0e",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d8c2e96d67308017207d1a9a5806a46d12c698ab",
+    "path": "internal/app",
+    "commit": "95374ec2b44779fc712de97c0bec4270c94b9fcb",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  }
+]
