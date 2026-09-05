@@ -115,7 +115,7 @@ func TestBuildDisablesGlobalHooksInDisposableClone(t *testing.T) {
 	}
 	request, err := workspace.Act(ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement feature",
-		Body:    map[string]string{"to": workspace.View().Actors["operator"].Fingerprint, "conditions": "publish the exact feature head"},
+		Body:    map[string]string{"to": workspace.View().Actors["operator"].Fingerprint, "conditions": "publish the exact feature head", "target_ref": "refs/heads/main"},
 		RestsOn: []string{ground.Record.ID}, IdempotencyKey: "implementation-request",
 	})
 	if err != nil {
@@ -145,7 +145,7 @@ func TestBuildDisablesGlobalHooksInDisposableClone(t *testing.T) {
 	}
 	reviewRequest, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body:    map[string]string{"to": reviewer.Fingerprint, "conditions": "exact head"},
+		Body:    map[string]string{"to": reviewer.Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "review-request",
 	})
 	if err != nil {

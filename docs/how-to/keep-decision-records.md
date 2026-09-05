@@ -155,6 +155,7 @@ REVIEW_REQUEST=$(gs state --repo "$REPO" --as dana --kind request \
   --text 'Review the decision at its exact head' --body to=@rae \
   --body conditions='the decision states its consequences and the trade-off it accepts' \
   --body head="$HEAD_COMMIT" --body artifact="$ARTIFACT" \
+  --body no_git_artifact=true \
   --rests-on "$ARTIFACT" --rests-on "$PROPOSAL")
 
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as rae --kind promise \
@@ -223,6 +224,7 @@ REVIEW_REQUEST2=$(gs state --repo "$REPO" --as dana --kind request \
   --text 'Review the revised wording at its exact head' --body to=@rae \
   --body conditions='same decision, clearer scope' \
   --body head="$HEAD2" --body artifact="$ARTIFACT2" \
+  --body no_git_artifact=true \
   --rests-on "$ARTIFACT2" --rests-on "$PROPOSAL")
 REVIEW_PROMISE2=$(gs state --repo "$REPO" --as rae --kind promise \
   --text 'I will review the revision' --rests-on "$REVIEW_REQUEST2")
@@ -306,6 +308,7 @@ REVIEW_REQUEST3=$(gs state --repo "$REPO" --as dana --kind request \
   --text 'Review the replacement at its exact head' --body to=@rae \
   --body conditions='the new decision states why the old one changed; the old file names its replacement' \
   --body head="$HEAD3" --body artifact="$NEW" \
+  --body no_git_artifact=true \
   --rests-on "$NEW" --rests-on "$PROPOSAL2")
 REVIEW_PROMISE3=$(gs state --repo "$REPO" --as rae --kind promise \
   --text 'I will review the replacement' --rests-on "$REVIEW_REQUEST3")

@@ -35,6 +35,14 @@ const (
 	SchemaSupersedeV1     = "workroom/supersede@1"
 	SchemaRetireUnclaimed = "workroom/retire-if-unclaimed@0"
 	SchemaReassignRequest = "workroom/reassign-if-unclaimed@0"
+	// SchemaReassignRequestV1 files the replacement request of a guarded
+	// reassignment under the landing obligation. The payload shape is
+	// unchanged; the schema is what says the replacement is a state@3 request,
+	// so it must state the section-1 result choice and the fold reads that
+	// choice from its body. Under @0 those names are opaque text, exactly as
+	// they are on a state@2 record, which is what keeps every reassignment
+	// already in the log reading as it always did.
+	SchemaReassignRequestV1 = "workroom/reassign-if-unclaimed@1"
 )
 
 type Kind string
@@ -144,7 +152,7 @@ func decode(schema string, data []byte, pool map[string]string) (any, error) {
 		value = &SupersedeV1{}
 	case SchemaRetireUnclaimed:
 		value = &RetireIfUnclaimed{}
-	case SchemaReassignRequest:
+	case SchemaReassignRequest, SchemaReassignRequestV1:
 		value = &ReassignIfUnclaimed{}
 	default:
 		return nil, fmt.Errorf("unsupported workroom schema %q", schema)

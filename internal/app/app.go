@@ -1287,12 +1287,27 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 	var schema string
 	var payload any
 	guardedRetirement := false
+	// resolvedTarget records that this act's body carries a target head this
+	// boundary measured from a ref. That measurement is what an exact retry
+	// cannot repeat once the ref has moved, so it is the one thing a retry has
+	// to be handed back rather than recomputed.
+	resolvedTarget := false
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
-		body, err := w.normalizeRequestShape(ctx, snapshot, act.Kind, act.Body)
+		body, request, err := w.normalizeRequestShape(ctx, snapshot, act.Kind, act.Body)
 		if err != nil {
 			return kernel.Request{}, err
+		}
+		// A request states what it owes, and this is where it acquires the
+		// fields that say so. Everything a request-lifecycle state signs from
+		// here on is workroom/state@3, so the choice is never optional and
+		// never silently a legacy reading.
+		if request {
+			if body, err = w.resolveRequestChoice(ctx, act.Kind, body); err != nil {
+				return kernel.Request{}, err
+			}
+			resolvedTarget = body["target_head"] != ""
 		}
 		// Reserved admission fields are never caller input. The guarded
 		// review path stamps its own onto the body it built, and admission
@@ -1325,6 +1340,9 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 			}
 		}
 		schema = workroom.SchemaState
+		if request {
+			schema = workroom.SchemaStateV3
+		}
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: body}
 	case VerbRatify:
 		if err := w.refuseUnratifiableTarget(ctx, act.Target); err != nil {
@@ -1362,6 +1380,14 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		if err := refuseClientReservedFields(act.Body); err != nil {
 			return kernel.Request{}, err
 		}
+		// The replacement is a request like any other, so it states its own
+		// result. It is filed under reassign-if-unclaimed@1, which is what
+		// tells the fold to read that choice; @0 records already in the log
+		// keep reading their body as opaque text.
+		if body, err = w.resolveRequestChoice(ctx, workroom.KindRequest, body); err != nil {
+			return kernel.Request{}, err
+		}
+		resolvedTarget = body["target_head"] != ""
 		rests = append([]string{act.Retirement}, rests...)
 		// Sequencing runs the whole state admission over this body against the
 		// exact frontier, testimony included. Running it here too keeps the
@@ -1374,7 +1400,7 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		if err != nil {
 			return kernel.Request{}, err
 		}
-		schema = workroom.SchemaReassignRequest
+		schema = workroom.SchemaReassignRequestV1
 		payload = workroom.ReassignIfUnclaimed{
 			Text: act.Text, Body: body,
 			Expectation: workroom.UnclaimedExpectation{
@@ -1388,6 +1414,12 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 	request, err := w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
 	if err != nil {
 		return kernel.Request{}, err
+	}
+	if resolvedTarget && act.IdempotencyKey != "" {
+		request, err = w.reproduceAcceptedTarget(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey, request)
+		if err != nil {
+			return kernel.Request{}, err
+		}
 	}
 	if guardedRetirement {
 		if err := w.RefuseCitedGuardedRetirement(ctx, act.Target, act.CitedOK, request); err != nil {
@@ -1484,21 +1516,37 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 	if strings.TrimSpace(normalized["conditions"]) == "" {
 		return nil, fmt.Errorf("%s state requires body.conditions", workroom.KindRequest)
 	}
-	address := strings.TrimSpace(normalized["to"])
-	if address == "" {
-		return nil, fmt.Errorf("%s state requires body.to", workroom.KindRequest)
+	for _, field := range []string{"to", "hold_owner"} {
+		address := strings.TrimSpace(normalized[field])
+		if address == "" {
+			if field == "to" {
+				return nil, fmt.Errorf("%s state requires body.to", workroom.KindRequest)
+			}
+			continue
+		}
+		fingerprint, err := w.resolveHistoricalAddress(ctx, address)
+		if err != nil {
+			return nil, fmt.Errorf("%s body.%s: %w", workroom.KindRequest, field, err)
+		}
+		normalized[field] = fingerprint
 	}
+	return normalized, nil
+}
+
+// resolveHistoricalAddress is normalizeGuardedRequestShape's address rule: current
+// custody first, and only on a miss the durable roster entry retirement keeps
+// for attribution.
+func (w *Workspace) resolveHistoricalAddress(ctx context.Context, address string) (string, error) {
 	actor, err := w.ResolveActorAddress(address)
 	if err == nil {
-		normalized["to"] = actor.Fingerprint
-		return normalized, nil
+		return actor.Fingerprint, nil
 	}
 	if !errors.Is(err, ErrUnknownActor) {
-		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+		return "", err
 	}
 	snapshot, snapshotErr := w.Snapshot(ctx)
 	if snapshotErr != nil {
-		return nil, fmt.Errorf("%s body.to: actor is absent from custody and the durable roster could not be read: %w", workroom.KindRequest, snapshotErr)
+		return "", fmt.Errorf("actor is absent from custody and the durable roster could not be read: %w", snapshotErr)
 	}
 	name := strings.TrimPrefix(address, "@")
 	matches := make([]string, 0, 1)
@@ -1508,10 +1556,9 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 		}
 	}
 	if len(matches) != 1 {
-		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+		return "", err
 	}
-	normalized["to"] = matches[0]
-	return normalized, nil
+	return matches[0], nil
 }
 
 // normalizeRequestShape mirrors the fold's request-lifecycle field and actor
@@ -1519,14 +1566,14 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 // log moves after this check. The active vocabulary matters: a declared kind
 // can participate in the request lifecycle just as the starter request kind
 // does.
-func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, error) {
+func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, bool, error) {
 	lifecycle, starter := workroom.StarterLifecycle(kind)
 	if !starter {
 		current := snapshot
 		if current == nil {
 			loaded, err := w.Snapshot(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("validate request shape: %w", err)
+				return nil, false, fmt.Errorf("validate request shape: %w", err)
 			}
 			current = &loaded
 		}
@@ -1539,22 +1586,22 @@ func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapsho
 		}
 	}
 	if lifecycle != workroom.LifecycleRequest {
-		return body, nil
+		return body, false, nil
 	}
 	normalized := cloneBody(body)
 	if strings.TrimSpace(normalized["conditions"]) == "" {
-		return nil, fmt.Errorf("%s state requires body.conditions", kind)
+		return nil, true, fmt.Errorf("%s state requires body.conditions", kind)
 	}
 	address := strings.TrimSpace(normalized["to"])
 	if address == "" {
-		return nil, fmt.Errorf("%s state requires body.to", kind)
+		return nil, true, fmt.Errorf("%s state requires body.to", kind)
 	}
 	actor, err := w.ResolveActorAddress(address)
 	if err != nil {
-		return nil, fmt.Errorf("%s body.to: %w", kind, err)
+		return nil, true, fmt.Errorf("%s body.to: %w", kind, err)
 	}
 	normalized["to"] = actor.Fingerprint
-	return normalized, nil
+	return normalized, true, nil
 }
 
 // validateDirectReport holds the direct shape to the fold's own terms before
@@ -1871,6 +1918,11 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 }
 
 func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {
+	// A guarded replacement's request body is already resolved by
+	// normalizeGuardedRequestShape, which reads the durable roster where this
+	// path reads only current custody: a replacement must stay reproducible
+	// after its performer leaves custody, and re-resolving it here would break
+	// exactly the retry that guard exists for.
 	if schema != workroom.SchemaState && schema != workroom.SchemaStateV3 {
 		return payload, nil
 	}

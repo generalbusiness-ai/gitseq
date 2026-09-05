@@ -339,7 +339,7 @@ func (w *Workspace) admitApplication(ctx context.Context, application kernel.App
 			return folder.AdmitRetireIfUnclaimed(intent.ActorFingerprint(application.ActorKey), *guard, application.Intent.RestsOn)
 		})
 		return err
-	case workroom.SchemaReassignRequest:
+	case workroom.SchemaReassignRequest, workroom.SchemaReassignRequestV1:
 		decoded, err := workroom.Decode(application.Intent.Schema, application.Payload)
 		if err != nil {
 			return fmt.Errorf("admission decode: %w", err)

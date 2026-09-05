@@ -43,7 +43,8 @@ gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
 
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
-  --text 'Add a changelog' --body to=@bot --body conditions='it exists')
+  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
+  --body no_git_artifact=true)
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST")
 
@@ -60,7 +61,8 @@ ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$PROMISE")
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review at the exact head' --body to=@carol \
-  --body conditions='confirm the named head' --rests-on "$ARTIFACT")
+  --body conditions='confirm the named head' \
+  --body no_git_artifact=true --rests-on "$ARTIFACT")
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \
   --text 'I will review it' --rests-on "$REVIEW_REQUEST")
 

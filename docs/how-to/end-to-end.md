@@ -66,7 +66,8 @@ gs actors --repo "$REPO"
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a greeting file' \
   --body to=@bot \
-  --body conditions='greeting.txt exists and the reviewer approves the exact head')
+  --body conditions='greeting.txt exists and the reviewer approves the exact head' \
+  --body target_ref=refs/heads/main)
 echo "$REQUEST"
 ```
 
@@ -123,6 +124,7 @@ REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --body to=@carol \
   --body conditions='confirm greeting.txt at the named head' \
   --body head="$HEAD_COMMIT" --body artifact="$ARTIFACT" \
+  --body no_git_artifact=true \
   --rests-on "$ARTIFACT")
 
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \

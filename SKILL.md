@@ -99,7 +99,15 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   selected signed frames as `evidence`, so a stranger can verify it after
   the conversation is forgotten. Select honestly, summarize faithfully. A
   request's `body.to` accepts a configured actor name, `@name`, or
-  fingerprint; the fold requires that it identify a live roster actor.
+  fingerprint; the fold requires that it identify a live roster actor. Every
+  request also states what it owes, and one that states nothing is refused
+  before anything is appended: `body.target_ref=refs/heads/<branch>` for work
+  that must land there, `body.target=inherit` to take the destination from the
+  nearest ancestor request that named one, or `body.no_git_artifact=true` for a
+  review, a decision or an operation that owes no Git artifact. Add
+  `body.landing=held`, and optionally `body.hold_owner`, when the landing must
+  wait for an exact release. Do not write `target_repo` or `target_head`: the
+  filing boundary fills them from the ref, and supplying them is refused.
 - `ratify {target}` — confers force only when the target's active kind
   definition names you as its satisfier. Authority comes from the live
   roster and the declared satisfier, not from being human or agent; any
@@ -108,8 +116,9 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
   staleness to everything resting on it. Prefer supersession to
   contradiction.
 - `reassign_if_unclaimed {old_request, to, text, conditions,
-  idempotency_key, rests_on?}` — resumable, separately guarded two-act
-  reassignment.
+  idempotency_key, rests_on?, body?}` — resumable, separately guarded two-act
+  reassignment. The replacement is a new request: state its result in `body`,
+  because nothing is inherited from the request being retired.
   It retires and replaces only a live request with no admitted direct promise
   or completion. Staleness is no bar, because a basis moving under a request
   claims nothing. Exact retries replay the pair.

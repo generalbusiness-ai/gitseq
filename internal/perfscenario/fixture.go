@@ -249,7 +249,7 @@ func generatedAct(shape string, depth, payloadBytes int, actor, seed, request, p
 	case "open_request_heavy":
 		return generated{label: "request", logical: text, value: app.Act{
 			Verb: app.VerbState, Kind: workroom.KindRequest, Text: text,
-			Body:    map[string]string{"to": actor, "conditions": "synthetic condition"},
+			Body:    map[string]string{"to": actor, "conditions": "synthetic condition", "no_git_artifact": "true"},
 			RestsOn: []string{seed}, IdempotencyKey: key,
 		}}
 	case "terminal_history_heavy":
@@ -263,7 +263,7 @@ func generatedAct(shape string, depth, payloadBytes int, actor, seed, request, p
 		case 2:
 			return generated{label: "request", logical: text, value: app.Act{
 				Verb: app.VerbState, Kind: workroom.KindRequest, Text: text,
-				Body:    map[string]string{"to": actor, "conditions": "synthetic condition"},
+				Body:    map[string]string{"to": actor, "conditions": "synthetic condition", "no_git_artifact": "true"},
 				RestsOn: []string{seed}, IdempotencyKey: key,
 			}}
 		case 3:

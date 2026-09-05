@@ -41,7 +41,7 @@ gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
-  --rests-on "$SEED" >/dev/null
+  --body no_git_artifact=true --rests-on "$SEED" >/dev/null
 
 gs status --repo "$REPO"
 gs status --repo "$REPO" --all | head -5

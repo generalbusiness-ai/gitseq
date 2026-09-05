@@ -784,7 +784,7 @@ func TestReviewGuardRefusesAnotherActorsPromise(t *testing.T) {
 	foreignRequest, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review assigned to someone else",
 		Body: map[string]string{
-			"to": fixture.workspace.View().Actors["other-reviewer"].Fingerprint, "conditions": "exact head",
+			"to": fixture.workspace.View().Actors["other-reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true",
 		},
 		RestsOn: []string{fixture.artifact}, IdempotencyKey: "foreign-review-request",
 	})
@@ -2629,7 +2629,7 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 	}
 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested head",
-		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{nested.Record.ID}, IdempotencyKey: "nested-review-request",
 	})
 	if err != nil {
@@ -2693,7 +2693,7 @@ func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, strin
 	}
 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested deletion",
-		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{removed.Record.ID}, IdempotencyKey: "removed-nested-review-request",
 	})
 	if err != nil {
@@ -3301,7 +3301,7 @@ func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 // intra-batch label. The verb argument is the genesis event the request rests on.
 const chainBatch = `[
   {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
-   "body": {"to": "@worker", "conditions": "tests green"},
+   "body": {"to": "@worker", "conditions": "tests green", "no_git_artifact": "true"},
    "rests_on": [%q], "idempotency_key": "chain-request"},
   {"label": "promise", "verb": "state", "kind": "promise", "text": "I will do the thing",
    "rests_on": ["$req"], "idempotency_key": "chain-promise"}
@@ -3475,7 +3475,7 @@ func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) 
 	  {"label": "note", "verb": "state", "kind": "assert", "text": "the prefix is durable",
 	   "rests_on": [%q], "idempotency_key": "partial-assert"},
 	  {"verb": "state", "kind": "request", "text": "finish the chain",
-	   "body": {"to": "@latecomer", "conditions": "the suffix lands once"},
+	   "body": {"to": "@latecomer", "conditions": "the suffix lands once", "no_git_artifact": "true"},
 	   "rests_on": ["$note"], "idempotency_key": "partial-request"}
 	]`, fixture.genesis)
 
@@ -3956,13 +3956,13 @@ func TestBatchReassignIfUnclaimedCarriesTheGuardedPairAndReplaysIt(t *testing.T)
 	fixture := newBatchFixture(t)
 	old := actRecordCLI(t, fixture, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "do it",
-		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		Body:    map[string]string{"to": "@worker", "conditions": "finish", "no_git_artifact": "true"},
 		RestsOn: []string{fixture.genesis}, IdempotencyKey: "reassign-old",
 	})
 	acts := `[
   {"label":"retirement","verb":"retire-if-unclaimed","target":"` + old.ID + `","text":"retire before reassignment","idempotency_key":"reassign-retirement"},
   {"verb":"state","kind":"assert","text":"unrelated traffic","rests_on":["` + fixture.genesis + `"],"idempotency_key":"reassign-unrelated"},
-  {"label":"replacement","verb":"reassign-if-unclaimed","target":"` + old.ID + `","retirement":"$retirement","text":"ask again","body":{"to":"@worker","conditions":"finish on current bases"},"idempotency_key":"reassign-replacement"}
+  {"label":"replacement","verb":"reassign-if-unclaimed","target":"` + old.ID + `","retirement":"$retirement","text":"ask again","body":{"to":"@worker","conditions":"finish on current bases", "no_git_artifact": "true"},"idempotency_key":"reassign-replacement"}
 ]`
 	first, err := fixture.run("operator", acts)
 	if err != nil {
@@ -3987,12 +3987,13 @@ func TestReassignIfUnclaimedCommandOwnsTwoActRetry(t *testing.T) {
 	fixture := newBatchFixture(t)
 	old := actRecordCLI(t, fixture, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "old request",
-		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		Body:    map[string]string{"to": "@worker", "conditions": "finish", "no_git_artifact": "true"},
 		RestsOn: []string{fixture.genesis}, IdempotencyKey: "command-old",
 	})
 	arguments := []string{
 		"--repo", fixture.repo, "--as", "operator", "--server", localFold,
 		"--to", "@worker", "--text", "replacement request", "--conditions", "finish on current bases",
+		"--body", "no_git_artifact=true",
 		"--idempotency-key", "command-reassign", old.ID,
 	}
 	first := runReassignCommand(t, fixture.ctx, arguments)
@@ -4022,7 +4023,7 @@ func TestReassignIfUnclaimedChecksTheCallingWorktreeBeforeResidentSubmission(t *
 	fixture := newBatchFixture(t)
 	old := actRecordCLI(t, fixture, app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "old request",
-		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		Body:    map[string]string{"to": "@worker", "conditions": "finish", "no_git_artifact": "true"},
 		RestsOn: []string{fixture.genesis}, IdempotencyKey: "linked-command-old",
 	})
 	linked := filepath.Join(filepath.Dir(fixture.repo), "linked")
@@ -4187,7 +4188,7 @@ func TestBatchRefusesMalformedRequestsBeforeTheirAppend(t *testing.T) {
 		want string
 	}{
 		{name: "missing conditions", body: `{"to":"@worker"}`, want: "request state requires body.conditions"},
-		{name: "unknown performer", body: `{"to":"@nobody","conditions":"tests pass"}`, want: "request body.to"},
+		{name: "unknown performer", body: `{"to":"@nobody","conditions":"tests pass", "no_git_artifact": "true"}`, want: "request body.to"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f := newBatchFixture(t)
@@ -4377,14 +4378,18 @@ func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, ci
 	if err != nil {
 		return err
 	}
-	implementationRequest, err := workspace.Act(ctx, "reviewer", app.Act{
-		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement feature",
-		Body: map[string]string{
+	// This lane's implementation request is deliberately a pre-state@3 record.
+	// Most of what stands on this template is the phase-one authorization
+	// guard, which applies only to a request the fold reads as legacy, and the
+	// compatibility window it lives in is precisely the case worth keeping a
+	// fixture for. A request that states its result under state@3 is exercised
+	// by the landing tests and by the request-authoring tests, which build
+	// their own repositories.
+	implementationRequest, err := submitLegacyState(ctx, workspace, "reviewer",
+		workroom.State{Kind: workroom.KindRequest, Text: "implement feature", Body: map[string]string{
 			"to":         workspace.View().Actors["operator"].Fingerprint,
 			"conditions": "publish the exact feature head; do not merge without authorization",
-		},
-		RestsOn: []string{groundSubmission.Record.ID}, IdempotencyKey: "implementation-request",
-	})
+		}}, []string{groundSubmission.Record.ID}, "implementation-request")
 	if err != nil {
 		return err
 	}
@@ -4476,7 +4481,7 @@ func (template *workflowTemplate) buildWorkflow(root string, removeBase bool, ci
 	}
 	requestSubmission, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body:    map[string]string{"to": workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head"},
+		Body:    map[string]string{"to": workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{artifactSubmission.Record.ID}, IdempotencyKey: "review-request",
 	})
 	if err != nil {
@@ -4606,7 +4611,7 @@ func (f workflowFixture) authorizeAs(t *testing.T, approval, requester, reporter
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "authorize the exact merge",
 		Body: map[string]string{
 			"to":         f.workspace.View().Actors[reporter].Fingerprint,
-			"conditions": "lift do-not-merge only for the structured bindings in the report",
+			"conditions": "lift do-not-merge only for the structured bindings in the report", "no_git_artifact": "true",
 		},
 		RestsOn:        []string{approval, f.implementationRequest},
 		IdempotencyKey: "authorization-request-" + approval + "-" + requester + "-" + reporter,
@@ -5520,4 +5525,38 @@ func TestServeRecoversAClaimLeftByADeadOwner(t *testing.T) {
 	if !bytes.Contains(warned, []byte("reclaimed stale resident claim after http://"+address+" refused the liveness probe")) {
 		t.Fatalf("automatic recovery was not logged: %s", warned)
 	}
+}
+
+// submitLegacyState signs one workroom/state@2 record and submits it. No filer
+// writes that schema for a request any more, so a fixture standing in for
+// history already in the log has to sign it the way that history was signed.
+// Everything else about the act is ordinary: it is admitted, sequenced and
+// folded by exactly the rules that record met when it was written.
+func submitLegacyState(ctx context.Context, workspace *app.Workspace, actorName string,
+	state workroom.State, restsOn []string, key string) (app.Submission, error) {
+	_, private, err := workspace.Actor(actorName)
+	if err != nil {
+		return app.Submission{}, err
+	}
+	payload, err := workroom.Encode(state)
+	if err != nil {
+		return app.Submission{}, err
+	}
+	tree, err := workspace.Store.WritePayloadTree(ctx, payload, nil)
+	if err != nil {
+		return app.Submission{}, err
+	}
+	view := workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaState, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        restsOn,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: key,
+	}, private)
+	if err != nil {
+		return app.Submission{}, err
+	}
+	return workspace.AcceptSubmission(ctx, kernel.Request{Signed: signed, Payload: payload})
 }

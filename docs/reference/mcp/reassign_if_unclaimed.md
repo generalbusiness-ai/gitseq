@@ -25,6 +25,7 @@ or completed it.
 | `to` | required | The replacement addressee: name, `@name`, or fingerprint. |
 | `text` | required | The replacement request text. |
 | `conditions` | required | Observable conditions of satisfaction. |
+| `body` | optional | String map of further replacement-request fields. The replacement is a new request and states its own result here: `target_ref`, `target=inherit`, or `no_git_artifact=true`. `to` and `conditions` are written over whatever this map says. |
 | `retirement_text` | optional | Why the old request is retired. |
 | `rests_on` | optional | Additional current bases for the replacement request. |
 | `idempotency_key` | required | Stable base key used to derive resumable keys for both acts. |
@@ -41,11 +42,18 @@ or completed it.
     "to": "@second-agent",
     "text": "Check the release",
     "conditions": "the release is checked",
+    "body": {"no_git_artifact": "true"},
     "rests_on": ["git:sha1:<genesis>#git:sha1:<current-basis>"],
     "idempotency_key": "release-check-reassignment"
   }
 }
 ```
+
+The replacement request is signed as `workroom/reassign-if-unclaimed@1`, under
+which the fold reads its stated result exactly as it reads a
+`workroom/state@3` request. Nothing is inherited from the retired request: a
+replacement that states no result is refused before either act is appended, and
+a replacement of a legacy request must say in its own words what it owes.
 
 The result contains `retirement` and `request` submission results. Unrelated
 durable traffic does not refuse the pair. A promise or direct completion before

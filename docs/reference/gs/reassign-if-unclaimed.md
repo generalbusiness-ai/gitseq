@@ -30,6 +30,7 @@ reassigns like any other.
 | `--to` | *(required)* | The replacement request's addressee. A name, `@name`, or fingerprint. |
 | `--text` | *(required)* | The replacement request text. |
 | `--conditions` | *(required)* | Observable conditions of satisfaction. |
+| `--body` | | `key=value`, repeatable. Further fields for the replacement request. The replacement is a new request and states its own result here: `target_ref`, `target=inherit`, or `no_git_artifact=true`. `--to` and `--conditions` are written over whatever this states. |
 | `--retirement-text` | `retire unclaimed request before reassignment` | Why the old request is retired. |
 | `--rests-on` | | An additional current basis for the replacement, repeatable. Its guarded retirement is placed first automatically. |
 | `--server` | | Submit through a resident sequencer. The repository's advertised resident is the default; `-` forces the local fold. |
@@ -49,12 +50,20 @@ gs actor-add --repo "$REPO" --as alice --name first --kind agent >/dev/null
 gs actor-add --repo "$REPO" --as alice --name second --kind agent >/dev/null
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 OLD=$(gs state --repo "$REPO" --as alice --kind request --text 'Check the release' \
-  --body to=@first --body conditions='the release is checked' --rests-on "$SEED")
+  --body to=@first --body conditions='the release is checked' \
+  --body no_git_artifact=true --rests-on "$SEED")
 
 gs reassign-if-unclaimed --repo "$REPO" --as alice --to @second \
   --text 'Check the release' --conditions 'the release is checked' \
+  --body no_git_artifact=true \
   --rests-on "$SEED" --idempotency-key release-check-reassignment "$OLD"
 ```
+
+The replacement request is signed as `workroom/reassign-if-unclaimed@1`, under
+which the fold reads its stated result exactly as it reads a
+`workroom/state@3` request. Nothing is inherited from the retired request: a
+replacement that states no result is refused before either act is appended, and
+a replacement of a legacy request must say in its own words what it owes.
 
 The command prints JSON containing the retirement and replacement request event
 identifiers. If the first act lands and the second loses a race, the error names

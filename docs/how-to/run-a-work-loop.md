@@ -31,7 +31,8 @@ gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
 ```sh
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a changelog' --body to=@bot \
-  --body conditions='CHANGELOG.md exists and is reviewed at an exact head')
+  --body conditions='CHANGELOG.md exists and is reviewed at an exact head' \
+  --body target_ref=refs/heads/main)
 
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add the changelog' --rests-on "$REQUEST")
@@ -72,7 +73,7 @@ REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review task/changelog at its exact head' --body to=@carol \
   --body conditions='confirm the changelog at the named head' \
   --body head="$HEAD_COMMIT" --body artifact="$ARTIFACT" \
-  --rests-on "$ARTIFACT")
+  --body no_git_artifact=true --rests-on "$ARTIFACT")
 
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \
   --text 'I will review it' --rests-on "$REVIEW_REQUEST")
@@ -107,7 +108,7 @@ REVIEW_REQUEST2=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Re-review at the repaired head' --body to=@carol \
   --body conditions='confirm the repaired head' \
   --body head="$HEAD_COMMIT" --body artifact="$ARTIFACT2" \
-  --rests-on "$ARTIFACT2")
+  --body no_git_artifact=true --rests-on "$ARTIFACT2")
 REVIEW_PROMISE2=$(gs state --repo "$REPO" --as carol --kind promise \
   --text 'I will re-review' --rests-on "$REVIEW_REQUEST2")
 APPROVAL=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
@@ -156,7 +157,7 @@ work):
 CHILD=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'The changelog needs a release-date convention' \
   --body to=@alice --body conditions='a stated convention, in the changelog' \
-  --rests-on "$REQUEST")
+  --body no_git_artifact=true --rests-on "$REQUEST")
 gs state --repo "$REPO" --as bot --kind assert \
   --text 'Found while adding the changelog: no convention for release dates' \
   --rests-on "$CHILD" >/dev/null

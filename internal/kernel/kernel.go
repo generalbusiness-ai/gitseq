@@ -420,6 +420,54 @@ func CheckReplay(ctx context.Context, store gitstore.Store, request Request) (bo
 	return replay, err
 }
 
+// PriorAct returns the event already accepted under one actor's idempotency
+// key, payload included, or reports that there is none. It reads exactly the
+// dedup identity Submit consults — target log, actor key, namespace and key —
+// over a freshly verified frontier, so nothing here is a second index or a
+// cache of its own.
+//
+// It exists for one narrow purpose: a surface that measures the world before
+// it signs cannot reproduce an accepted act by measuring again, because the
+// world moves. Handed the act it already accepted, it can rebuild that act byte
+// for byte and let the ordinary replay return it. A caller must still compare
+// what it rebuilt against this event and use it only when the two are equal;
+// anything else is a new act and is judged as one.
+func PriorAct(ctx context.Context, store gitstore.Store, target, dedupKey string) (Event, bool, error) {
+	targetFormat, targetOID, err := gitstore.ParseTypedOID(target)
+	if err != nil {
+		return Event{}, false, err
+	}
+	storeFormat, err := store.ObjectFormat(ctx)
+	if err != nil {
+		return Event{}, false, err
+	}
+	if targetFormat != storeFormat {
+		return Event{}, false, errors.New("target object format differs from repository")
+	}
+	head, err := store.Head(ctx, Ref(targetOID))
+	if err != nil {
+		// No log here yet, so there is nothing this key could have accepted.
+		return Event{}, false, nil
+	}
+	log, err := scanHead(ctx, store, targetOID, head, true, nil)
+	if err != nil {
+		return Event{}, false, err
+	}
+	prior, exists := log.Dedup[dedupKey]
+	if !exists {
+		return Event{}, false, nil
+	}
+	// The dedup index drops payload bytes, so the verified event carrying them
+	// is found by the commit the index named. Both come from this one scan, so
+	// no second read can disagree with the first.
+	for _, event := range log.Events {
+		if event.Commit == prior.Commit {
+			return event, true, nil
+		}
+	}
+	return Event{}, false, nil
+}
+
 func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64) error {
 	message := intent.Envelope(request.Signed, decoded.RestsOn)
 	eventSize := uint64(len(message))

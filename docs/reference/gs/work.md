@@ -56,7 +56,7 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
-  --rests-on "$SEED")
+  --body no_git_artifact=true --rests-on "$SEED")
 gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST" >/dev/null
 

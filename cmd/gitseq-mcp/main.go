@@ -730,11 +730,12 @@ func tools() []map[string]any {
 		}), "artifacts", "promise", "verdict", "text")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
-		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses.", "inputSchema": object(withSelection(map[string]any{
+		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses. The replacement is a new request and states its own result in body: target_ref, target=inherit, or no_git_artifact=true.", "inputSchema": object(withSelection(map[string]any{
 			"old_request":     stringField,
 			"to":              stringField,
 			"text":            stringField,
 			"conditions":      stringField,
+			"body":            map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}},
 			"retirement_text": stringField,
 			"rests_on":        map[string]any{"type": "array", "items": stringField},
 			"idempotency_key": stringField,
@@ -1328,6 +1329,20 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 	}
 }
 
+// replacementBody is the guarded replacement's request body: whatever the
+// caller stated, with the two fields this tool names explicitly on top. A
+// replacement is a new request and owes the same explicit result choice as any
+// other, which is what body carries.
+func replacementBody(arguments map[string]any) map[string]string {
+	body := stringMap(arguments["body"])
+	if body == nil {
+		body = make(map[string]string, 2)
+	}
+	body["to"] = stringValue(arguments["to"])
+	body["conditions"] = stringValue(arguments["conditions"])
+	return body
+}
+
 func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
 	oldRequest := stringValue(call.Arguments["old_request"])
 	key := stringValue(call.Arguments["idempotency_key"])
@@ -1351,10 +1366,8 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	}
 	replacement, err := s.submit(ctx, current, app.Act{
 		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirementRecord.ID,
-		Text: stringValue(call.Arguments["text"]),
-		Body: map[string]string{
-			"to": stringValue(call.Arguments["to"]), "conditions": stringValue(call.Arguments["conditions"]),
-		},
+		Text:    stringValue(call.Arguments["text"]),
+		Body:    replacementBody(call.Arguments),
 		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
 	}, identity)
 	if err != nil {

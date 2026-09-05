@@ -49,9 +49,24 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 
-printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists","no_git_artifact":"true"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
   | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
+
+## Request authoring: what a request owes
+
+A request states its result, in `body`, exactly as it does through
+[`gs state`](../gs/state.md#request-authoring-what-a-request-owes), and the same
+refusals apply before anything is appended: `target_ref=refs/heads/<branch>`,
+`target=inherit`, or `no_git_artifact=true`, exactly one of them, optionally
+with `landing=held` and `hold_owner`. This adapter fills `target_repo` and
+resolves `target_head` from the ref at filing; supplying either is refused.
+Requests are signed as `workroom/state@3`.
+
+The stored schema and the folded result are readable through
+[`inspect`](inspect.md) and the commitment rows in [`work`](work.md) and
+[`status`](status.md): `target_repo`, `target_ref`, `target_head`, and the
+`inherited`, `held`, `hold_owner` and `legacy` facts.
 
 ## Body fields the fold reads
 

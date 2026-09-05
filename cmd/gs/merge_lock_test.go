@@ -208,7 +208,7 @@ func addMergeCandidate(t *testing.T, fixture workflowFixture) mergeCandidate {
 	reviewer := fixture.workspace.View().Actors["reviewer"].Fingerprint
 	request, err := fixture.workspace.Act(fixture.ctx, "reviewer", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement independent second feature",
-		Body:    map[string]string{"to": operator, "conditions": "publish the exact independent head"},
+		Body:    map[string]string{"to": operator, "conditions": "publish the exact independent head", "no_git_artifact": "true"},
 		RestsOn: []string{fixture.ground}, IdempotencyKey: "second-implementation-request",
 	})
 	if err != nil {
@@ -239,7 +239,7 @@ func addMergeCandidate(t *testing.T, fixture workflowFixture) mergeCandidate {
 	}
 	reviewRequest, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review independent second feature",
-		Body:    map[string]string{"to": reviewer, "conditions": "exact head"},
+		Body:    map[string]string{"to": reviewer, "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "second-review-request",
 	})
 	if err != nil {

@@ -839,7 +839,7 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	// Every state@3 request states what it owes. The choice is decided here,
 	// once, at the request's own position: what a request owes cannot change
 	// because the log moved under it.
-	if definition.Lifecycle == LifecycleRequest && record.record.Schema == SchemaStateV3 {
+	if definition.Lifecycle == LifecycleRequest && statesRequestResult(record.record.Schema) {
 		result, reason := f.decideRequestResult(record, state)
 		if reason != "" {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}

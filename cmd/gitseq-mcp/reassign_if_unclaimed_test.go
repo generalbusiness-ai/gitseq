@@ -23,7 +23,7 @@ func TestMCPReassignIfUnclaimedOwnsAndReplaysTheGuardedPair(t *testing.T) {
 	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "old request",
-		Body:    map[string]string{"to": "@worker", "conditions": "finish"},
+		Body:    map[string]string{"to": "@worker", "conditions": "finish", "no_git_artifact": "true"},
 		RestsOn: []string{snapshot.Projection.Decisions[0].Event}, IdempotencyKey: "mcp-old-request",
 	})
 	if err != nil {
@@ -43,6 +43,7 @@ func TestMCPReassignIfUnclaimedOwnsAndReplaysTheGuardedPair(t *testing.T) {
 	call := toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
 		"old_request": request.Record.ID, "to": "@worker", "text": "replacement request",
 		"conditions": "finish on current bases", "idempotency_key": "mcp-reassign",
+		"body": map[string]any{"no_git_artifact": "true"},
 	}}
 	first, _, err := server.call(ctx, call)
 	if err != nil {

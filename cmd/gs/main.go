@@ -1620,8 +1620,9 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key (required)")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the old request")
-	var rests values
+	var rests, bodyValues values
 	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
+	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1646,6 +1647,17 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// The replacement is a new request and states its own result. --body
+	// carries that choice; --to and --conditions name the two fields this
+	// command has always owned, so they are written last.
+	body, err := pairs(bodyValues)
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		body = make(map[string]string, 2)
+	}
+	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
 	retirement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: *retirementText,
@@ -1656,7 +1668,7 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	}
 	replacement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
 		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirement.ID,
-		Text: *message, Body: map[string]string{"to": *to, "conditions": *conditions},
+		Text: *message, Body: body,
 		RestsOn: rests, IdempotencyKey: *key + "/request",
 	})
 	if err != nil {

@@ -1282,15 +1282,23 @@ does not carry the retirement. It is keyed to that one edge and that one
 relation, and reaches neither carried nor abandoned successions.
 
 Filling `target_head` by resolving the ref at filing time, and refusing to file
-when it does not resolve, is layer-7 work in a later slice (I5); this head
-neither does it nor depends on it. The receipt fields and the merge refusals
-are layer-7 work too and are described under `gs merge` below; the
-authorization guard bindings and the status, work, inspect and worktree
-surfaces remain later work. This head admits `state@3` and `supersede@1` in the fold and
-leaves every filer on `state@2` and `supersede@0`, so no request already in
-flight acquires an obligation nobody stated. These admission and projection
-changes advance the profile to `workroom-fold@19`; a cache written under `@18`
-is rejected and history replayed.
+when it does not resolve, is layer-7 work and is described under "Request
+authoring" below. The receipt fields and the merge refusals are layer-7 work
+too and are described under `gs merge`; the status, work, inspect and worktree
+surfaces remain later work. These admission and projection changes advance the
+profile to `workroom-fold@19`; a cache written under `@18` is rejected and
+history replayed.
+
+Two schemas state the section-1 choice: `workroom/state@3`, and
+`workroom/reassign-if-unclaimed@1`, whose payload publishes a replacement
+request. Every older schema carries the same field names as opaque body text,
+including `workroom/reassign-if-unclaimed@0`, so every record already in the log
+reads exactly as it always did. The body-local half of the judgement —
+which encoding, whether the triple is complete and well formed, whether the
+hold is stated coherently — is one exported function this layer and layer 7
+both call, so the surface that files a request refuses the same shapes the fold
+would, in the same words. The ancestry walk and the roster read stay here,
+because only this layer holds the records they read.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
@@ -1565,6 +1573,26 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   query needs a fact Git holds rather than the projection — whether an
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
+
+  **Request authoring.** Filing a request is where layer 5's landing
+  obligation meets the repository, and one path in `internal/app` does it for
+  every surface: `gs state`, a `gs batch` entry, the MCP `state` tool, the
+  resident's `POST /v0/act`, and the guarded replacement of
+  `reassign-if-unclaimed`. A request-lifecycle state is signed as
+  `workroom/state@3` — the guarded replacement as
+  `workroom/reassign-if-unclaimed@1` — and must state exactly one result. This
+  layer resolves the by-value case: the caller names `target_ref`, and the
+  boundary fills `target_repo` with this workroom's genesis id and reads
+  `target_head` from that ref with `git show-ref --verify`, refusing a ref that
+  does not resolve. A caller-supplied `target_repo` or `target_head` is refused
+  outright rather than compared, because a hand-written measurement is either a
+  guess or one taken elsewhere; that field is also distinct from a release
+  report's `target_pre_head`, which is the signer's own measurement and is
+  checked on the report path. Every refusal here happens before the request is
+  signed, so the frontier is unchanged. The measurement is taken per filing:
+  after the ref moves, a fresh filing resolves the new head, while an exact
+  retry under an accepted idempotency key replays its original event and
+  measures nothing.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

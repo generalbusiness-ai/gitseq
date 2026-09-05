@@ -62,7 +62,7 @@ func TestAdapterStateRequestDeliversToActorAddedAfterSessionStart(t *testing.T) 
 	}
 	value, _, err := server.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
 		"kind": "request", "text": "review the late-actor repair",
-		"body":            map[string]any{"to": "@late", "conditions": "the late recipient receives it"},
+		"body":            map[string]any{"to": "@late", "conditions": "the late recipient receives it", "no_git_artifact": "true"},
 		"rests_on":        []any{genesis.ID},
 		"idempotency_key": "late-recipient",
 	}})
@@ -112,7 +112,7 @@ func newAuthorizationRoom(t *testing.T) authorizationRoom {
 	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "release the landing hold",
-		Body:    map[string]string{"to": "human", "conditions": "release the landing hold"},
+		Body:    map[string]string{"to": "human", "conditions": "release the landing hold", "no_git_artifact": "true"},
 		RestsOn: []string{genesis.ID}, IdempotencyKey: "authorization-request",
 	})
 	if err != nil {

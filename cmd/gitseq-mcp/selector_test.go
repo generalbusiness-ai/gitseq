@@ -175,7 +175,7 @@ func TestSelectedAgentDrivesDegradedStatusWorkAndWait(t *testing.T) {
 	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "builder work",
-		Body:    map[string]string{"to": "builder", "conditions": "selected reads it"},
+		Body:    map[string]string{"to": "builder", "conditions": "selected reads it", "no_git_artifact": "true"},
 		RestsOn: []string{genesis.ID}, IdempotencyKey: "builder-work",
 	})
 	if err != nil {

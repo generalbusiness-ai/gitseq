@@ -35,12 +35,14 @@ REPO="$(mktemp -d)/project"
 git init -q -b main "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 BASE=$(git -C "$REPO" branch --show-current)
-gs init --repo "$REPO" --operator alice >/dev/null
+GENESIS=$(gs init --repo "$REPO" --operator alice \
+  | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
 gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
 
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
-  --text 'Add a changelog' --body to=@bot --body conditions='it exists')
+  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
+  --body target_ref="refs/heads/$BASE" --body landing=held)
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST")
 git -C "$REPO" switch -q -c task/changelog
@@ -55,7 +57,8 @@ ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" --rests-on "$PROMISE")
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Review at the exact head' --body to=@carol \
-  --body conditions='confirm the named head' --rests-on "$ARTIFACT")
+  --body conditions='confirm the named head' \
+  --body no_git_artifact=true --rests-on "$ARTIFACT")
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \
   --text 'I will review it' --rests-on "$REVIEW_REQUEST")
 APPROVAL=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
@@ -68,6 +71,7 @@ TARGET_PRE_HEAD=$(git -C "$REPO" rev-parse HEAD)
 AUTH_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'Authorize this exact approved merge' --body to=@alice \
   --body conditions='lift do-not-merge only for the structured bindings below' \
+  --body no_git_artifact=true \
   --rests-on "$REQUEST" --rests-on "$APPROVAL")
 AUTHORIZATION=$(gs state --repo "$REPO" --as alice --kind report \
   --text 'Authorize only this candidate and approval on the measured target' \
@@ -75,6 +79,8 @@ AUTHORIZATION=$(gs state --repo "$REPO" --as alice --kind report \
   --body authorizes_approval="$APPROVAL" \
   --body authorizes_request="$REQUEST" \
   --body target_pre_head="$TARGET_PRE_HEAD" \
+  --body target_repo="git:sha1:$GENESIS" \
+  --body target_ref="refs/heads/$BASE" \
   --rests-on "$AUTH_REQUEST")
 gs ratify --repo "$REPO" --as bot "$AUTHORIZATION" >/dev/null
 gs merge --repo "$REPO" --as bot --checkout "$REPO" \

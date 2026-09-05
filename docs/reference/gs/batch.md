@@ -37,7 +37,8 @@ fields are refused.
 ```text
 [
   {"label": "req", "verb": "state", "kind": "request", "text": "Add a changelog",
-   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists"},
+   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists",
+            "no_git_artifact": "true"},
    "rests_on": ["git:sha1:<genesis>#git:sha1:<event>"],
    "idempotency_key": "changelog-request"},
   {"label": "promise", "verb": "state", "kind": "promise", "text": "I will add it",
@@ -68,7 +69,8 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 cat > "$REPO/chain.json" <<JSON
 [
   {"label": "req", "verb": "state", "kind": "request", "text": "Add a changelog",
-   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists"},
+   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists",
+            "no_git_artifact": "true"},
    "rests_on": ["$SEED"], "idempotency_key": "changelog-request"},
   {"label": "note", "verb": "state", "kind": "assert",
    "text": "the changelog convention is one entry per release",

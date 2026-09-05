@@ -49,7 +49,7 @@ func reassignFixtureOn(t *testing.T, stale bool) reassignFixture {
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "do it",
-		Body:    map[string]string{"to": "@agent", "conditions": "finish"},
+		Body:    map[string]string{"to": "@agent", "conditions": "finish", "no_git_artifact": "true"},
 		RestsOn: []string{basis}, IdempotencyKey: "original-request",
 	})
 	if stale {
@@ -74,7 +74,7 @@ func (f reassignFixture) retireAct() Act {
 func (f reassignFixture) replacementAct(retirement string) Act {
 	return Act{
 		Verb: VerbReassignIfUnclaimed, Target: f.request.ID, Retirement: retirement,
-		Text: "ask the other agent", Body: map[string]string{"to": "@other", "conditions": "finish"},
+		Text: "ask the other agent", Body: map[string]string{"to": "@other", "conditions": "finish", "no_git_artifact": "true"},
 		IdempotencyKey: "guarded-replacement",
 	}
 }
@@ -207,7 +207,7 @@ func TestGuardedRequestHistoricalFallbackDoesNotMaskCustodyFailure(t *testing.T)
 	}
 	fixture.workspace.MetaDir = blocked
 	_, err := fixture.workspace.normalizeGuardedRequestShape(context.Background(), map[string]string{
-		"to": "@missing", "conditions": "finish",
+		"to": "@missing", "conditions": "finish", "no_git_artifact": "true",
 	})
 	if err == nil || !strings.Contains(err.Error(), "re-read configuration custody") {
 		t.Fatalf("guarded normalization error = %v, want custody failure", err)
