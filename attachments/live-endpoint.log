@@ -1,0 +1,5 @@
+=== RUN   TestPlannerLiveWorktreeEndpoint
+    planner_live_endpoint_test.go:63: status=200 cold=20.151309209s warm=1.085762125s counts=map[protected:38] deletable=[]
+--- PASS: TestPlannerLiveWorktreeEndpoint (21.48s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	21.912s

@@ -1,0 +1,48 @@
+=== RUN   TestPlannerPriorInputIndexMatchesCaptured
+    planner_prior_index_test.go:95: all 2402 input rows, heads, branches, selected receipts and distinct promises match actual prior source
+--- PASS: TestPlannerPriorInputIndexMatchesCaptured (0.59s)
+=== RUN   TestWorktreeCapturedRoomWithinOriginalBudget
+    worktree_index_test.go:234: captured room: 61827/65536 inspection steps; 35 checkouts, 2402 distinct commitment rows
+--- PASS: TestWorktreeCapturedRoomWithinOriginalBudget (0.81s)
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules/complete
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules/missing-parent
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules/missing-object
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules/shallow
+=== RUN   TestWorktreeIndexMatchesExhaustiveRules/unknown-ref
+--- PASS: TestWorktreeIndexMatchesExhaustiveRules (0.31s)
+    --- PASS: TestWorktreeIndexMatchesExhaustiveRules/complete (0.07s)
+    --- PASS: TestWorktreeIndexMatchesExhaustiveRules/missing-parent (0.07s)
+    --- PASS: TestWorktreeIndexMatchesExhaustiveRules/missing-object (0.03s)
+    --- PASS: TestWorktreeIndexMatchesExhaustiveRules/shallow (0.07s)
+    --- PASS: TestWorktreeIndexMatchesExhaustiveRules/unknown-ref (0.07s)
+=== RUN   TestWorktreeInputIndexRetainsDirectHeadsAndDistinctPromises
+--- PASS: TestWorktreeInputIndexRetainsDirectHeadsAndDistinctPromises (0.00s)
+=== RUN   TestWorktreeGraphFailureDiscardsPartialResults
+=== RUN   TestWorktreeGraphFailureDiscardsPartialResults/inspection
+=== RUN   TestWorktreeGraphFailureDiscardsPartialResults/walk
+=== RUN   TestWorktreeGraphFailureDiscardsPartialResults/cancelled
+=== RUN   TestWorktreeGraphFailureDiscardsPartialResults/cycle
+--- PASS: TestWorktreeGraphFailureDiscardsPartialResults (0.59s)
+    --- PASS: TestWorktreeGraphFailureDiscardsPartialResults/inspection (0.02s)
+    --- PASS: TestWorktreeGraphFailureDiscardsPartialResults/walk (0.01s)
+    --- PASS: TestWorktreeGraphFailureDiscardsPartialResults/cancelled (0.01s)
+    --- PASS: TestWorktreeGraphFailureDiscardsPartialResults/cycle (0.02s)
+=== RUN   TestCheckoutAncestryMatchesContains
+=== RUN   TestCheckoutAncestryMatchesContains/complete
+=== RUN   TestCheckoutAncestryMatchesContains/incomplete
+=== RUN   TestCheckoutAncestryMatchesContains/shallow
+=== RUN   TestCheckoutAncestryMatchesContains/missing-object
+--- PASS: TestCheckoutAncestryMatchesContains (0.02s)
+    --- PASS: TestCheckoutAncestryMatchesContains/complete (0.01s)
+    --- PASS: TestCheckoutAncestryMatchesContains/incomplete (0.01s)
+    --- PASS: TestCheckoutAncestryMatchesContains/shallow (0.00s)
+    --- PASS: TestCheckoutAncestryMatchesContains/missing-object (0.00s)
+=== RUN   TestWorktreeClassificationProtectsEveryNamedHead
+--- PASS: TestWorktreeClassificationProtectsEveryNamedHead (1.80s)
+=== RUN   TestWorktreeAssociationsShareTotalBudget
+--- PASS: TestWorktreeAssociationsShareTotalBudget (0.07s)
+=== RUN   TestWorktreeBudgetExhaustionDiscardsPartialDeletionAdvice
+--- PASS: TestWorktreeBudgetExhaustionDiscardsPartialDeletionAdvice (1.13s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	6.787s
