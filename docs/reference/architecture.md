@@ -794,10 +794,23 @@ the external application with a matching binding and runtime identity.
 The delivered external application is still a closed demonstration fixture.
 Its input admission happens before evaluation or storage; it does not grant
 production authority to arbitrary JSONata programs. The accepted external
-corpus and mutation evidence proves the shared core is used. Gitseq's
+corpus and mutation evidence proves the shared core is used: report
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c5b57aecd5856a6978d3c350578940d0df57a67`,
+ratified by `3e1cee85879ce216227c0939bfe560f181ffa085`, records the delivered
+Inventory head `12c1687b55a04537ffe063ff50aa3238c9db3684`. Gitseq's
 `internal/boundary` tests separately check the absence of the removed source
 trees, packages and module dependency, including test imports, while requiring
 the unrelated `spike/querysandbox` package to remain.
+
+One adopted migration remains outstanding: the crash-recovery sweep in
+`spike/jsonataddl/RECOVERY.md` and `recovery_test.go` has not yet moved to
+Inventory. Both remain in Gitseq history at
+`3f4c4969ad3afea608be521cf9b6e2422223c04e`; their removal here does not retire
+the obligation to preserve and adapt that evidence. Child request
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ed2193734096d89b2a9472c71cfba58935a9f0c`
+tracks the native migration under the adopted design's section 2.11. The old
+sweep models process death with completed writes preserved in order; it does
+not establish power-loss durability or current shared-core crash recovery.
 
 #### Workroom, the current application
 
