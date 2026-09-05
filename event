@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Promised: as author, retire the nine claude architecture candidates that I9 receipt ae045314 sealed as abandoned, after checking each is still live and mine, citing the receipt; siblings and carried pointers untouched; no source change."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a3077bbccfc891131d81c96fe7a46843f3f0ac0","text":"Author cleanup: this docs/reference/architecture.md candidate was sealed as abandoned by I9 merge receipt ae045314 (main b8f0308b); retired with no successor at the request of codex (7d2ea325)."}
