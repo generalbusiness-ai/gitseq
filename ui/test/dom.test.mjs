@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import { JSDOM } from "jsdom";
 
@@ -508,7 +509,7 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.deepEqual(tabs().map((tab) => tab.textContent), [
       "open3",
       "reasoning moved1",
-      "approved, not landed0",
+      "artifact landing audit0",
       "stale, not in flight1",
       "completed0",
       "closed, not completed0",
@@ -1209,24 +1210,24 @@ test("approved delivery debt has the same searched rows and exact lifecycle in T
     p.decisions.push({ event: "p2", sequence: 7, verdict: "effective" });
     p.commitments.push({ request: "e2", promise: "p3", status: "satisfied", terminal: "landed", landing_receipt: "receipt" });
     await act(async () => root.render(React.createElement(ListHost, { RequestList, workroom: room, onOpenThread: (event) => opened.push(event) })));
-    const tab = populationTabs().find((tab) => tab.textContent.startsWith("approved, not landed"));
-    assert.equal(tab.textContent, "approved, not landed1");
+    const tab = populationTabs().find((tab) => tab.textContent.startsWith("artifact landing audit"));
+    assert.equal(tab.textContent, "artifact landing audit1");
     await click(tab);
     assert.equal(document.querySelectorAll("tbody tr").length, 1);
     const row = document.querySelector("tbody tr");
     assert.equal(row.dataset.state, "cancelled");
-    assert.match(row.textContent, /Approved, not landed/);
+    assert.match(row.textContent, /Approved artifact: landing not recorded/);
     assert.match(row.textContent, /release-2/);
     await act(async () => row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
     assert.deepEqual(opened, ["p2"]);
     await click(tabNamed("Graph"));
     const card = document.querySelector('[data-outcome-card="e2"]');
     assert.match(card.textContent, /cancelled/);
-    assert.match(card.textContent, /Approved, not landed/);
+    assert.match(card.textContent, /Approved artifact: landing not recorded/);
     await click(card); await click(card);
     assert.deepEqual(opened, ["p2", "p2"]);
     await enterText(document.querySelector('[aria-label="Search requests"]'), "no matching title");
-    assert.equal(tab.textContent, "approved, not landed0");
+    assert.equal(tab.textContent, "artifact landing audit0");
     assert.equal(document.querySelectorAll("[data-outcome-card]").length, 0);
   } finally { await act(async () => root.unmount()); await vite.close(); }
 });
@@ -1262,4 +1263,39 @@ test("a late landing observation cannot cross the selected promise or target", a
     assert.match(document.querySelector('[data-station="git"]').textContent, /target refs\/heads\/new no longer exists/);
     assert.doesNotMatch(document.querySelector('[data-station="git"]').textContent, /contains the sealed merge/);
   } finally { globalThis.fetch = previousFetch; await act(async () => root.unmount()); await vite.close(); }
+});
+
+test("Table and Graph separate actual source closure from carried-artifact audit and preserve exact keyboard focus", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
+  const root = createRoot(document.getElementById("root"));
+  const opened = [];
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const room = listRoom();
+    const { projection } = JSON.parse(readFileSync(new URL("./fixtures/tailapp-carried-source.json", import.meta.url)));
+    room.status.durable.projection = projection;
+    const source = projection.commitments.find((c) => c.terminal === "landed");
+    await act(async () => root.render(React.createElement(ListHost, { RequestList, workroom: room, onOpenThread: (event) => opened.push(event) })));
+    const audit = populationTabs().find((tab) => tab.textContent.startsWith("artifact landing audit"));
+    assert.equal(audit.textContent, "artifact landing audit1");
+    await click(audit);
+    assert.match(document.querySelector("h2").textContent, /1 commitment with an artifact landing audit/);
+    const row = document.querySelector("tbody tr");
+    assert.equal(row.dataset.state, "satisfied");
+    assert.match(row.textContent, /Source landed/);
+    assert.match(row.textContent, /Approved artifact: carried by receipt/);
+    assert.equal(document.querySelectorAll("tbody tr").length, 1);
+    await act(async () => row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.deepEqual(opened, [source.promise]);
+    await click(tabNamed("Graph"));
+    const card = [...document.querySelectorAll("[data-outcome-card]")].find((card) => card.dataset.outcomeCard === source.request);
+    assert.match(card.textContent, /Source landed/);
+    assert.match(card.textContent, /Approved artifact: carried by receipt/);
+    assert.match(card.getAttribute("aria-label"), /satisfied; Source landed; Approved artifact: carried by receipt/);
+    await click(card); await click(card);
+    assert.deepEqual(opened, [source.promise, source.promise]);
+    await enterText(document.querySelector('[aria-label="Search requests"]'), "no matching source");
+    assert.equal(audit.textContent, "artifact landing audit0");
+    assert.equal(document.querySelectorAll("[data-outcome-card]").length, 0);
+  } finally { await act(async () => root.unmount()); await vite.close(); }
 });

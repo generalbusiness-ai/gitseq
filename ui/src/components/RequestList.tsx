@@ -120,7 +120,7 @@ export function RequestList({
     live: `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`,
     moved: `${rows.length} resting on reasoning that has moved`,
     stale: `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`,
-    approved: `${rows.length} approved, not landed`,
+    approved: `${rows.length} ${rows.length === 1 ? "commitment" : "commitments"} with an artifact landing audit`,
     done: `${rows.length} completed`,
     closed: `${rows.length} closed, not completed`,
     ratification: `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`,
@@ -199,6 +199,7 @@ export function RequestList({
             )}
           </div>
 
+          {population === "approved" && <p className="mt-2 px-1 text-[11px] text-muted">The approved artifact has no recorded landing. A receipt may carry it while closing the source request. These rows can also appear under completed or closed.</p>}
           {rows.length === 0 ? (
             <p className="py-12 text-center text-xs text-faint">
               {query ? "Nothing here matches that." : "Nothing is waiting."}
@@ -267,7 +268,7 @@ function Row({ row, onOpen }: { row: WorkRow; onOpen: () => void }) {
     <tr
       tabIndex={0}
       role="link"
-      aria-label={`${row.state}${row.landing?.delivery ? `, ${row.landing.delivery}` : ""}, target ${row.landing?.target ?? "not applicable"}, waits on ${row.waitsOnName}, ${row.title}`}
+      aria-label={`${row.state}${row.landing?.delivery ? `, ${row.landing.delivery}` : ""}${row.landing?.artifactAudit ? `, ${row.landing.artifactAudit}` : ""}, target ${row.landing?.target ?? "not applicable"}, waits on ${row.waitsOnName}, ${row.title}`}
       data-state={row.state}
       data-waits={row.waitsOnName}
       data-group={row.group}
@@ -284,6 +285,7 @@ function Row({ row, onOpen }: { row: WorkRow; onOpen: () => void }) {
       <td className={cn("px-2 py-1 font-semibold", row.attention ? "text-danger" : "text-muted")}>
         <span className="block truncate">{row.state}</span>
         {row.landing?.delivery && <span className="block text-[10px] font-normal">{row.landing.delivery}</span>}
+        {row.landing?.artifactAudit && <span className="block text-[10px] font-normal">{row.landing.artifactAudit}</span>}
       </td>
       <td className="px-2 py-1 text-muted" title={row.landing?.destination}>
         <span className="block truncate">{row.landing?.target ?? "—"}</span>

@@ -49,7 +49,7 @@ export type Population = "live" | "moved" | "approved" | "stale" | "done" | "clo
 export const POPULATIONS: { key: Population; label: string }[] = [
   { key: "live", label: "open" },
   { key: "moved", label: "reasoning moved" },
-  { key: "approved", label: "approved, not landed" },
+  { key: "approved", label: "artifact landing audit" },
   { key: "stale", label: "stale, not in flight" },
   { key: "done", label: "completed" },
   { key: "closed", label: "closed, not completed" },
@@ -195,6 +195,7 @@ export interface RowContext {
 // described as one.
 export function workRows(projection: Projection, context: RowContext, population: Population = "live"): WorkRow[] {
   const statements = new Map(projection.statements.map((statement) => [statement.event, statement]));
+  const reviews = new Map((projection.reviews ?? []).map((review) => [review.report, review]));
   const moved = lastMovement(projection);
   const rows: WorkRow[] = [];
   for (const commitment of projection.commitments) {
@@ -221,7 +222,7 @@ export function workRows(projection: Projection, context: RowContext, population
       event: commitment.request,
       ticket: context.tickets.get(commitment.request),
       state: rowState(commitment, attention, population),
-      landing: landingDisplay(commitment),
+      landing: landingDisplay(commitment, statements.get(commitment.landing_receipt ?? ""), reviews.get(commitment.approval ?? "")),
       attention,
       waitsOn,
       waitsOnName: waitsOn ? context.nameOf(waitsOn) : "unassigned",

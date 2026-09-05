@@ -11,21 +11,27 @@ export interface LandingDisplay {
   destination: string;
   legacy: boolean;
   delivery: string;
+  artifactAudit: string;
   holdOwner?: string;
   release?: string;
 }
 
-export function landingDisplay(commitment?: Commitment): LandingDisplay | undefined {
+export function landingDisplay(commitment?: Commitment, receipt?: Statement, approval?: Review): LandingDisplay | undefined {
   if (!commitment) return undefined;
   const ref = commitment.target_ref;
   const repo = commitment.target_repo;
+  const carried = receipt?.event === commitment.landing_receipt &&
+    approval?.report === commitment.approval && approval?.ratified && !approval.retired &&
+    approval.head === commitment.candidate && approval.artifact &&
+    receipt?.merge_left_live?.some((entry) => entry.artifact === approval.artifact && entry.verified && entry.class === "carried");
   return {
     target: ref ? ref.replace(/^refs\/heads\//, "") : repo ? "Incomplete target" : "No Git artifact",
     destination: ref ? `${repo || "Repository unavailable"} · ${ref}` : repo ? `${repo} · Target ref unavailable` : "This request owes no Git artifact",
     legacy: commitment.legacy === true,
-    delivery: commitment.approved_not_landed
-      ? "Approved, not landed"
-      : commitment.terminal === "landed" ? "Landed" : "",
+    delivery: commitment.terminal === "landed" ? "Source landed" : "",
+    artifactAudit: commitment.approved_not_landed
+      ? carried ? "Approved artifact: carried by receipt" : "Approved artifact: landing not recorded"
+      : "",
     holdOwner: commitment.hold_owner,
     release: commitment.release,
   };
@@ -232,7 +238,12 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       present: !!commitment.landing_receipt, tone: commitment.landing_receipt ? "ok" : undefined,
       what: commitment.landing_receipt
         ? `sealed landing into ${target}${observed?.merge_head ? ` at ${observed.merge_head.slice(0, 8)}` : ""}${observed?.receipt_legacy ? " — legacy receipt" : ""}`
-        : `${commitment.approved_not_landed ? "approved head, not recorded as landed" : "no sealed landing recorded"} into ${target}` });
+        : `no sealed landing recorded into ${target}` });
+    const display = landingDisplay(commitment, statements.get(commitment.landing_receipt ?? ""), verdict);
+    if (display?.artifactAudit) {
+      station({ id: "artifact-audit", kind: "artifact audit", event: verdict?.artifact, present: true,
+        what: display.artifactAudit });
+    }
     if (commitment.landing_receipt && observed?.merge_hold_warning) {
       station({ id: "hold-warning", kind: "warning", present: true, tone: "danger", what: "the sealed receipt used the unreleased-hold compatibility window" });
     }

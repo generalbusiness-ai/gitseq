@@ -154,6 +154,7 @@ export function buildOutcomeMap(
   };
 
   const statements = new Map((projection.statements ?? []).map((statement) => [statement.event, statement]));
+  const reviews = new Map((projection.reviews ?? []).map((review) => [review.report, review]));
   const acts = new Map((projection.acts ?? []).map((act) => [act.event, act]));
   const known = new Set([...statements.keys(), ...acts.keys()]);
   const threads = buildThreadIndex(projection);
@@ -490,7 +491,7 @@ export function buildOutcomeMap(
         title: focalCard?.title ?? (statement ? firstLine(statement.text) : thread),
         kind: statement?.kind ?? "record",
         state: focalCard?.state ?? outcomeDisplayState(commitment),
-        landing: focalCard ? focalCard.landing : landingDisplay(commitment),
+        landing: focalCard ? focalCard.landing : landingDisplay(commitment, statements.get(commitment?.landing_receipt ?? ""), reviews.get(commitment?.approval ?? "")),
         focus: focalCard?.key ?? commitment?.promise ?? commitment?.report ?? commitment?.request,
         waitsOn: focalCard ? (focalCard.waitsOn || undefined) : commitment?.waiting_on,
         rootOfView: !incoming.has(thread),

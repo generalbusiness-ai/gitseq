@@ -194,7 +194,7 @@ export function OutcomeMap({
                   selectedThread === node.thread && "ring-2 ring-accent",
                 )}
                 style={{ left: position.x, top: position.y, width: OUTCOME_CARD.width, height: OUTCOME_CARD.height }}
-                aria-label={`${node.state}${node.landing?.delivery ? `; ${node.landing.delivery}` : ""}; ${node.landing ? `target ${node.landing.target}; ` : ""}${node.title}; ${selectedThread === node.thread ? "activate again to open full thread" : "select connected work"}`}
+                aria-label={`${node.state}${node.landing?.delivery ? `; ${node.landing.delivery}` : ""}${node.landing?.artifactAudit ? `; ${node.landing.artifactAudit}` : ""}; ${node.landing ? `target ${node.landing.target}; ` : ""}${node.title}; ${selectedThread === node.thread ? "activate again to open full thread" : "select connected work"}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="max-w-[9rem] truncate font-serif text-xs font-semibold text-foreground">{node.title}</span>
@@ -209,6 +209,7 @@ export function OutcomeMap({
                   Target: {node.landing.target}{node.landing.legacy && " · legacy"}
                 </p>}
                 {node.landing?.delivery && <p className="mt-1 text-[10px] font-semibold text-muted">{node.landing.delivery}</p>}
+                {node.landing?.artifactAudit && <p className="mt-1 text-[10px] text-muted">{node.landing.artifactAudit}</p>}
                 {node.waitsOn && <p className="mt-2 truncate text-[10px] text-muted">Waits on {nameOf(node.waitsOn)}</p>}
               </button>
             );

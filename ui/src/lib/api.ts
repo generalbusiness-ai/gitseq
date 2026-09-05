@@ -98,7 +98,8 @@ export interface Commitment {
   terminal?: string;
   // The validated merge receipt witnessing delivery to this target.
   landing_receipt?: string;
-  // Measured against the target ref, never against main.
+  // Artifact landing audit, independent of commitment closure. A carried
+  // approved artifact can keep this flag on an already landed commitment.
   approved_not_landed?: boolean;
 }
 

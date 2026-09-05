@@ -11,7 +11,7 @@ import { renewCredential } from "../src/lib/lease.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { repoRemoteHref } from "../src/lib/repolink.ts";
 import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
-import { buildSpine } from "../src/lib/spine.ts";
+import { buildSpine, landingDisplay } from "../src/lib/spine.ts";
 import { interpretationNotice, isInterpretationGap, kindLabel } from "../src/lib/util.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -869,7 +869,8 @@ test("landing distinguishes sealed delivery from current target observations", (
   const station = (extra, id) => buildSpine("req", spineContext(projection, { ...extra, landing: extra.landing ? { ...projection.commitments[0], ...extra.landing } : undefined })).stations.find((s) => s.id === id);
   assert.match(station({}, "target").what, /refs\/heads\/release-2.*git:sha1:repository.*legacy/);
   assert.equal(station({}, "merge").present, false);
-  assert.match(station({}, "merge").what, /approved head, not recorded as landed/);
+  assert.match(station({}, "merge").what, /no sealed landing recorded/);
+  assert.equal(station({}, "artifact-audit").what, "Approved artifact: landing not recorded");
   assert.match(station({}, "git").what, /checking the current target/);
   assert.match(station({ landingUnavailable: true }, "git").what, /unavailable/);
   const observed = (state) => ({ landing: { git: { state, measured_at: NOW, ref_incorporated: null, remote_contains: null } } });
@@ -1265,7 +1266,7 @@ test("approved debt includes historical lifecycles without relabelling or invent
   assert.deepEqual(rows.map((r) => r.key), ["p1", "p2", "r5"]);
   assert.deepEqual(rows.map((r) => r.state), ["cancelled", "awaiting landing", "cancelled"]);
   assert.deepEqual(rows.map((r) => r.waitsOn), ["", "claude", ""]);
-  assert.ok(rows.every((r) => r.landing.delivery === "Approved, not landed" && r.landing.target === "release-2"));
+  assert.ok(rows.every((r) => r.landing.artifactAudit === "Approved artifact: landing not recorded" && r.landing.target === "release-2"));
   assert.deepEqual(workRows(projection, context(projection), "closed").map((r) => r.key), ["p1", "r5"]);
 });
 
@@ -1285,4 +1286,41 @@ test("the thread uses its projected exact approval even when the review has its 
   assert.equal(spine.stations.find((s) => s.id === "verdict").event, "approval");
   assert.equal(spine.stations.find((s) => s.id === "verdict").commit, "head");
   assert.equal(spine.stations.find((s) => s.id === "merge").present, false);
+});
+
+test("the actual Tailapp source receipt closes its child while carrying the approved artifact and leaving publication open", () => {
+  const { projection } = JSON.parse(readFileSync(new URL("./fixtures/tailapp-carried-source.json", import.meta.url)));
+  const ctx = context(projection);
+  const source = projection.commitments.find((c) => c.terminal === "landed");
+  const parent = projection.commitments.find((c) => c !== source);
+  const approved = workRows(projection, ctx, "approved");
+  assert.equal(approved.length, 1);
+  assert.equal(approved[0].key, source.promise);
+  assert.equal(approved[0].state, "satisfied");
+  assert.equal(approved[0].waitsOn, "");
+  assert.equal(approved[0].landing.delivery, "Source landed");
+  assert.equal(approved[0].landing.artifactAudit, "Approved artifact: carried by receipt");
+  assert.deepEqual(workRows(projection, ctx, "done").map((r) => r.key), [source.promise]);
+  const live = workRows(projection, ctx, "live");
+  assert.deepEqual(live.map((r) => r.key), [parent.promise]);
+  assert.equal(live[0].landing.delivery, "");
+  assert.equal(live[0].landing.artifactAudit, "");
+  const spine = buildSpine(source.request, { ...ctx, projection, commitment: source });
+  assert.equal(spine.stations.find((s) => s.id === "merge").event, source.landing_receipt);
+  assert.equal(spine.stations.find((s) => s.id === "artifact-audit").what, approved[0].landing.artifactAudit);
+
+  const approval = projection.reviews[0];
+  const receipt = projection.statements.find((s) => s.event === source.landing_receipt);
+  const unknown = "Approved artifact: landing not recorded";
+  assert.equal(landingDisplay(source, { ...receipt, event: "another-receipt" }, approval).artifactAudit, unknown);
+  assert.equal(landingDisplay(source, { ...receipt, merge_left_live: receipt.merge_left_live.map((e) => ({ ...e, verified: false })) }, approval).artifactAudit, unknown);
+  // A newer approval on the same completed commitment has no accounting in
+  // the older source receipt. It must remain visible in the audit population.
+  approval.artifact = "later-artifact";
+  approval.head = source.candidate = "later-head";
+  const later = workRows(projection, ctx, "approved");
+  assert.equal(later.length, 1);
+  assert.equal(later[0].state, "satisfied");
+  assert.equal(later[0].landing.delivery, "Source landed");
+  assert.equal(later[0].landing.artifactAudit, unknown);
 });
