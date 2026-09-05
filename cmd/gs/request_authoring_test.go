@@ -460,3 +460,135 @@ func TestCLIReassignmentStatesTheReplacementResult(t *testing.T) {
 		}
 	})
 }
+
+// An accepted act is recovered from the log before any ref is read, so a
+// branch that is gone by the time the caller retries cannot stand between them
+// and the act they already have. A fresh filing against that same absent ref
+// still has nothing to measure and is still refused.
+func TestCLIAcceptedRequestIsRecoveredBeforeAnyRefIsRead(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	testGit(t, fixture.repo, "branch", "side")
+	body := map[string]string{"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/side"}
+	first, err := fixture.file("cli-vanishing", "land it on the side", body)
+	if err != nil {
+		t.Fatalf("filing against refs/heads/side: %v", err)
+	}
+	measured := fixture.body(first)["target_head"]
+	if measured == "" {
+		t.Fatalf("the accepted request measured nothing: %+v", fixture.body(first))
+	}
+
+	testGit(t, fixture.repo, "branch", "-D", "side")
+	frontier := fixture.frontier()
+	replay, err := fixture.file("cli-vanishing", "land it on the side", body)
+	if err != nil {
+		t.Fatalf("identical retry after the branch was deleted: %v", err)
+	}
+	if replay != first {
+		t.Fatalf("the retry returned %s, want the original %s", replay, first)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the retry appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.body(first)["target_head"]; got != measured {
+		t.Fatalf("the replayed request now measures %q, want %q", got, measured)
+	}
+
+	event, err := fixture.file("cli-vanishing-fresh", "land it on the side again", body)
+	if err == nil {
+		t.Fatalf("a fresh filing against an absent ref was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "does not resolve in") {
+		t.Fatalf("refusal %q does not name the unresolvable ref", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused fresh filing appended: frontier %s to %s", frontier, after)
+	}
+}
+
+// The destination is the caller's own intent, never a measurement recovered
+// from an earlier act. A reused key naming a different branch is a different
+// request, and the answer is the kernel's refusal, not the old request.
+func TestCLIReusedKeyWithADifferentDestinationIsRefused(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	first, err := fixture.file("cli-retarget", "land it", map[string]string{
+		"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The other branch holds exactly what main holds, so the only thing that
+	// differs between the two filings is the destination the caller chose.
+	testGit(t, fixture.repo, "branch", "other")
+
+	frontier := fixture.frontier()
+	event, err := fixture.file("cli-retarget", "land it", map[string]string{
+		"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/other"})
+	if err == nil {
+		t.Fatalf("a reused key naming refs/heads/other was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if strings.Contains(err.Error(), first) {
+		t.Fatalf("the refusal names the old request %s: %v", first, err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.body(first)["target_ref"]; got != "refs/heads/main" {
+		t.Fatalf("the accepted request now names %q", got)
+	}
+}
+
+// The guarded replacement is authored on the same path and answers the same
+// way: an exact retry replays after the branch is gone, and a reused key that
+// retargets the replacement is refused.
+func TestCLIReassignmentRecoversAnAcceptedReplacement(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	old, err := fixture.file("reassign-old", "the old request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "branch", "side")
+	reassign := func(key, ref string) error {
+		return reassignIfUnclaimedCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--to", "@second",
+			"--text", "ask again", "--conditions", "do it",
+			"--body", "target_ref=" + ref, "--idempotency-key", key, old,
+		})
+	}
+	if err := reassign("cli-reassign-recover", "refs/heads/side"); err != nil {
+		t.Fatalf("reassigning onto refs/heads/side: %v", err)
+	}
+	replacement := fixture.eventOf("ask again")
+
+	testGit(t, fixture.repo, "branch", "-D", "side")
+	frontier := fixture.frontier()
+	if err := reassign("cli-reassign-recover", "refs/heads/side"); err != nil {
+		t.Fatalf("identical reassignment retry after the branch was deleted: %v", err)
+	}
+	if again := fixture.eventOf("ask again"); again != replacement {
+		t.Fatalf("the retry returned %s, want the original %s", again, replacement)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the reassignment retry appended: frontier %s to %s", frontier, after)
+	}
+
+	err = reassign("cli-reassign-recover", "refs/heads/main")
+	if err == nil {
+		t.Fatal("a reused reassignment key naming a different branch was accepted")
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if strings.Contains(err.Error(), replacement) {
+		t.Fatalf("the refusal names the accepted replacement %s: %v", replacement, err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+}

@@ -1283,15 +1283,39 @@ func (w *Workspace) BuildActRequestReadOnly(ctx context.Context, snapshot Snapsh
 	return w.buildActRequest(ctx, private, actorName, act, &snapshot)
 }
 
+// buildActRequest resolves an accepted retry before it measures anything, then
+// builds the act.
+//
+// An act that names a destination by ref and carries an idempotency key is the
+// one act whose payload depends on a mutable read, so it is the one act whose
+// retry cannot simply be rebuilt. If a request already stands under this
+// caller's key, the measurement it stated is recovered from the log and the act
+// is rebuilt on that: no ref is read, so a moved or deleted branch cannot stand
+// between a caller and the act they already have. The rebuilt act is used only
+// when it is byte for byte the accepted one; anything else — a changed
+// destination, changed words, changed bases — falls through to an ordinary
+// fresh filing, which measures the ref as it stands now and leaves the kernel
+// to refuse the reused key.
 func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot) (kernel.Request, error) {
+	if act.IdempotencyKey != "" && act.Body["target_ref"] != "" &&
+		(act.Verb == VerbState || act.Verb == VerbReassignIfUnclaimed) {
+		if measurement, prior, found := w.acceptedRequestMeasurement(ctx, private, actorName, act.IdempotencyKey); found {
+			replay, err := w.buildAct(ctx, private, actorName, act, snapshot, measurement)
+			if err == nil && replay.Signed.Equal(prior.Signed) {
+				return replay, nil
+			}
+		}
+	}
+	return w.buildAct(ctx, private, actorName, act, snapshot, nil)
+}
+
+// buildAct is the whole authoring path for one act. measurement, when it is not
+// nil, is the accepted target measurement buildActRequest recovered, and is the
+// only thing that keeps this path from reading a ref.
+func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot, measurement map[string]string) (kernel.Request, error) {
 	var schema string
 	var payload any
 	guardedRetirement := false
-	// resolvedTarget records that this act's body carries a target head this
-	// boundary measured from a ref. That measurement is what an exact retry
-	// cannot repeat once the ref has moved, so it is the one thing a retry has
-	// to be handed back rather than recomputed.
-	resolvedTarget := false
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
@@ -1304,10 +1328,9 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		// here on is workroom/state@3, so the choice is never optional and
 		// never silently a legacy reading.
 		if request {
-			if body, err = w.resolveRequestChoice(ctx, act.Kind, body); err != nil {
+			if body, err = w.resolveRequestChoice(ctx, act.Kind, body, measurement); err != nil {
 				return kernel.Request{}, err
 			}
-			resolvedTarget = body["target_head"] != ""
 		}
 		// Reserved admission fields are never caller input. The guarded
 		// review path stamps its own onto the body it built, and admission
@@ -1384,10 +1407,9 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		// result. It is filed under reassign-if-unclaimed@1, which is what
 		// tells the fold to read that choice; @0 records already in the log
 		// keep reading their body as opaque text.
-		if body, err = w.resolveRequestChoice(ctx, workroom.KindRequest, body); err != nil {
+		if body, err = w.resolveRequestChoice(ctx, workroom.KindRequest, body, measurement); err != nil {
 			return kernel.Request{}, err
 		}
-		resolvedTarget = body["target_head"] != ""
 		rests = append([]string{act.Retirement}, rests...)
 		// Sequencing runs the whole state admission over this body against the
 		// exact frontier, testimony included. Running it here too keeps the
@@ -1414,12 +1436,6 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 	request, err := w.buildRequest(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey)
 	if err != nil {
 		return kernel.Request{}, err
-	}
-	if resolvedTarget && act.IdempotencyKey != "" {
-		request, err = w.reproduceAcceptedTarget(ctx, private, actorName, schema, payload, rests, act.Attachments, act.IdempotencyKey, request)
-		if err != nil {
-			return kernel.Request{}, err
-		}
 	}
 	if guardedRetirement {
 		if err := w.RefuseCitedGuardedRetirement(ctx, act.Target, act.CitedOK, request); err != nil {
@@ -1900,21 +1916,25 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 			return kernel.Request{}, err
 		}
 	}
-	namespace := w.config.IdempotencyNamespace
-	if namespace == "" {
-		// Workrooms created before the stable namespace field keep their original
-		// retry identity. Changing it in place could replay an outstanding act.
-		namespace = "gs/" + actorName
-	}
 	signed, err := intent.Sign(intent.Intent{
 		Version: intent.Version, Target: "git:" + w.config.ObjectFormat + ":" + w.config.Genesis,
 		Schema: schema, PayloadTree: "git:" + w.config.ObjectFormat + ":" + tree,
-		RestsOn: rests, IdempotencyNS: namespace, IdempotencyKey: key,
+		RestsOn: rests, IdempotencyNS: w.idempotencyNamespace(actorName), IdempotencyKey: key,
 	}, private)
 	if err != nil {
 		return kernel.Request{}, err
 	}
 	return kernel.Request{Signed: signed, Payload: encoded, Attachments: attachments}, nil
+}
+
+// idempotencyNamespace is the retry namespace this workspace signs under.
+// Workrooms created before the stable namespace field keep their original
+// retry identity; changing it in place could replay an outstanding act.
+func (w *Workspace) idempotencyNamespace(actorName string) string {
+	if w.config.IdempotencyNamespace == "" {
+		return "gs/" + actorName
+	}
+	return w.config.IdempotencyNamespace
 }
 
 func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {

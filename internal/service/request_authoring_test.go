@@ -192,3 +192,80 @@ func TestResidentRequestMeasuresTheRefAtEachFiling(t *testing.T) {
 		t.Fatalf("a fresh filing recorded %q, want the current head %q", got, moved)
 	}
 }
+
+// The resident recovers an accepted act from the log before it reads any ref,
+// so a browser retrying after the branch was deleted gets the act it already
+// filed. A fresh filing against that absent ref is still refused.
+func TestResidentAcceptedRequestIsRecoveredBeforeAnyRefIsRead(t *testing.T) {
+	fixture := newAuthorizationFixture(t)
+	fixture.git("branch", "side")
+	body := map[string]string{"to": "reviewer", "conditions": "it lands", "target_ref": "refs/heads/side"}
+	first, refusal := fixture.fileRequest("http-vanishing", "land it on the side", body)
+	if refusal != "" {
+		t.Fatalf("filing against refs/heads/side: %s", refusal)
+	}
+	measured := fixture.requestBody(first)["target_head"]
+	if measured == "" {
+		t.Fatalf("the accepted request measured nothing: %+v", fixture.requestBody(first))
+	}
+
+	fixture.git("branch", "-D", "side")
+	frontier := fixture.snapshot().Head
+	replay, refusal := fixture.fileRequest("http-vanishing", "land it on the side", body)
+	if refusal != "" {
+		t.Fatalf("identical retry after the branch was deleted: %s", refusal)
+	}
+	if replay != first {
+		t.Fatalf("the retry returned %s, want the original %s", replay, first)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("the retry appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.requestBody(first)["target_head"]; got != measured {
+		t.Fatalf("the replayed request now measures %q, want %q", got, measured)
+	}
+
+	event, refusal := fixture.fileRequest("http-vanishing-fresh", "land it on the side again", body)
+	if refusal == "" {
+		t.Fatalf("a fresh filing against an absent ref was accepted as %s", event)
+	}
+	if !strings.Contains(refusal, "does not resolve in") {
+		t.Fatalf("refusal %q does not name the unresolvable ref", refusal)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("a refused fresh filing appended: frontier %s to %s", frontier, after)
+	}
+}
+
+// A reused key naming a different branch is a different request, and the
+// resident answers with the kernel's refusal rather than the old request.
+func TestResidentReusedKeyWithADifferentDestinationIsRefused(t *testing.T) {
+	fixture := newAuthorizationFixture(t)
+	first, refusal := fixture.fileRequest("http-retarget", "land it", map[string]string{
+		"to": "reviewer", "conditions": "it lands", "target_ref": fixture.ref})
+	if refusal != "" {
+		t.Fatal(refusal)
+	}
+	// The other branch holds exactly what the checked-out one holds, so the
+	// destination the caller chose is all that differs between the filings.
+	fixture.git("branch", "other")
+
+	frontier := fixture.snapshot().Head
+	event, refusal := fixture.fileRequest("http-retarget", "land it", map[string]string{
+		"to": "reviewer", "conditions": "it lands", "target_ref": "refs/heads/other"})
+	if refusal == "" {
+		t.Fatalf("a reused key naming refs/heads/other was accepted as %s", event)
+	}
+	if !strings.Contains(refusal, "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", refusal)
+	}
+	if strings.Contains(refusal, first) {
+		t.Fatalf("the refusal names the old request %s: %s", first, refusal)
+	}
+	if after := fixture.snapshot().Head; after != frontier {
+		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.requestBody(first)["target_ref"]; got != fixture.ref {
+		t.Fatalf("the accepted request now names %q", got)
+	}
+}

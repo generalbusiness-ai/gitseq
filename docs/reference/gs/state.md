@@ -111,6 +111,26 @@ retargeting is a new request superseding the old one. A ref that moves after
 filing changes nothing durable — `target_head` is the measurement at filing,
 and the release and the merge each re-measure.
 
+### Retrying a request that owes a landing
+
+`target_head` is read from the ref at filing, so a retry cannot take the same
+measurement twice. An exact retry under an `--idempotency-key` already accepted
+is answered from the log instead: the accepted act is recovered before any ref
+is read, the request is rebuilt on the measurement that act stated, and the
+original event is returned with nothing appended. No ref is read on that path,
+so the retry still replays after the branch it named has moved or been deleted
+outright.
+
+The key alone buys nothing. Only the act stated again byte for byte replays. A
+reused key over any different intent — different words, body, bases,
+attachments, or a different `target_ref` — falls through to an ordinary fresh
+filing, which measures the ref as it stands now; the reused key is then refused
+with `idempotency key reused with different intent`, or, when that different
+destination does not resolve, refused for the ref instead. A reused key naming
+a different branch is never answered with the request filed against the old
+one. A fresh key naming a ref that does not resolve is refused as any first
+filing would be.
+
 Requests filed under this rule are signed as `workroom/state@3`. Records
 already in the log under `workroom/state@2` or earlier keep their old reading
 exactly: the same field names there are opaque body text, and a legacy

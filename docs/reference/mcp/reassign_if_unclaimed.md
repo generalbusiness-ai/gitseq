@@ -59,7 +59,11 @@ The result contains `retirement` and `request` submission results. Unrelated
 durable traffic does not refuse the pair. A promise or direct completion before
 the retirement, or between the retirement and replacement, does. If only the
 retirement lands, the error names it; an exact retry replays that act before
-continuing.
+continuing. The replacement is authored on the same path as
+[`state`](state.md#request-authoring-what-a-request-owes), so its retry is
+answered from the log before any ref is read: it replays even after the branch
+its `target_ref` named has gone, while a reused key naming a different branch
+is refused rather than answered with the accepted replacement.
 
 Use the ordinary [`supersede`](supersede.md) tool when a requester knowingly
 withdraws work that has already been promised.

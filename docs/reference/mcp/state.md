@@ -63,6 +63,13 @@ with `landing=held` and `hold_owner`. This adapter fills `target_repo` and
 resolves `target_head` from the ref at filing; supplying either is refused.
 Requests are signed as `workroom/state@3`.
 
+An exact retry under an `idempotency_key` already accepted is answered from the
+log before any ref is read, so it replays its original event even after the
+branch it named has moved or been deleted. A reused key that names a different
+`target_ref`, or changes anything else the caller stated, is refused rather
+than answered with the accepted request; a fresh key naming a ref that does not
+resolve is refused.
+
 The stored schema and the folded result are readable through
 [`inspect`](inspect.md) and the commitment rows in [`work`](work.md) and
 [`status`](status.md): `target_repo`, `target_ref`, `target_head`, and the

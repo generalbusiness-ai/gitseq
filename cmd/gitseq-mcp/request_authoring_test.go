@@ -357,3 +357,148 @@ func mcpStatements(t *testing.T, fixture mcpAuthoring) []workroom.Statement {
 	}
 	return snapshot.Projection.Statements
 }
+
+// An accepted act is recovered from the log before any ref is read, so an
+// agent that retries after its branch was deleted gets the act it already
+// filed. A fresh filing against that absent ref is still refused.
+func TestMCPAcceptedRequestIsRecoveredBeforeAnyRefIsRead(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	mcpAuthoringGit(t, fixture.repo, "branch", "side")
+	body := map[string]string{"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/side"}
+	first, err := fixture.file("mcp-vanishing", "land it on the side", body)
+	if err != nil {
+		t.Fatalf("filing against refs/heads/side: %v", err)
+	}
+	measured := fixture.body(first)["target_head"]
+	if measured == "" {
+		t.Fatalf("the accepted request measured nothing: %+v", fixture.body(first))
+	}
+
+	mcpAuthoringGit(t, fixture.repo, "branch", "-D", "side")
+	frontier := fixture.frontier()
+	replay, err := fixture.file("mcp-vanishing", "land it on the side", body)
+	if err != nil {
+		t.Fatalf("identical retry after the branch was deleted: %v", err)
+	}
+	if replay != first {
+		t.Fatalf("the retry returned %s, want the original %s", replay, first)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the retry appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.body(first)["target_head"]; got != measured {
+		t.Fatalf("the replayed request now measures %q, want %q", got, measured)
+	}
+
+	event, err := fixture.file("mcp-vanishing-fresh", "land it on the side again", body)
+	if err == nil {
+		t.Fatalf("a fresh filing against an absent ref was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "does not resolve in") {
+		t.Fatalf("refusal %q does not name the unresolvable ref", err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused fresh filing appended: frontier %s to %s", frontier, after)
+	}
+}
+
+// A reused key naming a different branch is a different request. The adapter
+// answers with the kernel's refusal, never with the old request.
+func TestMCPReusedKeyWithADifferentDestinationIsRefused(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	first, err := fixture.file("mcp-retarget", "land it", map[string]string{
+		"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The other branch holds exactly what main holds, so the destination the
+	// caller chose is the only thing that differs between the two filings.
+	mcpAuthoringGit(t, fixture.repo, "branch", "other")
+
+	frontier := fixture.frontier()
+	event, err := fixture.file("mcp-retarget", "land it", map[string]string{
+		"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/other"})
+	if err == nil {
+		t.Fatalf("a reused key naming refs/heads/other was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if strings.Contains(err.Error(), first) {
+		t.Fatalf("the refusal names the old request %s: %v", first, err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+	if got := fixture.body(first)["target_ref"]; got != "refs/heads/main" {
+		t.Fatalf("the accepted request now names %q", got)
+	}
+}
+
+// The guarded replacement tool reaches the same authoring path and answers the
+// same way.
+func TestMCPReassignmentRecoversAnAcceptedReplacement(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "human", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	old, err := fixture.file("mcp-reassign-old", "the old request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpAuthoringGit(t, fixture.repo, "branch", "side")
+	reassign := func(key, ref string) (string, error) {
+		value, _, err := fixture.adapter.call(fixture.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
+			"old_request": old, "to": "@second", "text": "ask again", "conditions": "do it",
+			"body":            map[string]any{"target_ref": ref},
+			"idempotency_key": key,
+		}})
+		if err != nil {
+			return "", err
+		}
+		pair, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("reassignment result = %#v", value)
+		}
+		record, ok := submissionRecord(pair["request"])
+		if !ok {
+			t.Fatalf("replacement = %#v", pair["request"])
+		}
+		return record.ID, nil
+	}
+	replacement, err := reassign("mcp-reassign-recover", "refs/heads/side")
+	if err != nil {
+		t.Fatalf("reassigning onto refs/heads/side: %v", err)
+	}
+
+	mcpAuthoringGit(t, fixture.repo, "branch", "-D", "side")
+	frontier := fixture.frontier()
+	again, err := reassign("mcp-reassign-recover", "refs/heads/side")
+	if err != nil {
+		t.Fatalf("identical reassignment retry after the branch was deleted: %v", err)
+	}
+	if again != replacement {
+		t.Fatalf("the retry returned %s, want the original %s", again, replacement)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the reassignment retry appended: frontier %s to %s", frontier, after)
+	}
+
+	event, err := reassign("mcp-reassign-recover", "refs/heads/main")
+	if err == nil {
+		t.Fatalf("a reused reassignment key naming a different branch was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("refusal %q is not the reused-key refusal", err)
+	}
+	if strings.Contains(err.Error(), replacement) {
+		t.Fatalf("the refusal names the accepted replacement %s: %v", replacement, err)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+}

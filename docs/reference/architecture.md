@@ -1589,10 +1589,20 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   guess or one taken elsewhere; that field is also distinct from a release
   report's `target_pre_head`, which is the signer's own measurement and is
   checked on the report path. Every refusal here happens before the request is
-  signed, so the frontier is unchanged. The measurement is taken per filing:
-  after the ref moves, a fresh filing resolves the new head, while an exact
-  retry under an accepted idempotency key replays its original event and
-  measures nothing.
+  signed, so the frontier is unchanged.
+
+  The measurement is taken per filing, and a retry is answered before any of it
+  happens. The retry identity the kernel indexes — target log, actor key,
+  idempotency namespace, idempotency key — needs nothing measured, so an act
+  already accepted under this caller's key is recovered from the log first; the
+  request is rebuilt on the measurement that act stated and is used only when
+  it is byte for byte the accepted one. No ref is read on that path, so an
+  exact retry replays after the branch it named has moved or been deleted
+  outright. Only the server-derived half is recovered: `target_ref` stays
+  whatever the caller sent, so a reused key naming a different branch rebuilds
+  a different act, falls through to a fresh measurement, and is refused as a
+  reused key rather than answered with the request filed against the old
+  destination. A fresh filing naming a ref that does not resolve is refused.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

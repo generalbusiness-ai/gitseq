@@ -174,8 +174,16 @@ func (s Signed) DedupKey() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fingerprint := sha256.Sum256(s.ActorKey)
-	return i.Target + "\x00" + hex.EncodeToString(fingerprint[:]) + "\x00" + i.IdempotencyNS + "\x00" + i.IdempotencyKey, nil
+	return DedupIdentity(i.Target, s.ActorKey, i.IdempotencyNS, i.IdempotencyKey), nil
+}
+
+// DedupIdentity states the retry identity apart from any signed record: one
+// target log, one actor key, one namespace, one key. Nothing about the payload
+// enters it, which is what lets a filer that must measure the repository before
+// it can sign ask whether this key already stands before it measures anything.
+func DedupIdentity(target string, actorKey []byte, namespace, key string) string {
+	fingerprint := sha256.Sum256(actorKey)
+	return target + "\x00" + hex.EncodeToString(fingerprint[:]) + "\x00" + namespace + "\x00" + key
 }
 
 func (s Signed) Equal(other Signed) bool {

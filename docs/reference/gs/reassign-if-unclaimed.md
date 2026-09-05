@@ -69,7 +69,12 @@ The command prints JSON containing the retirement and replacement request event
 identifiers. If the first act lands and the second loses a race, the error names
 the retirement. Re-read the old request, then retry the exact command only when
 the guard still describes what you intend. An exact retry replays the landed
-prefix instead of appending it again.
+prefix instead of appending it again. The replacement is authored on the same
+path as [`gs state`](state.md#retrying-a-request-that-owes-a-landing), so its
+retry is answered from the log before any ref is read: it replays even after
+the branch its `target_ref` named has gone, while a reused key naming a
+different branch is refused rather than answered with the accepted
+replacement.
 
 ## Deliberate withdrawal is different
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -41,7 +42,14 @@ const targetHeadReadLimit = 256
 // the field look like something a client is expected to compute, which is how a
 // stale hash gets copied forward. Callers state target_ref; this layer states
 // where it lives and what it held.
-func (w *Workspace) resolveRequestChoice(ctx context.Context, kind workroom.Kind, body map[string]string) (map[string]string, error) {
+//
+// accepted, when it is not nil, carries the target_repo and target_head an act
+// already accepted under this caller's idempotency key stated. Handed those,
+// this recovers the measurement instead of taking one, and reads no ref at
+// all. Everything else the caller stated — target_ref included — stands exactly
+// as they sent it, so a changed destination under a reused key rebuilds
+// different bytes and is refused rather than answered with the old request.
+func (w *Workspace) resolveRequestChoice(ctx context.Context, kind workroom.Kind, body map[string]string, accepted map[string]string) (map[string]string, error) {
 	normalized := cloneBody(body)
 	if normalized == nil {
 		normalized = make(map[string]string)
@@ -55,12 +63,18 @@ func (w *Workspace) resolveRequestChoice(ctx context.Context, kind workroom.Kind
 		if !workroom.ValidBranchRef(ref) {
 			return nil, fmt.Errorf("%s body.target_ref must name a branch under refs/heads/", kind)
 		}
-		head, err := w.resolveTargetHead(ctx, ref)
-		if err != nil {
-			return nil, fmt.Errorf("%s body.target_ref: %w", kind, err)
+		if accepted != nil {
+			for field, stated := range accepted {
+				normalized[field] = stated
+			}
+		} else {
+			head, err := w.resolveTargetHead(ctx, ref)
+			if err != nil {
+				return nil, fmt.Errorf("%s body.target_ref: %w", kind, err)
+			}
+			normalized["target_repo"] = w.workroomID()
+			normalized["target_head"] = head
 		}
-		normalized["target_repo"] = w.workroomID()
-		normalized["target_head"] = head
 	}
 	if _, reason := workroom.ReadRequestChoice(w.workroomID(), normalized); reason != "" {
 		return nil, fmt.Errorf("%s state: %s", kind, reason)
@@ -99,51 +113,50 @@ func (w *Workspace) resolveTargetHead(ctx context.Context, ref string) (string, 
 	return head, nil
 }
 
-// reproduceAcceptedTarget answers the one problem a filing-time measurement
+// acceptedRequestMeasurement answers the one problem a filing-time measurement
 // creates: a retry cannot measure the same world twice. The by-value target
 // head is read from the ref when the request is signed, so an exact retry after
-// the ref moved rebuilds a different payload and the kernel refuses it as a
-// reused key — for an act the caller has every right to see replayed.
+// the ref moved — or after the branch was deleted outright — would rebuild a
+// different payload, or fail to build at all, for an act the caller has every
+// right to see replayed.
 //
-// So when a prior act already stands under this actor's key, this rebuilds the
-// request from that act's own stated triple and uses the rebuilt request only
-// when it is byte for byte the accepted one. It can therefore produce an exact
-// replay or nothing: it is not a retry cache, holds no state, and can never
-// turn a genuinely different act into an accepted one. A fresh key measures the
-// ref as it stands now, which is what a fresh filing means.
-func (w *Workspace) reproduceAcceptedTarget(ctx context.Context, private ed25519.PrivateKey,
-	actorName, schema string, payload any, rests []string, attachments map[string][]byte,
-	key string, fresh kernel.Request) (kernel.Request, error) {
-	dedup, err := fresh.Signed.DedupKey()
-	if err != nil {
-		return fresh, nil
-	}
+// So the accepted act is recovered from the log first, before any ref is read.
+// The retry identity the kernel indexes is target log, actor key, namespace and
+// key, and none of those needs the repository measured, so the question can be
+// asked with nothing resolved. When an act stands under it and stated a
+// by-value target, this returns the server-derived half of what it stated —
+// target_repo and target_head, never target_ref — for the caller's own body to
+// carry into an ordinary rebuild.
+//
+// The rebuild is used only if it is byte for byte the accepted act, so this can
+// produce an exact replay or nothing. It is not a retry cache, holds no state,
+// and cannot turn a different act into an accepted one: everything the caller
+// stated, the destination ref included, still has to agree.
+func (w *Workspace) acceptedRequestMeasurement(ctx context.Context, private ed25519.PrivateKey,
+	actorName, key string) (map[string]string, kernel.Event, bool) {
+	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
+		w.idempotencyNamespace(actorName), key)
 	prior, exists, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !exists || prior.Signed.Equal(fresh.Signed) {
-		return fresh, nil
+	if err != nil || !exists {
+		return nil, kernel.Event{}, false
 	}
 	accepted, err := workroom.Decode(prior.Intent.Schema, prior.Payload)
 	if err != nil {
-		return fresh, nil
+		return nil, kernel.Event{}, false
 	}
-	triple := requestTripleOf(accepted)
-	if triple == nil {
-		return fresh, nil
+	measurement := requestMeasurementOf(accepted)
+	if measurement == nil {
+		return nil, kernel.Event{}, false
 	}
-	restated := restatePayloadTriple(payload, triple)
-	if restated == nil {
-		return fresh, nil
-	}
-	rebuilt, err := w.buildRequest(ctx, private, actorName, schema, restated, rests, attachments, key)
-	if err != nil || !rebuilt.Signed.Equal(prior.Signed) {
-		return fresh, nil
-	}
-	return rebuilt, nil
+	return measurement, prior, true
 }
 
-// requestTripleOf reads the target triple an accepted request stated, from
-// either payload shape that carries one.
-func requestTripleOf(payload any) map[string]string {
+// requestMeasurementOf reads the server-derived half of the target triple an
+// accepted request stated, from either payload shape that carries one. The
+// caller-selected target_ref is deliberately not among the fields returned: it
+// is the caller's own intent, and recovering it would erase a difference that
+// has to be refused.
+func requestMeasurementOf(payload any) map[string]string {
 	var body map[string]string
 	switch value := payload.(type) {
 	case *workroom.State:
@@ -156,28 +169,5 @@ func requestTripleOf(payload any) map[string]string {
 	if body["target_repo"] == "" || body["target_ref"] == "" || body["target_head"] == "" {
 		return nil
 	}
-	return map[string]string{
-		"target_repo": body["target_repo"], "target_ref": body["target_ref"], "target_head": body["target_head"],
-	}
-}
-
-// restatePayloadTriple returns the payload with the accepted triple written
-// over the freshly measured one, leaving everything else exactly as signed.
-func restatePayloadTriple(payload any, triple map[string]string) any {
-	restate := func(body map[string]string) map[string]string {
-		restated := cloneBody(body)
-		for field, stated := range triple {
-			restated[field] = stated
-		}
-		return restated
-	}
-	switch value := payload.(type) {
-	case workroom.State:
-		value.Body = restate(value.Body)
-		return value
-	case workroom.ReassignIfUnclaimed:
-		value.Body = restate(value.Body)
-		return value
-	}
-	return nil
+	return map[string]string{"target_repo": body["target_repo"], "target_head": body["target_head"]}
 }
