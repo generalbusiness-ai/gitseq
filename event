@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35429d690878dd5e3c57b2590dddc573937469e2","text":"Merge retired a covered predecessor; the successor is at internal/boundary/inventory_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:39fc601ba28e1b3fca8f05d1895b4dd86fd4fc67","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
