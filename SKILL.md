@@ -171,10 +171,17 @@ should carry the structured guard.
 
 A `changes-requested` review does not close its implementation commitment and
 cannot authorize a merge. A corrected exact head still needs a fresh artifact,
-independent review, ratified approval, and merge. When the requester moves the
-required repair into a child request, filing the child alone does not close the
-rejected parent, and ratifying the artifact is not an escape. The requester or
-a `ratifier` explicitly supersedes the old request and cites exactly one repair
+independent review, ratified approval, and merge. Corrections needed to satisfy
+an existing request remain on its live commitment when the outcome, conditions,
+performer, destination and governing authority are unchanged. Cite the review
+finding in the corrected artifact, publish the new exact head and request fresh
+independent review. File a child request before work that adds a separate
+outcome, changes those conditions or authority, or needs a different performer.
+Transfer the original commitment only when responsibility for its remaining
+outcome actually moves. When the requester does move the required repair into a
+child request, filing the child alone does not close the rejected parent, and
+ratifying the artifact is not an escape. The requester or a `ratifier`
+explicitly supersedes the old request and cites exactly one repair
 child after it. The fold projects the old commitment as `superseded`, with
 `successor_request` naming that child, only when the old request has a reporting
 artifact, a live ratified `changes-requested` verdict names that artifact and
@@ -286,9 +293,11 @@ from the durable record.
    relevant focus EventIDs. Publish `waiting` or `blocked` immediately;
    return to `available` and clear focus when leaving. Keep routine failed
    tests and exploratory dead ends ephemeral. Promote a material or
-   session-surviving blockage as an `assert` resting on the promise, create
-   a child request when repair work is needed, and supersede the promise
-   only when withdrawing it.
+   session-surviving blockage as an `assert` resting on the promise, keep a
+   correction that meets an existing condition on the live commitment, create
+   a child request when the work adds a separate outcome or changes the
+   conditions, authority or performer, and supersede the promise only when
+   withdrawing it.
 10. **A path is a wire, not a label.** Staleness travels along it, so name
     the paths you actually changed and no more. Paths match as exact
     strings, with no normalising, prefixes or globs: an artifact at

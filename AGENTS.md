@@ -28,12 +28,18 @@ per ISO 24495-1, for a technical audience.
    the author to retire the request; the row stays open until they do. Answer a
    stale request addressed to you the same way — name the staleness and ask the
    author to refile on current bases, confirming its conditions, the addressee's
-   availability, and the governing decisions are unchanged. If work is discovered
-   mid-flight, create a child request resting on the current request or promise
-   before implementing it. An `assert` may preserve the evidence for a
-   breakdown, but it is not a substitute for the request that assigns follow-up
-   work. Self-initiated work — requester and performer the same actor — carries
-   no self-request, self-promise, or self-report: the implementing commit rests
+   availability, and the governing decisions are unchanged. Corrections needed
+   to satisfy an existing request remain on its live commitment when the
+   outcome, conditions, performer, destination and governing authority are
+   unchanged. Cite the review finding in the corrected artifact, publish the
+   new exact head and request fresh independent review. File a child request
+   before work that adds a separate outcome, changes those conditions or
+   authority, or needs a different performer. Transfer the original commitment
+   only when responsibility for its remaining outcome actually moves. An
+   `assert` may preserve the evidence for a breakdown, but it is not a
+   substitute for the request that assigns follow-up work. Self-initiated work
+   — requester and performer the same actor — carries no self-request,
+   self-promise, or self-report: the implementing commit rests
    directly on the motivating adopted decision, through either its ratified
    proposal or the satisfied authority-bearing request chain defined in
    `SKILL.md`, and the durable filing is the artifact plus the review request
@@ -150,5 +156,7 @@ when leaving the work. Lease expiry clears both automatically.
 
 Keep routine failed tests and exploratory dead ends ephemeral. If a blockage is
 material or must survive the session, record an `assert` resting on the
-promise. If repair work is needed, create a child request before implementing
-it. Supersede your promise only when you are withdrawing it.
+promise. A correction that meets an existing condition stays on the live
+commitment (step 1); create a child request before work that adds a separate
+outcome or changes the conditions, authority or performer. Supersede your
+promise only when you are withdrawing it.
