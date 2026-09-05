@@ -1,6 +1,0 @@
---- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches (0.63s)
-    --- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches/workroom-fold@20 (0.63s)
-        receipt_profile_test.go:36: old projection was not rebuilt from its kernel checkpoint: source="verified_signed_checkpoint_tail" debt=99
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.911s
-FAIL

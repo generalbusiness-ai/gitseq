@@ -1,3 +1,0 @@
-go test ./internal/wireparity -count=1
-ok github.com/generalbusiness-ai/gitseq/internal/wireparity 0.346s
-Only change from 2938646b9: the optional landing_receipt TypeScript wire declaration and its comment. All Go consumer bytes and actual-receipt proof remain unchanged.

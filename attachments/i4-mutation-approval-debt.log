@@ -1,5 +1,0 @@
---- FAIL: TestWorktreeClassificationProtectsEveryNamedHead (0.50s)
-    worktree_landing_test.go:38: legacy satisfied approval debt lost: [feature] {Checkout:feature Branch:request/feature Head:33820c131e5db3cb52114d96365cbedb7418345d State:clean Current:false Detached:false Approved:approval LandedInto:refs/heads/main RemoteContains:<nil> Row:request Rows:[{Request:request Promise:promise Status:satisfied LandingDetails:{TargetRepo:git:sha1:8a12be8e3d0a4089dcd1d0f5315fc49a1dd034b1 TargetRef:refs/heads/main Legacy:false HoldOwner: Release: Approval:approval Candidate:33820c131e5db3cb52114d96365cbedb7418345d LatestResolution: Terminal:landed ApprovedNotLanded:true LandingReceipt:receipt MergeHead:33820c131e5db3cb52114d96365cbedb7418345d ReceiptLegacy:false MergeHoldWarning:false Git:0xadea3128180}}] RowsOmitted:0 Classification:deletable ClassificationReason:}
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.859s
-FAIL
