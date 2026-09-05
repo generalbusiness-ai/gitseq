@@ -1425,7 +1425,11 @@ the already validated matching receipt from the fold's merge index. It changes
 no admission or lifecycle rule. The shared presentation joins that witness to
 its sealed head and explicit compatibility warning; it never discovers a
 receipt by searching assertion text. See [Landing observations](landing-observations.md)
-for the common status, work, inspect and worktree shape.
+for the common status, work, inspect and worktree shape. The additive
+`Commitment.landing_receipt` witness advances the fold profile to
+`workroom-fold@21`; cached projections from earlier profiles replay from the
+verified event checkpoint so historical receipts gain the witness without
+rewriting signed records.
 
 Pending ratification is a separate attention lane, not a commitment state.
 `internal/statusview` selects effective, unratified, live proposals whose
