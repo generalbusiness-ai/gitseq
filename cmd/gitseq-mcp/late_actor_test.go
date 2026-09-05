@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -85,5 +86,38 @@ func TestAdapterStateRequestDeliversToActorAddedAfterSessionStart(t *testing.T) 
 	}
 	if statement.Kind != workroom.KindRequest || statement.Body["to"] != added.Fingerprint {
 		t.Fatalf("request projected as %+v, want kind request delivered to the late recipient %s", statement, added.Fingerprint)
+	}
+}
+
+// The adapter files durable acts through the same boundary `gs state` uses, so
+// an authorization or release report that measured a landing target the ref no
+// longer holds is refused here too. Without the check this surface would be the
+// way to sign a measurement the merge will later refuse.
+func TestAdapterStateRefusesAnAuthorizationMeasuredAgainstAMovedTarget(t *testing.T) {
+	parallelTest(t)
+	ctx := context.Background()
+	workspace, genesis := signedWorkspace(t, 1)
+	server := newServer("human", workspace.Repo)
+	commit := func(message string) string {
+		mergePlanTestGit(t, workspace.Repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+			"commit", "--allow-empty", "-qm", message)
+		return mergePlanTestGit(t, workspace.Repo, "rev-parse", "HEAD")
+	}
+	measured := commit("the target the signer measured")
+	ref := mergePlanTestGit(t, workspace.Repo, "symbolic-ref", "HEAD")
+	moved := commit("advance the target after the measurement")
+
+	_, _, err := server.call(ctx, toolCall{Name: "state", Arguments: map[string]any{
+		"kind": "report", "text": "release the landing hold",
+		"body": map[string]any{
+			"authorizes_request": genesis.ID,
+			"target_ref":         ref,
+			"target_pre_head":    measured,
+		},
+		"rests_on":        []any{genesis.ID},
+		"idempotency_key": "moved-authorization-target",
+	}})
+	if err == nil || !strings.Contains(err.Error(), ref+" is at "+moved) {
+		t.Fatalf("moved-target authorization error = %v", err)
 	}
 }

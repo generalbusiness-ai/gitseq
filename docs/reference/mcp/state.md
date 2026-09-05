@@ -9,7 +9,10 @@ rests_on:
 
 Appends one durable statement, signed as this session's actor. It is the
 MCP counterpart of [`gs state`](../gs/state.md), and everything it
-appends is permanent.
+appends is permanent. It runs the same filing-time checks, including the
+authorization target re-resolution `gs state` describes: a report carrying
+`authorizes_request` and `target_ref` is refused unless the ref still holds
+its `target_pre_head`.
 
 ## Arguments
 

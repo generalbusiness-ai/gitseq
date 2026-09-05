@@ -122,7 +122,12 @@ world is a projection this command cannot date, not a permission to land.
 | `--authorization` names an ineffective, unratified, retired, or world-stale report | The report has not been durably adopted, has been withdrawn, or already described a replaced implementation world when it gained force. |
 | The authorization's `authorizes_candidate`, `authorizes_approval`, or `authorizes_request` differs from the merge | Authorization is exact and cannot float to another head, verdict, or implementation lane. |
 | The authorization report does not close an authorization request | A free-standing report is not the governed act the requester adopted. |
-| The authorization report signer is not the original implementation requester, the live actor named exactly `planner`, or a live actor carrying `ratifier` | Ordinary participants cannot authorize their own merge by creating, answering, and ratifying a separate request with copied bindings. |
+| On a legacy lane, the authorization report signer is not the original implementation requester, the live actor named exactly `planner`, or a live actor carrying `ratifier` | Ordinary participants cannot authorize their own merge by creating, answering, and ratifying a separate request with copied bindings. |
+| On a held `state@3` lane, the release signer is not exactly the hold owner, or that owner is no longer a live roster actor | The request delegated its release to one actor by name. A planner or ratifier who wants the landing supersedes the request instead of signing around its owner, and an authority read out of a retired fingerprint belongs to nobody. |
+| The authorization does not state `target_repo` and `target_ref` on a `state@3` lane | A report naming only a pre-head says nothing about which branch of which repository held it, so it would read as authority for the same commit landing anywhere. |
+| A stated `target_repo` or `target_ref` differs from the request's resolved destination, or from the destination measured in the checkout | Both comparisons are needed: the first alone lets a signer and a stale checkout agree with each other, the second alone lets the signer describe wherever the merge happens to stand. |
+| The implementation request is held, no release is in force for this candidate and approval, and `--authorization` is given | The window lets such a landing proceed unauthorized and warned. It does not let some other actor's report be sealed as the authority for it. |
+| An authorization or release report is filed whose `target_ref` no longer holds its `target_pre_head` | Refused by [`gs state`](state.md) when the report is written, not left for the merge to discover. `remeasure=disjoint-paths` relaxes this to an ancestry check. |
 | Its ratification is not sequenced before the prospective receipt | A later ratification cannot retroactively order an earlier merge. |
 | A Git receipt carries `Gitseq-Authorization` without the exact `Gitseq-Authorization-Ratification` witness, or the report's current `ratified_by` differs | Recovery cannot prove that the authorization had force before the Git commit. |
 | `target_pre_head` differs from the current target without `remeasure=disjoint-paths` | The authorization was measured against another target world. |
@@ -240,11 +245,22 @@ it as `merge_authorization` with its ratification as
 `Gitseq-Authorization` and `Gitseq-Authorization-Ratification` trailers,
 whether or not `--authorization` named it; passing a different report refuses.
 The release is then validated as any authorization is: the same bindings, the
-same ratification witness, the same ordering — including the phase-one signer
-list of original implementation requester, the live actor named `planner`, or
-a live `ratifier`. The hold-owner signer rule that replaces that list for a
-held request is a later slice, so a release signed by a delegated hold owner
-outside the phase-one list is still refused here.
+same ratification witness, the same ordering. Its signer is exactly the hold
+owner, who must still be a live roster actor at merge time, and the phase-one
+list of original implementation requester, actor named `planner`, or live
+`ratifier` does not apply — a delegated owner outside that list signs a valid
+release, and a member of that list who does not own the hold does not.
+
+A release also states `target_repo` and `target_ref`, and the merge requires
+both to equal the request's resolved destination and the destination it
+measured in the checkout. While the window is open, a held request with no
+release in force may still land warned, but only with no `--authorization` at
+all: naming some other report is refused.
+
+An unheld `state@3` request needs no authorization of any kind. The implementer
+merges on the ratified exact approval, `--authorization` is refused, and the
+receipt carries no authorization fields. Only legacy lanes keep the optional
+phase-one authorization whose omission warns.
 
 #### Legacy receipts
 

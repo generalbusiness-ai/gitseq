@@ -130,6 +130,49 @@ func ResolveTarget(ctx context.Context, workspace *app.Workspace, checkout strin
 	return target, nil
 }
 
+// CheckAuthorizationTarget re-resolves, at filing time, the destination an
+// authorization or release report claims to have measured. The merge re-reads
+// the same ref immediately before it moves; this is the earlier of the two
+// readings the landing obligation asks for, so a force-push between the
+// measurement and the signature is refused where it happened rather than
+// discovered later by whoever runs the merge.
+//
+// It reads only what the report already carries and judges nothing else: a
+// body with no authorizes_request makes no such claim, and one that names no
+// target_ref names no ref to resolve. Both pass through untouched, which is
+// what keeps this off every other statement a write boundary handles.
+func CheckAuthorizationTarget(ctx context.Context, repo string, body map[string]string) error {
+	if body["authorizes_request"] == "" || body["target_ref"] == "" {
+		return nil
+	}
+	ref, measured := body["target_ref"], body["target_pre_head"]
+	if measured == "" {
+		return fmt.Errorf("authorization names target_ref %s without target_pre_head", ref)
+	}
+	canonical, err := CanonicalCommit(ctx, repo, measured)
+	if err != nil {
+		return fmt.Errorf("target_pre_head: %w", err)
+	}
+	if canonical != measured {
+		return fmt.Errorf("target_pre_head must be the full canonical object ID: got %s, resolved %s", measured, canonical)
+	}
+	current, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+	if err != nil {
+		return fmt.Errorf("target_ref %s: %w", ref, err)
+	}
+	now := strings.TrimSpace(current)
+	if now == measured {
+		return nil
+	}
+	if body["remeasure"] != "disjoint-paths" {
+		return fmt.Errorf("target_ref %s is at %s, but target_pre_head is %s and remeasure is not disjoint-paths", ref, now, measured)
+	}
+	if _, err := git(ctx, repo, "merge-base", "--is-ancestor", measured, now); err != nil {
+		return fmt.Errorf("target_pre_head %s is not an ancestor of target_ref %s at %s", measured, ref, now)
+	}
+	return nil
+}
+
 type Result struct {
 	Frontier            Frontier            `json:"frontier"`
 	Mode                string              `json:"mode"`

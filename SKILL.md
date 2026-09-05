@@ -160,14 +160,26 @@ readable instead of being cancelled out from under work in flight.
 When an implementation request says not to merge until a governing actor
 authorizes it, keep that order durable. Ask for an authorization report whose
 structured body names `authorizes_candidate`, `authorizes_approval`,
-`authorizes_request`, and `target_pre_head` (plus
-`remeasure=disjoint-paths` only when needed). The report signer is the original
-implementation requester, the live actor named exactly `planner`, or a live
-actor carrying `ratifier`; ordinary participants cannot create a separate
-request and authorize themselves. The authorization requester ratifies that
-report; then the implementer runs `gs merge --authorization` with the exact
-report event. Phase-one omission warns for older in-flight lanes, but new work
-should carry the structured guard.
+`authorizes_request`, `target_pre_head`, `target_repo`, and `target_ref` (plus
+`remeasure=disjoint-paths` only when needed). The authorization requester
+ratifies that report; then the implementer runs `gs merge --authorization` with
+the exact report event.
+
+Who signs it depends on the request. A request carrying `landing=held` is
+released only by its **hold owner**: `hold_owner` when the request names one,
+otherwise the requester, and nobody else — a planner or ratifier who wants the
+landing supersedes the request rather than signing around its owner. A request
+filed before `workroom/state@3` could carry no hold and keeps the older signer
+list of original implementation requester, live actor named exactly `planner`,
+or live actor carrying `ratifier`; ordinary participants cannot create a
+separate request and authorize themselves. Omission warns on those older lanes,
+and held requests should carry the structured guard. An unheld `state@3`
+request needs no authorization at all: merge on the ratified exact approval,
+and `gs merge` refuses an `--authorization` nobody asked for.
+
+`gs state` resolves the `target_ref` of such a report when you file it and
+refuses a `target_pre_head` the ref no longer holds, so re-measure and re-sign
+rather than carrying a stale reading to the merge.
 
 A `changes-requested` review does not close its implementation commitment and
 cannot authorize a merge. A corrected exact head still needs a fresh artifact,

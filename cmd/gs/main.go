@@ -517,6 +517,14 @@ func stateCommand(ctx context.Context, arguments []string) error {
 			return err
 		}
 	}
+	// An authorization or release report says which commit its target ref held
+	// when the signer looked. Resolving that ref here is the act-time half of
+	// the landing obligation's two re-resolutions: a report measured against a
+	// world that has already moved is refused where it is written, instead of
+	// being signed, ratified, and then refused by the merge.
+	if err := mergeplan.CheckAuthorizationTarget(ctx, workspace.Repo, body); err != nil {
+		return err
+	}
 	attachments, err := files(evidence)
 	if err != nil {
 		return err
@@ -720,9 +728,13 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 			if err != nil {
 				return err
 			}
+			// The destination the sealed receipt names, not the one this
+			// checkout is standing on: recovery revalidates the authorization
+			// against the world the merge actually landed in, and the check
+			// below proves the checkout is that same place.
 			if _, err := validateMergeAuthorization(ctx, snapshot.Projection, *checkout, existing.Candidate,
-				existing.Approval, existing.Authorization, existing.TargetPreHead, false, snapshot.Depth+1,
-				existing.AuthorizationRatification); err != nil {
+				existing.Approval, existing.Authorization, existing.SealedTarget(mergeplan.WorkroomRepo(workspace)),
+				false, snapshot.Depth+1, existing.AuthorizationRatification); err != nil {
 				return fmt.Errorf("sealed receipt authorization: %w", err)
 			}
 		}
@@ -1166,11 +1178,10 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	}
 	// A release adopted as this merge's authorization is judged exactly like
 	// one passed on the command line: same bindings, same ratification
-	// witness, same ordering. The hold-owner signer rule that replaces the
-	// phase-one signer list for a held request is I3's, so a release signed by
-	// an actor outside that list is still refused here.
+	// witness, same ordering, and for a held state@3 request the hold-owner
+	// signer rule in place of the phase-one list.
 	authorizationRatification, err := validateMergeAuthorization(ctx, projection, checkout, candidate, approvalEvent,
-		landing.Authorization, target.PreHead, authorizationRequired, snapshot.Depth+1, "")
+		landing.Authorization, target, authorizationRequired, snapshot.Depth+1, "")
 	if err != nil {
 		return mergeValidation{}, fmt.Errorf("authorization: %w", err)
 	}
@@ -1273,6 +1284,16 @@ func validateLanding(projection workroom.Projection, target mergeplan.Target, ca
 		landing.Authorization = implementation.Release
 		return landing, nil
 	}
+	// No release is in force. The hold may only be lifted by its owner, so a
+	// report offered as this merge's authority is not one: whatever it is, the
+	// fold did not read it as the owner's release for this candidate and
+	// approval. Landing it under the compatibility window would seal an
+	// authority nobody with the hold ever granted.
+	if authorizationEvent != "" {
+		return landingDecision{}, fmt.Errorf(
+			"implementation request %s is held by %s and no release names this candidate and approval; --authorization must be that release, signed by the hold owner",
+			implementation.Request, implementation.HoldOwner)
+	}
 	// The compatibility window of section 9, matching phase one of the
 	// authorization guard: for one release this is said out loud and recorded
 	// in the receipt instead of refusing the merge.
@@ -1292,7 +1313,8 @@ type landingDecision struct {
 // validateMergeAuthorization is the phase-one application guard. It reads
 // ordinary Workroom reports and their projected ratification; it adds no
 // authorization primitive to either the kernel or the fold.
-func validateMergeAuthorization(ctx context.Context, projection workroom.Projection, checkout, candidate, approvalEvent, authorizationEvent, targetHead string, required bool, receiptSequence int, sealedRatification string) (string, error) {
+func validateMergeAuthorization(ctx context.Context, projection workroom.Projection, checkout, candidate, approvalEvent, authorizationEvent string, target mergeplan.Target, required bool, receiptSequence int, sealedRatification string) (string, error) {
+	targetHead := target.PreHead
 	if authorizationEvent == "" {
 		if required {
 			return "", errors.New("--authorization is required for this implementation request")
@@ -1335,8 +1357,11 @@ func validateMergeAuthorization(ctx context.Context, projection workroom.Project
 	if _, err := exactCommitmentByReport(projection, authorizationEvent, "authorization report"); err != nil {
 		return "", err
 	}
-	if !authorizedMergeAuthorizer(projection, authorization.Actor, implementation.Requester) {
-		return "", fmt.Errorf("authorization report signer %s is not the implementation requester and is not a live actor named planner or carrying ratifier", authorization.Actor)
+	if err := requireAuthorizationDestination(authorization.Body, implementation, target); err != nil {
+		return "", err
+	}
+	if err := requireAuthorizationSigner(projection, authorization.Actor, implementation); err != nil {
+		return "", err
 	}
 	measuredHead := authorization.Body["target_pre_head"]
 	if measuredHead == "" {
@@ -1407,6 +1432,70 @@ func exactCommitmentByReport(projection workroom.Projection, report, label strin
 		return workroom.Commitment{}, fmt.Errorf("%s belongs to %d commitment lanes, want exactly one", label, len(found))
 	}
 	return found[0], nil
+}
+
+// requireAuthorizationDestination binds an authorization to the place the work
+// is owed. Without it a report measures a pre-head and says nothing about which
+// branch of which repository held it, so one signed for a landing on one branch
+// reads as authority for the same commit landing on another.
+//
+// The two stated values are compared against both the request's resolved
+// destination and the destination measured in the checkout in front of the
+// merge. Comparing only the first would let a signer and a stale checkout agree
+// with each other; comparing only the second would let the signer describe
+// wherever the merge happens to stand.
+//
+// A pre-state@3 request could not state a destination and its authorizations
+// were signed before these fields existed, so for a legacy lane they are
+// optional — and still checked when present, because a stated value that
+// disagrees is a disagreement whatever schema admitted the request.
+func requireAuthorizationDestination(body map[string]string, implementation workroom.Commitment, target mergeplan.Target) error {
+	repo, ref := body["target_repo"], body["target_ref"]
+	if implementation.Legacy && repo == "" && ref == "" {
+		return nil
+	}
+	if repo == "" || ref == "" {
+		return fmt.Errorf("authorization must state target_repo and target_ref for implementation request %s", implementation.Request)
+	}
+	if ref != implementation.TargetRef {
+		return fmt.Errorf("authorization target_ref is %q, but implementation request %s owes its landing to %s",
+			ref, implementation.Request, implementation.TargetRef)
+	}
+	if repo != implementation.TargetRepo {
+		return fmt.Errorf("authorization target_repo is %q, but implementation request %s owes its landing to repository %s",
+			repo, implementation.Request, implementation.TargetRepo)
+	}
+	if ref != target.Ref || repo != target.Repo {
+		return fmt.Errorf("authorization names %s of %s, but the checkout is on %s of %s",
+			ref, repo, target.Ref, target.Repo)
+	}
+	return nil
+}
+
+// requireAuthorizationSigner judges who may sign the report a merge stands on.
+// A held state@3 request was delegated to one actor by name, and that
+// delegation is the whole content of the hold: the owner alone lifts it, and a
+// planner or ratifier who wants the landing supersedes the request rather than
+// signing around its owner. The owner must still be on the roster now, because
+// an authority read out of a retired fingerprint is nobody's.
+//
+// Everything else — an unheld request, and every request filed before state@3
+// could carry a hold — keeps the phase-one list it has always had.
+func requireAuthorizationSigner(projection workroom.Projection, signer string, implementation workroom.Commitment) error {
+	if implementation.Legacy || implementation.HoldOwner == "" {
+		if !authorizedMergeAuthorizer(projection, signer, implementation.Requester) {
+			return fmt.Errorf("authorization report signer %s is not the implementation requester and is not a live actor named planner or carrying ratifier", signer)
+		}
+		return nil
+	}
+	if signer != implementation.HoldOwner {
+		return fmt.Errorf("authorization report signer %s is not the hold owner %s of implementation request %s",
+			signer, implementation.HoldOwner, implementation.Request)
+	}
+	if actor, found := projection.Actors[signer]; !found || actor.Retired {
+		return fmt.Errorf("hold owner %s of implementation request %s is not a live roster actor", signer, implementation.Request)
+	}
+	return nil
 }
 
 func authorizedMergeAuthorizer(projection workroom.Projection, signer, implementationRequester string) bool {

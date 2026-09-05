@@ -71,6 +71,21 @@ Implementation requests, promises and reports may also carry `branch` and
 checkout. They claim nothing about that checkout being clean or current;
 the `artifact` is the durable pointer.
 
+## Authorization and release reports
+
+A report carrying `authorizes_request` is an authorization — the release of a
+held landing, or the phase-one authorization of a legacy one. When it also
+carries `target_ref`, this command resolves that ref in `--repo` before signing
+anything and refuses the act unless the ref is at the report's
+`target_pre_head`, which must be a full canonical commit object ID. Stating
+`remeasure=disjoint-paths` relaxes the comparison to requiring
+`target_pre_head` to be an ancestor of where the ref stands now.
+
+The check is here because a signer measures a destination and then signs; a
+force-push in between makes the signature describe a world that has moved.
+[`gs merge`](merge.md) resolves the same ref again immediately before it moves
+`HEAD`, so the reading is taken at both act times rather than trusted once.
+
 ## Retired bases and stale bases
 
 A **retired** basis is withdrawn ground: nothing stands there any more, so
