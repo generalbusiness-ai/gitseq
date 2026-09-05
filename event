@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1747ccca70cc26dd64477cf467414e474efb8d7e","text":"Merge retired a covered predecessor; the successor is at internal/app/worktree_landing.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38dcc7095a84f6b5bd2dcc14a4c927c6ff0ae800","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
