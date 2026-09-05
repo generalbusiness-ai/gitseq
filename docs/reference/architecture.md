@@ -1095,17 +1095,19 @@ refuses. A request stating `no_git_artifact=true` blocks the walk for its own
 descendants, so a review or authorization request sits under a landing parent
 without acquiring its obligation.
 
-The same walk answers a second question with a different nearest ancestor. A
-triple is only ever stated by value, so it comes from the nearest value triple.
-A hold is stated by a request that may itself have inherited its triple, and
-that request sits between the inheriting request and the value triple; reading
-the hold from the triple's own request walks past it and drops the hold on
-every later generation. So the hold, and its owner, come from the nearest
-ancestor on the same walk that states or carries one. Where several equally
-near ancestors carry holds naming different owners, the request refuses with
-"conflicting hold ownership in target ancestry; restate the hold" rather than
-taking the first: edge order is the order a signer wrote their citations in,
-and it must not decide who may release a landing.
+That one walk resolves the destination and its hold together, under a single
+invariant: a request inherits a hold, and its owner, only from an ancestor that
+resolves to the destination it inherited. The destination comes from the nearest
+value triple; the hold from the nearest ancestor owing that same repository and
+ref, which may be a request that inherited the triple rather than stated it.
+Chosen independently the two answers splice two branches — a nearer held
+ancestor owing some other ref would hand its owner authority over a landing
+nobody gave them, and their release would move a destination whose own hold
+stood unlifted — so an ancestor owing elsewhere is not a candidate at all. Where
+several equally near candidates for the selected destination name different
+owners, the request refuses with "conflicting hold ownership in target
+ancestry; restate the hold": citation order is how a request was typed, and it
+must not decide who may release a landing.
 
 A request that owes a landing may carry `landing=held`, whose owner is the
 requester unless `hold_owner` names another live actor. Only the request that

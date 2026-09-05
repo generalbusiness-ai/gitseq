@@ -58,7 +58,15 @@ type requestResult struct {
 }
 
 func (r requestResult) sameTarget(other requestResult) bool {
-	return r.targetRepo == other.targetRepo && r.targetRef == other.targetRef && r.targetHead == other.targetHead
+	return r.sameDestination(other) && r.targetHead == other.targetHead
+}
+
+// sameDestination compares where two results owe their work, which is the
+// repository and the ref and not the head. target_head is the measurement the
+// ref happened to have at filing; two requests owing the same branch at
+// different moments owe the same destination.
+func (r requestResult) sameDestination(other requestResult) bool {
+	return r.targetRepo == other.targetRepo && r.targetRef == other.targetRef
 }
 
 // workroomOf reads the workroom half of a canonical event identifier. Every
@@ -232,23 +240,36 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 // triples found at the smallest depth at which any is found, and nothing
 // deeper is read.
 //
-// The walk answers two questions, and they have different nearest ancestors. A
-// triple is only ever stated by value, so it comes from the nearest value
-// triple. A hold is stated by a request that may itself have inherited its
-// triple, and that request sits between this one and the value triple; reading
-// the hold from the triple's own request would walk straight past it and drop
-// the hold on every later generation. So the hold comes from the nearest
-// ancestor on the same walk that states or carries one, which is at or above
-// the triple's depth.
+// One walk resolves the destination and the hold together, because they are one
+// answer and not two. The destination comes from the nearest value triple. The
+// hold comes from the nearest ancestor that both carries one and resolves to
+// that same destination — every state@3 landing request records the destination
+// it resolved to, so this is a fact the walk can read rather than a path it has
+// to remember.
 //
-// Where several equally near ancestors carry holds with different owners, the
-// walk refuses rather than picking one. Edge order is the order a signer wrote
-// their citations in, and letting it decide who may release a landing would
-// make the answer a property of how the request was typed.
+// The binding is the whole point. Chosen independently, the two answers splice
+// two different branches: a nearer held ancestor owing some other ref would
+// hand its owner authority over a landing they were never given, and that
+// owner's release would move a destination whose own hold nobody had lifted.
+// A held ancestor owing a different destination is therefore not a candidate
+// at all.
+//
+// Where several equally near candidates for the selected destination name
+// different owners, the walk refuses rather than picking one. Edge order is the
+// order a signer wrote their citations in, and letting it decide who may
+// release a landing would make the answer a property of how the request was
+// typed.
 func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string) {
 	type step struct {
 		event string
 		depth int
+	}
+	// A held ancestor and its depth, kept until the destination is known: a
+	// hold may be seen at a shallower depth than the value triple that decides
+	// whether it is relevant at all.
+	type holdCandidate struct {
+		result *requestResult
+		depth  int
 	}
 	seen := map[string]bool{record.record.ID: true}
 	queue := make([]step, 0, len(record.record.RestsOn))
@@ -262,8 +283,9 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 		}
 	}
 	enqueue(record.record.RestsOn, 1)
-	var nearest, holds []*requestResult
-	nearestDepth, holdDepth := 0, 0
+	var nearest []*requestResult
+	var holds []holdCandidate
+	nearestDepth := 0
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
@@ -286,9 +308,8 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 			continue
 		}
 		if result != nil && result.landing {
-			if result.held && (holdDepth == 0 || current.depth == holdDepth) {
-				holdDepth = current.depth
-				holds = append(holds, result)
+			if result.held {
+				holds = append(holds, holdCandidate{result: result, depth: current.depth})
 			}
 			if !result.inherited {
 				nearestDepth = current.depth
@@ -312,13 +333,28 @@ func (f *foldState) inheritTarget(record *parsedRecord) (*requestResult, string)
 	}
 	inherited := *nearest[0]
 	inherited.held, inherited.holdOwner = false, ""
-	if len(holds) != 0 {
-		for _, candidate := range holds[1:] {
-			if candidate.holdOwner != holds[0].holdOwner {
-				return nil, "conflicting hold ownership in target ancestry; restate the hold"
-			}
+	// Now the destination is settled, so which holds speak for it is settled
+	// too. Everything owing somewhere else is dropped before depth is read at
+	// all, or a nearer irrelevant hold would hide the relevant one behind it.
+	//
+	// The queue above is walked in nondecreasing depth, so these were recorded
+	// nearest first and the first survivor of the filter is the nearest one.
+	// Only a candidate at that same depth can be a rival to it.
+	owner, ownerDepth := "", 0
+	for _, candidate := range holds {
+		if !candidate.result.sameDestination(inherited) {
+			continue
 		}
-		inherited.held, inherited.holdOwner = true, holds[0].holdOwner
+		if ownerDepth == 0 {
+			owner, ownerDepth = candidate.result.holdOwner, candidate.depth
+			continue
+		}
+		if candidate.depth == ownerDepth && candidate.result.holdOwner != owner {
+			return nil, "conflicting hold ownership in target ancestry; restate the hold"
+		}
+	}
+	if ownerDepth != 0 {
+		inherited.held, inherited.holdOwner = true, owner
 	}
 	return &inherited, ""
 }

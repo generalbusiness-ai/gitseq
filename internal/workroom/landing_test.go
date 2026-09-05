@@ -1233,3 +1233,101 @@ func TestAnExplicitNoArtifactRequestHasNoArtifactCompletion(t *testing.T) {
 		}
 	})
 }
+
+// Choosing the destination and the hold independently splices two branches. A
+// nearer held ancestor owing some other ref handed its owner authority over a
+// landing they were never given, and that owner's release then moved a
+// destination whose own hold nobody had lifted. The hold is bound to the
+// destination the request actually inherited.
+func TestAHoldComesOnlyFromTheSelectedDestination(t *testing.T) {
+	inherit := func(owner string) map[string]string {
+		body := map[string]string{"to": agent, "conditions": "do it", "target": "inherit"}
+		if owner != "" {
+			body["landing"], body["hold_owner"] = "held", owner
+		}
+		return body
+	}
+	// Branch A reaches refs/heads/main at depth two, through a request filed
+	// before state@3, and its hold belongs to the reviewer. Branch B reaches
+	// its own destination at depth three and delegates a hold at depth one.
+	ancestry := func(t testing.TB, secondRef string) []Record {
+		return []Record{
+			event(t, lid("target-a"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Land main under a hold",
+				Body: landingBody(agent, "landing", "held", "hold_owner", other)}, lid("w0")),
+			event(t, lid("legacy-wrapper-a"), operator, SchemaState, State{Kind: KindRequest, Text: "Legacy child",
+				Body: map[string]string{"to": agent, "conditions": "do it"}}, lid("target-a")),
+			event(t, lid("target-b"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Second destination",
+				Body: landingBody(agent, "target_ref", secondRef)}, lid("w0")),
+			event(t, lid("wrapper-b"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Inherit it", Body: inherit("")}, lid("target-b")),
+			event(t, lid("held-b"), operator, SchemaStateV3, State{Kind: KindRequest, Text: "Delegate that hold",
+				Body: inherit(bystander)}, lid("wrapper-b")),
+		}
+	}
+	round := func(t testing.TB, secondRef string, bases ...string) landingFixture {
+		return landingRoundFor(t, ancestry(t, secondRef),
+			event(t, lid("mixed-child"), operator, SchemaStateV3, State{Kind: KindRequest,
+				Text: "Inherit the nearest target", Body: inherit("")}, bases...)).ratifiedApproval(t)
+	}
+	mixed := func(t testing.TB, bases ...string) landingFixture {
+		return round(t, "refs/heads/experiment", bases...)
+	}
+
+	t.Run("a hold on another destination does not reach the selected one", func(t *testing.T) {
+		fixture := mixed(t, lid("legacy-wrapper-a"), lid("held-b"))
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, fixture.request); decision.Verdict != Effective {
+			t.Fatalf("mixed child = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, fixture.promise)
+		if row.TargetRef != "refs/heads/main" {
+			t.Fatalf("the destination moved = %+v", row)
+		}
+		if row.HoldOwner != other || row.WaitingOn != other || row.Status != "awaiting-authorization" {
+			t.Fatalf("a hold for another ref took the selected destination's authority = %+v", row)
+		}
+	})
+	// Citation order is how the request was typed. It must not reach the answer.
+	t.Run("reversed citation order gives the same answer", func(t *testing.T) {
+		fixture := mixed(t, lid("held-b"), lid("legacy-wrapper-a"))
+		row := commitmentForPromise(t, Fold(fixture.records), fixture.promise)
+		if row.TargetRef != "refs/heads/main" || row.HoldOwner != other {
+			t.Fatalf("citation order changed the answer = %+v", row)
+		}
+	})
+	t.Run("the other branch's owner cannot release it", func(t *testing.T) {
+		fixture := mixed(t, lid("legacy-wrapper-a"), lid("held-b")).release(t, bystander)
+		projection := Fold(fixture.records)
+		decision := decisionFor(t, projection, lid("release"))
+		if decision.Verdict != Ineffective ||
+			decision.Reason != "only the hold owner may release the landing hold on "+fixture.request {
+			t.Fatalf("the other branch's owner released this landing = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-authorization" || row.Release != "" {
+			t.Fatalf("row after the refused release = %+v", row)
+		}
+	})
+	t.Run("the selected destination's owner can release it", func(t *testing.T) {
+		fixture := mixed(t, lid("legacy-wrapper-a"), lid("held-b")).release(t, other)
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, lid("release")); decision.Verdict != Effective {
+			t.Fatalf("release by the selected destination's owner = %+v", decision)
+		}
+		if row := commitmentForPromise(t, projection, fixture.promise); row.Status != "awaiting-landing" {
+			t.Fatalf("released row = %+v", row)
+		}
+	})
+	// The control that keeps the binding from being a blanket refusal: on the
+	// same graph with both branches owing one destination, the nearer hold is
+	// exactly the ordinary inheritance answer and it governs.
+	t.Run("a nearer hold on the selected destination still governs", func(t *testing.T) {
+		fixture := round(t, "refs/heads/main", lid("legacy-wrapper-a"), lid("held-b"))
+		projection := Fold(fixture.records)
+		if decision := decisionFor(t, projection, fixture.request); decision.Verdict != Effective {
+			t.Fatalf("same-destination child = %+v", decision)
+		}
+		row := commitmentForPromise(t, projection, fixture.promise)
+		if row.TargetRef != "refs/heads/main" || row.HoldOwner != bystander || row.WaitingOn != bystander {
+			t.Fatalf("a hold on the selected destination was dropped = %+v", row)
+		}
+	})
+}
