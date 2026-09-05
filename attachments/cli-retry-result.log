@@ -1,7 +1,0 @@
-=== RUN   TestPlannerAuthorizationExactRetryAfterTargetMoves
-git:sha1:f0d7334fb2125432a90debc91a7831754f9677fe#git:sha1:821ae941abaa94fc8e7fa562c12128d5bb97e101
-    planner_retry_test.go:16: exact accepted retry rejudged against moved target: target_ref refs/heads/main is at 45fe249be7c44c627c01881f4649227fe97ecfb2, but target_pre_head is bf94129072d43cf71acc9dfa971b0d71db03e214 and remeasure is not disjoint-paths
---- FAIL: TestPlannerAuthorizationExactRetryAfterTargetMoves (7.03s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	7.577s
-FAIL

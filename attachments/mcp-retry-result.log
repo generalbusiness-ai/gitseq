@@ -1,7 +1,0 @@
-=== RUN   TestPlannerMCPAuthorizationExactRetryAfterTargetMoves
-gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
-    planner_retry_test.go:22: exact accepted MCP retry rejudged against moved target: target_ref refs/heads/master is at f753c3fa2e4d00fc772f72ffc81f8e23f99d8321, but target_pre_head is d9e7b9871bbf715e998571c3ca8e99fbff31b100 and remeasure is not disjoint-paths
---- FAIL: TestPlannerMCPAuthorizationExactRetryAfterTargetMoves (3.64s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	4.046s
-FAIL
