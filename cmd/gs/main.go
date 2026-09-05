@@ -695,6 +695,14 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 	}
 	merger := workspace.View().Actors[actor].Fingerprint
 	if found {
+		// The resume branch never reaches validateMerge, so the binding
+		// between this checkout and the workroom's repository is proved here
+		// instead. Without it recovery would read a receipt out of whatever
+		// repository the caller named and append its durable suffix to this
+		// workroom.
+		if err := validateCheckout(ctx, workspace.Repo, *checkout, *candidate, false); err != nil {
+			return err
+		}
 		if existing.Candidate != *candidate {
 			return fmt.Errorf("approval was already used for candidate %s", existing.Candidate)
 		}
@@ -792,10 +800,10 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 		return err
 	}
 	target := validation.Target
-	if err := requireUnmovedTarget(target, measured, "after planning"); err != nil {
+	if err := requireUnmovedTarget(target, measured, "after validation"); err != nil {
 		return err
 	}
-	if *authorization == "" {
+	if validation.Authorization == "" {
 		fmt.Fprintln(os.Stderr, "warning: merge has no structured authorization; phase-one compatibility permits this merge")
 	}
 	if validation.HoldWarning {
@@ -843,27 +851,28 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 		return errors.New("allowed merge plan did not preserve its validated succession")
 	}
 	plan := sharedPlan
-	// The last measurement before HEAD moves. The tentative merge above left
-	// the ref alone, so anything that moved it did so concurrently, and a
-	// receipt sealing a destination this merge no longer stands on would be
-	// false the moment it was written.
-	moved, err := mergeplan.ResolveTarget(ctx, workspace, *checkout)
-	if err != nil {
-		return err
-	}
-	if err := requireUnmovedTarget(moved, target, "before HEAD moved"); err != nil {
-		return err
-	}
-	message, err := mergeReceiptMessage(*mergeText, *approval, *authorization, validation.AuthorizationRatification, *candidate, target, validation.Staleness, validation.HoldWarning, plan)
+	message, err := mergeReceiptMessage(*mergeText, *approval, validation.Authorization, validation.AuthorizationRatification, *candidate, target, validation.Staleness, validation.HoldWarning, plan)
 	if err != nil {
 		return err
 	}
 	// The merge commit makes its durable receipt mandatory. Prove every act in
 	// that receipt chain can cross the exact local and resident admission size
 	// boundaries before moving HEAD; otherwise retry could never finish it.
-	prospectiveActs := successionActs(*approval, *authorization, validation.AuthorizationRatification, *candidate, target, *candidate, validation.Staleness, validation.HoldWarning, plan)
+	prospectiveActs := successionActs(*approval, validation.Authorization, validation.AuthorizationRatification, *candidate, target, *candidate, validation.Staleness, validation.HoldWarning, plan)
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, prospectiveActs, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
+	}
+	// The last measurement before HEAD moves, taken after the preflight so
+	// that nothing between it and the commit can move the destination. The
+	// tentative merge left the ref alone, so anything that moved it did so
+	// concurrently, and a receipt sealing a destination this merge no longer
+	// stands on would be false the moment it was written.
+	moved, err := mergeplan.ResolveTarget(ctx, workspace, *checkout)
+	if err != nil {
+		return err
+	}
+	if err := requireUnmovedTarget(moved, target, "before HEAD moved"); err != nil {
+		return err
 	}
 	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
 		return err
@@ -879,7 +888,7 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 	if err != nil {
 		return err
 	}
-	if !ok || receipt.Approval != *approval || receipt.Authorization != *authorization || receipt.AuthorizationRatification != validation.AuthorizationRatification || receipt.Candidate != *candidate ||
+	if !ok || receipt.Approval != *approval || receipt.Authorization != validation.Authorization || receipt.AuthorizationRatification != validation.AuthorizationRatification || receipt.Candidate != *candidate ||
 		receipt.TargetRepo != target.Repo || receipt.TargetRef != target.Ref || receipt.TargetPreHead != target.PreHead ||
 		receipt.HoldWarning != holdWarningTrailerValue(validation.HoldWarning) || receipt.MergeHead != head {
 		return errors.New("resulting merge commit does not carry the requested receipt")
@@ -942,10 +951,11 @@ func mergeReceiptRef(approval string) string {
 }
 
 // requireUnmovedTarget refuses a destination that moved between two
-// measurements. All three halves matter: a ref switched under the merge lands
-// approved work on a branch nobody named, a repository that changed is a
-// different workroom entirely, and a pre-head that moved is the classic
-// concurrent advance the receipt would otherwise misreport.
+// measurements. A ref switched under the merge lands approved work on a branch
+// nobody named, and a pre-head that moved is the classic concurrent advance
+// the receipt would otherwise misreport. The repository comparison is reserved
+// for multi-repository targets and is unreachable while every measurement in
+// one merge reads the same workroom's genesis id.
 func requireUnmovedTarget(now, want mergeplan.Target, when string) error {
 	switch {
 	case now.Ref != want.Ref:
@@ -1092,6 +1102,10 @@ type mergeValidation struct {
 	// HoldWarning records that a held landing had no effective release and
 	// landed under the compatibility window rather than being refused.
 	HoldWarning bool
+	// Authorization is the report the receipt must seal. It is what the
+	// command line named, except on a held request whose release is in force:
+	// there it is the release, because that is the act this landing stands on.
+	Authorization string
 }
 
 func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent, authorizationEvent string, authorizationRequired bool) (mergeValidation, error) {
@@ -1123,22 +1137,27 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	if err != nil {
 		return mergeValidation{}, err
 	}
-	holdWarning, err := validateLanding(projection, target, candidate, approvalEvent, authorizationEvent)
+	landing, err := validateLanding(projection, target, candidate, approvalEvent, authorizationEvent)
 	if err != nil {
 		return mergeValidation{}, err
 	}
+	// A release adopted as this merge's authorization is judged exactly like
+	// one passed on the command line: same bindings, same ratification
+	// witness, same ordering. The hold-owner signer rule that replaces the
+	// phase-one signer list for a held request is I3's, so a release signed by
+	// an actor outside that list is still refused here.
 	authorizationRatification, err := validateMergeAuthorization(ctx, projection, checkout, candidate, approvalEvent,
-		authorizationEvent, target.PreHead, authorizationRequired, snapshot.Depth+1, "")
+		landing.Authorization, target.PreHead, authorizationRequired, snapshot.Depth+1, "")
 	if err != nil {
 		return mergeValidation{}, fmt.Errorf("authorization: %w", err)
 	}
 	staleness := approved.Staleness
-	if authorizationEvent != "" {
+	if landing.Authorization != "" {
 		parts := []reviewguard.Part{
 			{Name: "approval", Event: approved.Statement.Event, Stale: approved.Statement.Stale, World: approved.Statement.DescribesSupersededWorld},
 			{Name: "artifact", Event: approved.Artifact.Event, Stale: approved.Artifact.Stale, World: approved.Artifact.DescribesSupersededWorld},
 		}
-		authorization, _ := mergeplan.StandingStatement(projection, authorizationEvent, workroom.KindReport)
+		authorization, _ := mergeplan.StandingStatement(projection, landing.Authorization, workroom.KindReport)
 		parts = append(parts, reviewguard.Part{
 			Name: "authorization", Event: authorization.Event, Stale: authorization.Stale,
 			World: authorization.DescribesSupersededWorld,
@@ -1147,7 +1166,7 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 	}
 	return mergeValidation{
 		Staleness: staleness, AuthorizationRatification: authorizationRatification,
-		Target: target, HoldWarning: holdWarning,
+		Target: target, HoldWarning: landing.HoldWarning, Authorization: landing.Authorization,
 	}, nil
 }
 
@@ -1161,10 +1180,11 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 // commitment's own history as refs/heads/main here — along with its hold, its
 // owner, and the release in force for this candidate and approval. This reads
 // those resolved facts and compares them with the checkout in front of it.
-func validateLanding(projection workroom.Projection, target mergeplan.Target, candidate, approvalEvent, authorizationEvent string) (holdWarning bool, err error) {
+func validateLanding(projection workroom.Projection, target mergeplan.Target, candidate, approvalEvent, authorizationEvent string) (landing landingDecision, err error) {
+	landing.Authorization = authorizationEvent
 	approval, err := mergeplan.StandingStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
-		return false, fmt.Errorf("approval: %w", err)
+		return landingDecision{}, fmt.Errorf("approval: %w", err)
 	}
 	var lanes []workroom.Commitment
 	for _, commitment := range projection.Commitments {
@@ -1174,26 +1194,34 @@ func validateLanding(projection workroom.Projection, target mergeplan.Target, ca
 	}
 	switch len(lanes) {
 	case 0:
-		// Independently reviewed self-initiated work: requester and performer
-		// are the same actor, so there is no request and no commitment row,
-		// and the obligation this guard enforces was never created. The
-		// receipt still seals the destination it measured.
-		return false, nil
+		// No commitment lane reports this artifact, so no request states where
+		// it is owed and this guard has nothing to compare the checkout
+		// against. That covers independently reviewed self-initiated work,
+		// where requester and performer are the same actor and no commitment
+		// row exists at all. It also covers an artifact published against a
+		// request that stated no_git_artifact=true: the fold never makes such
+		// an artifact that commitment's report, so the lane lookup finds
+		// nothing and the merge receives no destination check either. This
+		// does not fail closed. Closing it needs the lane found through the
+		// artifact's own promise rather than through the commitment's report,
+		// and that is deferred to its own request.
+		return landing, nil
 	case 1:
 	default:
-		return false, fmt.Errorf("approval artifact belongs to %d commitment lanes, want at most one", len(lanes))
+		return landingDecision{}, fmt.Errorf("approval artifact belongs to %d commitment lanes, want at most one", len(lanes))
 	}
 	implementation := lanes[0]
-	// An empty target ref is a request that owes no Git artifact. Such a
-	// request's commitment never carries the artifact as its report, so it
-	// reaches here with no lane at all; the comparison below still fails
-	// closed if that ever changes.
 	if target.Ref != implementation.TargetRef {
-		return false, fmt.Errorf("checkout is on %s, but implementation request %s owes its landing to %s",
+		return landingDecision{}, fmt.Errorf("checkout is on %s, but implementation request %s owes its landing to %s",
 			target.Ref, implementation.Request, implementation.TargetRef)
 	}
+	// Reserved for multi-repository targets; unreachable while the fold
+	// refuses a foreign target_repo, which makes the request's repository and
+	// this workroom's own genesis the same value on every path that reaches
+	// here. The sealed-receipt half of the same comparison, on the resume
+	// path, is reachable and proved.
 	if target.Repo != implementation.TargetRepo {
-		return false, fmt.Errorf("checkout repository %s is not the landing target repository %s of implementation request %s",
+		return landingDecision{}, fmt.Errorf("checkout repository %s is not the landing target repository %s of implementation request %s",
 			target.Repo, implementation.TargetRepo, implementation.Request)
 	}
 	// A pre-state@3 request stated no hold and can have none, so the two rules
@@ -1201,22 +1229,41 @@ func validateLanding(projection workroom.Projection, target mergeplan.Target, ca
 	// Phase-one authorization on a legacy request keeps working exactly as it
 	// did, which is what most work in flight is standing on.
 	if implementation.Legacy {
-		return false, nil
+		return landing, nil
 	}
 	held := implementation.HoldOwner != ""
 	if !held {
 		if authorizationEvent != "" {
-			return false, fmt.Errorf("implementation request %s is not held; drop --authorization", implementation.Request)
+			return landingDecision{}, fmt.Errorf("implementation request %s is not held; drop --authorization", implementation.Request)
 		}
-		return false, nil
+		return landing, nil
 	}
 	if implementation.Release != "" && implementation.Approval == approvalEvent && implementation.Candidate == candidate {
-		return false, nil
+		// A landing of a released hold seals exactly that release. The
+		// receipt is where the authority for this merge is recorded, and a
+		// receipt that named some other report — or none — would not say
+		// which act lifted the hold it landed under.
+		if authorizationEvent != "" && authorizationEvent != implementation.Release {
+			return landingDecision{}, fmt.Errorf("implementation request %s is released by %s; --authorization names %s",
+				implementation.Request, implementation.Release, authorizationEvent)
+		}
+		landing.Authorization = implementation.Release
+		return landing, nil
 	}
 	// The compatibility window of section 9, matching phase one of the
 	// authorization guard: for one release this is said out loud and recorded
 	// in the receipt instead of refusing the merge.
-	return true, nil
+	landing.HoldWarning = true
+	return landing, nil
+}
+
+// landingDecision is what the destination guard concluded. Authorization is
+// the report this merge must seal: the one named on the command line, or the
+// release in force for a held request, which the receipt seals whether or not
+// the caller passed it.
+type landingDecision struct {
+	Authorization string
+	HoldWarning   bool
 }
 
 // validateMergeAuthorization is the phase-one application guard. It reads

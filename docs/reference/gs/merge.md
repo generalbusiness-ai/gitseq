@@ -148,7 +148,12 @@ world is a projection this command cannot date, not a permission to land.
 | The implementation request is not held and `--authorization` is given | An unheld request asked for no release, so a merge that presents one claims an authority nobody granted. Requests filed before `workroom/state@3` keep the phase-one reading and are unaffected. |
 | A resumed receipt names a destination this checkout is not standing on | Recovery proves where the receipt landed instead of assuming it landed here. |
 | A resumed receipt carries `Gitseq-Target-Repo` without `Gitseq-Target-Ref`, or the reverse | Half a destination proves nothing. Both absent is a legacy receipt and is fine. |
-| The durable receipt's target disagrees with the sealed Git trailers | The binding lives in two places and only one of them can be rewritten afterwards, so recovery reads both and requires them equal. |
+| The durable receipt's target, target pre-head, or hold warning disagrees with the sealed Git trailers | The binding lives in two places and only one of them can be rewritten afterwards, so recovery reads both and requires them equal. |
+| The checkout's `HEAD` names a ref outside `refs/heads/` | A merge lands into a branch. Nothing else is a destination this command will seal. |
+| The approved artifact is the report of more than one commitment lane | The destination comes from one request. Two lanes reporting one artifact name no single answer. |
+| `Gitseq-Hold-Warning` is present with any value but `true` | The compatibility-window marker is a fact read back out of a commit message, so it is exact or it is nothing. |
+| A resumed receipt's checkout does not belong to the workroom repository | Recovery reads a sealed receipt out of the checkout and appends its durable suffix to this workroom; the two must be the same repository. |
+| An implementation request whose hold is released is merged with an `--authorization` that is not that release | The hold was lifted by one report. A merge under any other one is not landing under the release the hold owner signed. |
 
 The shared read-only evaluator runs before any receipt reservation. `merge`
 then resolves structured authorization and proves that the target head, staged
@@ -181,10 +186,16 @@ plan, the authorization resolution, and the tentative merge all happen while
 another process could switch the branch or advance the ref, so the last word
 on where this merge is landing is the one taken last.
 
-Independently reviewed self-initiated work carries no request and no
-commitment row — requester and performer are the same actor — so there is no
-stated destination to compare against. Such a merge is unaffected, and its
-receipt still seals the destination it measured.
+The comparison needs a request, and it finds one through the commitment lane
+that reports the approved artifact. An approval whose artifact is the report of
+no commitment lane gets **no destination check at all**, and merges into any
+branch of the workroom's repository; its receipt still seals the destination it
+measured. That covers independently reviewed self-initiated work, where
+requester and performer are the same actor and no commitment row exists. It
+also covers an artifact published against a request that stated
+`no_git_artifact=true`: the fold never makes such an artifact that
+commitment's report, so no lane is found and no destination is enforced. That
+second case is a gap, not a design choice, and closing it is its own request.
 
 #### Held landings and the compatibility window
 
@@ -197,12 +208,28 @@ receipts record that it used the window: `merge_hold_warning=true` in the
 durable receipt and `Gitseq-Hold-Warning: true` on the merge commit. When the
 window closes that case becomes a refusal.
 
+A landing of a released hold seals exactly that release. The receipt records
+it as `merge_authorization` with its ratification as
+`merge_authorization_ratification`, and the merge commit carries the matching
+`Gitseq-Authorization` and `Gitseq-Authorization-Ratification` trailers,
+whether or not `--authorization` named it; passing a different report refuses.
+The release is then validated as any authorization is: the same bindings, the
+same ratification witness, the same ordering — including the phase-one signer
+list of original implementation requester, the live actor named `planner`, or
+a live `ratifier`. The hold-owner signer rule that replaces that list for a
+held request is a later slice, so a release signed by a delegated hold owner
+outside the phase-one list is still refused here.
+
 #### Legacy receipts
 
 A receipt carrying neither `Gitseq-Target-Repo` nor `Gitseq-Target-Ref` was
 sealed before either existed. It reads as `refs/heads/main` of this workroom's
 own repository, is flagged legacy, and resumes without acquiring fields its
-author never signed. Whether a landed head is still contained in that ref
+author never signed. The same reading applies to a pre-`state@3` request, and
+it has a cost: such a request now lands only into `refs/heads/main` of the
+workroom's repository, so a repository whose default branch is not `main`
+cannot merge work filed under the older schema until it restates that work's
+target under `state@3`. Whether a landed head is still contained in that ref
 afterwards, and whether a remote carries it, are repository-derived advisory
 facts computed elsewhere; nothing here reads them, and no fold satisfaction
 depends on them.

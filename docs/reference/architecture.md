@@ -1508,9 +1508,19 @@ a projection it may merge on. This carries the fold profile to
   against it rather than deriving it again. Under `state@3` a request that is
   not held refuses `--authorization` outright, and a held one whose release is
   not in force for this candidate and approval lands with a warning recorded as
-  `merge_hold_warning` for the length of the stated compatibility window.
-  Independently reviewed self-initiated work has no request and no commitment
-  row, so it has no stated destination and is unaffected.
+  `merge_hold_warning` for the length of the stated compatibility window. A
+  held request whose release is in force seals exactly that release as the
+  receipt's authorization and its ratification witness, and refuses an
+  `--authorization` naming anything else; the phase-one signer list still
+  judges that release, because the hold-owner signer rule is a later slice.
+
+  The request is found through the commitment lane that reports the approved
+  artifact, so an approval whose artifact reports no lane receives no
+  destination check at all. That is the case for independently reviewed
+  self-initiated work, which has no commitment row; it is also the case for an
+  artifact published against a request that stated `no_git_artifact=true`,
+  because the fold never makes such an artifact that commitment's report. The
+  second is a gap rather than a design choice, and closing it is separate work.
 
   The destination is measured again immediately before `HEAD` moves, after the
   plan, the authorization and the tentative merge, because each of those is a
@@ -1523,7 +1533,11 @@ a projection it may merge on. This carries the fold profile to
   A receipt carrying neither target field predates them: it reads as
   `refs/heads/main` of this workroom's own repository, is flagged legacy, and
   resumes without acquiring fields its author never signed. One carrying half
-  the pair proves nothing and is refused.
+  the pair proves nothing and is refused. The same legacy reading governs a
+  pre-`state@3` request, which therefore lands only into `refs/heads/main` of
+  the workroom's repository: a repository whose default branch is not `main`
+  cannot merge work filed under the older schema until that work restates its
+  target under `state@3`.
 
   Its shared merge-plan evaluator adds one prospective surface rule the fold does not hold:
   a reviewed path bounds cross-author retirement at itself and beneath it,

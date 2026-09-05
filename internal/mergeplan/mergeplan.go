@@ -102,24 +102,31 @@ func WorkroomRepo(workspace *app.Workspace) string {
 // a checked-out branch and nothing else, so a detached checkout has no
 // destination to name and is refused here rather than sealed as an empty ref.
 //
-// The repository half is the workroom's own genesis id. ValidateCheckout is
-// what binds the two: it refuses a checkout whose Git common directory is not
-// this workroom's repository, so by the time a target is resolved the
-// checkout's repository and the workroom's are the same repository.
+// The repository half is the workroom's own genesis id, and this function does
+// not itself prove that the checkout belongs to that repository. ValidateCheckout
+// is what proves it, by refusing a checkout whose Git common directory is not
+// the workroom's; every caller runs it first — the fresh merge path and the
+// read-only plan through their own validation, and the resume path explicitly
+// before it reads a sealed receipt. Called without that, the repository half
+// would describe the workroom rather than the checkout in front of it.
 func ResolveTarget(ctx context.Context, workspace *app.Workspace, checkout string) (Target, error) {
-	ref, err := git(ctx, checkout, "symbolic-ref", "--quiet", "HEAD")
-	if err != nil || strings.TrimSpace(ref) == "" {
-		return Target{}, errors.New("checkout is detached; a merge lands only into a checked-out branch")
-	}
-	target := Target{Repo: WorkroomRepo(workspace), Ref: strings.TrimSpace(ref)}
-	if !strings.HasPrefix(target.Ref, "refs/heads/") {
-		return Target{}, fmt.Errorf("checkout HEAD points at %s, which is not a branch under refs/heads/", target.Ref)
-	}
+	// The commit is read first so that a repository this command cannot read
+	// at all reports Git's own message. Git answers a detached HEAD by
+	// failing, not by succeeding with empty output, so once the head resolves
+	// there is nothing left for symbolic-ref to fail at except detachment,
+	// and both its failure and an empty answer mean exactly that.
 	head, err := git(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
 		return Target{}, err
 	}
-	target.PreHead = strings.TrimSpace(head)
+	ref, err := git(ctx, checkout, "symbolic-ref", "--quiet", "HEAD")
+	if err != nil || strings.TrimSpace(ref) == "" {
+		return Target{}, errors.New("checkout is detached; a merge lands only into a checked-out branch")
+	}
+	target := Target{Repo: WorkroomRepo(workspace), Ref: strings.TrimSpace(ref), PreHead: strings.TrimSpace(head)}
+	if !strings.HasPrefix(target.Ref, "refs/heads/") {
+		return Target{}, fmt.Errorf("checkout HEAD points at %s, which is not a branch under refs/heads/", target.Ref)
+	}
 	return target, nil
 }
 
