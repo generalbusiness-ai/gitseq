@@ -2469,7 +2469,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@19"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@20"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2536,7 +2536,7 @@ func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
 	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@19"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@20"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2612,7 +2612,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@19"
+	want := apphost.DefaultApplication + "\x00workroom-fold@20"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}

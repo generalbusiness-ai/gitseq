@@ -385,12 +385,21 @@ an unrelated live artifact at `dir/b` part of a merge that changed only
 `{"class":"carried"}`, `{"class":"sibling","commitment":"<event id>"}`, or
 `{"class":"abandoned"}`. The field grants no retirement authority. The fold
 checks both it and the sealed changed-path frontier from durable log facts at
-the receipt position and uses them only to make the published successor's
+the receipt's incoming frontier and uses them only to make the published successor's
 accounting stable. The recorded classification remains historical evidence;
 the current owed-supersession count stops suppressing a sibling once its named
 commitment settles or retires. A carried pointer remains current and never
 enters that cleanup count. Receipts without both prospective fields parse and
 project exactly as before.
+
+The receipt can itself settle the promise that protected an older candidate.
+That sibling claim still verifies against the frontier before the receipt,
+while the older candidate becomes cleanup debt as soon as the promise closes.
+A promise already settled or retired before the receipt cannot protect its
+claim, and a later promise cannot repair it. Fold profile `workroom-fold@20`
+corrects this accounting when replaying existing signed receipts; it does not
+rewrite them or grant new retirement authority. The artifact's author or a
+ratifier still performs the cleanup.
 
 ### Citations across a merge
 
