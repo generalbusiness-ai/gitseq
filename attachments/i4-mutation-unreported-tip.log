@@ -1,5 +1,0 @@
---- FAIL: TestWorktreeClassificationProtectsEveryNamedHead (0.59s)
-    worktree_landing_test.go:49: unreported new tip deletable: [feature] {Checkout:feature Branch:request/feature Head:c04211ef0e724040390d45ab150ad8f48fb78e00 State:clean Current:false Detached:false Approved:approval LandedInto: RemoteContains:<nil> Row:request Rows:[{Request:request Promise:promise Status:satisfied LandingDetails:{TargetRepo:git:sha1:f6829f828b45cbf58fc655dad6d8633683d3b20c TargetRef:refs/heads/main Legacy:false HoldOwner: Release: Approval:approval Candidate:aa4bd74f19cec9b694e296ea4ab9bafe59a57832 LatestResolution: Terminal:landed ApprovedNotLanded:false LandingReceipt:receipt MergeHead:aa4bd74f19cec9b694e296ea4ab9bafe59a57832 ReceiptLegacy:false MergeHoldWarning:false Git:0x3b41863a0080}}] RowsOmitted:0 Classification:deletable ClassificationReason:}
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.886s
-FAIL
