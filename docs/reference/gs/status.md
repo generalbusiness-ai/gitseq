@@ -50,6 +50,13 @@ gs status --repo "$REPO" --json | head -5
 
 ## The bounded view
 
+The totals include `approved_not_landed` across all commitments. Up to twenty
+target observations name the newest witnessed receipt for each destination
+and show local and remote-tracking incorporation. Git movement does not change
+durable satisfaction. [Landing observations](../landing-observations.md) defines
+the fields, unknown answers and the explicit receipt-backed hold warning.
+The `--all` and `--json` exports retain their durable-only shape.
+
 The header names the frontier, its depth, and where the answer came
 from — `verified local`, `resident summary`, or `verified local
 fallback`. Then a line of totals, and six sections:

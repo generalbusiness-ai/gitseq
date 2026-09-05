@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -20,7 +21,8 @@ const (
 )
 
 type Totals struct {
-	Commitments map[string]int `json:"commitments"`
+	ApprovedNotLanded int            `json:"approved_not_landed"`
+	Commitments       map[string]int `json:"commitments"`
 	// StaleCommitments counts, per status, how many of those commitments carry
 	// the stale qualifier. Staleness qualifies a status instead of replacing
 	// it, so one count cannot say both things; a reader who only had
@@ -42,6 +44,7 @@ type Totals struct {
 }
 
 type Commitment struct {
+	LandingDetails
 	Request          string `json:"request"`
 	Status           string `json:"status"`
 	SuccessorRequest string `json:"successor_request,omitempty"`
@@ -96,10 +99,12 @@ type Dissent struct {
 }
 
 type Summary struct {
-	Genesis string `json:"genesis"`
-	Head    string `json:"head"`
-	Depth   int    `json:"depth"`
-	Totals  Totals `json:"totals"`
+	LandingTargets        []app.LandingDetails `json:"landing_targets,omitempty"`
+	LandingTargetsOmitted int                  `json:"landing_targets_omitted,omitempty"`
+	Genesis               string               `json:"genesis"`
+	Head                  string               `json:"head"`
+	Depth                 int                  `json:"depth"`
+	Totals                Totals               `json:"totals"`
 
 	Actionable        []Commitment `json:"actionable"`
 	ActionableOmitted int          `json:"actionable_omitted,omitempty"`
@@ -316,7 +321,8 @@ func commitmentViews(projection workroom.Projection, statements map[string]workr
 	views := make([]Commitment, 0, len(source))
 	for _, commitment := range source {
 		view := Commitment{
-			Request: commitment.Request, Sequence: sequences[commitment.Request],
+			LandingDetails: landingDetails(commitment),
+			Request:        commitment.Request, Sequence: sequences[commitment.Request],
 			Status: commitment.Status, SuccessorRequest: commitment.SuccessorRequest, Stale: commitment.Stale,
 			AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 			Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
@@ -380,6 +386,9 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 	var actionableSource, attentionSource []workroom.Commitment
 	for _, commitment := range projection.Commitments {
 		summary.Totals.Commitments[commitment.Status]++
+		if commitment.ApprovedNotLanded {
+			summary.Totals.ApprovedNotLanded++
+		}
 		if commitment.Stale {
 			summary.Totals.StaleCommitments[commitment.Status]++
 		}
@@ -444,6 +453,8 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 
 	summary.Actionable = commitmentViews(projection, statements, sequences, actionableSource)
 	summary.Attention = commitmentViews(projection, statements, sequences, attentionSource)
+	summary.LandingTargets, summary.LandingTargetsOmitted = landingTargets(projection)
+	app.FillLandingEvidence(projection, summary.LandingRows())
 	summary.CurrentArtifacts = artifactViews(sequences, currentSource)
 	summary.StaleArtifacts = artifactViews(sequences, staleSource)
 	for _, decision := range attemptSource {
@@ -507,6 +518,13 @@ func Render(summary Summary, source string) []byte {
 		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts,
 		summary.Totals.StaleArtifacts-summary.Totals.RetiredArtifacts, summary.Totals.RetiredArtifacts,
 		summary.Totals.WorldStaleArtifacts, summary.Totals.IneffectiveActs, summary.Totals.DisputedActs)
+	fmt.Fprintf(&output, "Approved but not landed at their target: %d.\n", summary.Totals.ApprovedNotLanded)
+	for _, target := range summary.LandingTargets {
+		fmt.Fprintf(&output, "%s\n", LandingText(target))
+	}
+	if summary.LandingTargetsOmitted > 0 {
+		fmt.Fprintf(&output, "%d other targets omitted.\n", summary.LandingTargetsOmitted)
+	}
 	renderCommitments(&output, "Actionable commitments", summary.Actionable, summary.ActionableOmitted)
 	renderCommitments(&output, "Needs attention", summary.Attention, summary.AttentionOmitted)
 	renderArtifacts(&output, "Current artifacts", summary.CurrentArtifacts, summary.CurrentOmitted)
@@ -563,6 +581,9 @@ func renderCommitments(output *bytes.Buffer, title string, items []Commitment, o
 		fmt.Fprintf(output, "- %s — %s → %s — `%s`", item.Status, item.Requester, assignment, name(item.Request, item.Sequence))
 		if item.Text != "" {
 			fmt.Fprintf(output, ": %s", item.Text)
+		}
+		if landing := LandingText(item.LandingDetails); landing != "" {
+			fmt.Fprintf(output, " (%s)", landing)
 		}
 		output.WriteByte('\n')
 	}

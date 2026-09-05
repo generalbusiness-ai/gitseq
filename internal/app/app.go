@@ -530,12 +530,20 @@ func webRemoteURL(raw string) string {
 // WorktreeView is one checkout of the repository. Checkout is a display label
 // rather than an absolute path.
 type WorktreeView struct {
-	Checkout string `json:"checkout"`
-	Branch   string `json:"branch,omitempty"`
-	Head     string `json:"head,omitempty"`
-	State    string `json:"state"` // clean | dirty | unavailable | bare | locked | prunable
-	Current  bool   `json:"current,omitempty"`
-	Detached bool   `json:"detached,omitempty"`
+	Checkout             string        `json:"checkout"`
+	Branch               string        `json:"branch,omitempty"`
+	Head                 string        `json:"head,omitempty"`
+	State                string        `json:"state"` // clean | dirty | unavailable | bare | locked | prunable
+	Current              bool          `json:"current,omitempty"`
+	Detached             bool          `json:"detached,omitempty"`
+	Approved             string        `json:"approved,omitempty"`
+	LandedInto           string        `json:"landed_into,omitempty"`
+	RemoteContains       *bool         `json:"remote_contains"`
+	Row                  string        `json:"row,omitempty"`
+	Rows                 []WorktreeRow `json:"rows,omitempty"`
+	RowsOmitted          int           `json:"rows_omitted,omitempty"`
+	Classification       string        `json:"classification,omitempty"`
+	ClassificationReason string        `json:"classification_reason,omitempty"`
 }
 
 type Verb string

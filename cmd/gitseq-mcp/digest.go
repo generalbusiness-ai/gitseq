@@ -6,6 +6,7 @@ package main
 // live at the shared boundary.
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/generalbusiness-ai/gitseq/internal/service"
@@ -56,8 +57,10 @@ func summarize(tool string, value any) string {
 func shown(listed, skipped int) string { return statusview.Shown(listed, skipped) }
 func liveLabel(live liveView) string   { return statusview.LiveLabel(live) }
 
-func (s *mcpServer) digest(current *room, status service.Status, degraded bool, identity *selectedIdentity) actorStatus {
-	return digestStatus(status, identity.actor.Fingerprint, current.actor, degraded)
+func (s *mcpServer) digest(ctx context.Context, current *room, status service.Status, degraded bool, identity *selectedIdentity) actorStatus {
+	digest := digestStatus(status, identity.actor.Fingerprint, current.actor, degraded)
+	current.workspace.MeasureLandingDetails(ctx, digest.LandingRows())
+	return digest
 }
 
 func remarshal(value any, target any) error {

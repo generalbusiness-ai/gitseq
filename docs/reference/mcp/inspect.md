@@ -9,6 +9,12 @@ rests_on:
 
 # `inspect`
 
+The commitment includes the fold's target, hold, approval, resolution, terminal,
+delivery-debt and `landing_receipt` fields. The sibling `landing` block carries
+the shared [receipt evidence and current Git observations](../landing-observations.md).
+Unknown incorporation is JSON null; the compatibility warning comes only from
+the witnessed receipt's explicit field.
+
 Reads one exact durable item. The tool calls `POST /v0/inspect` and
 never fetches the complete `/v0/status` projection; use it after
 [`work`](work.md) instead of transferring the whole projection merely

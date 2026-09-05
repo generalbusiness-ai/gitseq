@@ -24,6 +24,7 @@ type WorkLane string
 
 const (
 	LaneAvailable            WorkLane = "available_to_you"
+	LaneApprovedNotLanded    WorkLane = "approved_not_landed"
 	LaneAwaitingRatification WorkLane = "awaiting_ratification"
 	LaneWaitingOnYou         WorkLane = "waiting_on_you"
 	LaneYouAreWaitingOn      WorkLane = "you_are_waiting_on"
@@ -50,9 +51,11 @@ const (
 // language: callers choose named relationship lanes, lifecycle statuses, and
 // one staleness policy, then continue through an opaque head-bound cursor.
 type WorkQuery struct {
-	Actor    string     `json:"actor"`
-	Lanes    []WorkLane `json:"lanes,omitempty"`
-	Statuses []string   `json:"statuses,omitempty"`
+	Actor             string     `json:"actor"`
+	TargetRef         string     `json:"target_ref,omitempty"`
+	ApprovedNotLanded *bool      `json:"approved_not_landed,omitempty"`
+	Lanes             []WorkLane `json:"lanes,omitempty"`
+	Statuses          []string   `json:"statuses,omitempty"`
 	// Stale defaults to StaleSummary, which is not the same as StaleInclude.
 	// The default answers "what is still owed"; include, only and exclude are
 	// the explicit policies and each returns exactly what it always did.
@@ -83,6 +86,7 @@ type WorkReview struct {
 // lifecycle status is open or stale; the number of rows remains capped by the
 // surrounding status or work page.
 type WorkDetails struct {
+	LandingDetails
 	Conditions   string      `json:"conditions,omitempty"`
 	ReportStatus string      `json:"report_status,omitempty"`
 	ReportedHead string      `json:"reported_head,omitempty"`
@@ -142,7 +146,7 @@ var knownStatuses = map[string]bool{
 }
 
 var knownLanes = map[WorkLane]bool{
-	LaneAvailable: true, LaneAwaitingRatification: true, LaneWaitingOnYou: true, LaneYouAreWaitingOn: true, LaneNotActionable: true,
+	LaneApprovedNotLanded: true, LaneAvailable: true, LaneAwaitingRatification: true, LaneWaitingOnYou: true, LaneYouAreWaitingOn: true, LaneNotActionable: true,
 }
 
 func actorRef(projection workroom.Projection, fingerprint string) *ActorRef {
@@ -153,6 +157,9 @@ func actorRef(projection workroom.Projection, fingerprint string) *ActorRef {
 }
 
 func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
+	if len(input.TargetRef) > 256 || input.TargetRef != "" && (!strings.HasPrefix(input.TargetRef, "refs/heads/") || strings.ContainsAny(input.TargetRef, "\x00\r\n")) {
+		return WorkQuery{}, "", errors.New("target_ref must be a full branch ref of at most 256 bytes")
+	}
 	if input.Actor == "" {
 		return WorkQuery{}, "", errors.New("actor is required")
 	}
@@ -198,11 +205,13 @@ func normalizeWorkQuery(input WorkQuery) (WorkQuery, string, error) {
 	sort.Strings(input.Statuses)
 
 	fingerprintInput := struct {
-		Actor    string      `json:"actor"`
-		Lanes    []WorkLane  `json:"lanes"`
-		Statuses []string    `json:"statuses"`
-		Stale    StaleFilter `json:"stale"`
-	}{input.Actor, input.Lanes, input.Statuses, input.Stale}
+		Actor             string      `json:"actor"`
+		Lanes             []WorkLane  `json:"lanes"`
+		Statuses          []string    `json:"statuses"`
+		Stale             StaleFilter `json:"stale"`
+		TargetRef         string      `json:"target_ref,omitempty"`
+		ApprovedNotLanded *bool       `json:"approved_not_landed,omitempty"`
+	}{input.Actor, input.Lanes, input.Statuses, input.Stale, input.TargetRef, input.ApprovedNotLanded}
 	encoded, _ := json.Marshal(fingerprintInput)
 	sum := sha256.Sum256(encoded)
 	return input, hex.EncodeToString(sum[:]), nil
@@ -291,7 +300,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 	// Ratification attention comes first in the default page. It is not a
 	// commitment and should not be buried behind commitment history merely
 	// because both share one bounded query surface.
-	if lanes[LaneAwaitingRatification] && (len(statuses) == 0 || statuses["awaiting-ratification"]) {
+	if input.TargetRef == "" && input.ApprovedNotLanded == nil && lanes[LaneAwaitingRatification] && (len(statuses) == 0 || statuses["awaiting-ratification"]) {
 		pending := awaitingRatifications(durable.Projection, query.Actor)
 		for index := len(pending) - 1; index >= 0; index-- {
 			row := pending[index]
@@ -307,7 +316,13 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 	}
 	for index := len(durable.Projection.Commitments) - 1; index >= 0; index-- {
 		commitment := durable.Projection.Commitments[index]
+		if query.TargetRef != "" && commitment.TargetRef != query.TargetRef || query.ApprovedNotLanded != nil && commitment.ApprovedNotLanded != *query.ApprovedNotLanded {
+			continue
+		}
 		lane := commitmentLane(commitment, query.Actor)
+		if lanes[LaneApprovedNotLanded] && approvedLandingFor(commitment, query.Actor) {
+			lane = LaneApprovedNotLanded
+		}
 		if lane == "" || !lanes[lane] {
 			continue
 		}
@@ -315,9 +330,9 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 			if !statuses[commitment.Status] {
 				continue
 			}
-		} else if !actionable[commitment.Status] && !commitment.Stale {
+		} else if !commitment.ApprovedNotLanded && !actionable[commitment.Status] && !commitment.Stale {
 			continue
-		} else if query.Stale == StaleSummary && terminal[commitment.Status] {
+		} else if !commitment.ApprovedNotLanded && query.Stale == StaleSummary && terminal[commitment.Status] {
 			// Named statuses and an explicit staleness policy both say the
 			// caller wants this history. Naming neither asks for the work
 			// still owed, so a superseded, satisfied or withdrawn commitment that only
@@ -329,7 +344,7 @@ func BuildWorkPage(durable app.Snapshot, input WorkQuery, degraded bool) (WorkPa
 			continue
 		}
 		requester := actorRef(durable.Projection, commitment.Requester)
-		item := WorkItem{Request: commitment.Request, Lane: lane, Status: commitment.Status, Stale: commitment.Stale,
+		item := WorkItem{WorkDetails: WorkDetails{LandingDetails: landingDetails(commitment)}, Request: commitment.Request, Lane: lane, Status: commitment.Status, Stale: commitment.Stale,
 			SuccessorRequest: commitment.SuccessorRequest, Promise: commitment.Promise, Report: commitment.Report, AddressedTo: actorRef(durable.Projection, commitment.AddressedTo),
 			Performer: actorRef(durable.Projection, commitment.Performer), WaitingOn: actorRef(durable.Projection, commitment.WaitingOn),
 			unclaimedRequest: isUnclaimedRequest(commitment)}
@@ -378,6 +393,13 @@ func workItemTargets(items []WorkItem) []workRowTarget {
 // capped rows. It avoids both a second inspect call per row and a projection-
 // sized index allocated merely to decorate a bounded response.
 func enrichWorkRows(projection workroom.Projection, targets []workRowTarget) {
+	var landings []*app.LandingDetails
+	for _, target := range targets {
+		if target.Details != nil {
+			landings = append(landings, &target.Details.LandingDetails)
+		}
+	}
+	app.FillLandingEvidence(projection, landings)
 	requests := make(map[string][]int)
 	reports := make(map[string][]int)
 	for index, target := range targets {
@@ -448,6 +470,7 @@ type ItemInspection struct {
 	Act                     *workroom.Act        `json:"act,omitempty"`
 	Decision                *workroom.Decision   `json:"decision,omitempty"`
 	Commitment              *workroom.Commitment `json:"commitment,omitempty"`
+	Landing                 *app.LandingDetails  `json:"landing,omitempty"`
 	ProvenanceBases         []string             `json:"provenance_bases"`
 	ProvenanceBasesOmitted  int                  `json:"provenance_bases_omitted,omitempty"`
 	RelatedArtifacts        []workroom.Artifact  `json:"related_artifacts,omitempty"`
@@ -506,6 +529,9 @@ func BuildItemInspection(durable app.Snapshot, event string, degraded bool) (Ite
 			}
 		}
 		result.Commitment = &copy
+		landing := landingDetails(commitment)
+		result.Landing = &landing
+		app.FillLandingEvidence(projection, result.LandingRows())
 		break
 	}
 

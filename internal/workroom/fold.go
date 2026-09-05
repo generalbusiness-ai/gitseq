@@ -155,6 +155,10 @@ type Commitment struct {
 	// than against main: an approval names a head and no sealed receipt put
 	// that head where the request said it owed it.
 	ApprovedNotLanded bool `json:"approved_not_landed,omitempty"`
+	// LandingReceipt witnesses the existing validated receipt that discharged
+	// this target. It adds no admission or lifecycle rule. Consumers may join
+	// its body to expose sealed evidence without trusting arbitrary assertions.
+	LandingReceipt string `json:"landing_receipt,omitempty"`
 }
 
 type Artifact struct {
@@ -3586,6 +3590,15 @@ func (f *foldState) completionStatus(entry *Commitment, result requestResult, co
 // request named. It never means "absent from main": a receipt into some other
 // ref is a real landing that discharged nothing here, and stays counted.
 func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResult, approved *parsedRecord, mergedArtifacts map[string]*parsedRecord) {
+	// Completion and newest approval are different facts. Preserve the receipt
+	// which closed the row even if a later artifact acquired another approval.
+	receipt := mergedArtifacts[entry.Report]
+	if !f.dischargedBy(receipt, result) && approved != nil {
+		receipt = mergedArtifacts[approved.record.ID]
+	}
+	if f.dischargedBy(receipt, result) {
+		entry.LandingReceipt = receipt.record.ID
+	}
 	if approved == nil || !result.landing || entry.Status == "abandoned" {
 		return
 	}

@@ -698,11 +698,13 @@ func tools() []map[string]any {
 		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; awaiting_ratification contains standing proposals this actor's roles may ratify, and available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withSelection(nil))},
 		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withSelection(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
 		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return work still owed, including standing proposals this actor may ratify and addressed unclaimed requests; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withSelection(map[string]any{
-			"lanes":    arrayOf(enum("available_to_you", "awaiting_ratification", "waiting_on_you", "you_are_waiting_on", "not_actionable")),
-			"statuses": arrayOf(enum("open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "awaiting-ratification", "superseded", "satisfied", "abandoned", "stale", "cancelled", "reneged", "withdrawn")),
-			"stale":    enum("summary", "include", "only", "exclude"),
-			"limit":    map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
-			"cursor":   stringField,
+			"lanes":               arrayOf(enum("available_to_you", "awaiting_ratification", "waiting_on_you", "you_are_waiting_on", "not_actionable", "approved_not_landed")),
+			"statuses":            arrayOf(enum("open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "awaiting-ratification", "superseded", "satisfied", "abandoned", "stale", "cancelled", "reneged", "withdrawn")),
+			"stale":               enum("summary", "include", "only", "exclude"),
+			"target_ref":          map[string]any{"type": "string", "maxLength": 256},
+			"approved_not_landed": map[string]any{"type": "boolean"},
+			"limit":               map[string]any{"type": "integer", "minimum": 1, "maximum": statusview.WorkPageMax},
+			"cursor":              stringField,
 		}))},
 		{"name": "artifacts", "description": "Page through live artifact bases at exact path strings without fetching the full projection.", "inputSchema": object(withSelection(map[string]any{
 			"paths":  map[string]any{"type": "array", "items": stringField, "minItems": 1, "maxItems": statusview.ArtifactPathMax},
@@ -1171,7 +1173,7 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			return s.digest(current, local, true, identity), nil
+			return s.digest(ctx, current, local, true, identity), nil
 		}
 		if err != nil {
 			return nil, err
@@ -1216,7 +1218,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			return statusview.BuildWorkPage(durable, input, true)
+			page, buildErr := statusview.BuildWorkPage(durable, input, true)
+			if buildErr == nil {
+				current.workspace.MeasureLandingDetails(ctx, page.LandingRows())
+			}
+			return page, buildErr
 		}
 		return page, nil
 	case "artifacts":
@@ -1250,7 +1256,11 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			if localErr != nil {
 				return nil, localErr
 			}
-			return statusview.BuildItemInspection(durable, input.Event, true)
+			inspection, buildErr := statusview.BuildItemInspection(durable, input.Event, true)
+			if buildErr == nil {
+				current.workspace.MeasureLandingDetails(ctx, inspection.LandingRows())
+			}
+			return inspection, buildErr
 		}
 		return inspection, nil
 	case "merge_plan":
