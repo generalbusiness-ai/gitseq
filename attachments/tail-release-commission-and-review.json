@@ -1,0 +1,57 @@
+{
+  "commission": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5",
+  "current_input_artifacts": [
+    {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:84e6b6468cc6447b5df97cd98549380e5db9381e",
+      "path": "jsonataddl/input_contract.go",
+      "commit": "c57f34b26d2f879c813ea01b8854981c04c0e722",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:4761b410e3edd360a9b968cdaf592ff5856d48cc",
+      "stale_because_path": "internal/engine/engine.go"
+    },
+    {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1417ed1ebcbacbad3c4e6e09c72e83cc4b27910e",
+      "path": "jsonataddl/identity.go",
+      "commit": "c57f34b26d2f879c813ea01b8854981c04c0e722",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:4761b410e3edd360a9b968cdaf592ff5856d48cc",
+      "stale_because_path": "internal/engine/engine.go"
+    }
+  ],
+  "review": {
+    "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:db87db21ed93390db32ff268b13b1721336c3aa6",
+    "statement": {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:db87db21ed93390db32ff268b13b1721336c3aa6",
+      "sequence": 3790,
+      "timestamp": 1788613068,
+      "actor": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+      "kind": "report",
+      "lifecycle": "report",
+      "satisfier": "originating-requester",
+      "text": "Changes requested for the gate-2 publication of jsonataddl/v0.2.0 at sealed source c57f34b26d2f879c813ea01b8854981c04c0e722 (candidate artifact 1c096394 at jsonataddl), on one point only; the mechanical release is otherwise sound and no source merge or tag publication has occurred. Blocking finding: jsonataddl/README.md ships inside the module zip and at this source tells consumers to install the previous release ('go get github.com/generalbusiness-ai/tailapps/jsonataddl@v0.1.2', lines 11-15), states that 'the declared-input contract in current source is a later integration; the v0.1.2 install command above does not include it' (lines 25-27), and repeats v0.1.2 in the preflight example (151) and release ordering (161), while the same file documents ValidateProgramInput, NewObjectContract and Limits.MaxInputDepth. Published as v0.2.0 those bytes are immutable and self-contradictory, the exact class of permanent defect this module already commemorates with retract v0.1.0. Correct the README (install and release-ordering sentences) and docs/reference/releases.md lines 14, 22 and 33 on a new head, re-derive the module Sum there (it changes with the zip; the GoModSum stays while jsonataddl/go.mod is untouched), re-run the availability preflight for v0.2.0 immediately before the tag push, and request fresh gate-2 review of the corrected exact tuple. Everything else verified in a fresh detached checkout: jsonataddl/v0.2.0 is unused on origin (tags v0.1.0, v0.1.1, v0.1.2 at 9280be8b only); c57f34b2 is origin/main and an ancestor of it, checkout clean; jsonataddl/go.mod and go.sum are byte-identical to v0.1.2 (JSONata v0.0.0-20250709164031-599f35f32e5f, go-sqlite3 v0.35.3, no replace, retract v0.1.0 kept); GOWORK=off go mod verify, vet, test and race ok, boundary script ok in both CI and release-workflow forms, vulncheck clean in root and nested module, root vet and tests ok, go mod tidy a no-op, ExampleLoadApplication passes. Checksums computed with golang.org/x/mod zip.CreateFromVCS plus dirhash exactly as the proxy does: the v0.1.2 control reproduces the public sum.golang.org record byte for byte (h1:yWVB9oLiPV5pPt3zoPuxUe6nNKx53WIqFWswYOkgOYM= and /go.mod h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY=), and the candidate reproduces both proposed values (h1:azvskIinOqGBiKw57ZgziruJKaFH5fjXG0UIKlcrn2Q= and the same /go.mod hash); these v0.2.0 values are computed, not publicly resolved: proxy @v/list has no v0.2.0 and sum.golang.org returns 404, as expected before publication. Host identity jsonata-ddl-runtime:sha256:3e60ce38390fa376d766b5880cb8f79ebd9196f0e4036335beb9285783efbd33 is derived and asserted by TestComposedRuntimeIsPinned and TestLoadCurrentChangesOnlyIdentity at this commit. The zip image equals the committed jsonataddl subtree (113 entries), no vendor, symlinks, build tags, go:embed or generated files, no toolchain directive. Version: the exported API is purely additive but a v0.1.2 Dialect literal now refuses at load (input meta contract must be declared; dialect limits must all be positive), Canonical() and the identity version change, so v0.2.0 is the right admissible minor under v0 and the release note must say hosts add Input contracts and re-pin identities; the inventory repository builds its own Dialect literal at v0.1.2 and will need a code change. Should-fix follow-ups, not gates on this tuple: the root go.mod requires jsonataddl v0.1.2 behind a local replace, so a library consumer of the root module silently gets the old dialect and go install of cmd/tailapp at a root tag cut from this source is refused (a dependency's replace is ignored); bump the requirement to v0.2.0 first thing after publication and add a gate that the root requirement matches the newest published nested tag; verify-jsonataddl-module.sh never compares the published h1 to a source-derived expectation, so record the tuple in the release record and add an expected-hash argument. Nits: the tag workflow is detective (the module is publishable the instant the tag lands), no gate requires an annotated tag, and an untracked reports/ directory sits at the repo root. Authority: Hugh request b9d6cd89 gives current gate-2 authority after checker approval and builder ratification; historical design staleness is ordinary and not a reason to refile. Architecture: the host-neutral core deliberately changes the dialect contract (required Input, positive MaxInputDepth, JSON Canonical) with the composed identity re-pinned in the same head; the publication act adds no layer; the root requirement mismatch is the loose end above. Security: the trust boundary is the proxy plus the immutable checksum database, and the reviewed bytes reproduce the proposed tuple through a method validated against the public v0.1.2 record; the preflight fails closed on every response class; the input path orders byte cap, depth scan, decode and contract walk correctly; residual exposures are the missing source-derived hash comparison and the root requirement. Simplification: the one worthwhile addition is the expected-hash comparison in the verifier; the duplicated release-ordering prose between the README (which ships) and releases.md (which does not) produced the stale statements and should live in releases.md alone.",
+      "body": {
+        "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1c09639464fe3b9ba8bb582ff2739dabc99f4598",
+        "head": "c57f34b26d2f879c813ea01b8854981c04c0e722",
+        "head_news_acknowledged": "[\"git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e6a8348fa646bb98c962c45889bd00747e68663d\"]",
+        "review_frontier": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e6a8348fa646bb98c962c45889bd00747e68663d",
+        "review_path": "reviewguard@1",
+        "stale": "true",
+        "stale_bases": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1c09639464fe3b9ba8bb582ff2739dabc99f4598, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8335539701c2bc2eaa536dbba052641ed58a7389, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e6a8348fa646bb98c962c45889bd00747e68663d stale; retired bases: git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:020abf9a48047e3f82437e3d922ee106ccb186de, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:05e57c177a4247d03fb96f664b64287afe483a70, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0cf7f9765b5e7bf4a7a9cc50aa12095a30055c2a, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:100485fb88bd67bdf99bb0ae24851261617ef666 and 47 more",
+        "staleness": "artifact, promise, request stale; retired bases: git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:020abf9a48047e3f82437e3d922ee106ccb186de, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:05e57c177a4247d03fb96f664b64287afe483a70, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0cf7f9765b5e7bf4a7a9cc50aa12095a30055c2a, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:100485fb88bd67bdf99bb0ae24851261617ef666 and 47 more",
+        "verdict": "changes-requested"
+      },
+      "stale": true,
+      "stale_because_truncated": true
+    },
+    "decision": {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:db87db21ed93390db32ff268b13b1721336c3aa6",
+      "sequence": 3790,
+      "verdict": "effective",
+      "reason": "statement recorded"
+    }
+  }
+}
