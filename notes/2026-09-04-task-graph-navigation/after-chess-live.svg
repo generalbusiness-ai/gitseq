@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1022" height="634" viewBox="0 0 1022 634" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<style>.t{font-size:12px;font-weight:600;fill:#111}.b{font-size:10px;fill:#666}.s{font-size:11px;fill:#333}.m{font-size:11px;fill:#888}</style>
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="0" y="14" class="s" font-weight="600">Chess, open. 5 tasks, all shown in 1 group.</text>
+<text x="0" y="30" class="m">scale 1.00, pane 1022 x 510, centred on the selection. Fit to view shows all 8 cards.</text>
+<g transform="translate(0,38)"><rect x="0" y="0" width="1022" height="510" fill="#fbfbfa" stroke="#e5e5e3"/>
+<g clip-path="url(#c)"><clipPath id="c"><rect x="0" y="0" width="1022" height="510"/></clipPath>
+<g transform="translate(-653,162)">
+<path d="M 952 243 C 996 243, 996 93, 1040 93" fill="none" stroke="#1a1a1a" stroke-width="2.5" marker-end="url(#aL)"/>
+<path d="M 952 243 C 1164 243, 1164 93, 1376 93" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 952 243 C 996 243, 996 243, 1040 243" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 952 243 C 996 243, 996 393, 1040 393" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 1288 93 C 1332 93, 1332 93, 1376 93" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 280 93 C 324 93, 324 93, 368 93" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 280 93 C 492 93, 492 93, 704 93" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 93 C 492 93, 492 243, 704 243" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 616 93 C 660 93, 660 93, 704 93" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 93 C 660 93, 660 243, 704 243" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 616 93 C 828 93, 828 393, 1040 393" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<g opacity="1"><rect x="32" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="54" class="t">codex: refiling the chess identity</text>
+<text x="42" y="69" class="t">integration. This is recovered</text>
+<text x="42" y="84" class="t">work: it was asked for once,</text>
+<text x="42" y="126" class="b">satisfied  ·  context</text>
+<text x="42" y="142" class="b" fill="#888">before</text>
+</g>
+<g opacity="1"><rect x="368" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="378" y="54" class="t">Codex: repair only the ratified</text>
+<text x="378" y="69" class="t">full-parent chess review's missing</text>
+<text x="378" y="84" class="t">browser proof-of-possession before</text>
+<text x="378" y="126" class="b">satisfied  ·  context</text>
+<text x="378" y="142" class="b" fill="#888">before</text>
+</g>
+<g opacity="0.28"><rect x="704" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="54" class="t">Planner: independently re-review</text>
+<text x="714" y="69" class="t">the complete chess browser</text>
+<text x="714" y="84" class="t">identity integration at exact</text>
+<text x="714" y="126" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="1"><rect x="704" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="204" class="t">Codex: finish delivery of the</text>
+<text x="714" y="219" class="t">approved chess browser identity</text>
+<text x="714" y="234" class="t">integration. The original no-merge</text>
+<text x="714" y="276" class="b">awaiting merge</text>
+<text x="714" y="292" class="b" fill="#888">came from</text>
+</g>
+<g opacity="1"><rect x="1040" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="2"/>
+<rect x="1037" y="29" width="254" height="128" rx="9" fill="none" stroke="#1a1a1a" stroke-width="1" opacity="0.35"/>
+<text x="1050" y="54" class="t">Codex: revive dropped</text>
+<text x="1050" y="69" class="t">second-application item 6 in the</text>
+<text x="1050" y="84" class="t">native Chess room, starting with a</text>
+<text x="1050" y="126" class="b">in progress</text>
+<text x="1050" y="142" class="b" fill="#111">selected</text>
+</g>
+<g opacity="0.28"><rect x="1040" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="1050" y="204" class="t">Planner: resolve the authorization</text>
+<text x="1050" y="219" class="t">lane lookup and issue the required</text>
+<text x="1050" y="234" class="t">structured identity delivery</text>
+<text x="1050" y="276" class="b">in progress</text>
+</g>
+<g opacity="0.28"><rect x="1040" y="332" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="1050" y="354" class="t">Planner: review the approved</text>
+<text x="1050" y="369" class="t">unchanged identity code for its</text>
+<text x="1050" y="384" class="t">current delivery assignment,</text>
+<text x="1050" y="426" class="b">in progress</text>
+</g>
+<g opacity="1"><rect x="1376" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="1386" y="54" class="t">Codex: revive dropped</text>
+<text x="1386" y="69" class="t">second-application item 8, the two</text>
+<text x="1386" y="84" class="t">end-to-end chess acceptance</text>
+<text x="1386" y="126" class="b">unclaimed</text>
+<text x="1386" y="142" class="b" fill="#888">after</text>
+</g>
+</g></g>
+<defs>
+   <marker id="aL" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#1a1a1a"/></marker>
+   <marker id="aP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a9a97"/></marker>
+   <marker id="aD" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#dedddb"/></marker></defs>
+</g>
+<text x="0" y="566" class="s">025a6e01 rests on 6f7dea46.   Reverse: 6f7dea46 is a direct basis for 025a6e01.</text>
+<text x="0" y="582" class="s">selected 025a6e01  ·  3 before, 1 after  ·  2 tasks share its basis  ·  came from 6f7dea46</text>
+<text x="0" y="598" class="s">next: 78742cbf (1 of 1)          9 supporting citations, open with c</text>
+<text x="0" y="614" class="m">[&lt; back]   [^ / v  choose next]   [&gt; go]   [Open full thread]</text>
+</svg>

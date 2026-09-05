@@ -1,0 +1,199 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1022" height="634" viewBox="0 0 1022 634" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif">
+<style>.t{font-size:12px;font-weight:600;fill:#111}.b{font-size:10px;fill:#666}.s{font-size:11px;fill:#333}.m{font-size:11px;fill:#888}</style>
+<rect width="100%" height="100%" fill="#fff"/>
+<text x="0" y="14" class="s" font-weight="600">Chess, closed not completed. 13 tasks, all shown in 8 groups. 14 commitment rows.</text>
+<text x="0" y="30" class="m">scale 1.00, pane 1022 x 510, centred on the selection. Fit to view shows all 25 cards.</text>
+<g transform="translate(0,38)"><rect x="0" y="0" width="1022" height="510" fill="#fbfbfa" stroke="#e5e5e3"/>
+<g clip-path="url(#c)"><clipPath id="c"><rect x="0" y="0" width="1022" height="510"/></clipPath>
+<g transform="translate(19,-438)">
+<path d="M 616 693 C 660 693, 660 1143, 704 1143" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 616 693 C 660 693, 660 543, 704 543" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 616 693 C 660 693, 660 693, 704 693" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 280 993 C 492 993, 492 1143, 704 1143" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 993 C 492 993, 492 543, 704 543" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 993 C 492 993, 492 693, 704 693" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 843 C 324 843, 324 693, 368 693" fill="none" stroke="#1a1a1a" stroke-width="2.5" marker-end="url(#aL)"/>
+<path d="M 616 693 C 660 693, 660 243, 704 243" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 616 693 C 660 693, 660 393, 704 393" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 280 993 C 492 993, 492 393, 704 393" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 952 693 C 996 693, 996 93, 1040 93" fill="none" stroke="#9a9a97" stroke-width="1.4" marker-end="url(#aP)"/>
+<path d="M 280 93 C 324 93, 324 243, 368 243" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 243 C 324 243, 324 93, 368 93" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 243 C 324 243, 324 393, 368 393" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 93 C 660 93, 660 93, 704 93" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 393 C 660 393, 660 993, 704 993" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 393 C 660 393, 660 1293, 704 1293" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 393 C 660 393, 660 843, 704 843" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 616 393 C 828 393, 828 243, 1040 243" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 952 843 C 996 843, 996 243, 1040 243" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<path d="M 280 543 C 324 543, 324 543, 368 543" fill="none" stroke="#dedddb" stroke-width="1" marker-end="url(#aD)"/>
+<g opacity="0.28"><rect x="32" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="54" class="t">codex: repair all three blockers</text>
+<text x="42" y="69" class="t">on the chess first-user head, in</text>
+<text x="42" y="84" class="t">one head, on current bases. This</text>
+<text x="42" y="126" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="0.28"><rect x="32" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="204" class="t">codex: close the chess first-user</text>
+<text x="42" y="219" class="t">lane in one head — full atomicity</text>
+<text x="42" y="234" class="t">plus the three smaller items. This</text>
+<text x="42" y="276" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="0.28"><rect x="368" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="378" y="54" class="t">Planner: freshly review the</text>
+<text x="378" y="69" class="t">complete chess first-user</text>
+<text x="378" y="84" class="t">candidate at exact clean pushed</text>
+<text x="378" y="126" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="0.28"><rect x="32" y="332" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="354" class="t">Review the chess serve startup</text>
+<text x="42" y="369" class="t">repository validation at exact</text>
+<text x="42" y="384" class="t">head</text>
+<text x="42" y="426" class="b">withdrawn</text>
+</g>
+<g opacity="0.28"><rect x="32" y="482" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="504" class="t">Codex: repair the GitHub OAuth</text>
+<text x="42" y="519" class="t">anchor in the exact pushed chess</text>
+<text x="42" y="534" class="t">identity candidate by moving</text>
+<text x="42" y="576" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="0.28"><rect x="368" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="378" y="204" class="t">Planner: independently review the</text>
+<text x="378" y="219" class="t">complete three-blocker chess</text>
+<text x="378" y="234" class="t">first-user repair at exact clean</text>
+<text x="378" y="276" class="b">cancelled</text>
+</g>
+<g opacity="0.28"><rect x="704" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="54" class="t">codex: design how a person plays</text>
+<text x="714" y="69" class="t">chess from the browser. Hugh asked</text>
+<text x="714" y="84" class="t">for this; I have read the current</text>
+<text x="714" y="126" class="b">withdrawn</text>
+</g>
+<g opacity="0.28"><rect x="368" y="332" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="378" y="354" class="t">codex: joining presence and chat</text>
+<text x="378" y="369" class="t">should ask the person their name</text>
+<text x="378" y="384" class="t">and show that, not a hash. Hugh</text>
+<text x="378" y="426" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="1"><rect x="1040" y="32" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="1050" y="54" class="t">planner: independently re-review</text>
+<text x="1050" y="69" class="t">exact clean pushed head</text>
+<text x="1050" y="84" class="t">16073a1e7605aaa15cc902e2f6059f992dd98c0e</text>
+<text x="1050" y="126" class="b">satisfied  ·  context</text>
+<text x="1050" y="142" class="b" fill="#888">after</text>
+</g>
+<g opacity="0.28"><rect x="32" y="632" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="654" class="t">hugh: play the chess app as a</text>
+<text x="42" y="669" class="t">first-time user and say whether it</text>
+<text x="42" y="684" class="t">is actually fixed. The whole lane</text>
+<text x="42" y="726" class="b">withdrawn</text>
+</g>
+<g opacity="0.28"><rect x="368" y="482" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="378" y="504" class="t">Hugh: make `main` the GitHub</text>
+<text x="378" y="519" class="t">default branch for gitseq-chess;</text>
+<text x="378" y="534" class="t">the repository currently defaults</text>
+<text x="378" y="576" class="b">withdrawn</text>
+</g>
+<g opacity="1"><rect x="32" y="782" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="804" class="t">planner: independently review</text>
+<text x="42" y="819" class="t">native item-4 recut at exact clean</text>
+<text x="42" y="834" class="t">pushed head</text>
+<text x="42" y="876" class="b">satisfied  ·  context</text>
+<text x="42" y="892" class="b" fill="#888">came from</text>
+</g>
+<g opacity="1"><rect x="368" y="632" width="248" height="122" rx="6" fill="#fff" stroke="#1a1a1a" stroke-width="2"/>
+<rect x="365" y="629" width="254" height="128" rx="9" fill="none" stroke="#1a1a1a" stroke-width="1" opacity="0.35"/>
+<text x="378" y="654" class="t">codex: implement item 5 of the</text>
+<text x="378" y="669" class="t">second-application plan natively —</text>
+<text x="378" y="684" class="t">the chess web UI, embedded in the</text>
+<text x="378" y="726" class="b">cancelled</text>
+<text x="378" y="742" class="b" fill="#111">selected</text>
+</g>
+<g opacity="1"><rect x="704" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="204" class="t">Planner: resolve the fold-owned</text>
+<text x="714" y="219" class="t">current-seat authority query</text>
+<text x="714" y="234" class="t">discovered while implementing</text>
+<text x="714" y="276" class="b">satisfied  ·  context</text>
+<text x="714" y="292" class="b" fill="#888">after</text>
+</g>
+<g opacity="0.28"><rect x="32" y="932" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="954" class="t">codex: implement the chess half of</text>
+<text x="42" y="969" class="t">ruling fe14f1d2-resolution inside</text>
+<text x="42" y="984" class="t">your item-5 lane, before the</text>
+<text x="42" y="1026" class="b">cancelled</text>
+</g>
+<g opacity="1"><rect x="704" y="332" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="354" class="t">Planner: independently review the</text>
+<text x="714" y="369" class="t">completed chess item-5 and</text>
+<text x="714" y="384" class="t">seat-authority candidate at exact</text>
+<text x="714" y="426" class="b">satisfied  ·  context</text>
+<text x="714" y="442" class="b" fill="#888">after</text>
+</g>
+<g opacity="1"><rect x="704" y="482" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="504" class="t">codex: repair the two blockers</text>
+<text x="714" y="519" class="t">from my changes-requested verdict</text>
+<text x="714" y="534" class="t">28754269 on the item-5 head,</text>
+<text x="714" y="576" class="b">cancelled</text>
+<text x="714" y="592" class="b" fill="#888">after</text>
+</g>
+<g opacity="0.28"><rect x="32" y="1082" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="1104" class="t">I will repair the</text>
+<text x="42" y="1119" class="t">queried-fingerprint regression and</text>
+<text x="42" y="1134" class="t">README contract at</text>
+<text x="42" y="1176" class="b">recorded  ·  context</text>
+</g>
+<g opacity="1"><rect x="704" y="632" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="654" class="t">codex: file the review-ready</text>
+<text x="714" y="669" class="t">closure of the item-5 repair at</text>
+<text x="714" y="684" class="t">exact clean pushed head</text>
+<text x="714" y="726" class="b">withdrawn</text>
+<text x="714" y="742" class="b" fill="#888">after</text>
+</g>
+<g opacity="0.28"><rect x="704" y="782" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="804" class="t">codex: the repair child you asked</text>
+<text x="714" y="819" class="t">for, on the one blocker from my</text>
+<text x="714" y="834" class="t">verdict 5544d043, which you</text>
+<text x="714" y="876" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="0.28"><rect x="704" y="932" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="954" class="t">Planner: independently review</text>
+<text x="714" y="969" class="t">leased display names at exact</text>
+<text x="714" y="984" class="t">clean pushed head</text>
+<text x="714" y="1026" class="b">cancelled</text>
+</g>
+<g opacity="0.28"><rect x="32" y="1232" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="42" y="1254" class="t">codex: make chess serve fail when</text>
+<text x="42" y="1269" class="t">the repository is not there,</text>
+<text x="42" y="1284" class="t">instead of starting and telling</text>
+<text x="42" y="1326" class="b">satisfied  ·  context</text>
+</g>
+<g opacity="1"><rect x="704" y="1082" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="1104" class="t">Codex: repair the exact-head chess</text>
+<text x="714" y="1119" class="t">review defects before republishing</text>
+<text x="714" y="1134" class="t">the item-5 implementation.</text>
+<text x="714" y="1176" class="b">withdrawn</text>
+<text x="714" y="1192" class="b" fill="#888">after</text>
+</g>
+<g opacity="0.28"><rect x="704" y="1232" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="714" y="1254" class="t">Planner: independently review the</text>
+<text x="714" y="1269" class="t">display-name implementation at</text>
+<text x="714" y="1284" class="t">exact clean pushed head</text>
+<text x="714" y="1326" class="b">withdrawn</text>
+</g>
+<g opacity="0.28"><rect x="1040" y="182" width="248" height="122" rx="6" fill="#fff" stroke="#dcdcda" stroke-width="1"/>
+<text x="1050" y="204" class="t">Planner: independently re-review</text>
+<text x="1050" y="219" class="t">the leased display-name</text>
+<text x="1050" y="234" class="t">implementation at exact clean</text>
+<text x="1050" y="276" class="b">withdrawn</text>
+</g>
+</g></g>
+<defs>
+   <marker id="aL" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#1a1a1a"/></marker>
+   <marker id="aP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a9a97"/></marker>
+   <marker id="aD" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#dedddb"/></marker></defs>
+</g>
+<text x="0" y="566" class="s">1a9f848f rests on 221f7932.   Reverse: 221f7932 is a direct basis for 1a9f848f.</text>
+<text x="0" y="582" class="s">selected 1a9f848f  ·  1 before, 6 after  ·  0 tasks share its basis  ·  came from 221f7932</text>
+<text x="0" y="598" class="s">next: 3cd5922f (1 of 5)          23 supporting citations, open with c</text>
+<text x="0" y="614" class="m">[&lt; back]   [^ / v  choose next]   [&gt; go]   [Open full thread]</text>
+</svg>

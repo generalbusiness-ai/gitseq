@@ -420,3 +420,134 @@ Each with the recommendation the plan carries.
 | should a transfer keep the `superseded` family | **no** | a `successor_request` is continuation, not retirement; today only the tooltip distinguishes them (`outcomeMap.ts:304`, `OutcomeMap.tsx:9`, `:15`, `:91`). gitseq records 32, Chess and Tailapp none. If change 2 ships first, the walk must still follow `successor-request` contributors both ways |
 | does the `superseded` legend earn its place | **open, no recommendation** | all 5883 effective supersede acts in these three rooms are intra-thread, so the dashed style has never rendered there; three rooms are not enough to remove it |
 | is the stale `:7777` bundle part of this work | **no** | a deployment fix with its own request; see the observation above |
+
+---
+
+# Lineage against citations
+
+The plan's central repair. Layer 7 groups every `rests on` contributor between
+two threads into one line and calls the result lineage. Most of those
+contributors are not lineage.
+
+## What the grouped line actually contains
+
+Contributor kind pairs on the 44 drawn relations of Chess `closed`, counted as
+basis statement kind to dependent statement kind:
+
+| pair | count | is it task lineage |
+| --- | --- | --- |
+| `artifact -> request` | 38 | **yes**, a review request resting on an artifact |
+| `artifact -> act:supersede` | 33 | no, a retirement act citing what it retires |
+| `assert -> act:supersede` | 23 | no |
+| `artifact -> report` | 21 | no, a report citing the artifacts it covers |
+| `request -> request` | 14 | **yes**, a child request resting on a parent |
+| `request -> assert` | 5 | no, a later remark citing a request |
+| `artifact -> artifact` | 5 | no |
+| `report -> request` | 4 | ambiguous, see the basis-set choice below |
+| `promise -> request` | 3 | **yes**, a child request resting on a promise |
+| `promise -> artifact` | 2 | no |
+| `assert -> request` | 2 | no |
+| others | 4 | no |
+
+Codex's worked example holds. Chess `#41 -> #47` comes from a later assertion
+`#62` citing `#41`; the reverse direction includes README artifact `#53` citing
+child promise `#49` and artifact `#52`; `#47 <-> #54` mixes review request and
+report citations with that same later assertion. Each citation is real and
+acyclic. Grouping them into thread-to-thread lines is what manufactures the
+cycles.
+
+## The restricted rule
+
+A drawn relation is **lineage** when it carries either
+
+- a `provenance` contributor whose **dependent** statement is a `request` and
+  whose **basis** statement is a `request`, a `promise` or an `artifact`; or
+- a `successor-request` contributor, which is the fold's own
+  `commitments.successor_request` transfer.
+
+That is exactly: a child request resting on a parent request or its promise, a
+review request resting on an artifact, and a transfer. Everything else is a
+**citation**: listed on selection, never drawn as lineage, never walked. A
+`supersede-act` contributor stays a retirement, drawn as today and never
+walked. A card with no incoming lineage relation reads "no recorded parent",
+which stays distinct from the existing "basis outside view" fact.
+
+## What the restriction does
+
+`replay.mjs` prints this per population under `RESTRICTED LINEAGE`. Bases
+default to `request,promise,artifact`; set `BASES` to vary them.
+
+| room, population | drawn | lineage | citation-only | cycles before | cycles after | same-column before | same-column after |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Chess `open` | 20 | 11 | 9 | 1 (3 threads) | **0** | 7 | **0** |
+| Chess `closed` | 44 | 21 | 23 | 3 (9, 2, 2) | **0** | 27 | **0** |
+| Chess `completed` | 160 | 67 | 93 | several | **0** | 117 | **0** |
+| Tailapp `closed` | 159 | 70 | 89 | 11 (to 8) | **0** | 71 | **0** |
+| gitseq `closed` | 90 | 38 | 52 | some | **0** | 25 | **0** |
+
+Every population becomes acyclic, and the longest-path layering of an acyclic
+lineage graph puts every lineage edge in a strictly later column, so **no
+lineage edge is ever same-column**. The 9-thread Chess cycle does not survive:
+it was an artifact of grouping citations as lineage.
+
+Selection sizes collapse with it. Counts exclude the selected card.
+
+| card | grouped provenance, today | restricted lineage |
+| --- | --- | --- |
+| Chess `closed` `1a9f848f` (#41) | before 10, after 9, both 8, on path 12 of 25 | **before 1, after 6, both 0, on path 8 of 25** |
+| Chess `open` `025a6e01` (#506) | before 5, after 2, on path 8 of 8 | **before 3, after 1, siblings 2, on path 5 of 8** |
+| worst card, Chess `closed` | before 11, after 19 | **before 4, after 7** |
+| worst card, Tailapp `closed` | not measured | before 5, after 12 |
+| mean on path, Chess `closed` | 16.4 of 25 | **3.7 of 25** |
+| mean on path, Tailapp `closed` | 31.7 of 107 | **2.9 of 107** |
+
+`#41` has exactly one recorded predecessor, artifact-to-request from
+`221f7932`, and five direct continuations.
+
+## The one judgment call: does a report count as a basis
+
+`report -> request` is a later request resting on a previous commitment's
+report or on a review verdict. Codex's enumeration excludes it; including it is
+defensible, because "repair what the review found" is task lineage.
+
+| set | Chess `open` | Chess `closed` | Tailapp `closed` | cycles | same-column |
+| --- | --- | --- | --- | --- | --- |
+| A: request, promise, artifact | 11 edges, 1 group | 21 edges, 8 groups | 70 edges, 41 groups | 0 | 0 |
+| B: A plus report | 14 edges, 1 group | 25 edges, 7 groups | 76 edges, 36 groups | 0 | 0 |
+
+Both stay acyclic and same-column free. The plan recommends **A**, the smaller
+set codex enumerated, and names B as the open choice.
+
+## Two open tasks, under each model
+
+`twoopen-*.txt` measures the whole-relation model. Under the restricted model
+the answer becomes more honest in half the Tailapp cases:
+
+| Tailapp snapshot A subset | today | restricted |
+| --- | --- | --- |
+| `#3370 + #3373`, `+#3393`, `+#3396` | 1 group | **2 groups** |
+| `#3373 + #3393`, `#3373 + #3396`, `#3393 + #3396` | 1 group | 1 group |
+
+All ten Chess `open` subsets stay one group under both models, because those
+requests genuinely rest on each other.
+
+---
+
+# Accounting, in one unit
+
+A **task** is a request, which is a thread root, which is what a card
+represents. Commitment rows are the secondary unit. `replay.mjs` prints this as
+`ACCOUNTING` with the arithmetic, deriving hidden rows from actual row-to-drawn-root
+membership rather than subtracting counts of different things.
+
+| room, population | tasks | shown | hidden tasks | commitment rows | rows on shown tasks | hidden rows | tasks with more than one row |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Chess `closed` | 13 | 13 | 0 | 14 | 14 | 0 | 1 |
+| Tailapp `closed` | 77 | 77 | 0 | 79 | 79 | 0 | 1 |
+| gitseq `closed` | 905 | 160 | **745** | 925 | 167 | **758** | 19 |
+| gitseq `completed` | 1414 | 160 | 1254 | 1419 | 162 | 1257 | 5 |
+
+gitseq `closed` arithmetic: 925 rows minus the 167 rows sitting on the 160
+drawn roots leaves 758 hidden rows; 905 tasks minus 160 drawn leaves 745 hidden
+tasks. The two numbers differ because 19 tasks carry more than one commitment
+row, and 7 of those extra rows fall on tasks that are drawn.

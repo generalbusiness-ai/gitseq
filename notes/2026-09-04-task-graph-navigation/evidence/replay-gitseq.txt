@@ -13,8 +13,11 @@ commitments naming a successor_request: 32
   awaiting ratification        1   (key=ratification)
 
 ## Population "open"
-  rows=5 distinctThreads=5 focalCards=5 contextCards=8 totalCards=13
-  groups=4 cardsHoldingMoreThanOneLifecycle=0 focalThreadsOmitted=0 contextOmitted=0 relationGroupsOmitted=0
+  ACCOUNTING  tasks(roots)=5 shownTasks=5 hiddenTasks=0
+              commitmentRows=5 rowsOnShownTasks=5 hiddenRows=0 tasksWithMoreThanOneRow=0
+              arithmetic: 5 rows - 5 on shown tasks = 0 hidden rows; 5 tasks - 5 shown = 0 hidden tasks
+              contextCards=8 totalCards=13
+  groups (all drawn relations)=4 contextOmitted=0 relationGroupsOmitted=0
   edge shapes: adjacent / ratified-by=1, adjacent / rests-on=9, forward+2 / ratified-by=1, forward+2 / rests-on=2, forward+3 / ratified-by=1, forward+3 / rests-on=1, same-column / ratified-by=1, same-column / rests-on=2
   backward edges (drawn right to left): 0
   same-column edges: 3 of 18; longest vertical span 150px; worst overlapping set 3 (gutter lanes needed to draw them all separately)
@@ -24,10 +27,19 @@ commitments naming a successor_request: 32
   permanent edge labels: 18; overlapping pairs 5; drawn inside a card 2
   emphasis, undirected component: mean 3.9 of 13 (30%), worst 5
   emphasis, directed lineage:     mean 3.3 of 13 (25%)
+  RESTRICTED LINEAGE (bases: request/promise/artifact)
+     lineage relations 10 of 18; citation-only 8
+     groups 5; cycles 0; same-column lineage edges 0
+     lineage columns: L0=5 L1=5 L2=3
+     worst before 2, worst after 4, mean on-path 2.7 of 13
+     contributor kind pairs: artifact -> request x6, request -> request x5, propose -> request x4, assert -> request x2, request -> assert x2, act:supersede -> request x2, request -> act:supersede x1, artifact -> report x1
 
 ## Population "completed"
-  rows=1419 distinctThreads=1414 focalCards=160 contextCards=0 totalCards=160
-  groups=37 cardsHoldingMoreThanOneLifecycle=5 focalThreadsOmitted=1254 contextOmitted=182 relationGroupsOmitted=116
+  ACCOUNTING  tasks(roots)=1414 shownTasks=160 hiddenTasks=1254
+              commitmentRows=1419 rowsOnShownTasks=162 hiddenRows=1257 tasksWithMoreThanOneRow=5
+              arithmetic: 1419 rows - 162 on shown tasks = 1257 hidden rows; 1414 tasks - 160 shown = 1254 hidden tasks
+              contextCards=0 totalCards=160
+  groups (all drawn relations)=37 contextOmitted=182 relationGroupsOmitted=116
   edge shapes: adjacent / rests-on=111, forward+10 / rests-on=2, forward+2 / rests-on=9, forward+3 / rests-on=6, forward+4 / rests-on=3, forward+5 / rests-on=2, forward+7 / rests-on=1, same-column / rests-on=26
   backward edges (drawn right to left): 0
   same-column edges: 26 of 160; longest vertical span 3450px; worst overlapping set 7 (gutter lanes needed to draw them all separately)
@@ -37,10 +49,19 @@ commitments naming a successor_request: 32
   permanent edge labels: 160; overlapping pairs 15; drawn inside a card 12
   emphasis, undirected component: mean 83.2 of 160 (52%), worst 115
   emphasis, directed lineage:     mean 14.6 of 160 (9%)
+  RESTRICTED LINEAGE (bases: request/promise/artifact)
+     lineage relations 111 of 160; citation-only 49
+     groups 54; cycles 0; same-column lineage edges 0
+     lineage columns: L0=56 L1=39 L2=26 L3=8 L4=4 L5=3 L6=6 L7=5 L8=3 L9=1 L10=1 L11=1 L12=1 L13=1 L14=1 L15=1 L16=2 L17=1
+     worst before 17, worst after 41, mean on-path 6.2 of 160
+     contributor kind pairs: artifact -> request x79, request -> request x43, artifact -> report x37, artifact -> artifact x26, report -> request x21, promise -> request x11, assert -> request x11, artifact -> act:supersede x5
 
 ## Population "closed, not completed"
-  rows=925 distinctThreads=905 focalCards=160 contextCards=0 totalCards=160
-  groups=94 cardsHoldingMoreThanOneLifecycle=19 focalThreadsOmitted=745 contextOmitted=262 relationGroupsOmitted=0
+  ACCOUNTING  tasks(roots)=905 shownTasks=160 hiddenTasks=745
+              commitmentRows=925 rowsOnShownTasks=167 hiddenRows=758 tasksWithMoreThanOneRow=19
+              arithmetic: 925 rows - 167 on shown tasks = 758 hidden rows; 905 tasks - 160 shown = 745 hidden tasks
+              contextCards=0 totalCards=160
+  groups (all drawn relations)=94 contextOmitted=262 relationGroupsOmitted=0
   edge shapes: adjacent / ratified-by=3, adjacent / rests-on=53, forward+2 / rests-on=8, forward+3 / rests-on=1, same-column / ratified-by=1, same-column / rests-on=24
   backward edges (drawn right to left): 0
   same-column edges: 25 of 90; longest vertical span 13650px; worst overlapping set 8 (gutter lanes needed to draw them all separately)
@@ -50,3 +71,9 @@ commitments naming a successor_request: 32
   permanent edge labels: 90; overlapping pairs 19; drawn inside a card 16
   emphasis, undirected component: mean 5.1 of 160 (3%), worst 18
   emphasis, directed lineage:     mean 2.6 of 160 (2%)
+  RESTRICTED LINEAGE (bases: request/promise/artifact)
+     lineage relations 38 of 90; citation-only 52
+     groups 124; cycles 0; same-column lineage edges 0
+     lineage columns: L0=124 L1=26 L2=7 L3=2 L4=1
+     worst before 4, worst after 6, mean on-path 1.6 of 160
+     contributor kind pairs: request -> request x27, request -> assert x19, report -> request x18, artifact -> request x18, artifact -> act:supersede x14, request -> act:supersede x13, promise -> request x7, artifact -> report x6

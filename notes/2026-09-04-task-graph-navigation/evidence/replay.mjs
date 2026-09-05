@@ -29,6 +29,8 @@ const tickets = new Map();
 projection.decisions.forEach((d, i) => tickets.set(d.event, d.sequence || i + 1));
 const context = { nameOf: (f) => actors[f]?.name ?? String(f).slice(0, 8), tickets, actors };
 const threads = buildThreadIndex(projection);
+const statements = new Map((projection.statements ?? []).map((x) => [x.event, x]));
+const acts = new Map((projection.acts ?? []).map((x) => [x.event, x]));
 const known = new Set([...(projection.statements ?? []).map((s) => s.event), ...(projection.acts ?? []).map((a) => a.event)]);
 const rootOf = (e) => (known.has(e) ? threads.root(e) : e);
 
@@ -61,10 +63,6 @@ for (const { key, label: name } of POPULATIONS) {
   const layout = layoutOutcomeMap(graph.nodes);
   const layer = new Map(graph.nodes.map((n) => [n.thread, n.layer]));
 
-  const perRoot = new Map();
-  for (const r of rows) perRoot.set(rootOf(r.event), (perRoot.get(rootOf(r.event)) ?? 0) + 1);
-  const multi = [...perRoot.values()].filter((v) => v > 1).length;
-
   // Groups: weakly connected components over every drawn relation.
   const undirected = new Map(graph.nodes.map((n) => [n.thread, []]));
   const fwd = new Map(graph.nodes.map((n) => [n.thread, []]));
@@ -79,9 +77,19 @@ for (const { key, label: name } of POPULATIONS) {
   const seen = new Set(); let groups = 0;
   for (const n of graph.nodes) if (!seen.has(n.thread)) { groups += 1; for (const m of reach(n.thread, undirected)) seen.add(m); }
 
+  // --- Accounting, in one unit. A task is a request, which is a thread root.
+  const drawnRoots = new Set(graph.nodes.filter((n) => !n.context).map((n) => n.thread));
+  const rowsPerRoot = new Map();
+  for (const r of rows) { const k = rootOf(r.event); rowsPerRoot.set(k, (rowsPerRoot.get(k) ?? 0) + 1); }
+  const shownRows = rows.filter((r) => drawnRoots.has(rootOf(r.event))).length;
+  const multiRoots = [...rowsPerRoot.values()].filter((v) => v > 1).length;
+
   console.log(`\n## Population "${name}"`);
-  console.log(`  rows=${rows.length} distinctThreads=${perRoot.size} focalCards=${graph.stats.focalNodes} contextCards=${graph.stats.contextNodes} totalCards=${graph.nodes.length}`);
-  console.log(`  groups=${groups} cardsHoldingMoreThanOneLifecycle=${multi} focalThreadsOmitted=${perRoot.size - graph.stats.focalNodes} contextOmitted=${graph.stats.omittedContextNodes} relationGroupsOmitted=${graph.stats.omittedEdges}`);
+  console.log(`  ACCOUNTING  tasks(roots)=${rowsPerRoot.size} shownTasks=${drawnRoots.size} hiddenTasks=${rowsPerRoot.size - drawnRoots.size}`);
+  console.log(`              commitmentRows=${rows.length} rowsOnShownTasks=${shownRows} hiddenRows=${rows.length - shownRows} tasksWithMoreThanOneRow=${multiRoots}`);
+  console.log(`              arithmetic: ${rows.length} rows - ${shownRows} on shown tasks = ${rows.length - shownRows} hidden rows; ${rowsPerRoot.size} tasks - ${drawnRoots.size} shown = ${rowsPerRoot.size - drawnRoots.size} hidden tasks`);
+  console.log(`              contextCards=${graph.stats.contextNodes} totalCards=${graph.nodes.length}`);
+  console.log(`  groups (all drawn relations)=${groups} contextOmitted=${graph.stats.omittedContextNodes} relationGroupsOmitted=${graph.stats.omittedEdges}`);
 
   const shapes = {}; let backward = 0;
   const sameCol = [];
@@ -145,6 +153,65 @@ for (const { key, label: name } of POPULATIONS) {
   console.log(`  emphasis, undirected component: mean ${(sumU / N).toFixed(1)} of ${N} (${(100 * sumU / N / N).toFixed(0)}%), worst ${worstU}`);
   console.log(`  emphasis, directed lineage:     mean ${(sumD / N).toFixed(1)} of ${N} (${(100 * sumD / N / N).toFixed(0)}%)`);
 
+  // --- Restricted lineage: which drawn relations are task lineage, and which
+  // are supporting citations grouped into the same thread-to-thread line.
+  // Lineage is a relation whose dependent end is itself a `request` resting on
+  // a request, a promise or an artifact, plus a projected successor_request
+  // transfer. Everything else is a citation: real, acyclic, and not evidence
+  // that one task precedes another.
+  const kindOf = (event) => statements.get(event)?.kind ?? (acts.get(event) ? `act:${acts.get(event).type}` : "?");
+  const LINEAGE_BASES = new Set((process.env.BASES ?? "request,promise,artifact").split(","));
+  const pairs = {};
+  const lineage = [], citations = [];
+  for (const r of graph.relations) {
+    let isLineage = false;
+    for (const c of r.contributors) {
+      if (c.kind === "successor-request") { isLineage = true; continue; }
+      if (c.kind !== "provenance") continue;
+      const bk = kindOf(c.basis), dk = kindOf(c.dependent);
+      pairs[`${bk} -> ${dk}`] = (pairs[`${bk} -> ${dk}`] ?? 0) + 1;
+      if (dk === "request" && LINEAGE_BASES.has(bk)) isLineage = true;
+    }
+    (isLineage ? lineage : citations).push(r);
+  }
+  const lo = new Map(graph.nodes.map((n) => [n.thread, []])), li = new Map(graph.nodes.map((n) => [n.thread, []]));
+  const lu = new Map(graph.nodes.map((n) => [n.thread, []]));
+  for (const r of lineage) { lo.get(r.source).push(r.target); li.get(r.target).push(r.source); lu.get(r.source).push(r.target); lu.get(r.target).push(r.source); }
+  const lseen = new Set(); let lgroups = 0;
+  for (const n of graph.nodes) if (!lseen.has(n.thread)) { lgroups += 1; for (const m of reach(n.thread, lu)) lseen.add(m); }
+  // Tarjan over the lineage subgraph.
+  const ix = new Map(), lw = new Map(), stk = [], onstk = new Set(); let counter = 0; const comps = [];
+  const visit = (v) => { ix.set(v, counter); lw.set(v, counter); counter += 1; stk.push(v); onstk.add(v);
+    for (const w of lo.get(v) ?? []) { if (!ix.has(w)) { visit(w); lw.set(v, Math.min(lw.get(v), lw.get(w))); }
+      else if (onstk.has(w)) lw.set(v, Math.min(lw.get(v), ix.get(w))); }
+    if (lw.get(v) !== ix.get(v)) return;
+    const comp = []; while (stk.length) { const m = stk.pop(); onstk.delete(m); comp.push(m); if (m === v) break; } comps.push(comp); };
+  for (const n of graph.nodes) if (!ix.has(n.thread)) visit(n.thread);
+  const lcycles = comps.filter((c) => c.length > 1);
+  // Longest-path layering over the lineage DAG, then same-column lineage edges.
+  let sameColumnLineage = "n/a (cyclic)", lineageColumns = "";
+  if (lcycles.length === 0) {
+    const lay = new Map(graph.nodes.map((n) => [n.thread, 0])), deg = new Map(graph.nodes.map((n) => [n.thread, 0]));
+    for (const r of lineage) deg.set(r.target, deg.get(r.target) + 1);
+    const ready = [...deg].filter(([, d]) => d === 0).map(([n]) => n);
+    for (let x = 0; x < ready.length; x += 1) for (const w of lo.get(ready[x]) ?? []) {
+      lay.set(w, Math.max(lay.get(w), lay.get(ready[x]) + 1));
+      deg.set(w, deg.get(w) - 1); if (deg.get(w) === 0) ready.push(w); }
+    sameColumnLineage = String(lineage.filter((r) => lay.get(r.source) === lay.get(r.target)).length);
+    const occ = {}; for (const v of lay.values()) occ[v] = (occ[v] ?? 0) + 1;
+    lineageColumns = Object.entries(occ).sort((a, b) => a[0] - b[0]).map(([l, c]) => `L${l}=${c}`).join(" ");
+  }
+  let wb = 0, wa = 0, sumOn = 0;
+  for (const n of graph.nodes) { const b = reach(n.thread, li).size - 1, a = reach(n.thread, lo).size - 1;
+    wb = Math.max(wb, b); wa = Math.max(wa, a); sumOn += new Set([...reach(n.thread, li), ...reach(n.thread, lo)]).size; }
+  console.log(`  RESTRICTED LINEAGE (bases: ${[...LINEAGE_BASES].join("/")})`);
+  console.log(`     lineage relations ${lineage.length} of ${graph.relations.length}; citation-only ${citations.length}`);
+  console.log(`     groups ${lgroups}; cycles ${lcycles.length}${lcycles.length ? ` sizes ${lcycles.map((c) => c.length).join(",")}` : ""}; same-column lineage edges ${sameColumnLineage}`);
+  if (lineageColumns) console.log(`     lineage columns: ${lineageColumns}`);
+  console.log(`     worst before ${wb}, worst after ${wa}, mean on-path ${(sumOn / graph.nodes.length).toFixed(1)} of ${graph.nodes.length}`);
+  const topPairs = Object.entries(pairs).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  console.log(`     contributor kind pairs: ${topPairs.map(([k, v]) => `${k} x${v}`).join(", ")}`);
+
   for (const probe of (process.env.PROBE ?? "").split(",").filter(Boolean)) {
     const node = graph.nodes.find((n) => n.thread.endsWith(probe));
     if (!node) continue;
@@ -154,6 +221,14 @@ for (const { key, label: name } of POPULATIONS) {
     const sib = new Set();
     for (const b of bases) for (const t of fwd.get(b) ?? []) if (t !== node.thread && !before.has(t) && !after.has(t)) sib.add(t);
     const union = new Set([...before, ...after]);
-    console.log(`  PROBE ...${probe}: undirected ${reach(node.thread, undirected).size} of ${N}; before ${before.size - 1}, after ${after.size - 1}, both ${both}, siblings ${sib.size}; emphasised ${union.size} of ${N}`);
+    console.log(`  PROBE ...${probe}`);
+    console.log(`     grouped provenance (today): undirected ${reach(node.thread, undirected).size} of ${N}; before ${before.size - 1}, after ${after.size - 1}, both ${both}, siblings ${sib.size}; emphasised ${union.size} of ${N}`);
+    const lb = reach(node.thread, li), la = reach(node.thread, lo);
+    const lboth = [...lb].filter((t) => la.has(t) && t !== node.thread).length;
+    const lbases = new Set(li.get(node.thread));
+    const lsib = new Set();
+    for (const b of lbases) for (const t of lo.get(b) ?? []) if (t !== node.thread && !lb.has(t) && !la.has(t)) lsib.add(t);
+    console.log(`     restricted lineage:         before ${lb.size - 1}, after ${la.size - 1}, both ${lboth}, siblings ${lsib.size}; on path ${new Set([...lb, ...la]).size} of ${N}`);
+    console.log(`     direct predecessors ${(li.get(node.thread) ?? []).length}, direct continuations ${(lo.get(node.thread) ?? []).length}`);
   }
 }
