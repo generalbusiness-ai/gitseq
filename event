@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/app/worktree_index.go","body":{"commit":"7cd1c87702c20a9794b9b061dd0f769d94b9c3cb","path":"internal/app/worktree_index.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/app/worktree_index_test.go","body":{"commit":"7cd1c87702c20a9794b9b061dd0f769d94b9c3cb","path":"internal/app/worktree_index_test.go"}}
