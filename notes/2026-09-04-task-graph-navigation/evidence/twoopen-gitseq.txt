@@ -1,0 +1,15 @@
+# gitseq, snapshot B, 2026-09-04T21:32:52Z
+frontier: genesis=5d2622748872b7e2dec3fe5c59e4be73a35e0bc8 head=d93004541da179859f1a67112b179761d83a4372 depth=17533
+open population: 5 rows (#8162 #17519 #17522 #17523 #17532)
+whole population: 5 focal + 8 context = 13 cards, 18 edges, 4 group(s)
+every synthetic two-row subset:
+  #8162 + #17519: 2 focal + 6 context = 8 cards, 10 edges -> 2 group(s)
+  #8162 + #17522: 2 focal + 6 context = 8 cards, 10 edges -> 2 group(s)
+  #8162 + #17523: 2 focal + 5 context = 7 cards, 8 edges -> 2 group(s)
+  #8162 + #17532: 2 focal + 3 context = 5 cards, 3 edges -> 2 group(s)
+  #17519 + #17522: 2 focal + 3 context = 5 cards, 10 edges -> 1 group(s)   <== two open requests, ONE visible group
+  #17519 + #17523: 2 focal + 5 context = 7 cards, 12 edges -> 2 group(s)
+  #17519 + #17532: 2 focal + 3 context = 5 cards, 7 edges -> 2 group(s)
+  #17522 + #17523: 2 focal + 5 context = 7 cards, 12 edges -> 2 group(s)
+  #17522 + #17532: 2 focal + 3 context = 5 cards, 7 edges -> 2 group(s)
+  #17523 + #17532: 2 focal + 2 context = 4 cards, 5 edges -> 2 group(s)
