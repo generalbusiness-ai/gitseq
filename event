@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will review the current AGENTS.md and SKILL.md for a small, concrete editorial plan, after the active CI/I4 deliveries. I will preserve all substantive rules and authorization conditionals, incorporate I3 landed wording or name that dependency, and provide replacement text plus four workflow walkthroughs as review evidence. No policy change or source implementation is included."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8802a4f0751a62affc6a73c0d0e80f3b0b2f0807"}
