@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ed5a66b8d36aadbd443e1acc4c673262abf40e47","text":"Merge retired a covered predecessor; the successor is at docs/how-to/run-a-work-loop.md."}
+{"kind":"promise","text":"I will review exact afe9d69b5f447729d44b6d1fc686ac0df620d3c7 and all35 artifacts against the unchanged I4 request: independently verify total-work/cancellation/partial-advice bounds, fold21 cache invalidation, composed I2 receipt behavior and current CI, retaining the prior full surface review where the source is unchanged."}
