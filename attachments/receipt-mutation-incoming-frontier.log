@@ -1,0 +1,8 @@
+--- FAIL: TestReceiptProtectionBeforeAtAndAfterClosure (0.00s)
+    --- FAIL: TestReceiptProtectionBeforeAtAndAfterClosure/own_closing_promise (0.00s)
+        receipt_protection_test.go:80: historical protection = [{Artifact:older Class:sibling Commitment:impl-promise Verified:false Reason:commitment is unresolved or settled at the receipt position}], want verified=true
+--- FAIL: TestReceiptCannotCallItsOwnProtectedDraftAbandoned (0.00s)
+    receipt_protection_test.go:125: historical protection = [{Artifact:older Class:abandoned Commitment: Verified:true Reason:}], want verified=false
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.271s
+FAIL

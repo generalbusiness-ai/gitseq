@@ -1,0 +1,66 @@
+{
+  "frontier": {
+    "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+    "head": "bb044451f3c64c51f09f66ef0ced549d457e6339",
+    "depth": 3481
+  },
+  "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5e9ae9cc16c652425b8bdf355fd5c3d3a7bed622",
+  "statement": {
+    "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5e9ae9cc16c652425b8bdf355fd5c3d3a7bed622",
+    "sequence": 3478,
+    "timestamp": 1788584055,
+    "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+    "kind": "assert",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "approved candidate merged",
+    "body": {
+      "merge_approval": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:70369ef174382a515f1f6f9e8057ecc16e35443c",
+      "merge_candidate": "90f7759eeac10319cf58169525c8b33143dcc824",
+      "merge_changed_paths": "[\"notes/2026-09-05-capability-context-contract.md\"]",
+      "merge_head": "e1ab955fc3ea5473fdc47dab8ccc380087da07a0",
+      "merge_left_live": "{\"git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:292dcd9949d624910a56f59cac0172a9960064a9\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:06d1a96e0c6e0d4c483b9ec6e13eb572a030b769\"}}",
+      "merge_retirements": "{\"git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:82a6fdfb59437ed9c7d792b2542dc8ed7e922105\":\"notes/2026-09-05-capability-context-contract.md\"}",
+      "merge_successors": "[\"notes/2026-09-05-capability-context-contract.md\"]",
+      "merge_target_pre_head": "1eef3c1964642f691fff59d2a8ac2de10170d7ab",
+      "stale": "true",
+      "stale_bases": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:70369ef174382a515f1f6f9e8057ecc16e35443c stale; retired bases: git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:00ea997b143eef9c112158b8ce6742c655193102, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0133fafe0c31a005c92667a5c340aec71776f910, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0a38cf2bea5866a24fc1eb6fdb211b4fac7e09a4, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:108195a5430f4776efe03b9ce6c6d7a1b01bca13 and 68 more",
+      "staleness": "approval, artifact stale; retired bases: git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:00ea997b143eef9c112158b8ce6742c655193102, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0133fafe0c31a005c92667a5c340aec71776f910, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0a38cf2bea5866a24fc1eb6fdb211b4fac7e09a4, git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:108195a5430f4776efe03b9ce6c6d7a1b01bca13 and 68 more"
+    },
+    "stale": true,
+    "merge_left_live": [
+      {
+        "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:292dcd9949d624910a56f59cac0172a9960064a9",
+        "class": "sibling",
+        "commitment": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:06d1a96e0c6e0d4c483b9ec6e13eb572a030b769",
+        "verified": true
+      }
+    ],
+    "stale_because_truncated": true
+  },
+  "decision": {
+    "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5e9ae9cc16c652425b8bdf355fd5c3d3a7bed622",
+    "sequence": 3478,
+    "verdict": "effective",
+    "reason": "statement recorded"
+  },
+  "provenance_bases": [
+    "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:70369ef174382a515f1f6f9e8057ecc16e35443c"
+  ],
+  "related_artifacts": [
+    {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:418fb2f10a5cd307101046840b66e65e6edee4a7",
+      "path": "notes/2026-09-05-capability-context-contract.md",
+      "commit": "e1ab955fc3ea5473fdc47dab8ccc380087da07a0",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:292dcd9949d624910a56f59cac0172a9960064a9",
+          "class": "sibling",
+          "commitment": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:06d1a96e0c6e0d4c483b9ec6e13eb572a030b769",
+          "verified": true
+        }
+      ]
+    }
+  ]
+}

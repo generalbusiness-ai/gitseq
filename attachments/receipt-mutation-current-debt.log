@@ -1,0 +1,8 @@
+--- FAIL: TestReceiptProtectionBeforeAtAndAfterClosure (0.00s)
+    --- FAIL: TestReceiptProtectionBeforeAtAndAfterClosure/own_closing_promise (0.00s)
+        receipt_protection_test.go:80: current cleanup debt = 0, want 1
+    --- FAIL: TestReceiptProtectionBeforeAtAndAfterClosure/separate_promise (0.00s)
+        receipt_protection_test.go:83: current cleanup debt = 0, want 1
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.326s
+FAIL
