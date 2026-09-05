@@ -99,7 +99,7 @@ Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 
 ARTIFACT2=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Changelog implementation at the repaired head' \
+  --text "Changelog implementation at the repaired head, answering $CHANGES" \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" \
   --rests-on "$PROMISE")
 
