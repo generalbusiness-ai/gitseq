@@ -1,1 +1,1 @@
-{"kind":"report","text":"Assigned the demonstrated main-CI stderr race repair to Claude under c3445160; Claude has promised it at 1ad397c0. The request preserves all authorization and refusal assertions, requires actual race evidence and full cmd/gs race verification, independent exact-head review, sealed delivery, pushed source/history/receipt, green main CI and owned cleanup. Assignment is complete; repair remains in flight.","body":{"outcome":"completed"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d3ad5618cc29fd0c7cbf158b9a9b60bfc12ad0e9"}
