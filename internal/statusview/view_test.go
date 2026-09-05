@@ -339,7 +339,8 @@ func TestRenderedSummaryCountsOrdinaryStalenessPerLaneAndMarksNoRow(t *testing.T
 // "open", so the table read as if it covered a state that cannot occur.
 func TestLaneTablesNameOnlyStatusesTheFoldEmits(t *testing.T) {
 	emitted := map[string]bool{
-		"open": true, "promised": true, "reported": true, "awaiting-merge": true, "superseded": true, "satisfied": true,
+		"open": true, "promised": true, "reported": true, "superseded": true, "satisfied": true,
+		"awaiting-review": true, "awaiting-authorization": true, "awaiting-landing": true, "abandoned": true,
 		"stale": true, "cancelled": true, "reneged": true, "withdrawn": true,
 	}
 	for _, table := range []map[string]bool{actionable, terminal} {
@@ -358,7 +359,7 @@ func TestLaneTablesNameOnlyStatusesTheFoldEmits(t *testing.T) {
 
 // The browser's Active umbrella uses this same matrix. Keep the consolidated
 // status view authoritative and explicit: open, promised, reported, and
-// awaiting-merge are globally live for every actor; lifecycle stale and
+// the three awaiting-* states are globally live for every actor; lifecycle stale and
 // terminal states are not. Staleness on a reported row remains only a qualifier.
 func TestActionableLifecycleMatrix(t *testing.T) {
 	tests := []struct {
@@ -370,7 +371,9 @@ func TestActionableLifecycleMatrix(t *testing.T) {
 		{request: "open", status: "open", want: true},
 		{request: "promised", status: "promised", want: true},
 		{request: "reported", status: "reported", want: true},
-		{request: "awaiting-merge", status: "awaiting-merge", want: true},
+		{request: "awaiting-review", status: "awaiting-review", want: true},
+		{request: "awaiting-authorization", status: "awaiting-authorization", want: true},
+		{request: "awaiting-landing", status: "awaiting-landing", want: true},
 		{request: "reported-stale", status: "reported", stale: true, want: true},
 		{request: "stale", status: "stale", stale: true},
 		{request: "superseded", status: "superseded"},
@@ -378,6 +381,7 @@ func TestActionableLifecycleMatrix(t *testing.T) {
 		{request: "withdrawn", status: "withdrawn"},
 		{request: "cancelled", status: "cancelled"},
 		{request: "reneged", status: "reneged"},
+		{request: "abandoned", status: "abandoned"},
 	}
 	projection := workroom.Projection{}
 	for _, test := range tests {
@@ -392,8 +396,8 @@ func TestActionableLifecycleMatrix(t *testing.T) {
 			t.Errorf("status %q stale=%t actionable=%t, want %t", test.status, test.stale, got, test.want)
 		}
 	}
-	if len(summary.Actionable) != 5 {
-		t.Fatalf("global actionable total = %d, want 5: %#v", len(summary.Actionable), summary.Actionable)
+	if len(summary.Actionable) != 7 {
+		t.Fatalf("global actionable total = %d, want 7: %#v", len(summary.Actionable), summary.Actionable)
 	}
 }
 

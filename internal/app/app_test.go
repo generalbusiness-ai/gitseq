@@ -2469,7 +2469,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@18"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@19"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2489,7 +2489,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	}
 }
 
-func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
+func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -2503,16 +2503,16 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
 		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
-		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-merge-request",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-review-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
 		Verb: VerbState, Kind: workroom.KindPromise, Text: "I will",
-		RestsOn: []string{request.ID}, IdempotencyKey: "profile-awaiting-merge-promise",
+		RestsOn: []string{request.ID}, IdempotencyKey: "profile-awaiting-review-promise",
 	})
 	artifact := actRecord(t, ctx, workspace, "agent", Act{
 		Verb: VerbState, Kind: workroom.KindArtifact, Text: "Exact implementation head",
 		Body:    map[string]string{"path": "internal/workroom", "commit": "abc123"},
-		RestsOn: []string{promise.ID}, IdempotencyKey: "profile-awaiting-merge-artifact",
+		RestsOn: []string{promise.ID}, IdempotencyKey: "profile-awaiting-review-artifact",
 	})
 
 	current := workspace.mustSnapshot(t, ctx)
@@ -2528,14 +2528,15 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	if position < 0 {
 		t.Fatal("artifact completion is absent from the current projection")
 	}
-	if got := old.Projection.Commitments[position]; got.Status != "awaiting-merge" || got.WaitingOn != agent.Fingerprint {
+	if got := old.Projection.Commitments[position]; got.Status != "awaiting-review" || got.WaitingOn != agent.Fingerprint {
 		t.Fatalf("current artifact completion = %+v", got)
 	}
-	// @15 projected the artifact as awaiting merge with no waiting party, so
-	// a served cache would keep the approved head out of every actor's queue.
+	// @18 projected one word over both the pre-approval and the approved case,
+	// and projected it with no waiting party at @15, so a served older cache
+	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
-	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@15"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
+	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@19"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2550,7 +2551,7 @@ func TestAwaitingMergeStatusRebuildsAnOlderProfileCache(t *testing.T) {
 		if commitment.Report != artifact.ID {
 			continue
 		}
-		if commitment.Status != "awaiting-merge" || commitment.WaitingOn != agent.Fingerprint {
+		if commitment.Status != "awaiting-review" || commitment.WaitingOn != agent.Fingerprint {
 			t.Fatalf("rebuilt artifact completion = %+v; the %q cache was served instead of replayed", commitment, oldProfile)
 		}
 		if workspace.snapshotProfile != wantProfile {
@@ -2611,7 +2612,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@18"
+	want := apphost.DefaultApplication + "\x00workroom-fold@19"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
@@ -2626,4 +2627,56 @@ func statementIndex(t *testing.T, projection workroom.Projection, event string) 
 	}
 	t.Fatalf("no statement projected for %s", event)
 	return -1
+}
+
+// A state@3 request names two actors, and the fold checks both against the
+// roster by fingerprint. Writing a bare name or an @address through would name
+// nobody and refuse the request at admission, which is a confusing way to say
+// "spell it as a fingerprint". On an older record the same field is opaque body
+// text, so nothing there is rewritten.
+func TestStateV3NormalizesTheHoldOwnerLikeThePerformer(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewer, _, err := workspace.AddActor(ctx, "human", "reviewer", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	landing := func(holdOwner string) workroom.State {
+		return workroom.State{Kind: workroom.KindRequest, Text: "Implement it", Body: map[string]string{
+			"to": "agent", "conditions": "the approved head lands", "hold_owner": holdOwner,
+			"landing": "held", "target_repo": "git:sha1:" + strings.Repeat("1", 40),
+			"target_ref": "refs/heads/main", "target_head": strings.Repeat("c", 40),
+		}}
+	}
+	for _, address := range []string{"reviewer", "@reviewer", reviewer.Fingerprint} {
+		normalized, err := workspace.normalizePayload(workroom.SchemaStateV3, landing(address))
+		if err != nil {
+			t.Fatalf("hold owner %q: %v", address, err)
+		}
+		body := normalized.(workroom.State).Body
+		if body["to"] != agent.Fingerprint || body["hold_owner"] != reviewer.Fingerprint {
+			t.Fatalf("hold owner %q normalized to %+v", address, body)
+		}
+	}
+	if _, err := workspace.normalizePayload(workroom.SchemaStateV3, landing("nobody")); err == nil ||
+		!strings.Contains(err.Error(), "hold owner") {
+		t.Fatalf("unknown hold owner error = %v, want it named", err)
+	}
+	// state@2 keeps its old reading: the name is body text and confers nothing,
+	// so rewriting it would change what an older record says.
+	normalized, err := workspace.normalizePayload(workroom.SchemaState, landing("reviewer"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalized.(workroom.State).Body["hold_owner"]; got != "reviewer" {
+		t.Fatalf("state@2 hold_owner rewritten to %q", got)
+	}
 }

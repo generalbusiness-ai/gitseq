@@ -81,15 +81,18 @@ proposal's captured satisfier and carries its author, kind, text, satisfier,
 and staleness qualifier. Ratification, supersession, or standing direct
 dissent removes it.
 
-An artifact completion has status `awaiting-merge` and waits on its performer.
-Its kind has satisfier `none`, so requester ratification is not an admissible
-closing act; the performer merges the independently approved exact head, and
-that merge closes it.
+An artifact completion has status `awaiting-review` until a ratified approval
+names it, and then `awaiting-landing` — or `awaiting-authorization`, waiting on
+the hold owner, when the request is held. Its kind has satisfier `none`, so
+requester ratification is not an admissible closing act; the performer merges
+the independently approved exact head, and that merge closes it.
 
-A rejected implementation parent has terminal status `superseded` only after
-an explicit qualifying linked supersession. Its JSON row carries
-`successor_request`, the exact repair child; request that status explicitly to
-read the historical transfer.
+A request has terminal status `superseded` only after an explicit supersession
+that names where the work went: a qualifying linked transfer of a rejected
+implementation round, or a successor request that rests on the approved head
+and so carries it. Its JSON row carries `successor_request`, the exact child;
+request that status explicitly to read the historical transfer. A supersession
+that declared the approved head dropped reads `abandoned` instead.
 
 The human view prints the request's full canonical event ID. `#N` remains a
 useful display index in one workroom, but it is not accepted in `--rests-on`,

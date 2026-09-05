@@ -278,14 +278,22 @@ function liveBlockers(input: {
 }): Station[] {
   const { commitment, report, verdict, landing, nameOf, tickets } = input;
   const blockers: Station[] = [];
-  if (commitment?.status === "awaiting-merge" && report) {
+  // The single word these three replaced covered every wait at once. Each says who
+  // owes the next move, so each gets its own sentence rather than one that is
+  // wrong for two of them.
+  const AWAITING: Record<string, string> = {
+    "awaiting-review": "implementation published — awaiting an independently approved exact-head verdict",
+    "awaiting-authorization": "approved exact head — awaiting the hold owner's release",
+    "awaiting-landing": "approved exact head — awaiting the merge into its target ref",
+  };
+  if (commitment && AWAITING[commitment.status] && report) {
     blockers.push({
       id: "blocker-open",
       kind: "open",
       event: report.event,
       ticket: tickets.get(report.event),
       timestamp: report.timestamp,
-      what: "implementation published — awaiting an independently approved exact-head merge",
+      what: AWAITING[commitment.status],
       present: true,
       branch: true,
     });

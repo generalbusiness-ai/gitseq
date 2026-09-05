@@ -117,12 +117,16 @@ type Summary struct {
 
 // The lanes a commitment can be in. These are exactly the statuses the fold
 // emits (see foldState.projectCommitments): open, promised, reported,
-// awaiting-merge, superseded, satisfied, stale, cancelled, reneged, withdrawn.
+// awaiting-review, awaiting-authorization, awaiting-landing, superseded,
+// satisfied, abandoned, stale, cancelled, reneged, withdrawn.
 //
 // Open is the current fold vocabulary for an addressed request that has not
 // been claimed. It is actionable without inventing a performer or waiting
 // party, so the global view includes it while preserving those empty fields.
-var actionable = map[string]bool{"open": true, "promised": true, "reported": true, "awaiting-merge": true}
+var actionable = map[string]bool{
+	"open": true, "promised": true, "reported": true,
+	"awaiting-review": true, "awaiting-authorization": true, "awaiting-landing": true,
+}
 
 // Terminal commitments are done with: nobody owes a next move. They stay out
 // of the bounded lists so the lists show work, not history.
@@ -132,7 +136,9 @@ var actionable = map[string]bool{"open": true, "promised": true, "reported": tru
 // nine in ten closed commitments here carry it — so promoting each one into a live
 // lane buried the handful of rows that were genuinely unfinished. The counts
 // in Totals.StaleCommitments keep the fact, per status, without the rows.
-var terminal = map[string]bool{"superseded": true, "satisfied": true, "withdrawn": true}
+// Abandoned is terminal for the same reason the others are, and says something
+// none of them says: an approved head was deliberately dropped.
+var terminal = map[string]bool{"superseded": true, "satisfied": true, "withdrawn": true, "abandoned": true}
 
 // Cap keeps the newest limit entries and reports exactly how many it omitted.
 func Cap[T any](items []T, limit int) ([]T, int) {

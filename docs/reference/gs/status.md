@@ -56,25 +56,35 @@ fallback`. Then a line of totals, and six sections:
 
 | Section | What is in it |
 |---|---|
-| Actionable commitments | Commitments still in flight: `open`, `promised`, `reported`, `awaiting-merge`. |
+| Actionable commitments | Commitments still in flight: `open`, `promised`, `reported`, `awaiting-review`, `awaiting-authorization`, `awaiting-landing`. |
 | Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. Terminal `superseded` rows stay in history. |
 | Current artifacts | Artifacts that are neither retired nor stale. |
 | Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
 | Dissents | Standing objections, each naming the act it is recorded against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
-Superseded, satisfied, and withdrawn commitments are finished, and are counted in the
+Superseded, satisfied, withdrawn, and abandoned commitments are finished, and are counted in the
 totals rather than listed.
 
-`awaiting-merge` names an artifact-backed completion. Its `waiting_on` actor is
-the performer, because the artifact's satisfier is `none` and the closing act
-is the independently approved exact-head merge the performer signs, not
-requester ratification.
+`awaiting-review`, `awaiting-authorization` and `awaiting-landing` name an
+artifact-backed completion at its three stages. The artifact's satisfier is
+`none`, so requester ratification never closes one. `awaiting-review` waits on
+the performer, who must obtain an independent approval of the exact head.
+`awaiting-authorization` waits on the hold owner named by a held request.
+`awaiting-landing` waits on the performer, who signs the merge into the ref the
+request named.
 
-`superseded` names a rejected implementation parent whose required repair was
-explicitly transferred to one qualifying child. Its JSON row carries
-`successor_request`; it is terminal history, not cancelled work and not a
-satisfied implementation.
+`abandoned` names an approved head a supersession deliberately dropped rather
+than carrying into a successor. It is terminal, and distinct from `cancelled`:
+it says work that had been approved was given up, not that the request was
+withdrawn.
+
+`superseded` names a request whose work explicitly moved to a successor: a
+rejected implementation parent whose required repair was transferred to one
+qualifying child, or a request whose approved head was carried into a successor
+that rests on it. Its JSON row carries `successor_request`; it is terminal
+history, not cancelled work and not a satisfied implementation. A supersession
+that dropped an approved head instead of carrying it reads `abandoned`.
 
 ## Two kinds of staleness
 

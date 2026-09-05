@@ -525,13 +525,16 @@ function outcomeDisplayState(commitment: Commitment | undefined): OutcomeNode["s
     case "open": return "unclaimed";
     case "promised": return "in progress";
     case "reported": return "reported";
-    case "awaiting-merge": return "awaiting merge";
+    case "awaiting-review": return "awaiting review";
+    case "awaiting-authorization": return "awaiting authorization";
+    case "awaiting-landing": return "awaiting landing";
     case "stale": return "stale";
     case "superseded": return "superseded";
     case "satisfied": return "satisfied";
     case "cancelled": return "cancelled";
     case "reneged": return "reneged";
     case "withdrawn": return "withdrawn";
+    case "abandoned": return "abandoned";
     case "disputed": return "needs attention";
     default: return "recorded";
   }

@@ -13,13 +13,26 @@ const (
 	// ProfileVersion identifies the exact deterministic application projection
 	// contract. Kernel checkpoints are profile-independent verified event
 	// material; application projection caches use this value as their gate.
-	ProfileVersion        = "workroom-fold@18"
-	SchemaStateLegacy     = "workroom/state@0"
-	SchemaStateV1         = "workroom/state@1"
-	SchemaState           = "workroom/state@2"
-	SchemaRatifyLegacy    = "workroom/ratify@0"
-	SchemaRatify          = "workroom/ratify@1"
-	SchemaSupersede       = "workroom/supersede@0"
+	ProfileVersion    = "workroom-fold@19"
+	SchemaStateLegacy = "workroom/state@0"
+	SchemaStateV1     = "workroom/state@1"
+	SchemaState       = "workroom/state@2"
+	// SchemaStateV3 carries the landing obligation. A request filed under it
+	// must state what it owes — a target triple, an inherited one, or no Git
+	// artifact at all — and the fold reads target_repo, target_ref,
+	// target_head, target, no_git_artifact, landing and hold_owner from it.
+	// The same names on a state@2 record are opaque body text and confer
+	// nothing, which is what keeps older logs reading exactly as they did.
+	SchemaStateV3      = "workroom/state@3"
+	SchemaRatifyLegacy = "workroom/ratify@0"
+	SchemaRatify       = "workroom/ratify@1"
+	SchemaSupersede    = "workroom/supersede@0"
+	// SchemaSupersedeV1 adds a body to the supersession act. It exists for one
+	// field: disposition=abandoned, the declaration that an approved head was
+	// deliberately dropped rather than carried into a successor. A supersede@0
+	// payload has nowhere to put it, and widening @0 in place would change how
+	// the fold reads payloads that were already refused as non-canonical.
+	SchemaSupersedeV1     = "workroom/supersede@1"
 	SchemaRetireUnclaimed = "workroom/retire-if-unclaimed@0"
 	SchemaReassignRequest = "workroom/reassign-if-unclaimed@0"
 )
@@ -58,6 +71,15 @@ type Ratify struct {
 type Supersede struct {
 	Target string `json:"target"`
 	Text   string `json:"text"`
+}
+
+// SupersedeV1 is a supersession that also carries a body. The fold lowers it to
+// Supersede so one projection path serves both, keeping the body beside the
+// record for the decisions that read it.
+type SupersedeV1 struct {
+	Target string            `json:"target"`
+	Text   string            `json:"text"`
+	Body   map[string]string `json:"body,omitempty"`
 }
 
 const CommitmentAbsent = "absent"
@@ -108,7 +130,7 @@ func Decode(schema string, data []byte) (any, error) {
 func decode(schema string, data []byte, pool map[string]string) (any, error) {
 	var value any
 	switch schema {
-	case SchemaStateLegacy, SchemaStateV1, SchemaState:
+	case SchemaStateLegacy, SchemaStateV1, SchemaState, SchemaStateV3:
 		if pool == nil {
 			value = &State{}
 		} else {
@@ -118,6 +140,8 @@ func decode(schema string, data []byte, pool map[string]string) (any, error) {
 		value = &Ratify{}
 	case SchemaSupersede:
 		value = &Supersede{}
+	case SchemaSupersedeV1:
+		value = &SupersedeV1{}
 	case SchemaRetireUnclaimed:
 		value = &RetireIfUnclaimed{}
 	case SchemaReassignRequest:
@@ -238,6 +262,17 @@ func validatePayload(value any) error {
 			return errors.New("supersede target and text are required")
 		}
 	case *Supersede:
+		return validatePayload(*body)
+	case SupersedeV1:
+		if body.Target == "" || body.Text == "" {
+			return errors.New("supersede target and text are required")
+		}
+		for key, value := range body.Body {
+			if key == "" || value == "" {
+				return errors.New("supersede body keys and values must be non-empty")
+			}
+		}
+	case *SupersedeV1:
 		return validatePayload(*body)
 	case RetireIfUnclaimed:
 		if body.Target == "" || body.Text == "" {

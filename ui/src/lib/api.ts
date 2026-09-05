@@ -73,9 +73,31 @@ export interface Commitment {
   successor_request?: string;
   waiting_on?: string;
   // Staleness/dispute can qualify a lifecycle state. These optional fields
-  // let clients preserve the underlying open/promised/reported/awaiting-merge/terminal
+  // let clients preserve the underlying
+  // open/promised/reported/awaiting-review/awaiting-authorization/awaiting-landing/terminal
   // state when the projection supplies the richer shape.
   stale?: boolean;
+  // The landing obligation, as the fold projects it. target_repo and
+  // target_ref name where this commitment owes its result; legacy says the
+  // fold read that from the commitment's own history rather than from a stated
+  // choice. Absent means the request owes no Git artifact.
+  target_repo?: string;
+  target_ref?: string;
+  legacy?: boolean;
+  // hold_owner is the one actor who may release a held landing, and release
+  // names the authorization that did. approval and candidate name the ratified
+  // approval and the exact head it approved.
+  hold_owner?: string;
+  release?: string;
+  approval?: string;
+  candidate?: string;
+  // Nonterminal evidence beside the commitment: a report that says where the
+  // work stands without closing it.
+  latest_resolution?: string;
+  // How a closed commitment closed: landed, reported, or abandoned.
+  terminal?: string;
+  // Measured against the target ref, never against main.
+  approved_not_landed?: boolean;
 }
 
 export interface Artifact {

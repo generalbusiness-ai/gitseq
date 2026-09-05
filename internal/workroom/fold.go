@@ -128,6 +128,33 @@ type Commitment struct {
 	SuccessorRequest string `json:"successor_request,omitempty"`
 	Stale            bool   `json:"stale,omitempty"`
 	WaitingOn        string `json:"waiting_on,omitempty"`
+	// The landing obligation. TargetRepo and TargetRef name where this
+	// commitment owes its result; Legacy says the fold read that from the
+	// commitment's own history rather than from a stated choice. Empty means
+	// the request owes no Git artifact, which is a different fact from owing
+	// one to somewhere nobody wrote down.
+	TargetRepo string `json:"target_repo,omitempty"`
+	TargetRef  string `json:"target_ref,omitempty"`
+	Legacy     bool   `json:"legacy,omitempty"`
+	// HoldOwner is the one actor who may release a held landing, and Release
+	// names the authorization that did. Approval and Candidate name the
+	// ratified approval and the exact head it approved, whatever record
+	// happens to be the completion.
+	HoldOwner string `json:"hold_owner,omitempty"`
+	Release   string `json:"release,omitempty"`
+	Approval  string `json:"approval,omitempty"`
+	Candidate string `json:"candidate,omitempty"`
+	// LatestResolution is nonterminal evidence beside the commitment: a report
+	// that says where the work stands without closing it. It never changes
+	// Status or WaitingOn, which is the whole reason it can be admitted.
+	LatestResolution string `json:"latest_resolution,omitempty"`
+	// Terminal says how a closed commitment closed: landed, reported, or
+	// abandoned. Empty while it is still open.
+	Terminal string `json:"terminal,omitempty"`
+	// ApprovedNotLanded is the audit fact, measured against the target rather
+	// than against main: an approval names a head and no sealed receipt put
+	// that head where the request said it owed it.
+	ApprovedNotLanded bool `json:"approved_not_landed,omitempty"`
 }
 
 type Artifact struct {
@@ -326,6 +353,18 @@ type parsedRecord struct {
 	// change the child's row, not rewrite the old commitment's historical
 	// transfer.
 	linkedSuccessorRequest string
+	// result is the section-1 choice a state@3 request stated, decided at its
+	// own position. Nil for every request admitted under an older schema,
+	// which is what keeps the same body names powerless there.
+	result *requestResult
+	// supersedeBody carries a supersede@1 body past the lowering to Supersede.
+	// carriedSuccessorRequest and abandonedSuccession seal how a supersession
+	// disposed of an approved head, for the same reason the transfer above is
+	// sealed. They are kept apart from linkedSuccessorRequest because the
+	// transfer-staleness exception is keyed to that relation and to no other.
+	supersedeBody           map[string]string
+	carriedSuccessorRequest string
+	abandonedSuccession     bool
 }
 
 type leftLiveClaim struct {
@@ -390,7 +429,16 @@ type foldState struct {
 	// world moves: withdrawing a promise turned its own report into a second
 	// direct completion, and adding a promise made an already-admitted direct
 	// completion vanish. A record's shape is a fact about when it landed.
-	admittedClaims     map[string]reportClaim
+	admittedClaims map[string]reportClaim
+	// authorizations indexes every effective statement carrying an
+	// authorizes_request by the request it names, so resolving the release in
+	// force for a held landing costs one lookup rather than a log scan per
+	// commitment row.
+	authorizations map[string][]*parsedRecord
+	// abandonments indexes every supersession that declared a request's
+	// approved head abandoned, by that request. Whether the declaration still
+	// stands is read at projection time; finding it is not.
+	abandonments       map[string][]*parsedRecord
 	dependents         map[dependentKey][]*parsedRecord
 	definitions        map[Kind]KindDefinition
 	definitionVersions map[Kind][]*parsedRecord
@@ -436,6 +484,8 @@ func NewFolder(records []Record) *Folder {
 		membershipGrants:   make(map[actorStatement][]roleGrant),
 		ratifications:      make(map[string][]string),
 		admittedClaims:     make(map[string]reportClaim),
+		authorizations:     make(map[string][]*parsedRecord),
+		abandonments:       make(map[string][]*parsedRecord),
 		dependents:         make(map[dependentKey][]*parsedRecord),
 		definitions:        starterCatalog(),
 		definitionVersions: make(map[Kind][]*parsedRecord),
@@ -504,8 +554,18 @@ func (f *foldState) append(index int, record Record) {
 		parsed.unclaimedExpectation = &expectation
 		parsed.guardedReplacement = true
 		body = &State{Kind: KindRequest, Text: value.Text, Body: value.Body}
+	case *SupersedeV1:
+		parsed.supersedeBody = value.Body
+		body = &Supersede{Target: value.Target, Text: value.Text}
 	}
 	f.internBody(body)
+	if len(parsed.supersedeBody) != 0 {
+		pooled := make(map[string]string, len(parsed.supersedeBody))
+		for key, field := range parsed.supersedeBody {
+			pooled[f.intern(key)] = f.intern(field)
+		}
+		parsed.supersedeBody = pooled
+	}
 	if parsed.unclaimedExpectation != nil {
 		parsed.unclaimedExpectation.Request = f.intern(parsed.unclaimedExpectation.Request)
 		parsed.unclaimedExpectation.Retirement = f.intern(parsed.unclaimedExpectation.Retirement)
@@ -539,6 +599,16 @@ func (f *foldState) append(index int, record Record) {
 	if decision.Verdict == Effective {
 		if supersede, ok := body.(*Supersede); ok {
 			parsed.linkedSuccessorRequest = f.qualifyingRequestSuccessor(parsed, *supersede)
+			// Only a request that stated a landing can have its approved head
+			// carried or abandoned. Reading the disposition on anything else
+			// would give an old supersession a successor it never declared.
+			if target := f.byID[supersede.Target]; target != nil && target.result != nil && target.result.landing {
+				parsed.carriedSuccessorRequest, parsed.abandonedSuccession =
+					f.carriedOrAbandoned(parsed, *supersede, f.approvedHeldHead(target))
+				if parsed.abandonedSuccession {
+					f.abandonments[supersede.Target] = append(f.abandonments[supersede.Target], parsed)
+				}
+			}
 		}
 	}
 	f.addDecision(record, parsed, index, decision)
@@ -583,6 +653,11 @@ func (f *foldState) append(index int, record Record) {
 			seen[basis] = struct{}{}
 			key := dependentKey{basis: basis, lifecycle: parsed.definition.Lifecycle}
 			f.dependents[key] = append(f.dependents[key], parsed)
+		}
+	}
+	if state, ok := body.(*State); ok {
+		if request := state.Body["authorizes_request"]; request != "" {
+			f.authorizations[request] = append(f.authorizations[request], parsed)
 		}
 	}
 	switch value := body.(type) {
@@ -746,6 +821,19 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 	if definition.Lifecycle == LifecycleRequest && !f.hasActor(state.Body["to"]) {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "requested performer is not in the live roster"}
 	}
+	// Every state@3 request states what it owes. The choice is decided here,
+	// once, at the request's own position: what a request owes cannot change
+	// because the log moved under it.
+	if definition.Lifecycle == LifecycleRequest && record.record.Schema == SchemaStateV3 {
+		result, reason := f.decideRequestResult(record, state)
+		if reason != "" {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+		}
+		record.result = result
+	}
+	if reason := f.releaseAuthorshipRefusal(record, state); reason != "" {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+	}
 	if definition.Lifecycle == LifecyclePromise {
 		requests := f.basesOfLifecycle(record.record.RestsOn, LifecycleRequest)
 		if len(requests) != 1 {
@@ -764,6 +852,9 @@ func (f *foldState) decideState(record *parsedRecord, state State) Decision {
 		claim, refusal := f.reportClaim(record)
 		if refusal != nil {
 			return *refusal
+		}
+		if reason := f.landingReportRefusal(claim, state); reason != "" {
+			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
 		}
 		f.admittedClaims[record.record.ID] = claim
 	}
@@ -1067,6 +1158,9 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 	if len(record.record.RestsOn) == 0 || record.record.RestsOn[0] != supersede.Target {
 		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "supersede must rest first on its target"}
 	}
+	if reason := f.carriedOrAbandonedRefusal(record, supersede); reason != "" {
+		return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: reason}
+	}
 	if governance, restoring, ok := f.governanceTarget(supersede.Target); ok {
 		if governance.index == 0 {
 			return Decision{Event: record.record.ID, Verdict: Ineffective, Reason: "founding operator seed cannot be retired"}
@@ -1193,10 +1287,19 @@ func (f *foldState) requestHasRatifiedChangesRequestedArtifact(request *parsedRe
 func (f *foldState) linkedRequestSuccessor(request string) string {
 	for _, supersession := range f.supersessions {
 		value, ok := supersession.body.(*Supersede)
-		if !ok || value.Target != request || supersession.linkedSuccessorRequest == "" || f.retired(supersession.record.ID) {
+		if !ok || value.Target != request || f.retired(supersession.record.ID) {
 			continue
 		}
-		return supersession.linkedSuccessorRequest
+		// The rejected-round transfer and the carried approved head are two
+		// different relations that both leave a successor request. The board
+		// shows either as superseded; only the first exempts its own edge from
+		// staleness, so they are read from separate fields.
+		if supersession.linkedSuccessorRequest != "" {
+			return supersession.linkedSuccessorRequest
+		}
+		if supersession.carriedSuccessorRequest != "" {
+			return supersession.carriedSuccessorRequest
+		}
 	}
 	return ""
 }
@@ -1777,7 +1880,7 @@ func (f *foldState) unsettledCommitmentEvents() map[string]bool {
 	active := make(map[string]bool)
 	for _, commitment := range f.projectCommitments(result.stale) {
 		switch commitment.Status {
-		case "open", "promised", "reported", "awaiting-merge", "stale":
+		case "open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale":
 			active[commitment.Request] = true
 			if commitment.Promise != "" {
 				active[commitment.Promise] = true
@@ -2192,6 +2295,10 @@ type stalenessScope struct {
 	// accounting for it. Built once per scope: rescanning per edge would be
 	// quadratic, and the answer cannot change inside one pass.
 	active map[string]int
+	// transfers maps each retired request to the successor a surviving
+	// rejected-round transfer named for it, at or before this scope's
+	// position. Built once for the same reason active is.
+	transfers map[string]string
 }
 
 // stalenessCauseEdge is one rests-on edge that the authoritative staleness
@@ -2219,7 +2326,30 @@ func (f *foldState) stalenessNow() *stalenessScope {
 }
 
 func (f *foldState) stalenessAsOf(asOf int) *stalenessScope {
-	return &stalenessScope{f: f, asOf: asOf, active: f.activeRetirements()}
+	return &stalenessScope{f: f, asOf: asOf, active: f.activeRetirements(), transfers: f.transferSuccessors(asOf)}
+}
+
+// transferSuccessors indexes the rejected-round transfers in force: for each
+// retired request, the successor named by the first surviving supersession
+// that transferred it. A supersession that landed after the scope's position
+// did not exist for the question being asked, exactly as in
+// succeededRetirements.
+func (f *foldState) transferSuccessors(asOf int) map[string]string {
+	transfers := make(map[string]string)
+	for _, supersession := range f.supersessions {
+		if supersession.sequence() > asOf || supersession.linkedSuccessorRequest == "" || f.retired(supersession.record.ID) {
+			continue
+		}
+		value, ok := supersession.body.(*Supersede)
+		if !ok {
+			continue
+		}
+		if _, already := transfers[value.Target]; already {
+			continue
+		}
+		transfers[value.Target] = supersession.linkedSuccessorRequest
+	}
+	return transfers
 }
 
 // succeededRetirements is the scope's own successor topology. A supersession
@@ -2375,6 +2505,18 @@ func (s *stalenessScope) computeStaleness(targets []string, successors map[strin
 				if _, moved := successors[basis]; moved && !s.successionCondemned(basis, successors) {
 					retiredBasis = false
 				}
+			}
+			// The rejected-round transfer, and nothing else. A repair child
+			// must rest on the request it repairs, and the transfer that makes
+			// it the successor retires that request in the same act, so the
+			// child was stale the moment it became the answer. The exception is
+			// keyed to that one edge and that one relation: staleness reaching
+			// the successor by any other edge still lands, a successor that
+			// merely rests on a retired request without being named as its
+			// transfer successor still stales, and a carried or abandoned
+			// succession gets nothing from here.
+			if retiredBasis && s.transfers[basis] == record.record.ID {
+				retiredBasis = false
 			}
 			staleBasis := stale[basis] && mode == StalenessPropagates
 			if plan != nil && staleBasis && s.stalenessCoveredByMergePlan(basis, plan, stale, make(map[string]bool)) {
@@ -3262,24 +3404,43 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 		}
 		promises := f.directDependents(requestRecord.record.ID, LifecyclePromise)
 		successorRequest := f.linkedRequestSuccessor(requestRecord.record.ID)
+		abandoned := f.abandonedRequest(requestRecord.record.ID)
 		// A direct completion is projected because it was admitted as one, not
 		// because of how many claims stand now. Gating on the current count
 		// reversed decisions the fold had already made: a later promise hid an
 		// admitted direct completion, and a withdrawn promise turned its own
 		// report into a second one.
 		{
-			completion := f.latestCompletion(&requestRecord, request.Body["to"], mergedArtifacts)
+			claim := &requestRecord
+			performer := request.Body["to"]
+			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: performer, Status: "open", Stale: stale[requestRecord.record.ID]}
+			result, approved := f.landingFields(&entry, &requestRecord, claim, performer)
+			completion := f.latestCompletion(claim, performer, mergedArtifacts, result)
 			// With promises present but none live and nothing reported since,
 			// the request has no row of its own: the reneged rows below are the
 			// whole story, and an "open" row beside them would invite a second
 			// claim the withdrawal already answered.
 			if completion != nil || len(promises) == 0 {
-				entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, AddressedTo: request.Body["to"], Status: "open", Stale: stale[requestRecord.record.ID]}
 				// Claim and complete in one act. The addressee answered the
 				// request directly: an explicit report waits on requester
-				// ratification, while an artifact waits on merge. Reading either
-				// as open would show work already finished as work nobody took.
+				// ratification, while an artifact waits on review and then on
+				// the landing. Reading either as open would show work already
+				// finished as work nobody took.
 				switch {
+				// Abandonment is judged first. A supersession may both qualify
+				// as a rejected-round transfer and declare an approved head
+				// dropped; the declaration is the explicit one, and reading it
+				// second would show the head as carried into a successor that
+				// was never given it.
+				case abandoned:
+					entry.Status = "abandoned"
+					entry.Terminal = "abandoned"
+					entry.WaitingOn = ""
+					if completion != nil {
+						entry.Performer = completion.record.Actor
+						entry.Report = completion.record.ID
+						entry.Stale = entry.Stale || stale[completion.record.ID]
+					}
 				case successorRequest != "":
 					entry.Status = "superseded"
 					entry.SuccessorRequest = successorRequest
@@ -3294,28 +3455,15 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 				case completion != nil:
 					entry.Performer = completion.record.Actor
 					entry.Report = completion.record.ID
-					if completion.definition.Lifecycle == LifecycleReport {
-						entry.Status = "reported"
-						entry.WaitingOn = requestRecord.record.Actor
-					} else {
-						// An artifact cannot be ratified: its declared satisfier is
-						// none, so the requester is not the waiting party. The
-						// independently approved exact head has to merge, and the
-						// performer signs that merge, so the move is theirs.
-						entry.Status = "awaiting-merge"
-						entry.WaitingOn = completion.record.Actor
-					}
+					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, completion.record.Actor)
 					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
-					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
-						entry.Status = "satisfied"
-						entry.WaitingOn = ""
-					} else if receipt := mergedArtifacts[completion.record.ID]; receipt != nil {
-						entry.Status = "satisfied"
-						entry.WaitingOn = ""
+					if receipt := mergedArtifacts[completion.record.ID]; receipt != nil && entry.Status != "satisfied" {
+						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 					}
 				case stale[requestRecord.record.ID]:
 					entry.Status = "stale"
 				}
+				f.markApprovedNotLanded(&entry, result, approved, mergedArtifacts)
 				commitments = append(commitments, entry)
 			}
 		}
@@ -3323,9 +3471,21 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			continue
 		}
 		for _, promiseRecord := range promises {
-			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: promiseRecord.record.Actor, Promise: promiseRecord.record.ID, Status: "promised", WaitingOn: promiseRecord.record.Actor}
-			completion := f.latestCompletion(promiseRecord, promiseRecord.record.Actor, mergedArtifacts)
+			performer := promiseRecord.record.Actor
+			entry := Commitment{Request: requestRecord.record.ID, Requester: requestRecord.record.Actor, Performer: performer, Promise: promiseRecord.record.ID, Status: "promised", WaitingOn: performer}
+			result, approved := f.landingFields(&entry, &requestRecord, promiseRecord, performer)
+			completion := f.latestCompletion(promiseRecord, performer, mergedArtifacts, result)
 			switch {
+			// See the direct-completion branch: an explicit abandonment
+			// outranks a transfer that also qualifies.
+			case abandoned:
+				entry.Status = "abandoned"
+				entry.Terminal = "abandoned"
+				entry.WaitingOn = ""
+				if completion != nil {
+					entry.Report = completion.record.ID
+					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
+				}
 			case successorRequest != "":
 				entry.Status = "superseded"
 				entry.SuccessorRequest = successorRequest
@@ -3343,22 +3503,10 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 			default:
 				if completion != nil {
 					entry.Report = completion.record.ID
-					if completion.definition.Lifecycle == LifecycleReport {
-						entry.Status = "reported"
-						entry.WaitingOn = requestRecord.record.Actor
-					} else {
-						// The performer merges their approved head; see the
-						// direct-completion branch above.
-						entry.Status = "awaiting-merge"
-						entry.WaitingOn = promiseRecord.record.Actor
-					}
+					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, performer)
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
-					if completion.definition.Lifecycle == LifecycleReport && f.ratified(completion.record.ID) {
-						entry.Status = "satisfied"
-						entry.WaitingOn = ""
-					} else if receipt := mergedArtifacts[completion.record.ID]; receipt != nil {
-						entry.Status = "satisfied"
-						entry.WaitingOn = ""
+					if receipt := mergedArtifacts[completion.record.ID]; receipt != nil && entry.Status != "satisfied" {
+						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 						entry.Stale = entry.Stale || stale[receipt.record.ID]
 					}
 				}
@@ -3367,10 +3515,81 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Stale = true
 				}
 			}
+			f.markApprovedNotLanded(&entry, result, approved, mergedArtifacts)
 			commitments = append(commitments, entry)
 		}
 	}
 	return commitments
+}
+
+// landingFields fills the row's target, hold, approval and evidence fields and
+// returns the result in force for it alongside the newest reporting artifact at
+// an approved head. Those two answers are what every landing rule
+// below reads; computing them once per row keeps the status word, the waiting
+// party and the audit fact from being derived three different ways.
+func (f *foldState) landingFields(entry *Commitment, request, claim *parsedRecord, performer string) (requestResult, *parsedRecord) {
+	result := f.commitmentResult(request, claim, performer)
+	entry.TargetRepo, entry.TargetRef, entry.Legacy = result.targetRepo, result.targetRef, result.legacy
+	entry.HoldOwner = result.holdOwner
+	if resolution := f.latestResolution(claim); resolution != nil {
+		entry.LatestResolution = resolution.record.ID
+	}
+	if !result.landing {
+		// Approval, candidate and release are the landing obligation's fields.
+		// A request that owes no Git artifact has no head to land, so an
+		// artifact it happens to carry is not a candidate for anything.
+		return result, nil
+	}
+	approved, approval := f.approvedReportingArtifact(claim, performer)
+	if approved == nil {
+		return result, nil
+	}
+	entry.Approval = approval.record.ID
+	entry.Candidate = approved.body.(*State).Body["commit"]
+	if result.held {
+		if release := f.releaseFor(request.record.ID, entry.Candidate, entry.Approval); release != nil {
+			entry.Release = release.record.ID
+		}
+	}
+	return result, approved
+}
+
+// completionStatus is the section-4 state table. An explicit report still
+// waits on its requester and closes on ratification, which is the only way a
+// no-artifact commitment ever closed. An artifact waits on review, then either
+// on the hold owner's release or on the performer's landing. The single word
+// this table replaced covered all of those at once and so named none of them.
+func (f *foldState) completionStatus(entry *Commitment, result requestResult, completion *parsedRecord, requester, performer string) {
+	if completion.definition.Lifecycle == LifecycleReport {
+		entry.Status, entry.WaitingOn = "reported", requester
+		if f.ratified(completion.record.ID) {
+			entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "reported", ""
+		}
+		return
+	}
+	// An artifact cannot be ratified: its declared satisfier is none, so the
+	// requester is not the waiting party. An independent approval has to name
+	// the exact head, and then the performer signs the merge, so both moves
+	// after this one are theirs unless a hold names somebody else.
+	if f.ratifiedApproval(completion) == nil {
+		entry.Status, entry.WaitingOn = "awaiting-review", performer
+		return
+	}
+	if result.held && entry.Release == "" {
+		entry.Status, entry.WaitingOn = "awaiting-authorization", result.holdOwner
+		return
+	}
+	entry.Status, entry.WaitingOn = "awaiting-landing", performer
+}
+
+// markApprovedNotLanded records the audit fact relative to the destination the
+// request named. It never means "absent from main": a receipt into some other
+// ref is a real landing that discharged nothing here, and stays counted.
+func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResult, approved *parsedRecord, mergedArtifacts map[string]*parsedRecord) {
+	if approved == nil || !result.landing || entry.Status == "abandoned" {
+		return
+	}
+	entry.ApprovedNotLanded = !f.dischargedBy(mergedArtifacts[approved.record.ID], result)
 }
 
 // latestCompletion returns the promise's live completion record. A sealed
@@ -3387,8 +3606,17 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 // that actor's artifact resting on it with a commit, which serves as the
 // implementation report. Passing the claim rather than always a promise is
 // what keeps the two shapes one rule instead of two that drift.
-func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord) *parsedRecord {
-	var report, artifact, merged *parsedRecord
+func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord, result requestResult) *parsedRecord {
+	landing := result.landing && !result.legacy
+	// A state@3 request that stated no_git_artifact=true owes no Git artifact,
+	// so an artifact resting on its claim answers nothing: it is a pointer the
+	// performer chose to publish, admitted like any other artifact and kept
+	// visible, but never the completion and never a reason to project one of
+	// the awaiting-* states. An older request the fold merely read as owing
+	// nothing is a different case and keeps its historical reading, in which
+	// an artifact could be the completion.
+	statedNoArtifact := result.stated && !result.landing
+	var report, artifact, approved, merged *parsedRecord
 	candidates := append([]*parsedRecord(nil), f.directDependents(claim.record.ID, LifecycleReport)...)
 	candidates = append(candidates, f.directDependents(claim.record.ID, LifecycleNone)...)
 	for _, record := range candidates {
@@ -3433,9 +3661,30 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 		if isArtifactReport && (artifact == nil || record.index > artifact.index) {
 			artifact = record
 		}
+		// Only a landing request reads this rung, and resolving an approval
+		// means walking the artifact's own dependents, so it is not paid for
+		// on every other commitment in the log.
+		if landing && isArtifactReport && (approved == nil || record.index > approved.index) && f.ratifiedApproval(record) != nil {
+			approved = record
+		}
+	}
+	if statedNoArtifact {
+		return report
 	}
 	if merged != nil {
 		return merged
+	}
+	// Section 5. On a request that owes a landing there is no report in this
+	// list at all: a plain or verdict-shaped report was refused at admission
+	// and a resolution report is evidence beside the commitment, so an
+	// artifact can only be overtaken by a newer artifact or sealed by a
+	// receipt. An approved head outranks a later unapproved one, because the
+	// approval is what the landing obligation is about.
+	if landing {
+		if approved != nil {
+			return approved
+		}
+		return artifact
 	}
 	if report != nil {
 		return report

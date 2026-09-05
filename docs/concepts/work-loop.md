@@ -67,10 +67,18 @@ promised ───────────┤
                     │                                      │
                     │       requester ratifies report ─────┤
                     │                                      │
-                    └─ promisor files artifact ─▶ awaiting-merge
+                    └─ promisor files artifact ─▶ awaiting-review
+                                                           │
+                          ratified approval, request held ─┼─▶ awaiting-authorization
+                                                           │        │
+                                                           │  hold released
+                                                           │        │
+                      ratified approval, request not held ─┴────────┴─▶ awaiting-landing
                                                            ├─ approved exact head merges ─▶ satisfied
                                                            │
-                         rejected repair explicitly moved ─┴─▶ superseded
+                         rejected repair explicitly moved ─┼─▶ superseded
+                                                           │
+                            approved head declared dropped ┴─▶ abandoned
 ```
 
 | Status | What it means | Who caused it |
@@ -79,11 +87,14 @@ promised ───────────┤
 | `withdrawn` | The request was retired before anyone promised. | the requester, or a ratifier |
 | `promised` | Claimed, not yet reported. | the promisor |
 | `reported` | Completion claimed by an explicit report, awaiting requester ratification. | the promisor |
-| `awaiting-merge` | Completion claimed by an artifact, awaiting the independently approved exact-head merge the performer signs; waits on the performer. | the promisor |
+| `awaiting-review` | Completion claimed by an artifact that no ratified approval names yet; waits on the performer, whose next move is to obtain independent review. | the promisor |
+| `awaiting-authorization` | A ratified approval names the artifact, the request is held, and no release names this candidate and approval; waits on the hold owner. | the requester, by holding the landing |
+| `awaiting-landing` | A ratified approval names the artifact and nothing holds it; waits on the performer, who signs the merge into the target ref. | the promisor |
 | `superseded` | A ratified `changes-requested` verdict rejected the reporting artifact, and an explicit linked supersession moved the required repair to `successor_request`. | the requester, or a ratifier |
 | `satisfied` | The approved exact head merged, or the requester accepted an explicit report. | the merge or the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
 | `reneged` | The promise was retired. | the promisor, or a ratifier |
+| `abandoned` | A supersession deliberately dropped an approved head instead of carrying it. | the requester, or a ratifier |
 | `stale` | Something it rests on died, and no live report stands. | nobody — a consequence |
 
 Four details the diagram cannot carry.
@@ -185,8 +196,9 @@ trusting a green projection to catch a bad one.
 ## Honest states
 
 A completion artifact before merge, or an unratified explicit report, is
-**honest status**, not failure. The artifact reads `awaiting-merge` and waits
-on its performer, who signs the merge once the approval is ratified; the
+**honest status**, not failure. The artifact reads `awaiting-review` and waits
+on its performer until an approval names it, then `awaiting-landing` and waits
+on the performer to sign the merge; the
 explicit report reads `reported` and waits on its requester. Do not treat
 either as a gap to be chased.
 
