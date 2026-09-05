@@ -1,0 +1,5 @@
+=== RUN   TestWorktreeLocalEndpointMeasure
+    worktree_local_measure_test.go:63: status=200 cold=49.744314958s warm=909.928458ms counts=map[protected:36] deletable=[]
+--- PASS: TestWorktreeLocalEndpointMeasure (53.86s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	54.224s
