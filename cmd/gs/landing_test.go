@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,6 +60,17 @@ func (f workflowFixture) stateV3(t *testing.T, actor string, kind workroom.Kind,
 		t.Fatalf("state@3 %s record is %s: %s", kind, decision.Verdict, decision.Reason)
 	}
 	return last.Event
+}
+
+// testGitRaw is testGit without the trimming, for the one assertion that is
+// about exact bytes: the merge commit message a receipt is parsed back out of.
+func testGitRaw(t *testing.T, repo string, arguments ...string) string {
+	t.Helper()
+	output, err := exec.Command("git", append([]string{"-C", repo}, arguments...)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
 }
 
 func (f workflowFixture) fingerprint(t *testing.T, actor string) string {
@@ -228,6 +240,25 @@ func TestMergeSealsTheTargetBindingInBothReceipts(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
+	target := mergeplan.Target{
+		Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}
+	// The commit is built with commit-tree rather than committed through HEAD,
+	// so the message bytes are asserted rather than assumed: a receipt is read
+	// back out of them, and the plan they carry is the one the merge saw.
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, target.PreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := fixture.snapshot(t)
+	plan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, target.PreHead, fixture.candidate, nil))
+	want, err := mergeReceiptMessage("Merge the approved feature and seal where it landed.",
+		approval, "", "", fixture.candidate, target, "", false, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
 		"--candidate", fixture.candidate, "--approval", approval,
@@ -239,6 +270,9 @@ func TestMergeSealsTheTargetBindingInBothReceipts(t *testing.T) {
 	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
 	if err != nil || !ok {
 		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if got := testGitRaw(t, fixture.repo, "log", "-1", "--format=%B", head); got != want+"\n" {
+		t.Fatalf("merge commit message =\n%q\nwant\n%q", got, want+"\n")
 	}
 	wantRepo := mergeplan.WorkroomRepo(fixture.workspace)
 	if receipt.TargetRepo != wantRepo || receipt.TargetRef != "refs/heads/main" {
@@ -546,11 +580,11 @@ func TestMergeRefusesWhenTheTargetRefMovesAfterPlanning(t *testing.T) {
 	}
 }
 
-// TestMergeRefusesWhenTheTargetMovesBeforeHeadMoves is the last measurement.
-// The tentative merge is already staged and the reservation taken when the
-// target branch is advanced underneath it; the receipt would name a pre-head
-// the branch no longer had.
-func TestMergeRefusesWhenTheTargetMovesBeforeHeadMoves(t *testing.T) {
+// TestMergeRefusesWhenTheTargetMovesBeforeTheLanding is the compare-and-swap.
+// The tentative merge is staged and the reservation taken when the target
+// branch is advanced underneath it; the ref is not at its sealed pre-head any
+// more, so it is not advanced at all and the concurrent move stands.
+func TestMergeRefusesWhenTheTargetMovesBeforeTheLanding(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
@@ -568,12 +602,65 @@ func TestMergeRefusesWhenTheTargetMovesBeforeHeadMoves(t *testing.T) {
 		"--candidate", fixture.candidate, "--approval", approval,
 		"--text", "Refuse a target that moved while the merge was staged.",
 	})
-	if err == nil || !strings.Contains(err.Error(), "merge target moved before HEAD moved") {
+	if err == nil || !strings.Contains(err.Error(), "advance refs/heads/main from the sealed pre-head "+beforeHead) {
 		t.Fatalf("late-movement merge error = %v", err)
+	}
+	// The concurrent move keeps the ref. A landing that could not take the
+	// branch from where it sealed it must not take it from anywhere else.
+	if got := testGit(t, fixture.repo, "rev-parse", "refs/heads/main"); got != fixture.candidate {
+		t.Fatalf("refused landing left refs/heads/main at %s, want the concurrent move %s", got, fixture.candidate)
+	}
+	if _, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, "refs/heads/main"); ok || err != nil {
+		t.Fatalf("a merge receipt is reachable from the target ref after a refused landing: ok=%v err=%v", ok, err)
 	}
 	testGit(t, fixture.repo, "update-ref", "refs/heads/main", beforeHead)
 	if after := fixture.snapshot(t); after.Depth != before.Depth {
 		t.Fatalf("late-movement refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// TestMergeLandsOnTheSealedRefWhenAHookRetargetsHead is planner's blocker,
+// reproduced. A repository hook that points HEAD at another branch used to
+// move the whole merge there while the receipt went on naming the branch the
+// command had measured. The landing is a compare-and-swap on the sealed ref
+// now, so HEAD has no say in where it goes.
+func TestMergeLandsOnTheSealedRefWhenAHookRetargetsHead(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "branch", "raced-branch")
+	hooks := t.TempDir()
+	testGit(t, fixture.repo, "config", "core.hooksPath", hooks)
+	hook := "#!/bin/sh\ngit symbolic-ref HEAD refs/heads/raced-branch\n"
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(hook), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Verify the destination across the final commit boundary.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	landed := testGit(t, fixture.repo, "rev-parse", "refs/heads/main")
+	if landed == before {
+		t.Fatal("the merge did not advance the sealed target ref")
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, landed)
+	if err != nil || !ok {
+		t.Fatalf("read the landed receipt: ok=%v err=%v", ok, err)
+	}
+	if receipt.TargetRef != "refs/heads/main" {
+		t.Fatalf("sealed target ref = %q, want refs/heads/main", receipt.TargetRef)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "refs/heads/raced-branch"); got != before {
+		t.Fatalf("the merge landed on raced-branch at %s, want it left at %s", got, before)
+	}
+	// The hook still ran nothing here — the landing writes no commit through
+	// HEAD — so this checkout is exactly where the merge put it.
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != landed {
+		t.Fatalf("checkout HEAD = %s, want the landed merge %s", got, landed)
 	}
 }
 

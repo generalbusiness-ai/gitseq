@@ -144,7 +144,7 @@ world is a projection this command cannot date, not a permission to land.
 | The checkout's branch is not the implementation request's target ref | The request says where its result is owed. Landing it anywhere else discharges nothing and would seal a receipt saying otherwise. |
 | The checkout's repository is not the request's target repository | Same, for the other half of the destination. |
 | The target ref, repository, or pre-head moved between planning and the merge | The plan was computed against a destination that is no longer there. |
-| The target moved again between the tentative merge and the commit | The receipt's `merge_target_pre_head` must be what the ref held at the moment `HEAD` moved, not a moment earlier. |
+| The sealed ref is not at its sealed pre-head when the landing advances it | The landing is a compare-and-swap. A ref that moved keeps the move, and nothing is written. |
 | The implementation request is not held and `--authorization` is given | An unheld request asked for no release, so a merge that presents one claims an authority nobody granted. Requests filed before `workroom/state@3` keep the phase-one reading and are unaffected. |
 | A resumed receipt names a destination this checkout is not standing on | Recovery proves where the receipt landed instead of assuming it landed here. |
 | A resumed receipt carries `Gitseq-Target-Repo` without `Gitseq-Target-Ref`, or the reverse | Half a destination proves nothing. Both absent is a legacy receipt and is fine. |
@@ -181,10 +181,30 @@ workroom's own repository, and is flagged `legacy`. `merge` compares the
 checkout against that resolved answer, whether or not `--authorization` is
 given, and refuses every mismatch in the table above.
 
-The measurement is taken again immediately before `HEAD` moves. The read-only
-plan, the authorization resolution, and the tentative merge all happen while
-another process could switch the branch or advance the ref, so the last word
-on where this merge is landing is the one taken last.
+The landing is then bound to that measurement rather than measured again
+before it. `git commit` resolves `HEAD` at the instant it writes, so no check
+taken beforehand can say where it lands: a `pre-commit` hook that runs
+`git symbolic-ref HEAD refs/heads/other` moves the whole merge to another
+branch while the receipt goes on naming the branch this command measured.
+So `merge` does not commit through `HEAD` at all. It writes the staged tree
+with `git write-tree`, builds the merge commit with
+`git commit-tree <tree> -p <sealed pre-head> -p <candidate>`, and advances the
+sealed ref with `git update-ref <sealed ref> <new commit> <sealed pre-head>` —
+a compare-and-swap. There is no window between the measurement and the
+landing: a ref that moved makes the update fail, the concurrent move stands,
+and the commit object no ref points at is unreachable.
+
+Only after the ref has moved is the checkout brought to the landing, with
+`git reset --hard`, and only while `HEAD` still names the sealed ref. A `HEAD`
+retargeted underneath the merge changes nothing about where the work landed;
+the command says so on standard error and leaves that other branch alone.
+
+Two consequences follow from not committing through `HEAD`. Commit hooks —
+`pre-commit`, `prepare-commit-msg`, `commit-msg`, `post-commit` — do not run
+for a merge; the governed act is not a place for repository-local scripts to
+intervene. And the commit message is used verbatim, where `git commit -m`
+would have applied its default cleanup, so a `--text` containing comment lines
+or trailing whitespace now reaches the receipt as written.
 
 The comparison needs a request, and it finds one through the commitment lane
 that reports the approved artifact. An approval whose artifact is the report of

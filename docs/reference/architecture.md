@@ -1522,13 +1522,22 @@ a projection it may merge on. This carries the fold profile to
   because the fold never makes such an artifact that commitment's report. The
   second is a gap rather than a design choice, and closing it is separate work.
 
-  The destination is measured again immediately before `HEAD` moves, after the
-  plan, the authorization and the tentative merge, because each of those is a
-  window in which another process can switch the branch or advance the ref. A
-  receipt sealed before that last measurement could name a destination the
-  merge no longer stood on. Whether a landed head is still contained in its ref
-  afterwards, and whether a remote carries it, are repository-derived advisory
-  facts that no receipt claims and no fold satisfaction reads.
+  The landing is bound to that measurement rather than measured again before
+  it. `git commit` resolves `HEAD` as it writes, so no check taken beforehand
+  can say where a merge lands — a repository hook that retargets `HEAD` moves
+  the merge to another branch while the receipt names the measured one. This
+  layer therefore does not commit through `HEAD`: it writes the staged tree,
+  builds the merge commit with `git commit-tree` against the sealed pre-head
+  and the candidate, and advances the sealed ref by compare-and-swap from that
+  pre-head. There is no window between measurement and landing; a ref that
+  moved keeps its move and the unreferenced commit object is unreachable. The
+  checkout is brought to the landing afterwards, and only while `HEAD` still
+  names the sealed ref. Two consequences are part of the contract: commit hooks
+  do not run for a merge, and the receipt message is the exact bytes this layer
+  composed rather than what `git commit` cleanup would have left. Whether a
+  landed head is still contained in its ref afterwards, and whether a remote
+  carries it, are repository-derived advisory facts that no receipt claims and
+  no fold satisfaction reads.
 
   A receipt carrying neither target field predates them: it reads as
   `refs/heads/main` of this workroom's own repository, is flagged legacy, and

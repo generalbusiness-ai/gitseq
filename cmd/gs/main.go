@@ -862,28 +862,41 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, prospectiveActs, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
-	// The last measurement before HEAD moves, taken after the preflight so
-	// that nothing between it and the commit can move the destination. The
-	// tentative merge left the ref alone, so anything that moved it did so
-	// concurrently, and a receipt sealing a destination this merge no longer
-	// stands on would be false the moment it was written.
-	moved, err := mergeplan.ResolveTarget(ctx, workspace, *checkout)
+	// Landing is one compare-and-swap on the sealed ref, not a commit onto
+	// whatever HEAD happens to name. `git commit` resolves HEAD at the instant
+	// it writes, so no measurement taken before it can bind where it lands: a
+	// pre-commit hook that retargets HEAD moves the merge to another branch
+	// while the receipt still names the measured one. Building the commit
+	// object first and then advancing the ref from its sealed pre-head closes
+	// that window instead of narrowing it, and leaves nothing behind when it
+	// fails, because a commit no ref points at is unreachable.
+	tree, err := git(ctx, *checkout, "write-tree")
 	if err != nil {
-		return err
+		return fmt.Errorf("write the staged merge tree: %w", err)
 	}
-	if err := requireUnmovedTarget(moved, target, "before HEAD moved"); err != nil {
-		return err
-	}
-	if _, err := git(ctx, *checkout, "commit", "-m", message); err != nil {
-		return err
-	}
-	merging = false
-	landed = true
-	head, err := git(ctx, *checkout, "rev-parse", "HEAD")
+	head, err := gitWithInput(ctx, *checkout, message, "commit-tree", strings.TrimSpace(tree),
+		"-p", target.PreHead, "-p", *candidate)
 	if err != nil {
-		return err
+		return fmt.Errorf("build the merge commit: %w", err)
 	}
 	head = strings.TrimSpace(head)
+	if _, err := git(ctx, *checkout, "update-ref", target.Ref, head, target.PreHead); err != nil {
+		return fmt.Errorf("advance %s from the sealed pre-head %s: %w", target.Ref, target.PreHead, err)
+	}
+	landed = true
+	// The ref carries the landing from here on, so the checkout is caught up
+	// rather than relied upon. A HEAD that no longer names the sealed ref is
+	// reported and left alone: the landing is real where the receipt says it
+	// is, and moving somebody else's branch to repair this checkout would be a
+	// second unasked-for act.
+	standing, err := git(ctx, *checkout, "symbolic-ref", "--quiet", "HEAD")
+	if err != nil || strings.TrimSpace(standing) != target.Ref {
+		fmt.Fprintf(os.Stderr, "warning: %s now carries the merge, but this checkout no longer stands on it; its working tree still holds the staged merge\n", target.Ref)
+	} else if _, err := git(ctx, *checkout, "reset", "--hard", head); err != nil {
+		return fmt.Errorf("bring the checkout to the landed merge: %w", err)
+	} else {
+		merging = false
+	}
 	receipt, ok, err := readMergeReceipt(ctx, *checkout, head)
 	if err != nil {
 		return err
@@ -2922,6 +2935,24 @@ func validateConfiguredRemote(ctx context.Context, repo, remote string) error {
 		return fmt.Errorf("--remote %q is not a configured Git remote: %w", remote, err)
 	}
 	return nil
+}
+
+// gitWithInput runs one Git command with a payload on standard input and
+// keeps standard output clean. The combined-output helper below cannot serve
+// commit-tree: its answer is an object id, and a warning printed beside it
+// would be read as part of that id.
+func gitWithInput(ctx context.Context, repo, input string, arguments ...string) (string, error) {
+	args := make([]string, 0, len(arguments)+3)
+	args = append(args, "--no-replace-objects", "-C", repo)
+	args = append(args, arguments...)
+	command := exec.CommandContext(ctx, "git", args...)
+	command.Stdin = strings.NewReader(input)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(arguments, " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
 
 func git(ctx context.Context, repo string, arguments ...string) (string, error) {
