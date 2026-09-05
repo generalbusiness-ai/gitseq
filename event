@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/schema.go","body":{"commit":"f8bcf5463dc63918b1a0bcb97d699163b8dd7482","path":"internal/workroom/schema.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:011ed3691f3c9f89b27d2659d53b528d19ad50bf","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
