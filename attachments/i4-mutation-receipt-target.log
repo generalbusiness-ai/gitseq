@@ -1,0 +1,6 @@
+--- FAIL: TestLandingReceiptWitnessUsesValidatedMatchingReceipt (0.00s)
+    --- FAIL: TestLandingReceiptWitnessUsesValidatedMatchingReceipt/refs/heads/other (0.00s)
+        landing_witness_test.go:12: wrong target witnessed: {Request:git:sha1:1111111111111111111111111111111111111111#request Requester:actor:operator AddressedTo: Performer:actor:agent Promise:git:sha1:1111111111111111111111111111111111111111#promise Report:git:sha1:1111111111111111111111111111111111111111#artifact Status:satisfied SuccessorRequest: Stale:false WaitingOn: TargetRepo:git:sha1:1111111111111111111111111111111111111111 TargetRef:refs/heads/main Legacy:false HoldOwner: Release: Approval:git:sha1:1111111111111111111111111111111111111111#approval Candidate:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa LatestResolution: Terminal:landed ApprovedNotLanded:true LandingReceipt:git:sha1:1111111111111111111111111111111111111111#merge}
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.282s
+FAIL

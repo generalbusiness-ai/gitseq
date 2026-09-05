@@ -1,0 +1,6 @@
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	7.976s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	0.625s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	57.454s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	12.673s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	229.447s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	69.598s

@@ -1,0 +1,5 @@
+--- FAIL: TestWorktreeClassificationProtectsEveryNamedHead (0.52s)
+    worktree_landing_test.go:44: ancestor's unsettled obligation lost: [feature] {Checkout:feature Branch:request/feature Head:8107b448377a26a8d01a18d4fadb71058b667ecd State:clean Current:false Detached:false Approved:approval LandedInto:refs/heads/main RemoteContains:<nil> Row:request Rows:[{Request:request Promise:promise Status:satisfied LandingDetails:{TargetRepo:git:sha1:9736b7255132d34906507be8bb0aba4e739ee27c TargetRef:refs/heads/main Legacy:false HoldOwner: Release: Approval:approval Candidate:8107b448377a26a8d01a18d4fadb71058b667ecd LatestResolution: Terminal:landed ApprovedNotLanded:false LandingReceipt:receipt MergeHead:8107b448377a26a8d01a18d4fadb71058b667ecd ReceiptLegacy:false MergeHoldWarning:false Git:0x6a358c0fc000}}] RowsOmitted:0 Classification:deletable ClassificationReason:}
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.813s
+FAIL
