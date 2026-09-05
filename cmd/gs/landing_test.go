@@ -1215,10 +1215,11 @@ func TestMergeRefusesAReleaseFromARetiredHoldOwner(t *testing.T) {
 // here is one of the three the phase-one list admits, and none of them owns
 // this hold.
 func TestMergeRefusesAHeldLandingAuthorizedByThePhaseOneList(t *testing.T) {
-	t.Parallel()
+	// Sequential on purpose: captureStderr below swaps os.Stderr, which every
+	// parallel test reads through flags(). Go runs sequential tests before any
+	// parallel test resumes, so this is the one arrangement with no overlap.
 	for _, signer := range []string{"reviewer", "planner", "governor"} {
 		t.Run(signer, func(t *testing.T) {
-			t.Parallel()
 			fixture := newWorkflowFixture(t)
 			fixture.addActor(t, "custodian")
 			switch signer {
