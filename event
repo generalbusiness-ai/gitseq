@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review exact 61b2d1bf against the main-CI repair request. The complete patch and all capture helper callers have been inspected; an uncached full cmd/gs race run is underway in my detached exact-head checkout."}
+{"kind":"promise","text":"I will review exact 64c4e639, its actual HTTP controls and shared target precondition, including the changed resident-ceiling dependency boundary. CI repair review/delivery takes priority; I will inspect this independent patch while that uncached race run completes."}
