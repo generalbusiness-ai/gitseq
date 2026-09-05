@@ -1,6 +1,0 @@
-=== RUN   TestWorktreeLocalMeasure
-    worktree_local_measure_test.go:66: used=62278 remaining=3258 failed=false elapsed=129.974833ms deletable=0
-    worktree_local_measure_test.go:72: map[protected:36]
---- PASS: TestWorktreeLocalMeasure (0.61s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/app	1.004s
