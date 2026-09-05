@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b8a4e0f7f976a9f6066009a2dd16aeda2698a9","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/work.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f75f4b16ce57a8069614d6276d15f69ba916d0d5","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/api.ts."}
