@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -93,5 +94,76 @@ func TestLandingEvidenceRequiresProjectionWitness(t *testing.T) {
 	}
 	if !rows[3].ReceiptLegacy || rows[3].MergeHoldWarning {
 		t.Fatal("legacy absence became compatibility warning")
+	}
+}
+
+func worktreeFanoutFixture(n int) workroom.Projection {
+	p := workroom.Projection{Provenance: map[string][]string{}}
+	for i := 0; i < n; i++ {
+		p.Commitments = append(p.Commitments, workroom.Commitment{Request: "shared-request", Promise: fmt.Sprintf("promise-%d", i), Status: "satisfied"})
+		id := fmt.Sprintf("artifact-%d", i)
+		p.Statements = append(p.Statements, workroom.Statement{Event: id, Kind: workroom.KindArtifact, Body: map[string]string{"commit": fmt.Sprintf("%040x", i+1)}})
+		p.Provenance[id] = []string{"shared-request"}
+	}
+	p.Commitments[n-1].Status = "promised"
+	return p
+}
+
+func TestWorktreeAssociationsShareTotalBudget(t *testing.T) {
+	// All heads must survive for each commitment below the threshold, including
+	// the unsettled row; unique identities alone cannot bound the larger case.
+	for _, n := range []int{128, 256, 512} {
+		budget := &worktreeInspectionBudget{ctx: context.Background(), remaining: worktreeInspectionLimit}
+		rows, complete := worktreeLandingInputs(worktreeFanoutFixture(n), budget)
+		if n == 128 {
+			if !complete || len(rows) != n {
+				t.Fatalf("bounded fixture incomplete: %d %v", len(rows), complete)
+			}
+			for _, row := range rows {
+				if len(row.heads) != n {
+					t.Fatalf("lost a named head: %d", len(row.heads))
+				}
+			}
+			if !protectsWorktree(rows[n-1].row) {
+				t.Fatal("unsettled row lost protection")
+			}
+		} else if complete || rows != nil {
+			t.Fatalf("%d-by-%d association expansion escaped total budget", n, n)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, complete := worktreeLandingInputs(worktreeFanoutFixture(1), &worktreeInspectionBudget{ctx: ctx, remaining: worktreeInspectionLimit}); complete {
+		t.Fatal("cancelled inspection completed")
+	}
+}
+
+func TestWorktreeBudgetExhaustionDiscardsPartialDeletionAdvice(t *testing.T) {
+	repo := testRepo(t)
+	landingTestGit(t, repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "seed")
+	landingTestGit(t, repo, "checkout", "-qb", "request/abandoned")
+	head := landingTestGit(t, repo, "rev-parse", "HEAD")
+	w, _, err := Init(context.Background(), repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := workroom.Projection{Commitments: []workroom.Commitment{{Request: "abandoned", Status: "abandoned", Candidate: head}}}
+	// One row fits. Many checkouts of the same proved tip must share its budget,
+	// even when a prefix was already eligible for deletion before exhaustion.
+	single := []WorktreeView{{Checkout: "one", Branch: "request/abandoned", Head: head, State: "clean"}}
+	if got := w.ClassifyWorktrees(context.Background(), p, single); len(got) != 1 {
+		t.Fatalf("positive control did not settle: %+v", single)
+	}
+	views := make([]WorktreeView, worktreeInspectionLimit/3)
+	for i := range views {
+		views[i] = WorktreeView{Checkout: "many", Branch: "request/abandoned", Head: head, State: "clean"}
+	}
+	if got := w.ClassifyWorktrees(context.Background(), p, views); len(got) != 0 {
+		t.Fatalf("partial deletion advice escaped: %d", len(got))
+	}
+	for _, view := range views {
+		if view.Classification != "unknown" || view.Row != "" || len(view.Rows) != 0 || view.Approved != "" {
+			t.Fatalf("partial classification survived: %+v", view)
+		}
 	}
 }

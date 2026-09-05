@@ -105,7 +105,13 @@ it retains the local listing with unknown classification and an empty
 Limits are explicit: 128 measured status/work rows; 4,096 inventoried refs,
 4,096 object IDs, 256 graph tips, 20,000 graph nodes and 300,000 aggregate
 ancestor visits; a three-second Git inspection deadline. Worktree classification
-also caps its commitment input at 4,096. Output collectors have byte ceilings.
+also caps its commitment input at 4,096. One shared budget allows 65,536
+inspection steps across statements, direct provenance associations, receipt
+joins, object collection and all checkout row/head comparisons. Each association
+is charged before visiting it; object inputs are deduplicated before allocating
+the Git batch. Cancellation or exhaustion discards the entire batch's deletion
+advice and clears partial classifications to `unknown`, preserving every
+potential unsettled obligation. Output collectors have byte ceilings.
 Crossing a bound reports unknown or omitted rows; it never proves a negative.
 
 ## See also
