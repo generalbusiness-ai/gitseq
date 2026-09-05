@@ -1,0 +1,12 @@
+{
+  "tailapp_snapshot": "/tmp/tailapp-history-review-20260904.json; depth3366; head968d70006e8fe22bf168b2d2db7ecc58f451412f",
+  "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2a807f7087e15109cdbe8d43c6edba2cc32f9e56",
+  "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1cc41a749de3e8a41c1105f19b7279bf75e1c4e5",
+  "changes_requested": [
+    "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:ceb418b7cdcb04ac63b6e725de228b1005eed757",
+    "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8cec03854d2996da1d65e80a7402668eeffa0f3c"
+  ],
+  "approved": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:101070cc9d35d477a3fb5ecc60c2c18c0cb66772",
+  "approvalArtifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f98d03a4a1320034ff03327bc1158e0173ef66ea",
+  "method": "Read request, promise, three review texts and artifact direct provenance. Between review positions2994and3024, the only request statements are the two fresh review requests. Commitment status satisfied. This is historical evidence, not foreign local authority."
+}
