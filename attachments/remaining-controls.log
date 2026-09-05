@@ -1,0 +1,11 @@
+=== RUN   TestPlannerLegacyAcceptedRequestRetriesThroughCLI
+    planner_legacy_cli_test.go:56: actual CLI exact retry of accepted state@2 request: request state: request states no result: name a target, inherit one, or state no_git_artifact
+--- FAIL: TestPlannerLegacyAcceptedRequestRetriesThroughCLI (1.18s)
+=== RUN   TestPlannerInvalidReplacementLeavesOldAssignmentLive
+git:sha1:48e676191db87946d2ae91509fd631a89a06e0d0#git:sha1:212a80fd419e9417f9e08dcc75be39cf4bc4113a
+    planner_reassign_preflight_test.go:11: replacement refused: guarded retirement git:sha1:48e676191db87946d2ae91509fd631a89a06e0d0#git:sha1:a24459cd585c4ef4d2986f338386941ba084797b landed or replayed, but its replacement was refused: request state: request states no result: name a target, inherit one, or state no_git_artifact; re-read the old request before retrying; original commitment: {Request:git:sha1:48e676191db87946d2ae91509fd631a89a06e0d0#git:sha1:212a80fd419e9417f9e08dcc75be39cf4bc4113a Requester:1fe01305f36d67c40fe4ced7fb3058ab28a70f8d95f15c4ce788097ff2f8055a AddressedTo:06925263ef2b5d6a714d82bcef62310271826ffbff1f80ff58a95148eee95b67 Performer: Promise: Report: Status:withdrawn SuccessorRequest: Stale:false WaitingOn: TargetRepo: TargetRef: Legacy:false HoldOwner: Release: Approval: Candidate: LatestResolution: Terminal: ApprovedNotLanded:false LandingReceipt:}
+    planner_reassign_preflight_test.go:12: invalid replacement retired the original assignment: frontier changed from 212a80fd419e9417f9e08dcc75be39cf4bc4113a to a24459cd585c4ef4d2986f338386941ba084797b
+--- FAIL: TestPlannerInvalidReplacementLeavesOldAssignmentLive (2.32s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	4.010s
+FAIL
