@@ -1,0 +1,9 @@
+=== RUN   TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== PAUSE TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== CONT  TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+    late_actor_test.go:191: a fresh report measured against the moved target must be refused: <nil>
+--- FAIL: TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves (2.01s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	2.383s
+FAIL

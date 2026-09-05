@@ -1,0 +1,45 @@
+=== RUN   TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== PAUSE TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport
+=== PAUSE TestStateReresolvesTheTargetOfAnAuthorizationReport
+=== RUN   TestPlannerAuthorizationExactRetryAfterTargetMoves
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:e23394b6916bdfab687e77f33a0f84a598fc4ab7
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:e23394b6916bdfab687e77f33a0f84a598fc4ab7
+--- PASS: TestPlannerAuthorizationExactRetryAfterTargetMoves (4.93s)
+=== CONT  TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== CONT  TestStateReresolvesTheTargetOfAnAuthorizationReport
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/the_ref_moved
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/no_measurement_at_all
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:6d0d35f48389b5c1f556e12d9ea49363420a6580
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/an_abbreviated_measurement
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:6d0d35f48389b5c1f556e12d9ea49363420a6580
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/a_remeasurement_from_off_the_ref
+--- PASS: TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves (2.99s)
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/the_ref_where_the_signer_measured_it
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:49d08dee3806fde463c2f04f5d1fd279a542d4e1
+=== RUN   TestStateReresolvesTheTargetOfAnAuthorizationReport/a_stated_disjoint-paths_remeasurement
+git:sha1:69571f7cc8d681c232341ff447d85eddef1fa982#git:sha1:ba095cc8dcedb3b3abe44d416640452f3722360f
+--- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport (5.46s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/the_ref_moved (1.15s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/no_measurement_at_all (0.71s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/an_abbreviated_measurement (0.72s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/a_remeasurement_from_off_the_ref (0.72s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/the_ref_where_the_signer_measured_it (0.97s)
+    --- PASS: TestStateReresolvesTheTargetOfAnAuthorizationReport/a_stated_disjoint-paths_remeasurement (1.03s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	11.800s
+=== RUN   TestAdapterStateRefusesAnAuthorizationMeasuredAgainstAMovedTarget
+=== PAUSE TestAdapterStateRefusesAnAuthorizationMeasuredAgainstAMovedTarget
+=== RUN   TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== PAUSE TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== RUN   TestPlannerMCPAuthorizationExactRetryAfterTargetMoves
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+--- PASS: TestPlannerMCPAuthorizationExactRetryAfterTargetMoves (2.43s)
+=== CONT  TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== CONT  TestAdapterStateRefusesAnAuthorizationMeasuredAgainstAMovedTarget
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+--- PASS: TestAdapterStateRefusesAnAuthorizationMeasuredAgainstAMovedTarget (1.10s)
+--- PASS: TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves (2.18s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	6.294s

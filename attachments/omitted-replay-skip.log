@@ -1,0 +1,9 @@
+=== RUN   TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== PAUSE TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+=== CONT  TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+    late_actor_test.go:198: the exact retry was rejudged against the moved target: target_ref refs/heads/master is at 3c90b5c3c64fd4b0b580d7b71da94a583cb62f0c, but target_pre_head is 4b3f74fdcc9a62eefb768942f53f06ea1e1c98ae and remeasure is not disjoint-paths
+--- FAIL: TestAdapterStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves (2.02s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	2.657s
+FAIL
