@@ -1,5 +1,0 @@
---- FAIL: TestWorktreeInputIndexRetainsDirectHeadsAndDistinctPromises (0.00s)
-    worktree_index_test.go:316: row 0 lost 0000000000000000000000000000000000000002
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.394s
-FAIL
