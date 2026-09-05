@@ -86,6 +86,14 @@ force-push in between makes the signature describe a world that has moved.
 [`gs merge`](merge.md) resolves the same ref again immediately before it moves
 `HEAD`, so the reading is taken at both act times rather than trusted once.
 
+It is judged for a genuinely new report only. An exact retry under an
+`--idempotency-key` already accepted — same actor, same words, same body, same
+bases — returns the original event, appends nothing, and is not measured a
+second time, so a lost response is still recoverable after the ref moves. The
+key alone does not do this: the same key over any different act is refused as a
+reused key, and a report filed under a fresh key is measured against the ref as
+it stands now.
+
 ## Retired bases and stale bases
 
 A **retired** basis is withdrawn ground: nothing stands there any more, so

@@ -1301,13 +1301,12 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			evidence[name] = []byte(content)
 		}
 		allowDead, _ := call.Arguments["allow_dead_basis"].(bool)
-		// The same act-time re-resolution `gs state` runs: a report claiming a
-		// measured landing target is judged against the ref now, so this
-		// surface cannot file one the command line would refuse.
-		if err := mergeplan.CheckAuthorizationTarget(ctx, current.workspace.Repo, body); err != nil {
-			return nil, err
-		}
-		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead}, identity)
+		// The same act-time re-resolution `gs state` runs, wired the same way:
+		// a report claiming a measured landing target is judged against the ref
+		// now, so this surface cannot file one the command line would refuse,
+		// and an exact retry replays here exactly as it does there.
+		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead,
+			NewSubmission: mergeplan.AuthorizationTargetPrecondition(current.workspace.Repo, body)}, identity)
 	case "review":
 		return s.review(ctx, current, call, identity)
 	case "ratify":

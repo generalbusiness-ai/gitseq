@@ -517,19 +517,19 @@ func stateCommand(ctx context.Context, arguments []string) error {
 			return err
 		}
 	}
-	// An authorization or release report says which commit its target ref held
-	// when the signer looked. Resolving that ref here is the act-time half of
-	// the landing obligation's two re-resolutions: a report measured against a
-	// world that has already moved is refused where it is written, instead of
-	// being signed, ratified, and then refused by the merge.
-	if err := mergeplan.CheckAuthorizationTarget(ctx, workspace.Repo, body); err != nil {
-		return err
-	}
 	attachments, err := files(evidence)
 	if err != nil {
 		return err
 	}
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK})
+	// An authorization or release report says which commit its target ref held
+	// when the signer looked. Re-resolving that ref here is the act-time half
+	// of the landing obligation's two re-resolutions: a report measured against
+	// a world that has already moved is refused where it is written, instead of
+	// being signed, ratified, and then refused by the merge. It rides as the
+	// act's new-submission precondition, so an exact retry of a report already
+	// accepted replays it instead of being measured a second time.
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK,
+		NewSubmission: mergeplan.AuthorizationTargetPrecondition(workspace.Repo, body)})
 	if err != nil {
 		return err
 	}

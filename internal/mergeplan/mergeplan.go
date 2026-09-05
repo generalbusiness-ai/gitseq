@@ -142,7 +142,7 @@ func ResolveTarget(ctx context.Context, workspace *app.Workspace, checkout strin
 // target_ref names no ref to resolve. Both pass through untouched, which is
 // what keeps this off every other statement a write boundary handles.
 func CheckAuthorizationTarget(ctx context.Context, repo string, body map[string]string) error {
-	if body["authorizes_request"] == "" || body["target_ref"] == "" {
+	if !claimsAuthorizationTarget(body) {
 		return nil
 	}
 	ref, measured := body["target_ref"], body["target_pre_head"]
@@ -171,6 +171,31 @@ func CheckAuthorizationTarget(ctx context.Context, repo string, body map[string]
 		return fmt.Errorf("target_pre_head %s is not an ancestor of target_ref %s at %s", measured, ref, now)
 	}
 	return nil
+}
+
+// AuthorizationTargetPrecondition is how a write surface wires the check above
+// onto one act: it returns the check for a body that claims a measured landing
+// target, and nil for a body that claims none.
+//
+// It belongs in app.Act.NewSubmission rather than in front of the submission,
+// because the ref it reads moves and the act does not. An exact retry of an
+// already accepted report is a lost-response recovery that replays the original
+// event and appends nothing; judging it again against a ref that has advanced
+// since would refuse the recovery while signing no fresh authorization. A
+// genuinely new report measured against a world that has already moved is still
+// refused, and so is the same key carrying a different report.
+func AuthorizationTargetPrecondition(repo string, body map[string]string) func(context.Context) error {
+	if !claimsAuthorizationTarget(body) {
+		return nil
+	}
+	return func(ctx context.Context) error { return CheckAuthorizationTarget(ctx, repo, body) }
+}
+
+// claimsAuthorizationTarget reports whether a body says it measured a landing
+// destination. A body with no authorizes_request makes no authorization claim,
+// and one that names no target_ref names no ref to resolve.
+func claimsAuthorizationTarget(body map[string]string) bool {
+	return body["authorizes_request"] != "" && body["target_ref"] != ""
 }
 
 type Result struct {

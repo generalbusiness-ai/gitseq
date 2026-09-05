@@ -1440,8 +1440,16 @@ func (f workflowFixture) ownRequest(t *testing.T, key, text string) string {
 // real gs state command, which is where the filing-time target check lives.
 func fileAuthorizationReport(t *testing.T, fixture workflowFixture, request, key string, body map[string]string) error {
 	t.Helper()
+	return fileAuthorizationReportSaying(t, fixture, request, key, "release the hold", body)
+}
+
+// fileAuthorizationReportSaying files the same report under words of the
+// caller's choosing, so a test can reuse one idempotency key for a genuinely
+// different act.
+func fileAuthorizationReportSaying(t *testing.T, fixture workflowFixture, request, key, text string, body map[string]string) error {
+	t.Helper()
 	arguments := []string{"--repo", fixture.repo, "--as", "reviewer", "--kind", "report",
-		"--text", "release the hold", "--rests-on", request, "--idempotency-key", key}
+		"--text", text, "--rests-on", request, "--idempotency-key", key}
 	for field, value := range body {
 		if value == "" {
 			continue
@@ -1449,6 +1457,62 @@ func fileAuthorizationReport(t *testing.T, fixture workflowFixture, request, key
 		arguments = append(arguments, "--body", field+"="+value)
 	}
 	return stateCommand(fixture.ctx, arguments)
+}
+
+// TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves is the other side
+// of the filing-time check. The ref it reads moves; the act it guards does not.
+// An exact retry of an already accepted report is a caller recovering a lost
+// response: it replays the event that was accepted while the world still agreed
+// with its measurement, and appends nothing. Measuring it again would refuse the
+// recovery without any fresh authorization being signed.
+//
+// The key alone buys nothing. The replay lookup matches the whole signed intent
+// under this actor's own key, so the same key carrying different words is a new
+// submission and the payload identity rule refuses it, and a fresh key over a
+// measurement the ref no longer holds is refused by the check itself.
+func TestStateReplaysAnAcceptedAuthorizationAfterTheTargetMoves(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	measured := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	request := fixture.ownRequest(t, "authorization-retry-request", "release the hold")
+	body := map[string]string{
+		"authorizes_request": fixture.implementationRequest,
+		"target_ref":         "refs/heads/main",
+		"target_pre_head":    measured,
+	}
+	if err := fileAuthorizationReport(t, fixture, request, "accepted-authorization", body); err != nil {
+		t.Fatalf("first submission: %v", err)
+	}
+	accepted := fixture.snapshot(t)
+
+	testGit(t, fixture.repo, "commit", "--allow-empty", "-qm", "advance the target after the report was accepted")
+	moved := testGit(t, fixture.repo, "rev-parse", "HEAD")
+
+	err := fileAuthorizationReport(t, fixture, request, "fresh-authorization", body)
+	if err == nil || !strings.Contains(err.Error(), "refs/heads/main is at "+moved) {
+		t.Fatalf("a fresh report measured against the moved target must be refused: %v", err)
+	}
+	assertWorkroomUnmoved(t, fixture, accepted, "the refused fresh report")
+
+	if err := fileAuthorizationReport(t, fixture, request, "accepted-authorization", body); err != nil {
+		t.Fatalf("the exact retry was rejudged against the moved target: %v", err)
+	}
+	assertWorkroomUnmoved(t, fixture, accepted, "the exact retry")
+
+	err = fileAuthorizationReportSaying(t, fixture, request, "accepted-authorization", "release something else", body)
+	if err == nil || !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+		t.Fatalf("a changed payload under the accepted key must be refused: %v", err)
+	}
+	assertWorkroomUnmoved(t, fixture, accepted, "the changed-payload retry")
+}
+
+func assertWorkroomUnmoved(t *testing.T, fixture workflowFixture, before app.Snapshot, what string) {
+	t.Helper()
+	after := fixture.snapshot(t)
+	if after.Depth != before.Depth || after.Head != before.Head {
+		t.Fatalf("%s changed the workroom: depth %d -> %d, head %s -> %s",
+			what, before.Depth, after.Depth, before.Head, after.Head)
+	}
 }
 
 // TestStateReresolvesTheTargetOfAnAuthorizationReport is the filing-time half

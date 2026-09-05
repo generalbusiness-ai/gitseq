@@ -942,7 +942,11 @@ report's `target_ref` in the workroom repository and refuse a
 `remeasure=disjoint-paths`, where the measured head need only be an ancestor.
 The merge re-resolves the same ref immediately before it moves `HEAD`, so a
 force-push between the measurement and the signature is refused where it
-happened rather than discovered later.
+happened rather than discovered later. The filing-time reading rides as the
+act's new-submission precondition, so an exact idempotent retry of an already
+accepted report replays that event without being measured against a ref that
+has moved since, while a different act under the same key and a report under a
+fresh key are both judged.
 
 The Git receipt seals both the authorization report and its exact
 sequencer-admitted `RatifiedBy` event. Embedding that unpredictable event ID in
