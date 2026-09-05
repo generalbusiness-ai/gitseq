@@ -1,0 +1,699 @@
+{
+  "source_head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb",
+  "residents": {
+    "gitseq": {
+      "pid": 91471,
+      "url": "http://127.0.0.1:7777",
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "source_head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb"
+    },
+    "tailapp": {
+      "pid": 91473,
+      "url": "http://127.0.0.1:7778",
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "source_head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb"
+    },
+    "gitseq-chess": {
+      "pid": 91474,
+      "url": "http://127.0.0.1:7779",
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "source_head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb"
+    },
+    "gitseq-inventory": {
+      "pid": 91475,
+      "url": "http://127.0.0.1:7780",
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "source_head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb"
+    }
+  },
+  "endpoint_seconds": 0.8025276249973103,
+  "classifications": {
+    "protected": 36
+  },
+  "deletable": [],
+  "git_worktrees": [
+    {
+      "worktree": "/Users/hughpyle/play/gitseq",
+      "HEAD": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb",
+      "branch": "refs/heads/main",
+      "status": [
+        "?? package-lock.json",
+        "?? package.json",
+        "?? work/"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/private/tmp/claude-501/-Users-hughpyle-play-gitseq/9f5b2bed-0189-40f1-8171-7583e94c5a78/scratchpad/wt-stale-basis",
+      "HEAD": "f13ad373bb36b647484b389cbc5880a4686beb4f",
+      "branch": "refs/heads/request/stale-basis-admission-current",
+      "prunable": "gitdir file points to non-existent location",
+      "status": [],
+      "status_exit": 128,
+      "status_error": "fatal: not a git repository (or any of the parent directories): .git"
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-ui-notif",
+      "HEAD": "dc61ffb0cf366a0a182190fda64bc72f090e04aa",
+      "branch": "refs/heads/request/ui-notification-dropdown",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/append-batching-design",
+      "HEAD": "b8e6bbe4b5cd9ba0d8cdf50fc65959993516baf2",
+      "branch": "refs/heads/request/append-batching-design",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/canonical-authority-eventids",
+      "HEAD": "02558e8d62781fa217ec9d96ee4a1983eecda7ab",
+      "branch": "refs/heads/request/canonical-authority-eventids",
+      "status": [
+        " M SKILL.md",
+        " M cmd/gitseq-mcp/digest.go",
+        " M cmd/gitseq-mcp/digest_test.go",
+        " M cmd/gitseq-mcp/main_test.go",
+        " M cmd/gs/main.go",
+        " M cmd/gs/main_test.go",
+        " M docs/reference/architecture.md",
+        " M docs/reference/event-identifiers.md",
+        " M docs/reference/gs/merge.md",
+        " M docs/reference/gs/ratify.md",
+        " M docs/reference/gs/supersede.md",
+        " M docs/reference/mcp/ratify.md",
+        " M docs/reference/mcp/state.md",
+        " M docs/reference/mcp/supersede.md",
+        " M internal/app/app.go",
+        " M internal/app/app_test.go"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/citation-reanchor-v2",
+      "HEAD": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "branch": "refs/heads/request/citation-reanchor-v2",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/current-tip-merges",
+      "HEAD": "5c9291c0ff4058e3aec85cd25ab66c544034077e",
+      "branch": "refs/heads/merge/current-tip-releases",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/custody-reconcile",
+      "HEAD": "2bb3616608465da06a22a1a562ed60252bec53e9",
+      "branch": "refs/heads/request/custody-lost-update-main",
+      "status": [
+        "UU internal/app/app.go",
+        "A  internal/app/custody_lost_update_test.go",
+        "UU internal/apphost/config.go",
+        "A  internal/apphost/config_lock_other.go",
+        "A  internal/apphost/config_lock_unix.go",
+        "A  internal/apphost/config_update_test.go"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/docset-speedup",
+      "HEAD": "4d5d62b6f2f23d7d3540f3c2ba07abcbea8d6067",
+      "branch": "refs/heads/request/docset-speedup",
+      "status": [
+        " M internal/docset/model_test.go"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/four-authorization-refusal-proofs",
+      "HEAD": "8a3d127dd12eaf18af0657953c950794f6831fc5",
+      "branch": "refs/heads/request/four-authorization-refusal-proofs",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/landing-obligation-i3",
+      "HEAD": "260efbef83a3ae2557623583264240032e6513d9",
+      "branch": "refs/heads/request/landing-obligation-i3",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/landing-obligation-i5",
+      "HEAD": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "branch": "refs/heads/request/landing-obligation-i5",
+      "status": [
+        " M ui/src/components/OutcomeMap.tsx",
+        " M ui/src/components/RequestList.tsx",
+        " M ui/src/components/Thread.tsx",
+        " M ui/src/lib/api.ts",
+        " M ui/src/lib/outcomeMap.ts",
+        " M ui/src/lib/rows.ts",
+        " M ui/src/lib/spine.ts",
+        " M ui/test/components.test.mjs",
+        " M ui/test/dom.test.mjs",
+        " M ui/test/interaction.test.mjs",
+        "?? ui/src/components/RequestResultFields.tsx",
+        "?? ui/src/lib/requestResult.ts"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/lane-identity",
+      "HEAD": "6131249c6a6f86cbd8893bf30f2d582f88bbb274",
+      "branch": "refs/heads/request/lane-identity-design",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/mcp-call-selectors",
+      "HEAD": "6779fd7c62949adbc1397dddd6ef4609f5525620",
+      "branch": "refs/heads/request/mcp-call-selectors",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-authorization-boundary",
+      "HEAD": "af2d512226e0a060c9857ff7ce090ca6ff599ef6",
+      "branch": "refs/heads/request/machine-merge-authorization",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-authorization-proofs-merge-recut",
+      "HEAD": "f3e156ca5e56cd319340fb46ce62f1d1429101a0",
+      "branch": "refs/heads/request/merge-authorization-proofs-merge-recut",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-plan",
+      "HEAD": "94efd037b210e896870c50953e5802e9575e433c",
+      "branch": "refs/heads/request/merge-plan",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-current",
+      "HEAD": "1714a1055f7c6fdc7206f42394989173cc369271",
+      "branch": "refs/heads/request/merge-plan-current",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-current-repair",
+      "HEAD": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796",
+      "branch": "refs/heads/request/merge-plan-current-repair",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-recut",
+      "HEAD": "1567f850e9c1e57ed7efa04510026a435d112769",
+      "branch": "refs/heads/request/merge-plan-recut",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-review-repair-2",
+      "HEAD": "ac2b28dc2300249568714547e3d8061ca8667913",
+      "branch": "refs/heads/request/merge-plan-review-repair-2",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/merged-head-drain-design",
+      "HEAD": "30768e3f5aabaee53074e26723f8e3644ef0d1f9",
+      "branch": "refs/heads/request/merged-head-drain-design",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/novice-cli-recut",
+      "HEAD": "72b2e5e3ff2379a5a052c582f59c905fe0520bd4",
+      "branch": "refs/heads/request/novice-cli-recut",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/novice-cli-usability",
+      "HEAD": "e034ddcd3c84643447b34608238e1eef7b530c91",
+      "branch": "refs/heads/request/novice-cli-usability",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/performance-evidence-composed",
+      "HEAD": "825ce1a384928ae273ab5bf635cf1b3eba32a90e",
+      "branch": "refs/heads/request/performance-evidence-composed",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/readme-positioning",
+      "HEAD": "1f80d38427495199e6ed5c471f5b341bea912ed8",
+      "branch": "refs/heads/request/readme-positioning",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/resident-authority-writer-boundary",
+      "HEAD": "d3e133c47347e1e2cb4aea687f09df942c605d3f",
+      "branch": "refs/heads/request/resident-authority-writer-boundary",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/resident-claim-lifecycle",
+      "HEAD": "36d91a708be16d72e01da62396bf628273a4318b",
+      "branch": "refs/heads/request/resident-claim-lifecycle",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/resident-claim-lifecycle-review-repair",
+      "HEAD": "4856eaf27a94f50b111f21730fcab6ba55273802",
+      "branch": "refs/heads/request/resident-claim-lifecycle-review-repair",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/security-gates",
+      "HEAD": "9edeec9f184bb367efbce1835258c820031b464c",
+      "branch": "refs/heads/request/repo-security-gates",
+      "status": [
+        " M internal/ciguard/workflows_test.go"
+      ],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession",
+      "HEAD": "64bfbde9e2514ce41714f5eec1cc747d94d75eb1",
+      "branch": "refs/heads/request/specific-path-succession",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession-carried",
+      "HEAD": "a3088b1736365c75f37360843139ad5bc7cc2662",
+      "branch": "refs/heads/request/specific-path-succession-carried",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession-current",
+      "HEAD": "44d8d59f368082ec19fec003497fc3d39306570d",
+      "branch": "refs/heads/request/specific-path-succession-current",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/toolbar-departed-courtesy",
+      "HEAD": "9972d165452ade596ba7bfbed1fcd0e8e82ed391",
+      "branch": "refs/heads/request/toolbar-live-participant-current",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/toolbar-ratification-provenance",
+      "HEAD": "64a78663edada38121bf5d20e222020e4fc358be",
+      "branch": "refs/heads/request/toolbar-ratification-provenance",
+      "status": [],
+      "status_exit": 0
+    },
+    {
+      "worktree": "/Users/hughpyle/play/gitseq-worktrees/toolbar-ratification-review-repair",
+      "HEAD": "27e43714685992e2d09441e255f3048a7f58dc1b",
+      "branch": "refs/heads/request/toolbar-ratification-review-repair",
+      "status": [],
+      "status_exit": 0
+    }
+  ],
+  "operational_removals": [],
+  "worktrees": [
+    {
+      "checkout": "gitseq",
+      "branch": "main",
+      "head": "7cd1c87702c20a9794b9b061dd0f769d94b9c3cb",
+      "state": "dirty",
+      "current": true,
+      "remote_contains": null,
+      "rows_omitted": 1169,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "current-tip-merges",
+      "branch": "merge/current-tip-releases",
+      "head": "5c9291c0ff4058e3aec85cd25ab66c544034077e",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1061,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "append-batching-design",
+      "branch": "request/append-batching-design",
+      "head": "b8e6bbe4b5cd9ba0d8cdf50fc65959993516baf2",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1086,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "canonical-authority-eventids",
+      "branch": "request/canonical-authority-eventids",
+      "head": "02558e8d62781fa217ec9d96ee4a1983eecda7ab",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 920,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "citation-reanchor-v2",
+      "branch": "request/citation-reanchor-v2",
+      "head": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 993,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "custody-reconcile",
+      "branch": "request/custody-lost-update-main",
+      "head": "2bb3616608465da06a22a1a562ed60252bec53e9",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 794,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "docset-speedup",
+      "branch": "request/docset-speedup",
+      "head": "4d5d62b6f2f23d7d3540f3c2ba07abcbea8d6067",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 980,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "four-authorization-refusal-proofs",
+      "branch": "request/four-authorization-refusal-proofs",
+      "head": "8a3d127dd12eaf18af0657953c950794f6831fc5",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1066,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "landing-obligation-i3",
+      "branch": "request/landing-obligation-i3",
+      "head": "1481eca1272155c6608c5e40f2951d43f7b62400",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 1168,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "landing-obligation-i5",
+      "branch": "request/landing-obligation-i5",
+      "head": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 1166,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "lane-identity",
+      "branch": "request/lane-identity-design",
+      "head": "6131249c6a6f86cbd8893bf30f2d582f88bbb274",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 920,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-authorization-boundary",
+      "branch": "request/machine-merge-authorization",
+      "head": "af2d512226e0a060c9857ff7ce090ca6ff599ef6",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 982,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "mcp-call-selectors",
+      "branch": "request/mcp-call-selectors",
+      "head": "6779fd7c62949adbc1397dddd6ef4609f5525620",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 982,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-authorization-proofs-merge-recut",
+      "branch": "request/merge-authorization-proofs-merge-recut",
+      "head": "f3e156ca5e56cd319340fb46ce62f1d1429101a0",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1031,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-plan",
+      "branch": "request/merge-plan",
+      "head": "94efd037b210e896870c50953e5802e9575e433c",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 907,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-plan-current",
+      "branch": "request/merge-plan-current",
+      "head": "1714a1055f7c6fdc7206f42394989173cc369271",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1023,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-plan-current-repair",
+      "branch": "request/merge-plan-current-repair",
+      "head": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1090,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-plan-recut",
+      "branch": "request/merge-plan-recut",
+      "head": "1567f850e9c1e57ed7efa04510026a435d112769",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1089,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merge-plan-review-repair-2",
+      "branch": "request/merge-plan-review-repair-2",
+      "head": "ac2b28dc2300249568714547e3d8061ca8667913",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1093,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "merged-head-drain-design",
+      "branch": "request/merged-head-drain-design",
+      "head": "30768e3f5aabaee53074e26723f8e3644ef0d1f9",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1007,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "novice-cli-recut",
+      "branch": "request/novice-cli-recut",
+      "head": "72b2e5e3ff2379a5a052c582f59c905fe0520bd4",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1028,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "novice-cli-usability",
+      "branch": "request/novice-cli-usability",
+      "head": "e034ddcd3c84643447b34608238e1eef7b530c91",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1065,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "performance-evidence-composed",
+      "branch": "request/performance-evidence-composed",
+      "head": "825ce1a384928ae273ab5bf635cf1b3eba32a90e",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1021,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "readme-positioning",
+      "branch": "request/readme-positioning",
+      "head": "1f80d38427495199e6ed5c471f5b341bea912ed8",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 900,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "security-gates",
+      "branch": "request/repo-security-gates",
+      "head": "9edeec9f184bb367efbce1835258c820031b464c",
+      "state": "dirty",
+      "remote_contains": null,
+      "rows_omitted": 710,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "resident-authority-writer-boundary",
+      "branch": "request/resident-authority-writer-boundary",
+      "head": "d3e133c47347e1e2cb4aea687f09df942c605d3f",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 922,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "resident-claim-lifecycle",
+      "branch": "request/resident-claim-lifecycle",
+      "head": "36d91a708be16d72e01da62396bf628273a4318b",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 982,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "resident-claim-lifecycle-review-repair",
+      "branch": "request/resident-claim-lifecycle-review-repair",
+      "head": "4856eaf27a94f50b111f21730fcab6ba55273802",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 984,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "specific-path-succession",
+      "branch": "request/specific-path-succession",
+      "head": "64bfbde9e2514ce41714f5eec1cc747d94d75eb1",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 794,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "specific-path-succession-carried",
+      "branch": "request/specific-path-succession-carried",
+      "head": "a3088b1736365c75f37360843139ad5bc7cc2662",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1023,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "specific-path-succession-current",
+      "branch": "request/specific-path-succession-current",
+      "head": "44d8d59f368082ec19fec003497fc3d39306570d",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1021,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "wt-stale-basis",
+      "branch": "request/stale-basis-admission-current",
+      "head": "f13ad373bb36b647484b389cbc5880a4686beb4f",
+      "state": "prunable",
+      "remote_contains": null,
+      "rows_omitted": 1023,
+      "classification": "protected",
+      "classification_reason": "current, detached, non-clean or target checkout"
+    },
+    {
+      "checkout": "toolbar-departed-courtesy",
+      "branch": "request/toolbar-live-participant-current",
+      "head": "9972d165452ade596ba7bfbed1fcd0e8e82ed391",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1021,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "toolbar-ratification-provenance",
+      "branch": "request/toolbar-ratification-provenance",
+      "head": "64a78663edada38121bf5d20e222020e4fc358be",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1021,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "toolbar-ratification-review-repair",
+      "branch": "request/toolbar-ratification-review-repair",
+      "head": "27e43714685992e2d09441e255f3048a7f58dc1b",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 1022,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    },
+    {
+      "checkout": "gitseq-ui-notif",
+      "branch": "request/ui-notification-dropdown",
+      "head": "dc61ffb0cf366a0a182190fda64bc72f090e04aa",
+      "state": "clean",
+      "remote_contains": null,
+      "rows_omitted": 691,
+      "classification": "protected",
+      "classification_reason": "unsettled or approved-not-landed commitment"
+    }
+  ]
+}
