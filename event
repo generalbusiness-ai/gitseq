@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/service/ui.go","body":{"commit":"183211c3b5bff170171c5bfbe9bfbc3aacde08f6","path":"internal/service/ui.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02a980f84e17c4f9b9e5dc91e01e963a2f39c53d","text":"Merge retired a covered predecessor; the successor is at internal/service/ui.go."}
