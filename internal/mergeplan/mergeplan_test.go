@@ -281,11 +281,11 @@ func TestSuccessionActsAreDeterministic(t *testing.T) {
 			"y": {Class: LeftLiveSibling, Commitment: "promise"},
 		},
 	}
-	first, err := json.Marshal(SuccessionActs("approval", "", "", "candidate", "target", "merge", "", plan))
+	first, err := json.Marshal(SuccessionActs("approval", "", "", "candidate", Target{Repo: "git:sha1:genesis", Ref: "refs/heads/main", PreHead: "target"}, "merge", "", false, plan))
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := json.Marshal(SuccessionActs("approval", "", "", "candidate", "target", "merge", "", plan))
+	second, err := json.Marshal(SuccessionActs("approval", "", "", "candidate", Target{Repo: "git:sha1:genesis", Ref: "refs/heads/main", PreHead: "target"}, "merge", "", false, plan))
 	if err != nil {
 		t.Fatal(err)
 	}

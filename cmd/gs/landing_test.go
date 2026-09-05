@@ -1,0 +1,792 @@
+package main
+
+import (
+	"context"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/intent"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
+)
+
+// The landing obligation at the merge boundary. Every test here drives the
+// real mergeCommand against a temporary repository, because the guards being
+// proved are the ones that decide whether Git moves.
+
+// stateV3 files one workroom/state@3 record. No filer writes that schema yet —
+// I5 owns that — so these tests sign the payload the way any other surface
+// would and submit it through the kernel. Nothing else about the act differs:
+// it is admitted, sequenced and folded by exactly the rules a filer would meet.
+func (f workflowFixture) stateV3(t *testing.T, actor string, kind workroom.Kind, text string, body map[string]string, restsOn ...string) string {
+	t.Helper()
+	_, private, err := f.workspace.Actor(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := workroom.Encode(workroom.State{Kind: kind, Text: text, Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree, err := f.workspace.Store.WritePayloadTree(f.ctx, payload, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := f.workspace.View()
+	signed, err := intent.Sign(intent.Intent{
+		Version: intent.Version,
+		Target:  "git:" + view.ObjectFormat + ":" + view.Genesis,
+		Schema:  workroom.SchemaStateV3, PayloadTree: "git:" + view.ObjectFormat + ":" + tree,
+		RestsOn:        restsOn,
+		IdempotencyNS:  view.IdempotencyNamespace,
+		IdempotencyKey: text,
+	}, private)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := kernel.Submit(f.ctx, f.workspace.Store, kernel.Request{Signed: signed, Payload: payload},
+		kernel.Options{SigningKey: view.SequencerKey}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	last := snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1]
+	if decision := decisionByEvent(t, snapshot.Projection, last.Event); decision.Verdict != workroom.Effective {
+		t.Fatalf("state@3 %s record is %s: %s", kind, decision.Verdict, decision.Reason)
+	}
+	return last.Event
+}
+
+func (f workflowFixture) fingerprint(t *testing.T, actor string) string {
+	t.Helper()
+	resolved, err := f.workspace.ResolveActor(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved.Fingerprint
+}
+
+// landingLane is one complete implementation lane whose request states its
+// result under state@3: request, promise, an independent candidate commit, its
+// reporting artifact, an independent review, and the ratified approval that
+// merge consumes.
+type landingLane struct {
+	request   string
+	candidate string
+	approval  string
+}
+
+// buildLandingLane stages that lane on top of an existing workflow fixture.
+// name keys every idempotency key and Git ref, so several lanes can coexist in
+// one repository.
+func (f workflowFixture) buildLandingLane(t *testing.T, name string, requestBody map[string]string, bases ...string) landingLane {
+	t.Helper()
+	if len(bases) == 0 {
+		bases = []string{f.ground}
+	}
+	body := map[string]string{"to": f.fingerprint(t, "operator"), "conditions": "publish the exact head"}
+	for field, value := range requestBody {
+		body[field] = value
+	}
+	request := f.stateV3(t, "reviewer", workroom.KindRequest, "implement "+name, body, bases...)
+	promise, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "implement " + name,
+		RestsOn: []string{request}, IdempotencyKey: name + "-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkout := filepath.Join(filepath.Dir(f.repo), name)
+	testGit(t, f.repo, "worktree", "add", "-qb", name, checkout)
+	if err := os.WriteFile(filepath.Join(checkout, name+".txt"), []byte(name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, checkout, "add", name+".txt")
+	testGit(t, checkout, "commit", "-qm", name)
+	candidate := testGit(t, checkout, "rev-parse", "HEAD")
+	artifact, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: name + " artifact",
+		Body:    map[string]string{"path": name + ".txt", "commit": candidate},
+		RestsOn: []string{promise.Record.ID, f.ground}, IdempotencyKey: name + "-artifact",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewRequest, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review " + name,
+		Body:    map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": "exact head"},
+		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: name + "-review-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewPromise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review " + name,
+		RestsOn: []string{reviewRequest.Record.ID}, IdempotencyKey: name + "-review-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewCommand(f.ctx, []string{
+		"--repo", f.repo, "--as", "reviewer", "--checkout", checkout,
+		"--artifact", artifact.Record.ID, "--promise", reviewPromise.Record.ID,
+		"--verdict", "approved", "--text", "APPROVED " + name,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	approval := snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1].Event
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbRatify, Target: approval, IdempotencyKey: name + "-ratify-approval",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return landingLane{request: request, candidate: candidate, approval: approval}
+}
+
+// release files the authorization request the performer owes and the hold
+// owner's report answering it, then the performer's ratification: the exact
+// durable shape section 3 recognises as lifting a hold.
+func (f workflowFixture) release(t *testing.T, lane landingLane, owner string) string {
+	t.Helper()
+	request := f.stateV3(t, "operator", workroom.KindRequest, "release the landing hold on "+lane.candidate,
+		map[string]string{"to": f.fingerprint(t, owner), "no_git_artifact": "true", "conditions": "lift the hold for this candidate"},
+		lane.request)
+	report, err := f.workspace.Act(f.ctx, owner, app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "release the hold for this exact candidate",
+		Body: map[string]string{
+			"authorizes_candidate": lane.candidate,
+			"authorizes_approval":  lane.approval,
+			"authorizes_request":   lane.request,
+			"target_pre_head":      testGit(t, f.repo, "rev-parse", "HEAD"),
+		},
+		RestsOn: []string{request}, IdempotencyKey: "release-report-" + lane.candidate,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbRatify, Target: report.Record.ID, IdempotencyKey: "ratify-release-" + lane.candidate,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return report.Record.ID
+}
+
+func (f workflowFixture) mergeLane(t *testing.T, lane landingLane, extra ...string) error {
+	t.Helper()
+	arguments := append([]string{
+		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+		"--candidate", lane.candidate, "--approval", lane.approval,
+		"--text", "Merge the approved lane and make it available.",
+	}, extra...)
+	return mergeCommand(f.ctx, arguments)
+}
+
+// captureStderr runs one merge with standard error redirected, so a warning
+// that only exists as a side effect can be asserted on.
+func captureStderr(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stderr := os.Stderr
+	os.Stderr = writer
+	runErr := run()
+	os.Stderr = stderr
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	written, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(written), runErr
+}
+
+func mergeReceiptStatement(t *testing.T, f workflowFixture, approval string) workroom.Statement {
+	t.Helper()
+	for _, statement := range f.snapshot(t).Projection.Statements {
+		if statement.Body["merge_approval"] == approval && statement.Body["merge_head"] != "" {
+			return statement
+		}
+	}
+	t.Fatalf("no durable merge receipt for approval %s", approval)
+	return workroom.Statement{}
+}
+
+// TestMergeSealsTheTargetBindingInBothReceipts is the positive case the rest of
+// this file measures against: an ordinary merge names its destination in the
+// Git trailers and in the durable receipt, and the two agree.
+func TestMergeSealsTheTargetBindingInBothReceipts(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Merge the approved feature and seal where it landed.",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	wantRepo := mergeplan.WorkroomRepo(fixture.workspace)
+	if receipt.TargetRepo != wantRepo || receipt.TargetRef != "refs/heads/main" {
+		t.Fatalf("sealed Git target = %s %s, want %s refs/heads/main", receipt.TargetRepo, receipt.TargetRef, wantRepo)
+	}
+	if receipt.HoldWarning != "" {
+		t.Fatalf("unheld legacy merge recorded a hold warning %q", receipt.HoldWarning)
+	}
+	statement := mergeReceiptStatement(t, fixture, approval)
+	if statement.Body["merge_target_repo"] != wantRepo || statement.Body["merge_target_ref"] != "refs/heads/main" {
+		t.Fatalf("durable target = %s %s, want %s refs/heads/main",
+			statement.Body["merge_target_repo"], statement.Body["merge_target_ref"], wantRepo)
+	}
+	if _, recorded := statement.Body["merge_hold_warning"]; recorded {
+		t.Fatal("durable receipt recorded a hold warning for an unheld merge")
+	}
+}
+
+// TestMergeRefusesADetachedCheckout proves the first section-6 refusal. A
+// detached checkout has no branch to land into, so there is nothing a receipt
+// could truthfully name.
+func TestMergeRefusesADetachedCheckout(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	testGit(t, fixture.repo, "checkout", "--detach", "HEAD")
+	beforeHead, before := testGit(t, fixture.repo, "rev-parse", "HEAD"), fixture.snapshot(t)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a merge into a detached checkout.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "checkout is detached") {
+		t.Fatalf("detached merge error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != beforeHead {
+		t.Fatalf("detached refusal moved HEAD %s -> %s", beforeHead, got)
+	}
+	if after := fixture.snapshot(t); after.Depth != before.Depth {
+		t.Fatalf("detached refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// TestMergeRefusesACheckoutOnAnotherBranch proves the second. A request filed
+// before state@3 owes its landing to refs/heads/main of this workroom, so any
+// other branch is somewhere the request never named.
+func TestMergeRefusesACheckoutOnAnotherBranch(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	testGit(t, fixture.repo, "switch", "-qc", "release-2")
+	beforeHead, before := testGit(t, fixture.repo, "rev-parse", "HEAD"), fixture.snapshot(t)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a merge into a branch the request never named.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "checkout is on refs/heads/release-2") ||
+		!strings.Contains(err.Error(), "owes its landing to refs/heads/main") {
+		t.Fatalf("wrong-branch merge error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != beforeHead {
+		t.Fatalf("wrong-branch refusal moved HEAD %s -> %s", beforeHead, got)
+	}
+	if after := fixture.snapshot(t); after.Depth != before.Depth {
+		t.Fatalf("wrong-branch refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// TestMergeStatedTargetLandsOnItsOwnRefAndNowhereElse covers a request that
+// states its triple by value: the named branch lands, and the branch beside it
+// refuses even though both are clean checkouts of the same repository.
+func TestMergeStatedTargetLandsOnItsOwnRefAndNowhereElse(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	testGit(t, fixture.repo, "branch", "release-2")
+	lane := fixture.buildLandingLane(t, "stated", map[string]string{
+		"target_repo": mergeplan.WorkroomRepo(fixture.workspace),
+		"target_ref":  "refs/heads/release-2",
+		"target_head": testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	})
+	if err := fixture.mergeLane(t, lane); err == nil ||
+		!strings.Contains(err.Error(), "owes its landing to refs/heads/release-2") {
+		t.Fatalf("merge on refs/heads/main error = %v", err)
+	}
+	testGit(t, fixture.repo, "switch", "-q", "release-2")
+	if err := fixture.mergeLane(t, lane); err != nil {
+		t.Fatalf("merge on the stated target: %v", err)
+	}
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if receipt.TargetRef != "refs/heads/release-2" {
+		t.Fatalf("sealed target ref = %q, want refs/heads/release-2", receipt.TargetRef)
+	}
+}
+
+// TestMergeInheritedTargetLandsOnTheParentsRef proves the merge reads I1's
+// resolved fact rather than the child request's own body: the child states
+// target=inherit and nothing else, and the destination is still enforced.
+func TestMergeInheritedTargetLandsOnTheParentsRef(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	testGit(t, fixture.repo, "branch", "release-2")
+	parent := fixture.stateV3(t, "reviewer", workroom.KindRequest, "parent owing release-2", map[string]string{
+		"to":          fixture.fingerprint(t, "operator"),
+		"conditions":  "the parent obligation",
+		"target_repo": mergeplan.WorkroomRepo(fixture.workspace),
+		"target_ref":  "refs/heads/release-2",
+		"target_head": testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}, fixture.ground)
+	lane := fixture.buildLandingLane(t, "inherited", map[string]string{"target": "inherit"}, parent)
+	if err := fixture.mergeLane(t, lane); err == nil ||
+		!strings.Contains(err.Error(), "owes its landing to refs/heads/release-2") {
+		t.Fatalf("inherited-target merge on main error = %v", err)
+	}
+	testGit(t, fixture.repo, "switch", "-q", "release-2")
+	if err := fixture.mergeLane(t, lane); err != nil {
+		t.Fatalf("merge on the inherited target: %v", err)
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, testGit(t, fixture.repo, "rev-parse", "HEAD"))
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if receipt.TargetRef != "refs/heads/release-2" {
+		t.Fatalf("sealed target ref = %q, want the inherited refs/heads/release-2", receipt.TargetRef)
+	}
+}
+
+// TestMergeRefusesUnsolicitedAuthorization is section 3's rule. An unheld
+// state@3 request asked for no release, so a merge that presents one is
+// claiming an authority nobody granted.
+func TestMergeRefusesUnsolicitedAuthorization(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	lane := fixture.buildLandingLane(t, "unheld", map[string]string{
+		"target_repo": mergeplan.WorkroomRepo(fixture.workspace),
+		"target_ref":  "refs/heads/main",
+		"target_head": testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	})
+	authorization := fixture.release(t, lane, "reviewer")
+	before := fixture.snapshot(t)
+	err := fixture.mergeLane(t, lane, "--authorization", authorization)
+	if err == nil || !strings.Contains(err.Error(), "is not held; drop --authorization") {
+		t.Fatalf("unsolicited authorization error = %v", err)
+	}
+	if after := fixture.snapshot(t); after.Depth != before.Depth {
+		t.Fatalf("unsolicited authorization refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+	if err := fixture.mergeLane(t, lane); err != nil {
+		t.Fatalf("the same merge without --authorization: %v", err)
+	}
+}
+
+// TestMergeWarnsAndRecordsAHeldLandingWithoutARelease is the compatibility
+// window of section 9. For one release the missing release is said out loud
+// and written into both receipts instead of refusing the merge.
+func TestMergeWarnsAndRecordsAHeldLandingWithoutARelease(t *testing.T) {
+	// Not parallel: it reads the process-wide standard error, and only the
+	// other sequential tests that do the same could take it away.
+	fixture := newWorkflowFixture(t)
+	lane := fixture.buildLandingLane(t, "held", map[string]string{
+		"target_repo": mergeplan.WorkroomRepo(fixture.workspace),
+		"target_ref":  "refs/heads/main",
+		"target_head": testGit(t, fixture.repo, "rev-parse", "HEAD"),
+		"landing":     "held",
+	})
+	warning, err := captureStderr(t, func() error { return fixture.mergeLane(t, lane) })
+	if err != nil {
+		t.Fatalf("held merge under the compatibility window: %v", err)
+	}
+	if !strings.Contains(warning, "landing is held and no effective release") {
+		t.Fatalf("held merge stderr = %q, want the compatibility-window warning", warning)
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, testGit(t, fixture.repo, "rev-parse", "HEAD"))
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if receipt.HoldWarning != "true" {
+		t.Fatalf("sealed Gitseq-Hold-Warning = %q, want true", receipt.HoldWarning)
+	}
+	if got := mergeReceiptStatement(t, fixture, lane.approval).Body["merge_hold_warning"]; got != "true" {
+		t.Fatalf("durable merge_hold_warning = %q, want true", got)
+	}
+}
+
+// TestMergeOfAReleasedHoldRecordsNoWarning is the other half of the same rule:
+// with the release in force the window is not used, and neither receipt says
+// it was.
+func TestMergeOfAReleasedHoldRecordsNoWarning(t *testing.T) {
+	t.Parallel()
+	// The proof here is what the two receipts record, not what standard error
+	// happened to contain: an absence cannot be asserted on a stream every
+	// other merge in this package also writes to.
+	fixture := newWorkflowFixture(t)
+	lane := fixture.buildLandingLane(t, "released", map[string]string{
+		"target_repo": mergeplan.WorkroomRepo(fixture.workspace),
+		"target_ref":  "refs/heads/main",
+		"target_head": testGit(t, fixture.repo, "rev-parse", "HEAD"),
+		"landing":     "held",
+	})
+	fixture.release(t, lane, "reviewer")
+	if got := commitmentRelease(t, fixture, lane.request); got == "" {
+		t.Fatal("the fold recorded no release for the held landing request")
+	}
+	if err := fixture.mergeLane(t, lane); err != nil {
+		t.Fatalf("merge of a released hold: %v", err)
+	}
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, testGit(t, fixture.repo, "rev-parse", "HEAD"))
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if receipt.HoldWarning != "" {
+		t.Fatalf("released hold recorded Gitseq-Hold-Warning %q", receipt.HoldWarning)
+	}
+	if _, recorded := mergeReceiptStatement(t, fixture, lane.approval).Body["merge_hold_warning"]; recorded {
+		t.Fatal("released hold recorded merge_hold_warning in the durable receipt")
+	}
+}
+
+func commitmentRelease(t *testing.T, f workflowFixture, request string) string {
+	t.Helper()
+	for _, commitment := range f.snapshot(t).Projection.Commitments {
+		if commitment.Request == request && commitment.Release != "" {
+			return commitment.Release
+		}
+	}
+	return ""
+}
+
+// TestMergeRefusesWhenTheTargetRefMovesAfterPlanning proves the re-resolution
+// covers the ref and not only the head. The plan was computed for one branch
+// and the checkout is on another by the time the merge would reserve.
+func TestMergeRefusesWhenTheTargetRefMovesAfterPlanning(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := fixture.snapshot(t)
+	previous := buildMergePlan
+	buildMergePlan = func(ctx context.Context, workspace *app.Workspace, checkout, candidate, approval, merger string, signer mergeplan.Signer) mergeplan.Result {
+		result := previous(ctx, workspace, checkout, candidate, approval, merger, signer)
+		if result.Allowed {
+			testGit(t, checkout, "switch", "-qc", "moved-after-planning")
+		}
+		return result
+	}
+	t.Cleanup(func() { buildMergePlan = previous })
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a plan whose target branch moved before reservation.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge target ref moved after planning") {
+		t.Fatalf("moving-ref merge error = %v", err)
+	}
+	if after := fixture.snapshot(t); after.Depth != before.Depth {
+		t.Fatalf("moving-ref refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+	if _, err := git(fixture.ctx, fixture.repo, "show-ref", "--verify", mergeReceiptRef(approval)); err == nil {
+		t.Fatal("moving-ref refusal left a receipt reservation")
+	}
+}
+
+// TestMergeRefusesWhenTheTargetMovesBeforeHeadMoves is the last measurement.
+// The tentative merge is already staged and the reservation taken when the
+// target branch is advanced underneath it; the receipt would name a pre-head
+// the branch no longer had.
+func TestMergeRefusesWhenTheTargetMovesBeforeHeadMoves(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	beforeHead, before := testGit(t, fixture.repo, "rev-parse", "HEAD"), fixture.snapshot(t)
+	previous := readStagedMergeChanges
+	readStagedMergeChanges = func(ctx context.Context, checkout string) ([]mergeChange, error) {
+		changes, err := previous(ctx, checkout)
+		testGit(t, fixture.repo, "update-ref", "refs/heads/main", fixture.candidate)
+		return changes, err
+	}
+	t.Cleanup(func() { readStagedMergeChanges = previous })
+
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Refuse a target that moved while the merge was staged.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge target moved before HEAD moved") {
+		t.Fatalf("late-movement merge error = %v", err)
+	}
+	testGit(t, fixture.repo, "update-ref", "refs/heads/main", beforeHead)
+	if after := fixture.snapshot(t); after.Depth != before.Depth {
+		t.Fatalf("late-movement refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// sealReceipt writes one merge commit carrying exactly the receipt these
+// recovery tests need, without going through the merge command.
+func sealReceipt(t *testing.T, fixture workflowFixture, approval string, target mergeplan.Target, holdWarning bool) string {
+	t.Helper()
+	changes, err := mergeChangesBetween(fixture.ctx, fixture.repo, target.PreHead, fixture.candidate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := fixture.snapshot(t)
+	plan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, target.PreHead, fixture.candidate, nil))
+	message, err := mergeReceiptMessage("Seal a receipt for recovery.", approval, "", "", fixture.candidate, target, "", holdWarning, plan)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "merge", "--no-ff", "-m", message, fixture.candidate)
+	head := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), head, "")
+	return head
+}
+
+// TestMergeResumeRefusesAReceiptSealedForAnotherDestination is the recovery
+// side of the binding. Both halves are proved: a ref that names another
+// branch, and a repository half that names another workroom.
+func TestMergeResumeRefusesAReceiptSealedForAnotherDestination(t *testing.T) {
+	t.Parallel()
+	tests := map[string]struct {
+		target mergeplan.Target
+		want   string
+	}{
+		"another branch": {
+			target: mergeplan.Target{Ref: "refs/heads/release-2"},
+			want:   "merge receipt landed on refs/heads/release-2",
+		},
+		"another repository": {
+			target: mergeplan.Target{Repo: "git:sha1:" + strings.Repeat("b", 40)},
+			want:   "merge receipt landed on refs/heads/main of git:sha1:" + strings.Repeat("b", 40),
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			fixture := newWorkflowFixture(t)
+			approval := fixture.review(t)
+			fixture.ratify(t, approval)
+			target := mergeplan.Target{
+				Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+				PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+			}
+			if test.target.Ref != "" {
+				target.Ref = test.target.Ref
+			}
+			if test.target.Repo != "" {
+				target.Repo = test.target.Repo
+			}
+			sealReceipt(t, fixture, approval, target, false)
+			before := fixture.snapshot(t)
+			err := mergeCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+				"--candidate", fixture.candidate, "--approval", approval,
+				"--text", "Resume a receipt sealed somewhere else.",
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("foreign-destination resume error = %v, want %q", err, test.want)
+			}
+			if after := fixture.snapshot(t); after.Depth != before.Depth {
+				t.Fatalf("foreign-destination refusal changed workroom depth %d -> %d", before.Depth, after.Depth)
+			}
+		})
+	}
+}
+
+// TestMergeResumeRefusesAHalfSealedTargetBinding separates a legacy receipt,
+// which names no destination at all, from a malformed one that names half of
+// it and proves nothing.
+func TestMergeResumeRefusesAHalfSealedTargetBinding(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{
+		Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}
+	head := sealReceipt(t, fixture, approval, target, false)
+	message := testGit(t, fixture.repo, "show", "-s", "--format=%B", head)
+	testGit(t, fixture.repo, "commit", "--amend", "-m",
+		strings.Replace(message, "\n"+mergeplan.TargetRefTrailer+target.Ref, "", 1))
+	amended := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), amended, head)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume a half-sealed receipt.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Gitseq-Target-Repo and Gitseq-Target-Ref together") {
+		t.Fatalf("half-sealed resume error = %v", err)
+	}
+}
+
+// TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers is the
+// tamper check. The destination lives in two places — a signed durable
+// receipt and a Git commit message — and recovery reads both and requires
+// them equal before appending anything further.
+func TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{
+		Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}
+	head := sealReceipt(t, fixture, approval, target, false)
+	sealed, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
+	if err != nil || !ok {
+		t.Fatalf("read sealed receipt: ok=%v err=%v", ok, err)
+	}
+	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
+		Body: map[string]string{
+			"merge_approval": approval, "merge_candidate": fixture.candidate,
+			"merge_target_pre_head": target.PreHead, "merge_head": head,
+			"merge_retirements": sealed.Retirements, "merge_successors": sealed.Successors,
+			"merge_target_repo": target.Repo, "merge_target_ref": "refs/heads/release-2",
+		},
+		RestsOn: []string{approval}, IdempotencyKey: "disagreeing-receipt", AllowDeadBasis: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err = mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume a receipt whose two halves disagree.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "recorded merge target does not match the sealed Git receipt") {
+		t.Fatalf("disagreeing receipt resume error = %v", err)
+	}
+}
+
+// TestMergeResumesAnUntamperedReceiptCarryingTheNewFields is the same recovery
+// path with nothing rewritten: the durable suffix lands, and the receipt keeps
+// the destination it sealed.
+func TestMergeResumesAnUntamperedReceiptCarryingTheNewFields(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{
+		Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}
+	head := sealReceipt(t, fixture, approval, target, false)
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume the sealed receipt.",
+	}); err != nil {
+		t.Fatalf("resume an untampered sealed receipt: %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("resume moved HEAD %s -> %s", head, got)
+	}
+	statement := mergeReceiptStatement(t, fixture, approval)
+	if statement.Body["merge_target_repo"] != target.Repo || statement.Body["merge_target_ref"] != target.Ref {
+		t.Fatalf("resumed durable target = %s %s, want %s %s",
+			statement.Body["merge_target_repo"], statement.Body["merge_target_ref"], target.Repo, target.Ref)
+	}
+}
+
+// TestMergeResumesALegacyReceiptWithNoTargetFields is section 9's receipt
+// reading. A receipt sealed before the destination was part of one names none,
+// reads as refs/heads/main of this workroom, and resumes without acquiring
+// fields its author never signed.
+func TestMergeResumesALegacyReceiptWithNoTargetFields(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD")}
+	head := sealReceipt(t, fixture, approval, target, false)
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, head)
+	if err != nil || !ok || !receipt.Legacy() {
+		t.Fatalf("legacy receipt: ok=%v legacy=%v err=%v", ok, receipt.Legacy(), err)
+	}
+	if err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume a legacy receipt.",
+	}); err != nil {
+		t.Fatalf("resume a legacy receipt: %v", err)
+	}
+	statement := mergeReceiptStatement(t, fixture, approval)
+	if _, present := statement.Body["merge_target_repo"]; present {
+		t.Fatalf("legacy resume invented a target repository: %v", statement.Body)
+	}
+	if _, present := statement.Body["merge_target_ref"]; present {
+		t.Fatalf("legacy resume invented a target ref: %v", statement.Body)
+	}
+}
+
+// TestMergeResumeRefusesALegacyReceiptOnAnotherBranch completes that reading.
+// A legacy receipt landed on refs/heads/main here, so recovery of one from a
+// checkout standing somewhere else is refused rather than silently accepted.
+func TestMergeResumeRefusesALegacyReceiptOnAnotherBranch(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD")}
+	head := sealReceipt(t, fixture, approval, target, false)
+	testGit(t, fixture.repo, "switch", "-qc", "release-2")
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume a legacy receipt from another branch.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "merge receipt landed on refs/heads/main") {
+		t.Fatalf("legacy resume from another branch error = %v", err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("refused legacy resume moved HEAD %s -> %s", head, got)
+	}
+}
+
+// TestMergeResumeRefusesAnUnknownHoldWarningValue keeps the window marker a
+// fact rather than free text. Recovery reads it back out of a commit message,
+// so anything but the exact value it writes is refused.
+func TestMergeResumeRefusesAnUnknownHoldWarningValue(t *testing.T) {
+	t.Parallel()
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	target := mergeplan.Target{
+		Repo: mergeplan.WorkroomRepo(fixture.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, fixture.repo, "rev-parse", "HEAD"),
+	}
+	head := sealReceipt(t, fixture, approval, target, true)
+	message := testGit(t, fixture.repo, "show", "-s", "--format=%B", head)
+	testGit(t, fixture.repo, "commit", "--amend", "-m",
+		strings.Replace(message, mergeplan.HoldWarningTrailer+"true", mergeplan.HoldWarningTrailer+"maybe", 1))
+	amended := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "update-ref", mergeReceiptRef(approval), amended, head)
+	err := mergeCommand(fixture.ctx, []string{
+		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+		"--candidate", fixture.candidate, "--approval", approval,
+		"--text", "Resume a receipt whose window marker is not a fact.",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Gitseq-Hold-Warning is \"maybe\"") {
+		t.Fatalf("unknown hold-warning value resume error = %v", err)
+	}
+}

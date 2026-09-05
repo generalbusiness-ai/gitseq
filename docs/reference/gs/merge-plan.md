@@ -39,7 +39,7 @@ inspect a refusal without parsing stderr.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice >/dev/null
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)

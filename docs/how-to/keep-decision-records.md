@@ -71,7 +71,7 @@ any special role.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 BASE=$(git -C "$REPO" branch --show-current)
 gs init --repo "$REPO" --operator alice >/dev/null

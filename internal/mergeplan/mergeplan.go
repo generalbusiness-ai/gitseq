@@ -75,12 +75,62 @@ type Retirement struct {
 	Successor string `json:"successor,omitempty"`
 }
 
+// Target is where a merge lands, measured in the governed checkout rather than
+// read from anything a signer wrote. Repo is the workroom genesis id of the
+// checkout's repository, Ref the branch its HEAD points at, and PreHead the
+// commit that ref held. All three are sealed in the receipt, because a receipt
+// that names only a pre-head cannot say afterwards which branch of which
+// repository that head belonged to.
+type Target struct {
+	Repo    string `json:"repo,omitempty"`
+	Ref     string `json:"ref,omitempty"`
+	PreHead string `json:"pre_head,omitempty"`
+}
+
+// LegacyTargetRef is what a receipt sealed before the two target fields existed
+// landed into. It is a reading of history, never a default for a new merge.
+const LegacyTargetRef = "refs/heads/main"
+
+// WorkroomRepo is the workroom genesis identifier a target_repo field carries:
+// the workroom half of every event id this workroom mints.
+func WorkroomRepo(workspace *app.Workspace) string {
+	view := workspace.View()
+	return "git:" + view.ObjectFormat + ":" + view.Genesis
+}
+
+// ResolveTarget measures the checkout's landing destination. A merge lands into
+// a checked-out branch and nothing else, so a detached checkout has no
+// destination to name and is refused here rather than sealed as an empty ref.
+//
+// The repository half is the workroom's own genesis id. ValidateCheckout is
+// what binds the two: it refuses a checkout whose Git common directory is not
+// this workroom's repository, so by the time a target is resolved the
+// checkout's repository and the workroom's are the same repository.
+func ResolveTarget(ctx context.Context, workspace *app.Workspace, checkout string) (Target, error) {
+	ref, err := git(ctx, checkout, "symbolic-ref", "--quiet", "HEAD")
+	if err != nil || strings.TrimSpace(ref) == "" {
+		return Target{}, errors.New("checkout is detached; a merge lands only into a checked-out branch")
+	}
+	target := Target{Repo: WorkroomRepo(workspace), Ref: strings.TrimSpace(ref)}
+	if !strings.HasPrefix(target.Ref, "refs/heads/") {
+		return Target{}, fmt.Errorf("checkout HEAD points at %s, which is not a branch under refs/heads/", target.Ref)
+	}
+	head, err := git(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return Target{}, err
+	}
+	target.PreHead = strings.TrimSpace(head)
+	return target, nil
+}
+
 type Result struct {
 	Frontier            Frontier            `json:"frontier"`
 	Mode                string              `json:"mode"`
 	Approval            string              `json:"approval"`
 	ExactHead           string              `json:"exact_head"`
 	Implementer         string              `json:"implementer,omitempty"`
+	TargetRepo          string              `json:"target_repo,omitempty"`
+	TargetRef           string              `json:"target_ref,omitempty"`
 	TargetPreHead       string              `json:"target_pre_head,omitempty"`
 	MergeHead           string              `json:"merge_head,omitempty"`
 	CandidateArtifacts  []CandidateArtifact `json:"candidate_artifacts"`
@@ -858,6 +908,8 @@ func provenanceClosure(provenance map[string][]string, effective map[string]bool
 type sealedReceipt struct {
 	Approval      string
 	Candidate     string
+	TargetRepo    string
+	TargetRef     string
 	TargetPreHead string
 	MergeHead     string
 	Retire        map[string]string
@@ -872,6 +924,9 @@ const (
 	AuthorizationRatificationTrailer = "Gitseq-Authorization-Ratification: "
 	CandidateTrailer                 = "Gitseq-Candidate: "
 	TargetTrailer                    = "Gitseq-Target-Pre-Head: "
+	TargetRepoTrailer                = "Gitseq-Target-Repo: "
+	TargetRefTrailer                 = "Gitseq-Target-Ref: "
+	HoldWarningTrailer               = "Gitseq-Hold-Warning: "
 	RetirementsTrailer               = "Gitseq-Retirements: "
 	SuccessorsTrailer                = "Gitseq-Successors: "
 	LeftLiveTrailer                  = "Gitseq-Left-Live: "
@@ -887,15 +942,50 @@ type Receipt struct {
 	Authorization             string
 	AuthorizationRatification string
 	Candidate                 string
-	TargetPreHead             string
-	MergeHead                 string
-	Retirements               string
-	Successors                string
-	LeftLive                  string
-	LeftLivePresent           bool
-	ChangedPaths              string
-	ChangedPathsPresent       bool
-	Staleness                 string
+	// TargetRepo and TargetRef are the sealed destination. Both empty is a
+	// legacy receipt, read through SealedTarget; exactly one present is a
+	// malformed one, which TargetPairPresent separates from both.
+	TargetRepo    string
+	TargetRef     string
+	TargetPreHead string
+	// HoldWarning is the raw trailer value recording that this merge landed a
+	// held request with no effective release, under the compatibility window
+	// of section 9 of the landing-obligation design.
+	HoldWarning         string
+	MergeHead           string
+	Retirements         string
+	Successors          string
+	LeftLive            string
+	LeftLivePresent     bool
+	ChangedPaths        string
+	ChangedPathsPresent bool
+	Staleness           string
+}
+
+// SealedTarget reads where a receipt landed. A receipt carrying neither target
+// field predates them and landed on refs/heads/main of this workroom's own
+// repository, which is exactly what the audited history means; workroomRepo is
+// that repository's genesis id.
+func (receipt Receipt) SealedTarget(workroomRepo string) Target {
+	target := Target{Repo: receipt.TargetRepo, Ref: receipt.TargetRef, PreHead: receipt.TargetPreHead}
+	if receipt.Legacy() {
+		target.Repo, target.Ref = workroomRepo, LegacyTargetRef
+	}
+	return target
+}
+
+// Legacy reports that this receipt was sealed before the destination was part
+// of a receipt. It is a different fact from a malformed half-pair, which
+// TargetPairPresent rejects before anything reads this.
+func (receipt Receipt) Legacy() bool {
+	return receipt.TargetRepo == "" && receipt.TargetRef == ""
+}
+
+// TargetPairPresent separates a complete destination from a legacy receipt
+// that names none. A receipt naming one half and not the other proves nothing
+// about where it landed, and no merge this command wrote can produce one.
+func (receipt Receipt) TargetPairPresent() (present, coherent bool) {
+	return receipt.TargetRepo != "", (receipt.TargetRepo != "") == (receipt.TargetRef != "")
 }
 
 func ReceiptKey(approval string) string {
@@ -928,6 +1018,12 @@ func ReadReceipt(ctx context.Context, checkout, head string) (Receipt, bool, err
 			receipt.Candidate = strings.TrimPrefix(line, CandidateTrailer)
 		case strings.HasPrefix(line, TargetTrailer):
 			receipt.TargetPreHead = strings.TrimPrefix(line, TargetTrailer)
+		case strings.HasPrefix(line, TargetRepoTrailer):
+			receipt.TargetRepo = strings.TrimPrefix(line, TargetRepoTrailer)
+		case strings.HasPrefix(line, TargetRefTrailer):
+			receipt.TargetRef = strings.TrimPrefix(line, TargetRefTrailer)
+		case strings.HasPrefix(line, HoldWarningTrailer):
+			receipt.HoldWarning = strings.TrimPrefix(line, HoldWarningTrailer)
 		case strings.HasPrefix(line, RetirementsTrailer):
 			receipt.Retirements = strings.TrimPrefix(line, RetirementsTrailer)
 		case strings.HasPrefix(line, SuccessorsTrailer):
@@ -961,6 +1057,7 @@ func ReadReceipt(ctx context.Context, checkout, head string) (Receipt, bool, err
 func decodeReceipt(receipt Receipt) (sealedReceipt, error) {
 	decoded := sealedReceipt{
 		Approval: receipt.Approval, Candidate: receipt.Candidate,
+		TargetRepo: receipt.TargetRepo, TargetRef: receipt.TargetRef,
 		TargetPreHead: receipt.TargetPreHead, MergeHead: receipt.MergeHead,
 	}
 	if err := json.Unmarshal([]byte(receipt.Retirements), &decoded.Retire); err != nil {
@@ -1014,6 +1111,7 @@ func existingReceipt(ctx context.Context, checkout, approval string) (sealedRece
 }
 
 func renderReceipt(result *Result, projection workroom.Projection, receipt sealedReceipt) {
+	result.TargetRepo, result.TargetRef = receipt.TargetRepo, receipt.TargetRef
 	result.TargetPreHead = receipt.TargetPreHead
 	result.MergeHead = receipt.MergeHead
 	result.ChangedPaths = append(result.ChangedPaths, receipt.ChangedPaths...)
@@ -1056,8 +1154,11 @@ func successionKey(approval, class, value string) string {
 // read-only plan and by merge. mergeHead is the candidate during prospective
 // admission: both are full object IDs in the same repository, so the signed
 // envelope and body have the exact eventual byte lengths.
-func SuccessionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness string, plan Succession) []ProspectiveAct {
+func SuccessionActs(approval, authorization, authorizationRatification, candidate string, target Target, mergeHead, staleness string, holdWarning bool, plan Succession) []ProspectiveAct {
 	if (authorization != "") != (authorizationRatification != "") {
+		return nil
+	}
+	if (target.Repo != "") != (target.Ref != "") {
 		return nil
 	}
 	retirements, err := json.Marshal(plan.Retire)
@@ -1070,8 +1171,18 @@ func SuccessionActs(approval, authorization, authorizationRatification, candidat
 	}
 	receiptBody := map[string]string{
 		"merge_approval": approval, "merge_candidate": candidate,
-		"merge_target_pre_head": targetPreHead, "merge_head": mergeHead,
+		"merge_target_pre_head": target.PreHead, "merge_head": mergeHead,
 		"merge_retirements": string(retirements), "merge_successors": string(successors),
+	}
+	// A legacy receipt names no destination and must keep naming none, so the
+	// resumed durable body is byte-for-byte the one that merge would have
+	// written. Only a merge that measured the destination seals it.
+	if target.Repo != "" {
+		receiptBody["merge_target_repo"] = target.Repo
+		receiptBody["merge_target_ref"] = target.Ref
+	}
+	if holdWarning {
+		receiptBody["merge_hold_warning"] = "true"
 	}
 	receiptBases := []string{approval}
 	if authorization != "" {
@@ -1247,12 +1358,12 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 	if err := RequireImplementer(snapshot.Projection, approvalEvent, merger); err != nil {
 		return fail("implementer", err)
 	}
-	target, err := git(ctx, checkout, "rev-parse", "--verify", "HEAD^{commit}")
+	target, err := ResolveTarget(ctx, workspace, checkout)
 	if err != nil {
 		return fail("target", err)
 	}
-	result.TargetPreHead = strings.TrimSpace(target)
-	result.Reasons = append(result.Reasons, Reason{Code: "target_allowed", Check: "target", Allowed: true, Reason: "target pre-head is an exact commit in the governed checkout"})
+	result.TargetRepo, result.TargetRef, result.TargetPreHead = target.Repo, target.Ref, target.PreHead
+	result.Reasons = append(result.Reasons, Reason{Code: "target_allowed", Check: "target", Allowed: true, Reason: "the governed checkout is on branch " + target.Ref + " of the workroom repository, at an exact pre-head commit"})
 	if _, err := git(ctx, checkout, "merge-base", "--is-ancestor", candidate, result.TargetPreHead); err == nil {
 		return fail("candidate", errors.New("approved candidate is already contained in the target"))
 	}
@@ -1302,7 +1413,7 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 	if err := ValidateReach(snapshot.Projection, plan, approvalEvent, merger); err != nil {
 		return fail("reviewed_scope", err)
 	}
-	acts := SuccessionActs(approvalEvent, "", "", candidate, result.TargetPreHead, candidate, approved.Staleness, plan)
+	acts := SuccessionActs(approvalEvent, "", "", candidate, target, candidate, approved.Staleness, false, plan)
 	if acts == nil {
 		return fail("admission", errors.New("merge succession could not be represented as a durable act suffix"))
 	}
@@ -1332,7 +1443,8 @@ func boundResult(result Result) Result {
 	}
 	return Result{
 		Frontier: result.Frontier, Mode: result.Mode, Approval: result.Approval, ExactHead: result.ExactHead,
-		Implementer: result.Implementer, TargetPreHead: result.TargetPreHead, MergeHead: result.MergeHead,
+		Implementer: result.Implementer, TargetRepo: result.TargetRepo, TargetRef: result.TargetRef,
+		TargetPreHead: result.TargetPreHead, MergeHead: result.MergeHead,
 		CandidateArtifacts: []CandidateArtifact{}, ReviewedPaths: []string{}, ChangedPaths: []string{},
 		CoveringArtifacts: []CoveringArtifact{}, Retirements: []Retirement{}, Successors: []string{},
 		Allowed: false, Reasons: []Reason{{Code: "plan_output_too_large", Check: "output", Allowed: false, Reason: reason}},
