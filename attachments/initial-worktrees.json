@@ -1,0 +1,323 @@
+{
+  "repo": "/Users/hughpyle/play/gitseq",
+  "remote": "https://github.com/generalbusiness-ai/gitseq.git",
+  "worktrees": [
+    {
+      "checkout": "gitseq",
+      "branch": "main",
+      "head": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "state": "dirty",
+      "current": true,
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "current-tip-merges",
+      "branch": "merge/current-tip-releases",
+      "head": "5c9291c0ff4058e3aec85cd25ab66c544034077e",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "append-batching-design",
+      "branch": "request/append-batching-design",
+      "head": "b8e6bbe4b5cd9ba0d8cdf50fc65959993516baf2",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "canonical-authority-eventids",
+      "branch": "request/canonical-authority-eventids",
+      "head": "02558e8d62781fa217ec9d96ee4a1983eecda7ab",
+      "state": "dirty",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "citation-reanchor-v2",
+      "branch": "request/citation-reanchor-v2",
+      "head": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "custody-reconcile",
+      "branch": "request/custody-lost-update-main",
+      "head": "2bb3616608465da06a22a1a562ed60252bec53e9",
+      "state": "dirty",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "docset-speedup",
+      "branch": "request/docset-speedup",
+      "head": "4d5d62b6f2f23d7d3540f3c2ba07abcbea8d6067",
+      "state": "dirty",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "four-authorization-refusal-proofs",
+      "branch": "request/four-authorization-refusal-proofs",
+      "head": "8a3d127dd12eaf18af0657953c950794f6831fc5",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "landing-obligation-i3",
+      "branch": "request/landing-obligation-i3",
+      "head": "ce18ec8742ddd8665afa284a9cde1ce946213435",
+      "state": "dirty",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "lane-identity",
+      "branch": "request/lane-identity-design",
+      "head": "6131249c6a6f86cbd8893bf30f2d582f88bbb274",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-authorization-boundary",
+      "branch": "request/machine-merge-authorization",
+      "head": "af2d512226e0a060c9857ff7ce090ca6ff599ef6",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "mcp-call-selectors",
+      "branch": "request/mcp-call-selectors",
+      "head": "6779fd7c62949adbc1397dddd6ef4609f5525620",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-authorization-proofs-merge-recut",
+      "branch": "request/merge-authorization-proofs-merge-recut",
+      "head": "f3e156ca5e56cd319340fb46ce62f1d1429101a0",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-plan",
+      "branch": "request/merge-plan",
+      "head": "94efd037b210e896870c50953e5802e9575e433c",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-plan-current",
+      "branch": "request/merge-plan-current",
+      "head": "1714a1055f7c6fdc7206f42394989173cc369271",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-plan-current-repair",
+      "branch": "request/merge-plan-current-repair",
+      "head": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-plan-recut",
+      "branch": "request/merge-plan-recut",
+      "head": "1567f850e9c1e57ed7efa04510026a435d112769",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merge-plan-review-repair-2",
+      "branch": "request/merge-plan-review-repair-2",
+      "head": "ac2b28dc2300249568714547e3d8061ca8667913",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "merged-head-drain-design",
+      "branch": "request/merged-head-drain-design",
+      "head": "30768e3f5aabaee53074e26723f8e3644ef0d1f9",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "novice-cli-recut",
+      "branch": "request/novice-cli-recut",
+      "head": "72b2e5e3ff2379a5a052c582f59c905fe0520bd4",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "novice-cli-usability",
+      "branch": "request/novice-cli-usability",
+      "head": "e034ddcd3c84643447b34608238e1eef7b530c91",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "performance-evidence-composed",
+      "branch": "request/performance-evidence-composed",
+      "head": "825ce1a384928ae273ab5bf635cf1b3eba32a90e",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "readme-positioning",
+      "branch": "request/readme-positioning",
+      "head": "1f80d38427495199e6ed5c471f5b341bea912ed8",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "security-gates",
+      "branch": "request/repo-security-gates",
+      "head": "9edeec9f184bb367efbce1835258c820031b464c",
+      "state": "dirty",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "resident-authority-writer-boundary",
+      "branch": "request/resident-authority-writer-boundary",
+      "head": "d3e133c47347e1e2cb4aea687f09df942c605d3f",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "resident-claim-lifecycle",
+      "branch": "request/resident-claim-lifecycle",
+      "head": "36d91a708be16d72e01da62396bf628273a4318b",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "resident-claim-lifecycle-review-repair",
+      "branch": "request/resident-claim-lifecycle-review-repair",
+      "head": "4856eaf27a94f50b111f21730fcab6ba55273802",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "specific-path-succession",
+      "branch": "request/specific-path-succession",
+      "head": "64bfbde9e2514ce41714f5eec1cc747d94d75eb1",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "specific-path-succession-carried",
+      "branch": "request/specific-path-succession-carried",
+      "head": "a3088b1736365c75f37360843139ad5bc7cc2662",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "specific-path-succession-current",
+      "branch": "request/specific-path-succession-current",
+      "head": "44d8d59f368082ec19fec003497fc3d39306570d",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "wt-stale-basis",
+      "branch": "request/stale-basis-admission-current",
+      "head": "f13ad373bb36b647484b389cbc5880a4686beb4f",
+      "state": "prunable",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "toolbar-departed-courtesy",
+      "branch": "request/toolbar-live-participant-current",
+      "head": "9972d165452ade596ba7bfbed1fcd0e8e82ed391",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "toolbar-ratification-provenance",
+      "branch": "request/toolbar-ratification-provenance",
+      "head": "64a78663edada38121bf5d20e222020e4fc358be",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "toolbar-ratification-review-repair",
+      "branch": "request/toolbar-ratification-review-repair",
+      "head": "27e43714685992e2d09441e255f3048a7f58dc1b",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    },
+    {
+      "checkout": "gitseq-ui-notif",
+      "branch": "request/ui-notification-dropdown",
+      "head": "dc61ffb0cf366a0a182190fda64bc72f090e04aa",
+      "state": "clean",
+      "remote_contains": null,
+      "classification": "unknown",
+      "classification_reason": "worktree inspection limit or cancellation"
+    }
+  ],
+  "deletable": []
+}
