@@ -192,8 +192,8 @@
    <marker id="aP" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#9a9a97"/></marker>
    <marker id="aD" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="#dedddb"/></marker></defs>
 </g>
-<text x="0" y="566" class="s">1a9f848f rests on 221f7932.   Reverse: 221f7932 is a direct basis for 1a9f848f.</text>
-<text x="0" y="582" class="s">selected 1a9f848f  ·  1 before, 6 after  ·  0 tasks share its basis  ·  came from 221f7932</text>
-<text x="0" y="598" class="s">next: 3cd5922f (1 of 5)          23 supporting citations, open with c</text>
-<text x="0" y="614" class="m">[&lt; back]   [^ / v  choose next]   [&gt; go]   [Open full thread]</text>
+<text x="0" y="566" class="s">Next: file the item-5 repair closure (depends on this request)   ·   offer 1 of 5, ^ / v to change</text>
+<text x="0" y="582" class="s">Selected: implement item 5 natively, the chess web UI   ·   1 before, 6 after   ·   0 tasks share its basis</text>
+<text x="0" y="598" class="s">Came from: review the native item-4 recut (this request depends on its artifact)   ·   23 citations and retirements, open with c</text>
+<text x="0" y="614" class="m">[&lt; back]   [^ / v  choose next]   [&gt; go]   [Open full thread]      exact event ids and contributors in the card detail</text>
 </svg>

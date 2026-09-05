@@ -436,15 +436,15 @@ basis statement kind to dependent statement kind:
 
 | pair | count | is it task lineage |
 | --- | --- | --- |
-| `artifact -> request` | 38 | **yes**, a review request resting on an artifact |
+| `artifact -> request` | 38 | **yes**, a request depending on an artifact; the pair does not fix which kind of request |
 | `artifact -> act:supersede` | 33 | no, a retirement act citing what it retires |
 | `assert -> act:supersede` | 23 | no |
 | `artifact -> report` | 21 | no, a report citing the artifacts it covers |
-| `request -> request` | 14 | **yes**, a child request resting on a parent |
+| `request -> request` | 14 | **yes**, a request depending on another request; dependence, not exclusive parent authority |
 | `request -> assert` | 5 | no, a later remark citing a request |
 | `artifact -> artifact` | 5 | no |
 | `report -> request` | 4 | ambiguous, see the basis-set choice below |
-| `promise -> request` | 3 | **yes**, a child request resting on a promise |
+| `promise -> request` | 3 | **yes**, a request depending on a promise |
 | `promise -> artifact` | 2 | no |
 | `assert -> request` | 2 | no |
 | others | 4 | no |
@@ -465,12 +465,18 @@ A drawn relation is **lineage** when it carries either
 - a `successor-request` contributor, which is the fold's own
   `commitments.successor_request` transfer.
 
-That is exactly: a child request resting on a parent request or its promise, a
-review request resting on an artifact, and a transfer. Everything else is a
+That is exactly: a request depending on another request or on its promise, a
+request depending on an artifact, and a transfer. What the contributor proves
+is the dependence, and no more. It does not fix the kind of request: one
+resting on an artifact may be a review, an implementation or a prerequisite,
+and one resting on a request shows that the later depends on the earlier, not
+that the earlier alone authorised it. Name a review, or a parent authority,
+only where the durable record already establishes it. Everything else is a
 **citation**: listed on selection, never drawn as lineage, never walked. A
-`supersede-act` contributor stays a retirement, drawn as today and never
-walked. A card with no incoming lineage relation reads "no recorded parent",
-which stays distinct from the existing "basis outside view" fact.
+`supersede-act` contributor is a **retirement**: also detail-only, listed under
+that name, never drawn and never walked. A card with no incoming lineage
+relation reads "no recorded parent", which stays distinct from the existing
+"basis outside view" fact.
 
 ## What the restriction does
 
@@ -484,6 +490,10 @@ default to `request,promise,artifact`; set `BASES` to vary them.
 | Chess `completed` | 160 | 67 | 93 | several | **0** | 117 | **0** |
 | Tailapp `closed` | 159 | 70 | 89 | 11 (to 8) | **0** | 71 | **0** |
 | gitseq `closed` | 90 | 38 | 52 | some | **0** | 25 | **0** |
+
+`citation-only` counts every drawn relation that is not lineage, retirements
+included; the selected card lists citations and retirements under separate
+names.
 
 Every population becomes acyclic, and the longest-path layering of an acyclic
 lineage graph puts every lineage edge in a strictly later column, so **no

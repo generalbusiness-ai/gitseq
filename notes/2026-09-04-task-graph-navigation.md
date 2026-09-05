@@ -44,12 +44,15 @@ same-column edges, and the click that lights 20 of 25 cards.
 **Lineage** is a relation carrying either a `provenance` contributor whose
 dependent statement is a `request` and whose basis statement is a `request`, a
 `promise` or an `artifact`, or a `successor-request` contributor. That is
-exactly: a child request resting on a parent request or its promise, a review
-request resting on an artifact, and the fold's own transfer. Everything else is
-a **citation**, listed on the selected card, never drawn as lineage and never
-walked. A `supersede-act` stays a **retirement**, drawn as today and never
-walked. A card with no incoming lineage relation reads "no recorded parent",
-still distinct from "basis outside view".
+exactly: a request depending on another request or on its promise, a request
+depending on an artifact, and the fold's own transfer. Each proves dependence
+and no more: a request on an artifact may be a review, an implementation or a
+prerequisite, and a request on a request does not say the earlier one
+authorised the later. Name a kind only where the record does. Everything else
+is a **citation**, listed on the selected card, never drawn as lineage and
+never walked. A `supersede-act` is a **retirement**: also detail-only, listed
+under that name, never drawn and never walked. A card with no incoming lineage
+relation reads "no recorded parent", still distinct from "basis outside view".
 
 Under that rule, across every population in three rooms, cycles go to **zero**;
 and since longest-path layering of an acyclic graph puts every edge in a later
@@ -86,8 +89,9 @@ the row count), `RequestList.tsx:196` and `OutcomeMap.tsx:222-231`.
 ## 3. Change 2: draw lineage, keep citations on demand
 
 Apply the rule in section 1. Lineage relations are drawn and laid out;
-citations and retirements are not laid out and appear in the selected card's
-detail, named as citations. Columns come from the lineage graph alone.
+citations and retirements are neither drawn nor laid out, and appear in the
+selected card's detail, each under its own name. Columns come from the lineage
+graph alone.
 
 This is a smaller model, not a bigger one: it filters an existing contributor
 list by two projected fields the browser already reads, and it removes the
@@ -95,8 +99,8 @@ strongly-connected-component handling, the same-column ordering pass and the
 cycle warnings that existed only to cope with manufactured cycles.
 
 Touches `outcomeMap.ts` and `OutcomeMap.tsx`. Never present a citation as
-lineage, never walk a retirement, never claim a parent the fold did not
-project.
+lineage, never draw or walk a retirement, never name a relation the record does
+not carry.
 
 ## 4. Change 3: selection, stepping and the view
 
@@ -110,11 +114,14 @@ weight. *Everything else dims*, siblings included; the bar counts them. That is
 the only sibling policy: dim, and named in the bar.
 
 **Neighbour chooser and back history.** The bar names the neighbours of the
-**current** card in the pending direction. `ArrowUp` and `ArrowDown` change
-which neighbour is offered, without moving. `ArrowRight` commits to it and
-pushes the card left behind onto a back history. `ArrowLeft` pops that history,
-or, when it is empty, moves to the offered predecessor. Order among neighbours
-is the projection's own `compareThreads`, fold sequence then event id, so the
+**current** card in the pending direction, each by its task title and the
+relation the record carries — "file the item-5 repair closure (depends on this
+request)" — with exact event ids and contributors in the card's detail.
+`ArrowUp` and `ArrowDown` change which neighbour is offered, without moving.
+`ArrowRight` commits to it and pushes the card left behind onto a back history.
+`ArrowLeft` pops that history, or, when it is empty, moves to the offered
+predecessor. Order among neighbours is the projection's own `compareThreads`,
+fold sequence then event id, so the
 offer is deterministic. There is no visited-path rule and no cycle
 termination, because the lineage graph is acyclic: a walk ends when a card has
 no continuation, and the bar says so.
@@ -155,11 +162,12 @@ Touches `OutcomeMap.tsx` and `RequestList.tsx`.
 ## 5. What the smaller model removed
 
 Gone: gutter-lane routing and its lane budget, the same-column edge path, the
-visited-path state machine and its cycle-termination rule, and the "both ways"
-and sibling emphasis levels. Kept: two directed walks, because before and after
-are separate answers; sibling counts, because the request asks siblings be
-distinguished and one bar clause does it; and the zoom, pan, saved-view, focus,
-stacking, transfer and retirement rules, which the restriction does not touch.
+drawn retirement edge, the visited-path state machine and its cycle-termination
+rule, and the "both ways" and sibling emphasis levels. Kept: two directed
+walks, because before and after are separate answers; sibling counts, because
+the request asks siblings be distinguished and one bar clause does it; and the
+zoom, pan, saved-view, focus, stacking and transfer rules, which the
+restriction does not touch.
 
 ## 6. Mockups
 
@@ -169,8 +177,8 @@ Both rendered at real size: cards 248 x 122, 88 px gaps, 12px titles, pane
 - `after-chess-live.svg`, small. Selection `025a6e01`, arrived from `6f7dea46`
   by `>`. 3 before, 1 after, 2 siblings, 5 of 8 on path.
 - `after-chess-closed.svg`, dense. Selection `1a9f848f` (#41), arrived from
-  `221f7932`. 1 before, 6 after, 8 of 25 on path, `next` offering 1 of 5, and
-  23 citations one key away.
+  `221f7932`. 1 before, 6 after, 8 of 25 on path, `next` naming 1 of 5
+  destinations, and 23 citations and retirements one key away.
 
 In both, the lit edge, the sentence below the drawing, the two endpoints and
 the buttons describe one action. The before screenshots sit beside them,
@@ -180,7 +188,8 @@ the same click lights 8 of 8 and 20 of 25 at a scale rendering a 12px title at
 
 **How they read.** Titles are legible without leaning in. One line is bright
 and one sentence says what it means, instead of 20 or 44 labels competing with
-the cards. Off-path work recedes rather than vanishing. Nothing new sits in the
+the cards. The line under it names where `>` goes. Off-path work recedes
+rather than vanishing. Nothing new sits in the
 toolbar: the interaction is four buttons on the line that already existed.
 
 ## 7. Validation and acceptance
@@ -188,12 +197,12 @@ toolbar: the interaction is four buttons on the line that already existed.
 | check | today | new | Hugh's test |
 | --- | --- | --- | --- |
 | one unit; hidden tasks named first; details reveal rows | `dom.test.mjs:814-854` | tasks in tab, headline and line; hidden derived from drawn-root membership; details show rows and multi-row tasks; hidden count opens the table | account for "2 open"; reach every task |
-| lineage rule: dependent is a request on request/promise/artifact, plus transfers | none | each admitted pair drawn; assert, report and artifact citations not drawn; a retirement drawn and not walked | lineage means lineage |
-| citations reachable and named as citations | none | selected card lists its citations with exact event ids | show omitted content honestly |
+| lineage rule: dependent is a request on request/promise/artifact, plus transfers | none | each admitted pair drawn; assert, report and artifact citations not drawn; a retirement neither drawn nor walked; no relation labelled with a kind the record does not carry | lineage means lineage |
+| citations and retirements reachable, each under its own name | none | selected card lists its citations and, separately, its retirements, with exact event ids | show omitted content honestly |
 | no recorded parent stays distinct from basis outside view | `outcome-map.test.mjs:334-346` | both states asserted on one fixture | preserve ambiguity |
 | lineage graph is acyclic; no same-column lineage edge | `outcome-map.test.mjs:321-333` warns on cycles | assert zero cycles and zero same-column edges on the Chess `closed` shape | read a dense column |
 | before and after, selection excluded; siblings dim and counted | replaces `dom.test.mjs:736-742` | fixture with a branch and a sibling; one dim policy | follow a path |
-| neighbour chooser and back history | none | up and down change the offer without moving; `>` commits and pushes; `<` pops, then falls back to the offered predecessor; order is `compareThreads` | follow a path without untangling |
+| neighbour chooser and back history | none | up and down change the offer without moving; `>` commits and pushes; `<` pops, then falls back to the offered predecessor; order is `compareThreads`; the offer names the destination task and its recorded relation in words, ids in detail | follow a path without untangling |
 | zoom, pan, `Escape`, fit policy, return from a detour | none | selecting at 0.2091 sets scale 1 and centres; stepping keeps scale; `Escape` restores; refit only on `viewKey` change or `Fit to view`; selection, history and view survive a thread and back | read the card you are on; move between overview and detail |
 | focus and pointer order | none | `Tab` reaches a card first; a card under an edge takes the click; empty canvas pans | keyboard and pointer |
 | labels not permanent | none | no `<text>` unless selected or focused; accessible name unchanged | read a dense column |
