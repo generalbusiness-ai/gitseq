@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73646fd9d8e7ee08f9b7b766e9e113634eb634a3"}
+{"kind":"promise","text":"Promised: independent Architecture, Security and Simplification review of I9 at exact head 2dd32b37c754b4092d197daed9f26659194e0e4b (request/remove-local-jsonata-spike) under request 7ac19702 and adopted design 50ba06a1, from my own detached checkout, filed with gs review naming all five artifacts with b91e51db (docs/reference/architecture.md) first; verdict approved or changes-requested. Sequenced after the I1 merge now in progress."}
