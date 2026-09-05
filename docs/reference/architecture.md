@@ -774,6 +774,44 @@ the reader cannot truthfully say what force it has. Consumers must surface
 that gap and must not invent fallback meaning from field names, prose, an old
 fold, or UI expectations.
 
+#### Inventory lives in its own module
+
+The JSONata inventory experiment has moved to
+`github.com/generalbusiness-ai/gitseq-inventory`. Its application sources,
+record dialect, SQLite adapters, runtime identity and replay evidence belong
+there. It uses the independently released
+`github.com/generalbusiness-ai/tailapps/jsonataddl` module; Gitseq does not
+embed a JSONata compiler, evaluator, application or corpus copy for it.
+
+The former `spike/jsonataddl`, `spike/cmd/jsonata-inventory` and
+`spike/cmd/jsonata-inventory-ui` packages are removed, together with Gitseq's
+unused `github.com/jsonata-go/jsonata` dependency. This changes the available
+layer-5 experimental interpreter and its layer-7 command surface. It does not
+change the kernel, public host APIs, Workroom fold or SQLite query sandbox.
+Existing records remain kernel-verifiable; their inventory meaning requires
+the external application with a matching binding and runtime identity.
+
+The delivered external application is still a closed demonstration fixture.
+Its input admission happens before evaluation or storage; it does not grant
+production authority to arbitrary JSONata programs. The accepted external
+corpus and mutation evidence proves the shared core is used: report
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c5b57aecd5856a6978d3c350578940d0df57a67`,
+ratified by `3e1cee85879ce216227c0939bfe560f181ffa085`, records the delivered
+Inventory head `12c1687b55a04537ffe063ff50aa3238c9db3684`. Gitseq's
+`internal/boundary` tests separately check the absence of the removed source
+trees, packages and module dependency, including test imports, while requiring
+the unrelated `spike/querysandbox` package to remain.
+
+One adopted migration remains outstanding: the crash-recovery sweep in
+`spike/jsonataddl/RECOVERY.md` and `recovery_test.go` has not yet moved to
+Inventory. Both remain in Gitseq history at
+`3f4c4969ad3afea608be521cf9b6e2422223c04e`; their removal here does not retire
+the obligation to preserve and adapt that evidence. Child request
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ed2193734096d89b2a9472c71cfba58935a9f0c`
+tracks the native migration under the adopted design's section 2.11. The old
+sweep models process death with completed writes preserved in order; it does
+not establish power-loss durability or current shared-core crash recovery.
+
 #### Workroom, the current application
 
 `internal/workroom` is the Workroom profile and interpreter.
@@ -1764,6 +1802,10 @@ kernel while sharing none of Workroom's tools.
 Consumers negotiate or pin the axes they depend on. They must not use surface
 similarity as evidence that an interpreter is available or that two folds give
 the same result.
+
+The inventory spike removal affects the interpreter and surface axes: the
+local JSONata interpreter and inventory commands are no longer shipped here.
+It introduces no replacement Gitseq command or automatic binding migration.
 
 ## Current package boundaries and coupling
 
