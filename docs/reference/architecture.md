@@ -1416,6 +1416,21 @@ Work and status rows include the request, report, exact-head, and
 latest-review facts needed for routine action. Write surfaces return the fold
 decision after an append rather than previewing application force.
 
+Landing rows copy the fold's resolved target, hold, approval, resolution and
+terminal fields. `approved_not_landed` is counted across all commitments,
+including legacy closed rows; an explicit work lane selects the performer or
+hold owner without changing the waiting party. Work filters bind that boolean
+and the exact target ref into the existing cursor. `landing_receipt` exposes
+the already validated matching receipt from the fold's merge index. It changes
+no admission or lifecycle rule. The shared presentation joins that witness to
+its sealed head and explicit compatibility warning; it never discovers a
+receipt by searching assertion text. See [Landing observations](landing-observations.md)
+for the common status, work, inspect and worktree shape. The additive
+`Commitment.landing_receipt` witness advances the fold profile to
+`workroom-fold@21`; cached projections from earlier profiles replay from the
+verified event checkpoint so historical receipts gain the witness without
+rewriting signed records.
+
 Pending ratification is a separate attention lane, not a commitment state.
 `internal/statusview` selects effective, unratified, live proposals whose
 captured `role:<name>` satisfier is held by the actor being viewed. It reads the
@@ -1493,6 +1508,21 @@ a projection it may merge on. This carries the fold profile to
 `workroom-fold@10`, since the published projection bytes change.
 
 ### 7. CLI, MCP, skills, connectors, and UI
+
+Landing observations are layer-7 Git facts, separate from the layer-6 receipt
+witness. A bounded batch captures immutable ref heads and computes local and
+remote-tracking ancestry; unavailable objects, shallow history or inspection
+limits yield unknown, never absence. No fetch runs and no observation changes
+the fold's satisfied state. The worktree endpoint maps all named commitment
+heads, protects unsettled and approved-not-landed rows, refreshes cached branch
+tips, and publishes conservative deletion advice without deleting anything.
+If the durable read fails, local checkout facts remain visible with unknown
+classification. A shared 65,536-step budget bounds statement/provenance
+association work and every checkout's row/head comparisons; object inputs are
+deduplicated before the Git batch. Cancellation or budget exhaustion discards
+all deletion advice and clears partial results to unknown.
+[Landing observations](landing-observations.md) states the
+wire fields, limits, remote-selection policy and cleanup preconditions.
 
 **What it owns:** presenting one application to people and programs.
 

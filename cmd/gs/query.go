@@ -202,6 +202,9 @@ func renderWorkPage(page statusview.WorkPage, source string) string {
 		if item.WaitingOn != nil {
 			fmt.Fprintf(&out, "    waiting on %s\n", item.WaitingOn.Name)
 		}
+		if landing := statusview.LandingText(item.LandingDetails); landing != "" {
+			fmt.Fprintf(&out, "    %s\n", landing)
+		}
 		if item.SuccessorRequest != "" {
 			fmt.Fprintf(&out, "    successor request %s\n", item.SuccessorRequest)
 		}
@@ -307,6 +310,9 @@ func renderInspection(inspection statusview.ItemInspection, source string) strin
 	}
 	if inspection.Commitment != nil {
 		fmt.Fprintf(&out, "  commitment %s on request %s\n", inspection.Commitment.Status, inspection.Commitment.Request)
+	}
+	if inspection.Landing != nil {
+		fmt.Fprintf(&out, "  %s\n", statusview.LandingText(*inspection.Landing))
 	}
 	fmt.Fprintf(&out, "  rests on %d bases", len(inspection.ProvenanceBases))
 	if inspection.ProvenanceBasesOmitted > 0 {

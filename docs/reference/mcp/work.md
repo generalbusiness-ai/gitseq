@@ -19,6 +19,8 @@ never fetches the complete `/v0/status` projection.
 |---|---|---|
 | `lanes` | optional | Typed relationship lanes: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all five. |
 | `statuses` | optional | Row states to include: commitment lifecycle states plus `awaiting-ratification` for the non-commitment proposal lane. An unknown state is an error, not a guess. |
+| `target_ref` | optional | Exact destination filter, such as `refs/heads/release`. |
+| `approved_not_landed` | optional | Boolean delivery-debt filter; false differs from absence. |
 | `stale` | optional | One staleness policy: `summary` (default), `include`, `only`, or `exclude`. |
 | `limit` | optional | Page size, 1 to 50. Default 20. |
 | `cursor` | optional | The opaque continuation from a previous page. |
@@ -26,6 +28,12 @@ never fetches the complete `/v0/status` projection.
 | `agent` | optional | The actor whose durable work is selected; defaults to startup `--actor`. The actor's key must already be accessible. |
 
 Filters are finite, typed choices, not an expression language.
+
+The additional explicit lane `approved_not_landed` selects the actor as
+performer or hold owner without changing the waiting party. Legacy satisfied
+rows with delivery debt remain visible. The five existing lanes stay the
+default. Each row carries the shared [landing evidence and Git observations](../landing-observations.md),
+including a compatibility warning only when its witnessed receipt sealed one.
 
 ## What comes back
 

@@ -29,7 +29,8 @@ import (
 // instead of passing them through, so these bytes were recaptured from the
 // escaping implementation. The property the test pins is unchanged: selection
 // happens before shaping, and the output is exact. The golden is verified to
-// contain no control byte and to carry the escapes as visible text.
+// contain no control byte and to carry the escapes as visible text. I4 adds
+// only the explicit zero approved_not_landed total to this fixture.
 func TestBoundedSelectionKeepsExactlyTheOldBytes(t *testing.T) {
 	want, err := os.ReadFile("testdata/bounded-summary-golden.json")
 	if err != nil {

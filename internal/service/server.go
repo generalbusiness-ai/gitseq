@@ -258,6 +258,7 @@ func (s *Server) handleActorStatus(writer http.ResponseWriter, request *http.Req
 	}
 	digest := statusview.BuildActorStatus(status.Durable, status.Live, status.Cursor, status.Inbox,
 		observation.Fingerprint, observation.Actor, false)
+	s.workspace.MeasureLandingDetails(request.Context(), digest.LandingRows())
 	write(writer, digest, nil)
 }
 
@@ -272,6 +273,7 @@ func (s *Server) handleStatusSummary(writer http.ResponseWriter, request *http.R
 		Durable: statusview.Build(status.Durable.Genesis, status.Durable.Head, status.Durable.Depth, status.Durable.Projection),
 		Live:    status.Live, Cursor: status.Cursor, TrustBoundary: TrustedProcessPosture,
 	}
+	s.workspace.MeasureLandingDetails(request.Context(), summary.Durable.LandingRows())
 	if s.observer != nil {
 		s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationStatusView, Path: observe.PathStatusSummary, Outcome: observe.OutcomeOK, Duration: time.Since(started), Items: int64(status.Durable.Depth)})
 	}
@@ -290,6 +292,9 @@ func (s *Server) handleWorkQuery(writer http.ResponseWriter, request *http.Reque
 		return
 	}
 	page, err := statusview.BuildWorkPage(durable, input, false)
+	if err == nil {
+		s.workspace.MeasureLandingDetails(request.Context(), page.LandingRows())
+	}
 	write(writer, page, err)
 }
 
@@ -320,6 +325,9 @@ func (s *Server) handleInspect(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	inspection, err := statusview.BuildItemInspection(durable, input.Event, false)
+	if err == nil {
+		s.workspace.MeasureLandingDetails(request.Context(), inspection.LandingRows())
+	}
 	write(writer, inspection, err)
 }
 

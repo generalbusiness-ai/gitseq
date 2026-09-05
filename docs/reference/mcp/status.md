@@ -10,6 +10,12 @@ rests_on:
 
 # `status`
 
+The bounded response includes the global `totals.approved_not_landed` count
+and up to twenty `landing_targets`, with `landing_targets_omitted` when needed.
+Rows share [landing evidence and current Git observations](../landing-observations.md).
+The receipt witness, compatibility warning and current ref facts stay distinct;
+an unavailable Git check never reopens a satisfied commitment or proves absence.
+
 The orientation call. It answers what is available to you, what is
 waiting on you, what you are waiting on, what needs your attention, and
 where the record currently stands — and it hands back the cursor you pass to

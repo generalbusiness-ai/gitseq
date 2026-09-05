@@ -87,8 +87,9 @@ type RatificationView struct {
 }
 
 type ActorTotals struct {
-	Depth       int            `json:"depth"`
-	Commitments map[string]int `json:"commitments,omitempty"`
+	ApprovedNotLanded int            `json:"approved_not_landed"`
+	Depth             int            `json:"depth"`
+	Commitments       map[string]int `json:"commitments,omitempty"`
 	// StaleCommitments counts, per status, how many carry the stale qualifier.
 	// This is where ordinary staleness on closed commitments is reported: the
 	// lanes above hold work still owed, and superseded, satisfied or withdrawn rows are
@@ -133,25 +134,27 @@ type InboxView struct {
 }
 
 type ActorStatus struct {
-	You                         ActorView          `json:"you"`
-	Frontier                    []Frontier         `json:"frontier"`
-	Cursor                      Cursor             `json:"cursor"`
-	AvailableToYou              []CommitmentView   `json:"available_to_you"`
-	AvailableToYouSkipped       int                `json:"available_to_you_skipped,omitempty"`
-	WaitingOnYou                []CommitmentView   `json:"waiting_on_you"`
-	WaitingOnYouSkipped         int                `json:"waiting_on_you_skipped,omitempty"`
-	YouAreWaiting               []CommitmentView   `json:"you_are_waiting_on"`
-	YouAreWaitingSkipped        int                `json:"you_are_waiting_on_skipped,omitempty"`
-	NotActionable               []CommitmentView   `json:"not_actionable,omitempty"`
-	NotActionableSkipped        int                `json:"not_actionable_skipped,omitempty"`
-	AwaitingRatification        []RatificationView `json:"awaiting_ratification"`
-	AwaitingRatificationSkipped int                `json:"awaiting_ratification_skipped,omitempty"`
-	YourAttention               []EventView        `json:"needs_your_attention,omitempty"`
-	YourAttentionSkipped        int                `json:"needs_your_attention_skipped,omitempty"`
-	Totals                      ActorTotals        `json:"totals"`
-	Live                        LiveView           `json:"live"`
-	PriorityChat                InboxView          `json:"priority_ephemeral_chat"`
-	FollowWithWait              string             `json:"follow_with_wait"`
+	LandingTargets              []app.LandingDetails `json:"landing_targets,omitempty"`
+	LandingTargetsOmitted       int                  `json:"landing_targets_omitted,omitempty"`
+	You                         ActorView            `json:"you"`
+	Frontier                    []Frontier           `json:"frontier"`
+	Cursor                      Cursor               `json:"cursor"`
+	AvailableToYou              []CommitmentView     `json:"available_to_you"`
+	AvailableToYouSkipped       int                  `json:"available_to_you_skipped,omitempty"`
+	WaitingOnYou                []CommitmentView     `json:"waiting_on_you"`
+	WaitingOnYouSkipped         int                  `json:"waiting_on_you_skipped,omitempty"`
+	YouAreWaiting               []CommitmentView     `json:"you_are_waiting_on"`
+	YouAreWaitingSkipped        int                  `json:"you_are_waiting_on_skipped,omitempty"`
+	NotActionable               []CommitmentView     `json:"not_actionable,omitempty"`
+	NotActionableSkipped        int                  `json:"not_actionable_skipped,omitempty"`
+	AwaitingRatification        []RatificationView   `json:"awaiting_ratification"`
+	AwaitingRatificationSkipped int                  `json:"awaiting_ratification_skipped,omitempty"`
+	YourAttention               []EventView          `json:"needs_your_attention,omitempty"`
+	YourAttentionSkipped        int                  `json:"needs_your_attention_skipped,omitempty"`
+	Totals                      ActorTotals          `json:"totals"`
+	Live                        LiveView             `json:"live"`
+	PriorityChat                InboxView            `json:"priority_ephemeral_chat"`
+	FollowWithWait              string               `json:"follow_with_wait"`
 }
 
 type WaitDelta struct {
@@ -223,7 +226,8 @@ func actIndex(projection workroom.Projection) map[string]workroom.Act {
 
 func viewCommitment(projection workroom.Projection, commitment workroom.Commitment) CommitmentView {
 	return CommitmentView{
-		Request: commitment.Request, Status: commitment.Status, SuccessorRequest: commitment.SuccessorRequest, Stale: commitment.Stale,
+		WorkDetails: WorkDetails{LandingDetails: landingDetails(commitment)},
+		Request:     commitment.Request, Status: commitment.Status, SuccessorRequest: commitment.SuccessorRequest, Stale: commitment.Stale,
 		AddressedTo: Text(ActorName(projection, commitment.AddressedTo)),
 		Requester:   Text(ActorName(projection, commitment.Requester)), Performer: Text(ActorName(projection, commitment.Performer)),
 		Promise: commitment.Promise, Report: commitment.Report,
@@ -248,8 +252,12 @@ func fillCommitmentDetails(projection workroom.Projection, groups ...[]Commitmen
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 	counts, staleCounts := make(map[string]int), make(map[string]int)
+	approvedNotLanded := 0
 	for _, commitment := range projection.Commitments {
 		counts[commitment.Status]++
+		if commitment.ApprovedNotLanded {
+			approvedNotLanded++
+		}
 		if commitment.Stale {
 			staleCounts[commitment.Status]++
 		}
@@ -274,7 +282,7 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 			disputed++
 		}
 	}
-	return ActorTotals{Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+	return ActorTotals{ApprovedNotLanded: approvedNotLanded, Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
 		RetiredArtifacts: retired, WorldStaleArtifacts: world,
 		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
 		FullProjectionAt: "GET /v0/status, gs status --all, gs status --json, or work with stale=include"}
@@ -464,6 +472,7 @@ func BuildActorStatus(durable app.Snapshot, live nexus.Snapshot, cursor Cursor, 
 	digest.AwaitingRatification, digest.AwaitingRatificationSkipped = Cap(digest.AwaitingRatification, ListCap)
 	digest.YourAttention, digest.YourAttentionSkipped = Cap(digest.YourAttention, ListCap)
 	fillCommitmentDetails(projection, digest.AvailableToYou, digest.WaitingOnYou, digest.YouAreWaiting, digest.NotActionable)
+	digest.LandingTargets, digest.LandingTargetsOmitted = landingTargets(projection)
 	return digest
 }
 
@@ -558,6 +567,10 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 func Summarize(tool string, value any) string {
 	switch shaped := value.(type) {
 	case ActorStatus:
+		landing := landingWarning(shaped.LandingRows())
+		if shaped.Totals.ApprovedNotLanded > 0 {
+			landing += fmt.Sprintf("; %d approved but not landed at their target", shaped.Totals.ApprovedNotLanded)
+		}
 		priority := fmt.Sprintf("priority ephemeral chat: %d unacknowledged", len(shaped.PriorityChat.Frames))
 		if !shaped.PriorityChat.Available {
 			priority = "priority ephemeral chat unavailable"
@@ -569,7 +582,7 @@ func Summarize(tool string, value any) string {
 			Shown(len(shaped.AwaitingRatification), shaped.AwaitingRatificationSkipped),
 			Shown(len(shaped.AvailableToYou), shaped.AvailableToYouSkipped),
 			Shown(len(shaped.WaitingOnYou), shaped.WaitingOnYouSkipped), Shown(len(shaped.YouAreWaiting), shaped.YouAreWaitingSkipped),
-			Shown(len(shaped.NotActionable), shaped.NotActionableSkipped), Shown(len(shaped.YourAttention), shaped.YourAttentionSkipped), LiveLabel(shaped.Live))
+			Shown(len(shaped.NotActionable), shaped.NotActionableSkipped), Shown(len(shaped.YourAttention), shaped.YourAttentionSkipped), LiveLabel(shaped.Live)) + landing
 	case WaitDelta:
 		reset, skipped := "", ""
 		if shaped.Reset {
@@ -597,7 +610,7 @@ func Summarize(tool string, value any) string {
 		if shaped.ClosedStaleOmitted > 0 {
 			suffix += fmt.Sprintf("; %d closed commitments carry ordinary staleness and were summarized, pass stale=include to list them", shaped.ClosedStaleOmitted)
 		}
-		return fmt.Sprintf("depth %d, %d of %d matching work items returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix)
+		return fmt.Sprintf("depth %d, %d of %d matching work items returned%s", shaped.Frontier.Depth, shaped.Returned, shaped.MatchingTotal, suffix) + landingWarning(shaped.LandingRows())
 	case ArtifactPage:
 		suffix := ""
 		if shaped.Remaining > 0 {
@@ -619,7 +632,7 @@ func Summarize(tool string, value any) string {
 			kind, shaped.Frontier.Depth, verdict,
 			Shown(len(shaped.ProvenanceBases), shaped.ProvenanceBasesOmitted),
 			Shown(len(shaped.RelatedArtifacts), shaped.RelatedArtifactsOmitted),
-			Shown(len(shaped.RelatedReviews), shaped.RelatedReviewsOmitted))
+			Shown(len(shaped.RelatedReviews), shaped.RelatedReviewsOmitted)) + landingWarning(shaped.LandingRows())
 	default:
 		return tool + " ok"
 	}

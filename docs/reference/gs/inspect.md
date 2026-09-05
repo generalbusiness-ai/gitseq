@@ -52,6 +52,11 @@ gs inspect --repo "$REPO" --json "$PROMISE" | head -8
 
 ## Reading it
 
+The commitment includes the fold's target, hold, approval, resolution, terminal,
+delivery-debt and `landing_receipt` fields. A sibling `landing` block carries
+the shared [receipt evidence and current Git observations](../landing-observations.md),
+including the sealed hold warning and nullable local/remote incorporation.
+
 Direct bases only. `provenance_bases` is one hop — what this event itself
 cited — capped, with the number omitted reported beside it. Follow the
 whole tree with [`gs provenance`](provenance.md), or ask which artifacts

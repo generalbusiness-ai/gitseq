@@ -96,6 +96,8 @@ export interface Commitment {
   latest_resolution?: string;
   // How a closed commitment closed: landed, reported, or abandoned.
   terminal?: string;
+  // The validated merge receipt witnessing delivery to this target.
+  landing_receipt?: string;
   // Measured against the target ref, never against main.
   approved_not_landed?: boolean;
 }

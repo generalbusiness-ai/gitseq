@@ -18,12 +18,19 @@ filters, the caps and the cursor mean one thing on every surface, and
 
 ## Flags
 
+The additional explicit lane `approved_not_landed` selects the actor as
+performer or hold owner. It includes legacy satisfied rows with delivery debt
+and preserves the waiting party. The five existing lanes remain the default.
+Rows expose [landing evidence and current Git observations](../landing-observations.md).
+
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
 | `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
 | `--status` | | Row state: the commitment lifecycle states or `awaiting-ratification`. Repeat to name several. |
+| `--target-ref` | | Exact destination filter, such as `refs/heads/release`. |
+| `--approved-not-landed` | absent | Filter delivery debt; `--approved-not-landed=false` explicitly selects rows without it. |
 | `--stale` | `summary` | Staleness policy: `summary`, `include`, `only`, or `exclude`. |
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |

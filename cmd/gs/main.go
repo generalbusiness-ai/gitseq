@@ -2094,6 +2094,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 		source = "verified local fallback"
 	}
 	summary := statusview.Build(snapshot.Genesis, snapshot.Head, snapshot.Depth, snapshot.Projection)
+	workspace.MeasureLandingDetails(ctx, summary.LandingRows())
 	_, err = os.Stdout.Write(statusview.Render(summary, source))
 	return err
 }
@@ -2256,6 +2257,8 @@ func workCommand(ctx context.Context, arguments []string) error {
 	set.Var(&lanes, "lane", "relationship lane; repeat to name several (default all five)")
 	var statuses values
 	set.Var(&statuses, "status", "row state; repeat to name several")
+	targetRef := set.String("target-ref", "", "exact full landing target ref")
+	approvedNotLanded := set.Bool("approved-not-landed", false, "filter by approval without a matching landing (accepts =false)")
 	stale := set.String("stale", "", "staleness policy: summary, include, only, or exclude")
 	limit := set.Int("limit", 0, "page size")
 	cursor := set.String("cursor", "", "opaque continuation from a previous page")
@@ -2286,7 +2289,12 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if fingerprint == "" {
 		return workIdentityRefusal(ctx, workspace, fmt.Errorf("actor %q is not provisioned in this checkout", actorName))
 	}
-	query := statusview.WorkQuery{Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
+	query := statusview.WorkQuery{TargetRef: *targetRef, Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
+	set.Visit(func(f *flag.Flag) {
+		if f.Name == "approved-not-landed" {
+			query.ApprovedNotLanded = approvedNotLanded
+		}
+	})
 	for _, lane := range lanes {
 		query.Lanes = append(query.Lanes, statusview.WorkLane(lane))
 	}
@@ -2304,6 +2312,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 		if err != nil {
 			return err
 		}
+		workspace.MeasureLandingDetails(ctx, page.LandingRows())
 	}
 	if *jsonOutput {
 		return printJSON(page)
@@ -2513,6 +2522,7 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 			}
 			return err
 		}
+		workspace.MeasureLandingDetails(ctx, inspection.LandingRows())
 	}
 	if *jsonOutput {
 		return printJSON(inspection)

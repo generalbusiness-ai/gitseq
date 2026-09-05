@@ -130,6 +130,7 @@ type worktreesResponse struct {
 	Repo      string             `json:"repo"`
 	Remote    string             `json:"remote,omitempty"`
 	Worktrees []app.WorktreeView `json:"worktrees"`
+	Deletable []string           `json:"deletable"`
 }
 
 func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Request) {
@@ -137,7 +138,24 @@ func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Reque
 	if local.Worktrees == nil {
 		local.Worktrees = []app.WorktreeView{}
 	}
-	write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees}, err)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	durable, err := s.workspace.Snapshot(request.Context())
+	if err != nil {
+		// Local checkout facts remain useful when the durable read is
+		// unavailable. That is unknown classification, not an empty board or
+		// permission to delete any checkout. Do not expose raw store errors.
+		for i := range local.Worktrees {
+			local.Worktrees[i].Classification = "unknown"
+			local.Worktrees[i].ClassificationReason = "durable projection unavailable"
+		}
+		write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees, Deletable: []string{}}, nil)
+		return
+	}
+	deletable := s.workspace.ClassifyWorktrees(request.Context(), durable.Projection, local.Worktrees)
+	write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees, Deletable: deletable}, nil)
 }
 
 // actRequest is a session-bound durable act: the same custody model as
