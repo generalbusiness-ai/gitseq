@@ -22,7 +22,7 @@ resumable batch.
 | `--checkout` | *(required)* | The working tree receiving the merge. |
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
-| `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. Phase one validates it when present; omission emits a compatibility warning and still proceeds. |
+| `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. Phase one validates it when present; omission emits a compatibility warning and still proceeds. An implementation request filed under `workroom/state@3` that is not held refuses it outright: it asked for no release. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
@@ -32,7 +32,7 @@ It takes no positional arguments.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 BASE=$(git -C "$REPO" branch --show-current)
 gs init --repo "$REPO" --operator alice >/dev/null
@@ -140,11 +140,125 @@ world is a projection this command cannot date, not a permission to land.
 | The checkout belongs to another repository | The workroom does not govern it. |
 | `--candidate` is not a full lowercase object ID | An abbreviation could become ambiguous later. |
 | The retirement plan reaches another actor's artifact outside every path the approval reviewed | Re-file the approval so it covers that path, or ask the artifact's author or an actor holding `ratifier` to retire it. The refusal names the event, path, and reviewed paths. |
+| The checkout is detached | A merge lands into a checked-out branch. A detached checkout is no destination, and a receipt could name none. |
+| The checkout's branch is not the implementation request's target ref | The request says where its result is owed. Landing it anywhere else discharges nothing and would seal a receipt saying otherwise. |
+| The checkout's repository is not the request's target repository | Same, for the other half of the destination. |
+| The target ref, repository, or pre-head moved between planning and the merge | The plan was computed against a destination that is no longer there. |
+| The sealed ref is not at its sealed pre-head when the landing advances it | The landing is a compare-and-swap. A ref that moved keeps the move, and nothing is written. |
+| The implementation request is not held and `--authorization` is given | An unheld request asked for no release, so a merge that presents one claims an authority nobody granted. Requests filed before `workroom/state@3` keep the phase-one reading and are unaffected. |
+| A resumed receipt names a destination this checkout is not standing on | Recovery proves where the receipt landed instead of assuming it landed here. |
+| A resumed receipt carries `Gitseq-Target-Repo` without `Gitseq-Target-Ref`, or the reverse | Half a destination proves nothing. Both absent is a legacy receipt and is fine. |
+| The durable receipt's target, target pre-head, or hold warning disagrees with the sealed Git trailers | The binding lives in two places and only one of them can be rewritten afterwards, so recovery reads both and requires them equal. |
+| The checkout's `HEAD` names a ref outside `refs/heads/` | A merge lands into a branch. Nothing else is a destination this command will seal. |
+| The approved artifact is the report of more than one commitment lane | The destination comes from one request. Two lanes reporting one artifact name no single answer. |
+| `Gitseq-Hold-Warning` is present with any value but `true` | The compatibility-window marker is a fact read back out of a commit message, so it is exact or it is nothing. |
+| A resumed receipt's checkout does not belong to the workroom repository | Recovery reads a sealed receipt out of the checkout and appends its durable suffix to this workroom; the two must be the same repository. |
+| An implementation request whose hold is released is merged with an `--authorization` that is not that release | The hold was lifted by one report. A merge under any other one is not landing under the release the hold owner signed. |
 
 The shared read-only evaluator runs before any receipt reservation. `merge`
 then resolves structured authorization and proves that the target head, staged
 changed paths, and verified Workroom frontier still equal that evaluated plan
 before it moves `HEAD`.
+
+### Where a merge lands
+
+An implementation request owes its Git artifact to a named destination, and
+this command is what puts it there. Every merge therefore measures the
+destination in the governed checkout rather than taking it from anything a
+signer wrote, and seals it:
+
+| receipt field | Git trailer | value |
+|---|---|---|
+| `merge_target_repo` | `Gitseq-Target-Repo:` | The workroom genesis id of the checkout's repository. |
+| `merge_target_ref` | `Gitseq-Target-Ref:` | The full branch ref from `git symbolic-ref HEAD`. |
+| `merge_target_pre_head` | `Gitseq-Target-Pre-Head:` | The commit that ref held immediately before `HEAD` moved. |
+
+The destination the request owes comes from the fold, not from this command.
+A `workroom/state@3` request states its target triple by value or inherits it
+from its ancestry; a request filed under an older schema whose commitment ever
+carried a reporting artifact reads as owing `refs/heads/main` of this
+workroom's own repository, and is flagged `legacy`. `merge` compares the
+checkout against that resolved answer, whether or not `--authorization` is
+given, and refuses every mismatch in the table above.
+
+The landing is then bound to that measurement rather than measured again
+before it. `git commit` resolves `HEAD` at the instant it writes, so no check
+taken beforehand can say where it lands: a `pre-commit` hook that runs
+`git symbolic-ref HEAD refs/heads/other` moves the whole merge to another
+branch while the receipt goes on naming the branch this command measured.
+So `merge` does not commit through `HEAD` at all. It writes the staged tree
+with `git write-tree`, builds the merge commit with
+`git commit-tree <tree> -p <sealed pre-head> -p <candidate>`, and advances the
+sealed ref with `git update-ref <sealed ref> <new commit> <sealed pre-head>` —
+a compare-and-swap. There is no window between the measurement and the
+landing: a ref that moved makes the update fail, the concurrent move stands,
+and the commit object no ref points at is unreachable.
+
+That compare-and-swap is the only branch ref the command writes. The index
+and working tree already hold the landed tree, since the merge commit was
+built from them, so finishing the checkout is `git merge --quit`: it forgets
+the in-progress merge state and touches no ref. A `git reset --hard` would
+write the branch `HEAD` names a second time, from a stale reading — rolling
+back a fast-forward that landed on the target after the swap, or dragging a
+branch `HEAD` was switched to in the meantime — and no check taken before it
+can close that window. A `HEAD` retargeted underneath the merge, or a target
+that moved on after the landing, changes nothing about where the work landed;
+the command says so on standard error and leaves every ref alone.
+
+Two consequences follow from not committing through `HEAD`. Commit hooks —
+`pre-commit`, `prepare-commit-msg`, `commit-msg`, `post-commit` — do not run
+for a merge; the governed act is not a place for repository-local scripts to
+intervene. And the commit message is used verbatim, where `git commit -m`
+would have applied its default cleanup, so a `--text` containing comment lines
+or trailing whitespace now reaches the receipt as written.
+
+The comparison needs a request, and it finds one through the commitment lane
+that reports the approved artifact. An approval whose artifact is the report of
+no commitment lane gets **no destination check at all**, and merges into any
+branch of the workroom's repository; its receipt still seals the destination it
+measured. That covers independently reviewed self-initiated work, where
+requester and performer are the same actor and no commitment row exists. It
+also covers an artifact published against a request that stated
+`no_git_artifact=true`: the fold never makes such an artifact that
+commitment's report, so no lane is found and no destination is enforced. That
+second case is a gap, not a design choice, and closing it is its own request.
+
+#### Held landings and the compatibility window
+
+A `state@3` request may carry `landing=held`. Its hold is lifted by one
+ratified structured authorization report signed by the hold owner, and the
+fold decides whether such a release is in force for this exact candidate and
+approval. For one release, a merge of a held request with no such release in
+force is a **warning** on standard error rather than a refusal, and both
+receipts record that it used the window: `merge_hold_warning=true` in the
+durable receipt and `Gitseq-Hold-Warning: true` on the merge commit. When the
+window closes that case becomes a refusal.
+
+A landing of a released hold seals exactly that release. The receipt records
+it as `merge_authorization` with its ratification as
+`merge_authorization_ratification`, and the merge commit carries the matching
+`Gitseq-Authorization` and `Gitseq-Authorization-Ratification` trailers,
+whether or not `--authorization` named it; passing a different report refuses.
+The release is then validated as any authorization is: the same bindings, the
+same ratification witness, the same ordering — including the phase-one signer
+list of original implementation requester, the live actor named `planner`, or
+a live `ratifier`. The hold-owner signer rule that replaces that list for a
+held request is a later slice, so a release signed by a delegated hold owner
+outside the phase-one list is still refused here.
+
+#### Legacy receipts
+
+A receipt carrying neither `Gitseq-Target-Repo` nor `Gitseq-Target-Ref` was
+sealed before either existed. It reads as `refs/heads/main` of this workroom's
+own repository, is flagged legacy, and resumes without acquiring fields its
+author never signed. The same reading applies to a pre-`state@3` request, and
+it has a cost: such a request now lands only into `refs/heads/main` of the
+workroom's repository, so a repository whose default branch is not `main`
+cannot merge work filed under the older schema until it restates that work's
+target under `state@3`. Whether a landed head is still contained in that ref
+afterwards, and whether a remote carries it, are repository-derived advisory
+facts computed elsewhere; nothing here reads them, and no fold satisfaction
+depends on them.
 
 ### Structured merge authorization
 
@@ -298,11 +412,11 @@ commit that lands.
 
 ## Approval scope and receipt
 
-A ratified approval is repository-scoped and single-use. It authorizes
-the exact candidate to land once in any one clean checkout belonging to
-the same repository. The first successful use fixes the target's
-pre-merge head. The approval cannot then be replayed into another branch
-or linked worktree.
+A ratified approval is single-use, and it authorizes the exact candidate to
+land once, into the branch its implementation request owes it to, in a clean
+checkout of this workroom's repository. The first successful use fixes the
+target's pre-merge head. The approval cannot then be replayed into another
+branch or linked worktree.
 
 Concurrent callers first reserve
 `refs/gitseq/merge-receipts/<approval-hash>` with an atomic compare-and-swap.
@@ -311,12 +425,14 @@ records, followed by the artifact succession authorized by that receipt:
 
 - merge commit trailers naming `Gitseq-Approval`, `Gitseq-Candidate`, optional
   paired `Gitseq-Authorization` and `Gitseq-Authorization-Ratification`,
-  `Gitseq-Target-Pre-Head`, `Gitseq-Changed-Paths`, and
+  `Gitseq-Target-Repo`, `Gitseq-Target-Ref`, `Gitseq-Target-Pre-Head`,
+  optional `Gitseq-Hold-Warning`, `Gitseq-Changed-Paths`, and
   `Gitseq-Left-Live`;
 - the repository receipt ref, advanced from the target's pre-merge head
   to the merge head; and
 - a signed workroom assertion naming the approval, candidate, target
-  pre-head, merge head, and optional paired authorization and ratification.
+  repository, target ref, target pre-head, merge head, and optional paired
+  authorization and ratification.
 
 Git receipts are checked across all refs. The signed workroom assertion
 also prevents replay if local refs and the branch carrying the merge are

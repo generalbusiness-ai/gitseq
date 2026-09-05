@@ -1256,9 +1256,10 @@ relation, and reaches neither carried nor abandoned successions.
 
 Filling `target_head` by resolving the ref at filing time, and refusing to file
 when it does not resolve, is layer-7 work in a later slice (I5); this head
-neither does it nor depends on it. The receipt fields, the merge refusals, the
-authorization guard bindings, and the status, work, inspect and worktree
-surfaces are their own later work too. This head admits `state@3` and `supersede@1` in the fold and
+neither does it nor depends on it. The receipt fields and the merge refusals
+are layer-7 work too and are described under `gs merge` below; the
+authorization guard bindings and the status, work, inspect and worktree
+surfaces remain later work. This head admits `state@3` and `supersede@1` in the fold and
 leaves every filer on `state@2` and `supersede@0`, so no request already in
 flight acquires an obligation nobody stated. These admission and projection
 changes advance the profile to `workroom-fold@19`; a cache written under `@18`
@@ -1503,6 +1504,68 @@ a projection it may merge on. This carries the fold profile to
   query needs a fact Git holds rather than the projection — whether an
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
+
+  A mutating merge is where the landing obligation of layer 5 meets Git. The
+  destination is measured in the governed checkout — never read from a signed
+  field — as the workroom genesis id of that checkout's repository, the branch
+  ref from `git symbolic-ref HEAD`, and the commit that ref held. All three are
+  sealed twice: in the durable receipt as `merge_target_repo`,
+  `merge_target_ref` and `merge_target_pre_head`, and on the merge commit as
+  `Gitseq-Target-Repo`, `Gitseq-Target-Ref` and `Gitseq-Target-Pre-Head`. The
+  duplication is what makes recovery possible after local refs are lost, and
+  what makes tampering visible: only the Git copy can be rewritten afterwards,
+  so recovery reads both and refuses a durable receipt that disagrees with the
+  trailers it sits behind.
+
+  Every merge, with or without `--authorization`, refuses a detached checkout,
+  a checkout whose branch is not the implementation request's resolved target
+  ref, and a checkout whose repository is not that request's target repository.
+  The resolution is the fold's — stated triple, inherited triple, or the
+  pre-`state@3` reading of `refs/heads/main` here — and this layer compares
+  against it rather than deriving it again. Under `state@3` a request that is
+  not held refuses `--authorization` outright, and a held one whose release is
+  not in force for this candidate and approval lands with a warning recorded as
+  `merge_hold_warning` for the length of the stated compatibility window. A
+  held request whose release is in force seals exactly that release as the
+  receipt's authorization and its ratification witness, and refuses an
+  `--authorization` naming anything else; the phase-one signer list still
+  judges that release, because the hold-owner signer rule is a later slice.
+
+  The request is found through the commitment lane that reports the approved
+  artifact, so an approval whose artifact reports no lane receives no
+  destination check at all. That is the case for independently reviewed
+  self-initiated work, which has no commitment row; it is also the case for an
+  artifact published against a request that stated `no_git_artifact=true`,
+  because the fold never makes such an artifact that commitment's report. The
+  second is a gap rather than a design choice, and closing it is separate work.
+
+  The landing is bound to that measurement rather than measured again before
+  it. `git commit` resolves `HEAD` as it writes, so no check taken beforehand
+  can say where a merge lands — a repository hook that retargets `HEAD` moves
+  the merge to another branch while the receipt names the measured one. This
+  layer therefore does not commit through `HEAD`: it writes the staged tree,
+  builds the merge commit with `git commit-tree` against the sealed pre-head
+  and the candidate, and advances the sealed ref by compare-and-swap from that
+  pre-head. There is no window between measurement and landing; a ref that
+  moved keeps its move and the unreferenced commit object is unreachable. That
+  swap is the only branch ref the merge writes: afterwards the checkout only
+  forgets its in-progress merge state, and a `HEAD` retargeted or a target that
+  moved on is reported, never repaired. Two consequences are part of the
+  contract: commit hooks
+  do not run for a merge, and the receipt message is the exact bytes this layer
+  composed rather than what `git commit` cleanup would have left. Whether a
+  landed head is still contained in its ref afterwards, and whether a remote
+  carries it, are repository-derived advisory facts that no receipt claims and
+  no fold satisfaction reads.
+
+  A receipt carrying neither target field predates them: it reads as
+  `refs/heads/main` of this workroom's own repository, is flagged legacy, and
+  resumes without acquiring fields its author never signed. One carrying half
+  the pair proves nothing and is refused. The same legacy reading governs a
+  pre-`state@3` request, which therefore lands only into `refs/heads/main` of
+  the workroom's repository: a repository whose default branch is not `main`
+  cannot merge work filed under the older schema until that work restates its
+  target under `state@3`.
 
   Its shared merge-plan evaluator adds one prospective surface rule the fold does not hold:
   a reviewed path bounds cross-author retirement at itself and beneath it,

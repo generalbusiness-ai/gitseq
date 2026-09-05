@@ -35,6 +35,14 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
+// mergeTestTarget names the destination a hand-sealed test receipt landed on:
+// the fixture repository's own workroom, on the branch every fixture checks
+// out. A receipt built without it would read as legacy, which is a different
+// case these tests are not exercising.
+func mergeTestTarget(workspace *app.Workspace, preHead string) mergeplan.Target {
+	return mergeplan.Target{Repo: mergeplan.WorkroomRepo(workspace), Ref: "refs/heads/main", PreHead: preHead}
+}
+
 func mustClassify(t testing.TB, ctx context.Context, checkout string, projection workroom.Projection, changes []mergeplan.Change, targetPreHead, candidate string, reviewed map[string]bool) map[string]mergeplan.Candidate {
 	t.Helper()
 	classified, err := mergeplan.Classify(ctx, checkout, projection, changes, targetPreHead, candidate, reviewed)
@@ -1410,6 +1418,9 @@ func TestMergeAuthorizationRefusesNonAncestorRemeasure(t *testing.T) {
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
 	authorization := fixture.authorize(t, approval, true, func(body map[string]string) { body["remeasure"] = "disjoint-paths" })
+	// The unrelated history has to arrive on the target branch itself. A
+	// checkout left on another branch is refused for that reason alone under
+	// the landing obligation, which would never reach the remeasurement.
 	testGit(t, fixture.repo, "checkout", "--orphan", "unrelated")
 	testGit(t, fixture.repo, "commit", "-m", "unrelated root")
 	if err := os.WriteFile(filepath.Join(fixture.repo, "unrelated.txt"), []byte("unrelated\n"), 0o644); err != nil {
@@ -1417,6 +1428,9 @@ func TestMergeAuthorizationRefusesNonAncestorRemeasure(t *testing.T) {
 	}
 	testGit(t, fixture.repo, "add", "unrelated.txt")
 	testGit(t, fixture.repo, "commit", "-m", "unrelated target")
+	unrelated := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "checkout", "-f", "main")
+	testGit(t, fixture.repo, "reset", "--hard", unrelated)
 	beforeHead, before := testGit(t, fixture.repo, "rev-parse", "HEAD"), fixture.snapshot(t)
 	err := mergeCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo, "--candidate", fixture.candidate, "--approval", approval, "--authorization", authorization, "--text", "Do not remeasure across unrelated history."})
 	if err == nil || !strings.Contains(err.Error(), "is not an ancestor of current target") {
@@ -1447,7 +1461,7 @@ func TestResumeRefusesSealedUnratifiedAuthorizationBeforeDurableSuffix(t *testin
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 	plan := sharedPlan
 	message, err := mergeReceiptMessage("Seal a receipt whose authorization was never ratified.", approval,
-		authorization, approval, fixture.candidate, targetPreHead, "", plan)
+		authorization, approval, fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1489,7 +1503,7 @@ func TestResumeRefusesAuthorizationWithoutRatificationWitness(t *testing.T) {
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 	plan := sharedPlan
 	message, err := mergeReceiptMessage("Seal an incomplete authorization receipt.", approval, authorization,
-		authorizationStatement.RatifiedBy, fixture.candidate, targetPreHead, "", plan)
+		authorizationStatement.RatifiedBy, fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1531,7 +1545,7 @@ func TestResumeRefusesSealedAuthorizationRatificationMismatch(t *testing.T) {
 	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 	plan := sharedPlan
-	message, err := mergeReceiptMessage("Seal the first authorization witness.", approval, authorization, sealed, fixture.candidate, targetPreHead, "", plan)
+	message, err := mergeReceiptMessage("Seal the first authorization witness.", approval, authorization, sealed, fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, plan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1767,7 +1781,7 @@ func TestMergeReceiptLeftLiveRoundTripAndLegacyCompatibility(t *testing.T) {
 				"a-artifact": {Class: mergeplan.LeftLiveSibling, Commitment: "promise"},
 			},
 		}
-		message, err := mergeReceiptMessage("Merge with complete accounting.", "approval", "", "", fixture.candidate, targetPreHead, "", plan)
+		message, err := mergeReceiptMessage("Merge with complete accounting.", "approval", "", "", fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, plan)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1867,7 +1881,7 @@ func TestMergeRetryRejectsMalformedOrForgedProspectiveAccounting(t *testing.T) {
 			sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
 				mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 			plan := sharedPlan
-			message, err := mergeReceiptMessage("Merge a deliberately malformed receipt.", approval, "", "", fixture.candidate, targetPreHead, "", plan)
+			message, err := mergeReceiptMessage("Merge a deliberately malformed receipt.", approval, "", "", fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, plan)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -2443,7 +2457,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	snapshot := fixture.snapshot(t)
 	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", sharedPlan)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, sharedPlan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2459,7 +2473,7 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	sharedPlan = mergeplan.PlanSuccession(snapshot.Projection, changes,
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 	plan := sharedPlan
-	acts := successionActs(approval, "", "", fixture.candidate, targetPreHead, mergeHead, "", plan)
+	acts := successionActs(approval, "", "", fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), mergeHead, "", false, plan)
 	if len(acts) < 3 {
 		t.Fatalf("succession acts = %d, want receipt, successor, and retirement", len(acts))
 	}
@@ -2519,7 +2533,7 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
 		mustClassify(t, fixture.ctx, fixture.repo, snapshot.Projection, changes, targetPreHead, fixture.candidate, nil))
 	sealed := sharedPlan
-	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, targetPreHead, "", sealed)
+	message, err := mergeReceiptMessage("Merge the approved feature.", approval, "", "", fixture.candidate, mergeTestTarget(fixture.workspace, targetPreHead), "", false, sealed)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2734,7 +2748,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	if !maps.Equal(sealed.Retire, wantRetire) {
 		t.Fatalf("sealed retirements = %v, want %v", sealed.Retire, wantRetire)
 	}
-	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, targetPreHead, "", sealed)
+	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, mergeTestTarget(f.workspace, targetPreHead), "", false, sealed)
 	if err != nil {
 		t.Fatal(err)
 	}

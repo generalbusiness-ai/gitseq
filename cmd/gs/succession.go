@@ -94,6 +94,12 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	if receipt.LeftLivePresent != receipt.ChangedPathsPresent {
 		return errors.New("merge receipt must carry Gitseq-Left-Live and Gitseq-Changed-Paths together, or neither for a legacy receipt")
 	}
+	if _, coherent := receipt.TargetPairPresent(); !coherent {
+		return errors.New("merge receipt must carry Gitseq-Target-Repo and Gitseq-Target-Ref together, or neither for a legacy receipt")
+	}
+	if receipt.HoldWarning != "" && receipt.HoldWarning != "true" {
+		return fmt.Errorf("merge receipt Gitseq-Hold-Warning is %q, want true or absence", receipt.HoldWarning)
+	}
 	var gitLeftLive map[string]mergeLeftLive
 	if receipt.LeftLivePresent {
 		if err := json.Unmarshal([]byte(receipt.LeftLive), &gitLeftLive); err != nil {
@@ -145,7 +151,9 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	if err := mergeplan.ValidateSuccession(ctx, workspace, checkout, plan); err != nil {
 		return err
 	}
-	acts := successionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate, receipt.TargetPreHead, receipt.MergeHead, receipt.Staleness, plan)
+	acts := successionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate,
+		mergeplan.Target{Repo: receipt.TargetRepo, Ref: receipt.TargetRef, PreHead: receipt.TargetPreHead},
+		receipt.MergeHead, receipt.Staleness, receipt.HoldWarning == "true", plan)
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
@@ -167,6 +175,19 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 		}
 		if statement.Body["merge_authorization_ratification"] != receipt.AuthorizationRatification {
 			return successionPlan{}, false, errors.New("recorded merge authorization ratification does not match the sealed Git receipt")
+		}
+		// The durable receipt and the Git trailers are two copies of one
+		// binding, and only one of them can be edited after the fact. Reading
+		// both and requiring them equal is what makes a rewritten trailer a
+		// refusal rather than a quiet re-landing somewhere else.
+		if statement.Body["merge_target_repo"] != receipt.TargetRepo || statement.Body["merge_target_ref"] != receipt.TargetRef {
+			return successionPlan{}, false, errors.New("recorded merge target does not match the sealed Git receipt")
+		}
+		if statement.Body["merge_target_pre_head"] != receipt.TargetPreHead {
+			return successionPlan{}, false, errors.New("recorded merge target pre-head does not match the sealed Git receipt")
+		}
+		if statement.Body["merge_hold_warning"] != receipt.HoldWarning {
+			return successionPlan{}, false, errors.New("recorded merge hold warning does not match the sealed Git receipt")
 		}
 		var plan successionPlan
 		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.Retire); err != nil {
@@ -221,11 +242,11 @@ func decodeChangedPaths(raw, source string) ([]string, error) {
 	return paths, nil
 }
 
-func successionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness string, plan successionPlan) []batchAct {
+func successionActs(approval, authorization, authorizationRatification, candidate string, target mergeplan.Target, mergeHead, staleness string, holdWarning bool, plan successionPlan) []batchAct {
 	if (plan.LeftLive != nil) != (plan.ChangedPaths != nil) {
 		return nil
 	}
-	shared := mergeplan.SuccessionActs(approval, authorization, authorizationRatification, candidate, targetPreHead, mergeHead, staleness, plan)
+	shared := mergeplan.SuccessionActs(approval, authorization, authorizationRatification, candidate, target, mergeHead, staleness, holdWarning, plan)
 	acts := make([]batchAct, 0, len(shared))
 	for _, entry := range shared {
 		act := entry.Act

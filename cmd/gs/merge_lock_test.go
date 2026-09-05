@@ -61,8 +61,10 @@ func TestMergeTransactionsSerializeAcrossProcessesAndRemeasure(t *testing.T) {
 
 			secondRun := startMergeProcess(t, binary, fixture.repo, second, nil)
 			// This is the mutation-sensitive boundary proof. Without the outer
-			// merge lock, or with a lock acquired after Git starts, the second
-			// process observes the incumbent's MERGE_HEAD or index lock and exits.
+			// merge lock, or with a lock acquired after the incumbent's first
+			// mutating step, the second process runs its own reservation,
+			// tentative merge and landing alongside the incumbent's instead of
+			// waiting for it.
 			assertProcessBlocked(t, secondRun)
 			if _, err := gitCommand(fixture.repo, "rev-parse", "--verify", mergeReceiptRef(second.approval)); err == nil {
 				t.Fatal("the waiting merge reserved its approval before the incumbent transaction finished")
@@ -269,18 +271,30 @@ func installMergeTestHook(t *testing.T, repo string) {
 	if err := os.MkdirAll(hooks, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	// A merge no longer commits through HEAD, so no commit hook runs inside
+	// the transaction. The approval reservation is the first mutating step it
+	// takes while holding the merge lock, and pausing or refusing there is the
+	// same mid-transaction block the earlier pre-commit hook produced. It is
+	// deliberately not the landing ref: a process killed inside that
+	// transaction leaves the target branch locked, which is an artefact of the
+	// test rather than anything the merge boundary does.
+	//
+	// The hook fires once. Rollback and receipt publication update refs too,
+	// and a block or a refusal on those would be this test interfering with
+	// the recovery it is trying to observe.
 	hook := `#!/bin/sh
-if test -n "$GITSEQ_TEST_MERGE_ENTERED"; then
-  : > "$GITSEQ_TEST_MERGE_ENTERED"
-  while test ! -e "$GITSEQ_TEST_MERGE_RELEASE"; do
-    sleep 0.01
-  done
-  if test "$GITSEQ_TEST_MERGE_FAIL" = "1"; then
-    exit 1
-  fi
-fi
+test "$1" = prepared || exit 0
+grep -q ' refs/gitseq/merge-receipts/' || exit 0
+test -n "$GITSEQ_TEST_MERGE_ENTERED" || exit 0
+test -e "$GITSEQ_TEST_MERGE_ENTERED" && exit 0
+: > "$GITSEQ_TEST_MERGE_ENTERED"
+while test ! -e "$GITSEQ_TEST_MERGE_RELEASE"; do
+  sleep 0.01
+done
+test "$GITSEQ_TEST_MERGE_FAIL" = "1" && exit 1
+exit 0
 `
-	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(hook), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(hooks, "reference-transaction"), []byte(hook), 0o755); err != nil {
 		t.Fatal(err)
 	}
 }
