@@ -1,6 +1,7 @@
 import type { ActorState, Commitment, KindDefinition, Projection, Statement, Vocabulary } from "./api.ts";
 import { isFoundingSeed } from "./authority.ts";
 import { firstLine } from "./util.ts";
+import { landingDisplay, type LandingDisplay } from "./spine.ts";
 
 // The words a row may say about itself. Awaiting merge is deliberately
 // separate from reported: an artifact has no satisfier, so it cannot truthfully
@@ -44,10 +45,11 @@ export type RowState =
 // what is owed should find it where the other counts are, not because it is
 // another workRows population — the caller dispatches on it rather than
 // passing it through.
-export type Population = "live" | "moved" | "stale" | "done" | "closed" | "ratification";
+export type Population = "live" | "moved" | "approved" | "stale" | "done" | "closed" | "ratification";
 export const POPULATIONS: { key: Population; label: string }[] = [
   { key: "live", label: "open" },
   { key: "moved", label: "reasoning moved" },
+  { key: "approved", label: "approved, not landed" },
   { key: "stale", label: "stale, not in flight" },
   { key: "done", label: "completed" },
   { key: "closed", label: "closed, not completed" },
@@ -60,6 +62,7 @@ export const POPULATIONS: { key: Population; label: string }[] = [
 export const PRIORITY_GROUPS = ["needs attention", "unclaimed", "waiting on a human", "running"] as const;
 
 export interface WorkRow {
+  landing?: LandingDisplay;
   /** Stable identity for this projected commitment lifecycle. */
   key: string;
   /** The request this row is about, and the thread a click opens. */
@@ -92,6 +95,8 @@ function inPopulation(commitment: Commitment, population: Population): boolean {
       return LIVE_STATUSES.includes(commitment.status);
     case "moved":
       return LIVE_STATUSES.includes(commitment.status) && commitment.stale === true;
+    case "approved":
+      return commitment.approved_not_landed === true;
     case "stale":
       return commitment.status === "stale";
     case "done":
@@ -162,7 +167,7 @@ function rowState(commitment: Commitment, attention: boolean, population: Popula
   // loud — attention is carried in its own field, not in this word — so a
   // world-stale stale row reads "stale" and is coloured, which is both facts
   // at once rather than either one swallowing the other.
-  if (population === "stale" || population === "done" || population === "closed") return commitment.status as RowState;
+  if (population === "stale" || population === "done" || population === "closed" || (population === "approved" && !LIVE_STATUSES.includes(commitment.status))) return commitment.status as RowState;
   if (attention) return "needs attention";
   if (commitment.status === "awaiting-review") return "awaiting review";
   if (commitment.status === "awaiting-authorization") return "awaiting authorization";
@@ -206,7 +211,7 @@ export function workRows(projection: Projection, context: RowContext, population
       commitment.promise ? statements.get(commitment.promise) : undefined,
       commitment.report ? statements.get(commitment.report) : undefined,
     ]);
-    const waitsOn = commitment.waiting_on ?? (commitment.promise ? "" : commitment.addressed_to ?? "");
+    const waitsOn = commitment.waiting_on ?? (commitment.status === "open" ? commitment.addressed_to ?? "" : "");
     const title = firstLine(request.text);
     rows.push({
       // One request can have several historical commitment lifecycles. The
@@ -216,6 +221,7 @@ export function workRows(projection: Projection, context: RowContext, population
       event: commitment.request,
       ticket: context.tickets.get(commitment.request),
       state: rowState(commitment, attention, population),
+      landing: landingDisplay(commitment),
       attention,
       waitsOn,
       waitsOnName: waitsOn ? context.nameOf(waitsOn) : "unassigned",
@@ -251,7 +257,7 @@ function priorityGroup(row: WorkRow): number {
 // Every column header sorts. Third click on the same column returns to
 // priority order, which is how the default stays reachable without a reset
 // control of its own.
-export type SortKey = "state" | "waits" | "age" | "title" | "ticket";
+export type SortKey = "state" | "target" | "waits" | "age" | "title" | "ticket";
 export interface Sort {
   key: SortKey;
   descending: boolean;
@@ -297,6 +303,8 @@ export function sortRows(rows: readonly WorkRow[], sort?: Sort): WorkRow[] {
     const value =
       sort.key === "state"
         ? STATE_ORDER[a.state] - STATE_ORDER[b.state]
+        : sort.key === "target"
+          ? (a.landing?.destination ?? "").localeCompare(b.landing?.destination ?? "")
         : sort.key === "waits"
           ? a.waitsOnName.localeCompare(b.waitsOnName)
           : sort.key === "age"

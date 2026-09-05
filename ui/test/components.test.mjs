@@ -345,9 +345,9 @@ test("every Toolbar state route withholds its composer from a departed participa
 
 
 // One line, fixed columns, no wrapping at 1,024 pixels. A static render is
-// where the row's shape is decided: five cells, each of them clipped rather
+// where the row's shape is decided: six cells, each of them clipped rather
 // than allowed to grow the row to two lines.
-test("every row is one line of exactly five fixed columns", async () => {
+test("every row has six fixed columns including its target", async () => {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   try {
     const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
@@ -381,8 +381,8 @@ test("every row is one line of exactly five fixed columns", async () => {
 
     assert.match(markup, /table-fixed/);
     const row = markup.slice(markup.indexOf("<tbody>"), markup.indexOf("</tbody>"));
-    assert.equal((row.match(/<td/g) ?? []).length, 5, "a row is five columns and no more");
-    assert.equal((row.match(/truncate/g) ?? []).length, 5, "every cell clips rather than wrapping");
+    assert.equal((row.match(/<td/g) ?? []).length, 6, "a row includes the target column");
+    assert.equal((row.match(/truncate/g) ?? []).length, 6, "each primary cell value clips rather than overflowing");
     // The title is the request's first line only.
     assert.match(row, /A request whose first line is the title/);
     assert.doesNotMatch(row, /whose second line is not/);

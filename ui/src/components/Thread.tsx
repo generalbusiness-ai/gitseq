@@ -1,9 +1,11 @@
+import { RequestResultFields } from "./RequestResultFields";
+import { emptyRequestResult, proseHoldWarning, requestResultBody } from "../lib/requestResult.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, CircleSlash, SendHorizonal, Undo2 } from "lucide-react";
-import { api, type ActInput, type FrameView, type Landing, type Statement } from "../lib/api";
+import { api, type ActInput, type FrameView, type LandingDetails, type Statement } from "../lib/api";
 import { ticketsOf, type Workroom } from "../lib/store";
 import type { Session } from "../lib/session";
-import { buildSpine, type Station } from "../lib/spine";
+import { buildSpine, sameLandingBasis, type Station } from "../lib/spine";
 import { age } from "../lib/rows";
 import { eventDiscussionEntries, RetryKeys, sendTemporaryReply } from "../lib/interaction";
 import { soleCurrentSupersedeBasis } from "../lib/supersedeLinks";
@@ -71,7 +73,12 @@ export function Thread({
   const me = workroom.actors.find((actor) => actor.name === session.actor)?.fingerprint;
   const discussion = useMemo(() => eventDiscussionEntries(root, frames), [frames, root]);
 
-  const [landings, setLandings] = useState<{ branch: string; commits: Map<string, Landing> }>();
+  const focusedCommitment = focus ? index.commitment(focus) : undefined;
+  const selectedCommitment = focusedCommitment?.request === root ? focusedCommitment : index.commitment(root);
+  const [landingRead, setLandingRead] = useState<{ event: string; value?: LandingDetails; unavailable?: boolean }>();
+  const landingEvent = selectedCommitment?.promise ?? selectedCommitment?.report ?? selectedCommitment?.request;
+  const currentLanding = landingRead && landingRead.event === landingEvent && selectedCommitment &&
+    (!landingRead.value || sameLandingBasis(selectedCommitment, landingRead.value)) ? landingRead : undefined;
   const spine = useMemo(
     () =>
       projection
@@ -79,33 +86,38 @@ export function Thread({
             projection,
             tickets,
             nameOf,
-            landings: landings?.commits,
-            branch: landings?.branch,
+            commitment: selectedCommitment,
+            landing: currentLanding?.value,
+            landingUnavailable: currentLanding?.unavailable,
             talk: discussion.length,
           })
         : undefined,
-    [projection, root, tickets, nameOf, landings, discussion.length],
+    [projection, root, tickets, nameOf, selectedCommitment, currentLanding, discussion.length],
   );
 
-  // The merge station asks git, and asking is a round trip. The rail says it
-  // is asking until the answer lands, and never guesses in the meantime.
-  const head = spine?.head;
+  // Refs can move at an unchanged durable frontier. The existing bounded
+  // inspect route measures this lifecycle's declared target every ten seconds.
   useEffect(() => {
+    if (!landingEvent || !selectedCommitment?.target_ref) return;
     let stopped = false;
-    if (!head) return;
-    api
-      .landed([head])
-      .then((answer) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const answer = await api.inspect(landingEvent, controller.signal);
         if (stopped) return;
-        setLandings({ branch: answer.branch, commits: new Map(answer.commits.map((c) => [c.commit, c])) });
-      })
-      // A check that fails must not read as a negative. Leaving the answer
-      // absent keeps the station saying "asking", never "did not land".
-      .catch(() => {});
-    return () => {
-      stopped = true;
+        const value = answer.landing;
+        const sameBasis = answer.event === landingEvent && sameLandingBasis(selectedCommitment, value);
+        setLandingRead({ event: landingEvent, value: sameBasis ? value : undefined, unavailable: !sameBasis });
+      } catch {
+        if (!stopped) setLandingRead({ event: landingEvent, unavailable: true });
+      }
+      if (!stopped) timer = setTimeout(() => void refresh(), 10000);
     };
-  }, [head]);
+    setLandingRead(undefined);
+    void refresh();
+    return () => { stopped = true; controller.abort(); clearTimeout(timer); };
+  }, [landingEvent, selectedCommitment]);
 
   const request = index.statement(root);
   // Arrival state for a focused record: its detail opens by itself, and so
@@ -530,6 +542,9 @@ function Composer({
   // they are asked for here rather than filed empty and refused.
   const [addressee, setAddressee] = useState("");
   const [conditions, setConditions] = useState("");
+  const [result, setResult] = useState(emptyRequestResult);
+  const resultRepo = workroom.status?.durable.projection.statements[0]?.event.split("#")[0];
+  const resultBody = requestResultBody(result, resultRepo);
   // Citations the operator named, beside the ones the row resolved. The
   // revision case in docs/how-to/keep-decision-records.md is why this exists:
   // a review request for a revised decision has to rest on the proposal that
@@ -551,6 +566,7 @@ function Composer({
       setText(route.prefill);
       setAddressee("");
       setConditions("");
+      setResult(emptyRequestResult);
       setCited([]);
       setCiting("");
       setCiteError(undefined);
@@ -563,7 +579,7 @@ function Composer({
   // dropped or change what is retired. It is refused rather than either.
   const citable = durable && type !== "withdraw";
   const bases = [...(routed ? routed.bases : [root]), ...(citable ? cited : [])];
-  const ready = type !== "request" || (addressee !== "" && conditions.trim() !== "");
+  const ready = type !== "request" || (addressee !== "" && conditions.trim() !== "" && resultBody !== undefined);
 
   // A name the operator typed, resolved against the projection and never past
   // it. A ticket number is what the screen shows them; a whole event
@@ -630,6 +646,7 @@ function Composer({
       if (type === "request") {
         body.to = addressee;
         body.conditions = conditions.trim();
+        Object.assign(body, resultBody);
       }
       const input: ActInput =
         type === "withdraw"
@@ -673,6 +690,7 @@ function Composer({
       setType("say");
       setAddressee("");
       setConditions("");
+      setResult(emptyRequestResult);
       setCited([]);
       setCiting("");
       setCiteError(undefined);
@@ -702,6 +720,7 @@ function Composer({
                 setText("");
                 setAddressee("");
                 setConditions("");
+                setResult(emptyRequestResult);
                 setCited([]);
                 setCiting("");
                 setCiteError(undefined);
@@ -828,6 +847,8 @@ function Composer({
             />
           </div>
         )}
+        {type === "request" && <RequestResultFields value={result} onChange={setResult} repo={resultRepo} actors={workroom.actors.filter((actor) => !workroom.status?.durable.projection.actors[actor.fingerprint]?.retired)} />}
+        {type === "request" && proseHoldWarning(`${text} ${conditions}`, result) && <p role="status" className="text-xs text-danger">Words in the request do not create a landing hold. Choose Hold landing and its owner to require a structured release.</p>}
         <div className="flex items-end gap-2">
           <textarea
             value={text}
@@ -848,7 +869,7 @@ function Composer({
             onClick={() => void send()}
             disabled={busy || !text.trim() || !session.live || !ready}
             aria-label={type === "withdraw" ? "withdraw" : durable ? "keep reply" : "send temporary reply"}
-            title={session.live ? (ready ? undefined : "a request needs an addressee and its conditions") : "not present yet"}
+            title={session.live ? (ready ? undefined : "a request needs an addressee, conditions and an explicit result") : "not present yet"}
             className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-background transition-colors hover:bg-accent/90 focus-visible:outline focus-visible:outline-accent disabled:opacity-40"
           >
             {type === "withdraw" ? <Undo2 className="h-3.5 w-3.5" /> : <SendHorizonal className="h-3.5 w-3.5" />}

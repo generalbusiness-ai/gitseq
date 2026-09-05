@@ -1797,6 +1797,34 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   `waiting_on` only when the fold projected that field and distinguishes a
   root of this view from missing or out-of-view bases.
 
+  Target and delivery labels use the same projected commitment fields in the
+  table, graph card and thread spine. An explicit approved-not-landed population
+  includes historical closed or satisfied lifecycles without relabelling them;
+  its membership never changes the projected waiting party. Target refs are
+  shortened only for display, with the full repository/ref available and a
+  legacy badge when the fold says so. Opening either presentation preserves
+  the selected promise or report within its existing thread.
+
+  The thread inspects that exact lifecycle through `/v0/inspect`. Only the
+  fold's selected `landing_receipt` makes a sealed landing station; current
+  bounded Git membership is a separate station. Missing refs, unknown ancestry,
+  removal after landing and unavailable reads never erase the receipt or prove
+  a negative. An inspection must match the selected event, target, candidate
+  and receipt before it is displayed. The active thread refreshes the read
+  every ten seconds, including when no durable record has changed, and cancels
+  the previous read on navigation. It displays a compatibility hold warning
+  only from the receipt's explicit warning field.
+
+  The request composer requires an explicit result: a named target, inherited
+  request target, or no Git artifact. A named target uses the loaded workroom's
+  canonical repository ID and an operator-entered branch ref; the service
+  resolves its filing-time head. The browser neither invents that measurement
+  nor defaults a branch. A selected hold requires a roster owner. Prose that
+  asks for a hold without those fields prompts a warning, not an inferred hold.
+  An unchanged retry retains its input and idempotency key; editing its result
+  creates a new intent. The shared producer remains responsible for target
+  resolution, exact replay and admission before signing.
+
   Rendering is deterministic and bounded. A view admits at most 160 thread
   cards, including at most 96 direct-context cards, 160 complete relation
   groups, 64 exact contributors per group, and 20 warnings. Applying a bound

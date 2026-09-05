@@ -2,6 +2,7 @@ import type { Commitment, Projection } from "./api.ts";
 import type { RowState, WorkRow } from "./rows.ts";
 import { buildThreadIndex } from "./threads.ts";
 import { firstLine } from "./util.ts";
+import { landingDisplay, type LandingDisplay } from "./spine.ts";
 
 export type OutcomeRelationFamily = "rests-on" | "ratified-by" | "superseded";
 
@@ -30,6 +31,8 @@ export interface OutcomeRelation {
 }
 
 export interface OutcomeNode {
+  landing?: LandingDisplay;
+  focus?: string;
   thread: string;
   context: boolean;
   title: string;
@@ -43,7 +46,7 @@ export interface OutcomeNode {
   order: number;
 }
 
-type OutcomeFocal = string | Pick<WorkRow, "event" | "key" | "state" | "title" | "waitsOn">;
+type OutcomeFocal = string | Pick<WorkRow, "event" | "key" | "state" | "title" | "waitsOn" | "landing">;
 
 export interface OutcomeWarning {
   kind: "malformed" | "cycle" | "bounded";
@@ -182,7 +185,7 @@ export function buildOutcomeMap(
   const focalCandidates = new Set<string>();
   const compareLifecycleEvents = (left: string, right: string): number =>
     (sequence.get(left) ?? Number.MIN_SAFE_INTEGER) - (sequence.get(right) ?? Number.MIN_SAFE_INTEGER) || left.localeCompare(right);
-  const focalCards = new Map<string, Pick<WorkRow, "key" | "state" | "title" | "waitsOn">>();
+  const focalCards = new Map<string, Pick<WorkRow, "key" | "state" | "title" | "waitsOn" | "landing">>();
   for (const focalRow of focalRows) {
     const event = typeof focalRow === "string" ? focalRow : focalRow.event;
     const root = rootOf(event);
@@ -196,6 +199,7 @@ export function buildOutcomeMap(
             state: focalRow.state,
             title: focalRow.title,
             waitsOn: focalRow.waitsOn,
+            landing: focalRow.landing,
           });
         }
       }
@@ -486,6 +490,8 @@ export function buildOutcomeMap(
         title: focalCard?.title ?? (statement ? firstLine(statement.text) : thread),
         kind: statement?.kind ?? "record",
         state: focalCard?.state ?? outcomeDisplayState(commitment),
+        landing: focalCard ? focalCard.landing : landingDisplay(commitment),
+        focus: focalCard?.key ?? commitment?.promise ?? commitment?.report ?? commitment?.request,
         waitsOn: focalCard ? (focalCard.waitsOn || undefined) : commitment?.waiting_on,
         rootOfView: !incoming.has(thread),
         recordedBasis: bases.size > 0 || missingBasis.has(thread),

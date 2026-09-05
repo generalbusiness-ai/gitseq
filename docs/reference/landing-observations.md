@@ -124,3 +124,27 @@ Crossing a bound reports unknown or omitted rows; it never proves a negative.
 
 - [`gs work`](gs/work.md), [`gs status`](gs/status.md), [`gs inspect`](gs/inspect.md)
 - [Architecture layers](architecture.md)
+
+## Browser presentation
+
+Table and Graph show the projected target and delivery state. The target uses
+its short branch name and a legacy badge where applicable; the full repository
+and ref remain available. The approved-not-landed population includes matching
+historical lifecycles, retaining words such as cancelled or satisfied. The
+waiting actor remains the one projected by the fold.
+
+Opening a row or graph card keeps its particular promise or report selected in
+the thread. The thread reads `/v0/inspect` for that lifecycle and refreshes every
+ten seconds. Its sealed landing station uses `landing_receipt`; a separate
+Git-now station can show incorporation, removal, a missing target, unknown
+ancestry or an unavailable read. Those observations do not rewrite delivery
+history. A compatibility hold warning appears only when the actual receipt
+carries it. Late responses for a different event, target, candidate or receipt
+are discarded.
+
+The request form requires the result explicitly. For a named branch, the
+service resolves and records its current head at filing; there is no default
+branch or browser-supplied commit measurement. A hold needs its owner. Asking
+for a hold only in text produces a warning, without creating authority. Retrying
+an unchanged request keeps the same input and key; changing the result creates
+a new intent.
