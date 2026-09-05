@@ -1,0 +1,15 @@
+{
+  "head": "fb5ae8c32421552945db2089d1b5b1b02730c870",
+  "depth": 18635,
+  "C": 35,
+  "R": 2402,
+  "S": 12012,
+  "edges": 7973,
+  "associations": 9806,
+  "H": 2305,
+  "through_associations": 32193,
+  "through_witness_join": 49009,
+  "before_comparisons": 56153,
+  "each_checkout": 4708,
+  "full_lower_bound": 220933
+}
