@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
@@ -13,15 +12,17 @@ const worktreeCommitmentLimit = 4096
 const worktreeRowLimit = 20
 const worktreeInspectionLimit = 65536
 
-// One budget spans association construction and every checkout's row/head
-// comparisons. Unique object limits alone do not bound repeated associations.
+// One budget spans association construction, graph and membership joins, and
+// bounded output selection. Unique object limits alone do not bound fanout.
 type worktreeInspectionBudget struct {
 	ctx       context.Context
 	remaining int
+	failed    bool
 }
 
 func (b *worktreeInspectionBudget) take(n int) bool {
-	if b.ctx.Err() != nil || n > b.remaining {
+	if b.failed || b.ctx.Err() != nil || n > b.remaining {
+		b.failed = true
 		return false
 	}
 	b.remaining -= n
@@ -54,16 +55,24 @@ func protectsWorktree(row WorktreeRow) bool {
 	}
 }
 
+type worktreeLandingIndex struct {
+	rows    []worktreeLandingInput
+	objects map[string]bool
+	targets map[string]map[string]bool
+}
+
 // worktreeLandingInputs associates all directly named heads, not just the
 // latest reporting artifact. A later unapproved artifact must not hide an
 // earlier approved obligation carried by another checkout.
-func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudget) ([]worktreeLandingInput, bool) {
+func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudget) (worktreeLandingIndex, bool) {
 	if len(p.Commitments) > worktreeCommitmentLimit {
-		return nil, false
+		return worktreeLandingIndex{}, false
 	}
 	rows := make([]worktreeLandingInput, len(p.Commitments))
 	byEvent := map[string][]int{}
+	byReceipt := map[string][]int{}
 	objects := map[string]bool{}
+	targets := map[string]map[string]bool{}
 	complete := true
 	addHead := func(i int, head string) {
 		if head == "" {
@@ -82,10 +91,19 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 	}
 	for i, c := range p.Commitments {
 		if !budget.take(1) {
-			return nil, false
+			return worktreeLandingIndex{}, false
 		}
 		rows[i] = worktreeLandingInput{row: WorktreeRow{Request: c.Request, Promise: c.Promise, Status: c.Status, LandingDetails: LandingDetailsFor(c)}, heads: map[string]bool{}, branches: map[string]bool{}}
 		addHead(i, c.Candidate)
+		if c.TargetRef != "" {
+			if targets[c.TargetRepo] == nil {
+				targets[c.TargetRepo] = map[string]bool{}
+			}
+			targets[c.TargetRepo][c.TargetRef] = true
+		}
+		if c.LandingReceipt != "" {
+			byReceipt[c.LandingReceipt] = append(byReceipt[c.LandingReceipt], i)
+		}
 		for _, event := range []string{c.Request, c.Promise, c.Report} {
 			if event != "" {
 				byEvent[event] = append(byEvent[event], i)
@@ -96,7 +114,23 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 	// request/commitment expansion, including repeated direct provenance edges.
 	for _, s := range p.Statements {
 		if !budget.take(1) {
-			return nil, false
+			return worktreeLandingIndex{}, false
+		}
+		for _, i := range byReceipt[s.Event] {
+			if !budget.take(1) {
+				return worktreeLandingIndex{}, false
+			}
+			fillLandingReceipt(&rows[i].row.LandingDetails, s)
+			if head := rows[i].row.MergeHead; head != "" {
+				objects[head] = true
+				if len(objects) > landingObjectLimit {
+					return worktreeLandingIndex{}, false
+				}
+			}
+		}
+		// Statements without an association value cannot add a head or branch.
+		if s.Body["head"] == "" && s.Body["commit"] == "" && s.Body["branch"] == "" {
+			continue
 		}
 		associate := func(event string) bool {
 			for _, i := range byEvent[event] {
@@ -112,27 +146,17 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 			return true
 		}
 		if !associate(s.Event) {
-			return nil, false
+			return worktreeLandingIndex{}, false
 		}
 		if s.Kind == workroom.KindArtifact {
 			for _, basis := range p.Provenance[s.Event] {
 				if !budget.take(1) || !associate(basis) {
-					return nil, false
+					return worktreeLandingIndex{}, false
 				}
 			}
 		}
 	}
-	var details []*LandingDetails
-	for i := range rows {
-		details = append(details, &rows[i].row.LandingDetails)
-	}
-	// The witness join is linear in statements plus selected rows. Charge it
-	// before the shared helper, which does not perform provenance expansion.
-	if !budget.take(len(p.Statements) + 2*len(rows)) {
-		return nil, false
-	}
-	FillLandingEvidence(p, details)
-	return rows, complete && budget.take(0)
+	return worktreeLandingIndex{rows: rows, objects: objects, targets: targets}, complete && budget.take(0)
 }
 
 // ClassifyWorktrees is advice for W1, never a deletion operation. It uses one
@@ -141,69 +165,43 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection, views []WorktreeView) []string {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
-	deletable := []string{}
 	budget := &worktreeInspectionBudget{ctx: ctx, remaining: worktreeInspectionLimit}
-	unknown := func() []string {
-		for i := range views {
-			views[i].Classification = "unknown"
-			views[i].ClassificationReason = "worktree inspection limit or cancellation"
-			views[i].Approved, views[i].LandedInto, views[i].Row = "", "", ""
-			views[i].RemoteContains, views[i].Rows = nil, nil
-			views[i].RowsOmitted = 0
-		}
-		return []string{}
-	}
+	return w.classifyWorktrees(ctx, p, views, budget)
+}
+
+func (w *Workspace) classifyWorktrees(ctx context.Context, p workroom.Projection, views []WorktreeView, budget *worktreeInspectionBudget) []string {
+	unknown := func() []string { return unknownWorktrees(views) }
 	if !budget.take(len(views)) {
 		return unknown()
 	}
-	rows, complete := worktreeLandingInputs(p, budget)
+	index, complete := worktreeLandingInputs(p, budget)
 	if !complete {
 		return unknown()
 	}
 	g := readLandingRefs(ctx, w.Repo)
+	g.inspectionBudget = budget
 	repository := "git:" + w.config.ObjectFormat + ":" + w.config.Genesis
 	remote := landingRemote(ctx, w.Repo)
-	var tips, objects, targets []string
-	objectSet := map[string]bool{}
-	targetRefs := map[string]bool{}
-	for i := range views {
-		// The checkout listing is cached for eight seconds. A current ref
-		// observation must replace its older tip before cleanup classification.
-		if g.refsKnown && views[i].Branch != "" && !views[i].Detached {
-			views[i].Head = g.refs["refs/heads/"+views[i].Branch]
-		}
-		tips = append(tips, views[i].Head)
-	}
-	for _, input := range rows {
-		if !budget.take(1) {
-			return unknown()
-		}
-		for head := range input.heads {
-			if !budget.take(1) {
-				return unknown()
-			}
-			objectSet[head] = true
-		}
-		if input.row.MergeHead != "" {
-			objectSet[input.row.MergeHead] = true
-		}
-		if len(objectSet) > landingObjectLimit {
-			return unknown()
-		}
-		if input.row.TargetRepo == repository && input.row.TargetRef != "" {
-			targetRefs[input.row.TargetRef] = true
-			targets = append(targets, input.row.TargetRef)
-			tips = append(tips, g.refs[input.row.TargetRef])
-		}
-	}
-	for head := range objectSet {
-		objects = append(objects, head)
+	tips, objects, targets, complete := index.gitInputs(views, g, repository, budget)
+	if !complete {
+		return unknown()
 	}
 	tracking := remoteTrackingRefs(ctx, w.Repo, remote, targets)
 	for _, ref := range tracking {
+		if !budget.take(1) {
+			return unknown()
+		}
 		tips = append(tips, g.refs[ref])
 	}
 	g.load(ctx, w.Repo, tips, objects)
+	return classifyWorktreeRows(index, views, g, repository, remote, tracking, budget)
+}
+
+func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *landingGraph, repository, remote string, tracking map[string]string, budget *worktreeInspectionBudget) []string {
+	deletable := []string{}
+	unknown := func() []string { return unknownWorktrees(views) }
+	rows := index.rows
+	targetRefs := index.targets[repository]
 	measuredAt := time.Now().Unix()
 	for i := range rows {
 		if !budget.take(1) {
@@ -215,82 +213,29 @@ func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection
 			r.Git = &measurement
 		}
 	}
+	matches, complete := indexWorktreeMatches(rows, views, g, budget)
+	if !complete {
+		return unknown()
+	}
 	for i := range views {
 		if !budget.take(1) {
 			return unknown()
 		}
 		view := &views[i]
-		view.Classification = "unmapped"
-		uncertain, protected, tipSettled := !g.refsKnown || view.Head == "", false, false
-		type match struct{ index, rank int }
-		var matches []match
-		for j, input := range rows {
-			if !budget.take(1) {
-				return unknown()
-			}
-			matched := input.branches[view.Branch] && view.Branch != ""
-			rank := 0
-			if matched {
-				rank = 2
-			}
-			for head := range input.heads {
-				if !budget.take(1) {
-					return unknown()
-				}
-				contains := g.contains(view.Head, head)
-				if contains == nil {
-					if protectsWorktree(input.row) {
-						uncertain = true
-					}
-					continue
-				}
-				if *contains {
-					matched = true
-					if rank < 1 {
-						rank = 1
-					}
-					if head == view.Head {
-						rank = 3
-					}
-				}
-			}
-			if input.unknownHead && protectsWorktree(input.row) {
-				uncertain = true
-			}
-			if !matched {
-				continue
-			}
-			if protectsWorktree(input.row) {
-				protected = true
-				rank += 4
-			}
-			matches = append(matches, match{j, rank})
-			if input.row.Status == "abandoned" && input.heads[view.Head] {
-				tipSettled = true
-			}
-			if input.row.Git != nil && input.row.LandingReceipt != "" {
-				if contains := g.contains(input.row.Git.TargetHead, view.Head); contains != nil && *contains {
-					tipSettled = true
-				}
-			}
-		}
-		sort.SliceStable(matches, func(i, j int) bool {
-			if matches[i].rank != matches[j].rank {
-				return matches[i].rank > matches[j].rank
-			}
-			return matches[i].index > matches[j].index
-		})
-		for n, m := range matches {
-			if n == worktreeRowLimit {
-				view.RowsOmitted = len(matches) - n
-				break
-			}
-			view.Rows = append(view.Rows, rows[m.index].row)
+		view.Classification, view.ClassificationReason = "unmapped", ""
+		view.Row, view.Approved, view.LandedInto = "", "", ""
+		view.RemoteContains = nil
+		uncertain := !g.refsKnown || view.Head == "" || matches.uncertain.has(i)
+		protected, tipSettled := matches.protected.has(i), matches.settled.has(i)
+		var ok bool
+		view.Rows, view.RowsOmitted, ok = matches.selectRows(i, rows, budget)
+		if !ok {
+			return unknown()
 		}
 		if len(view.Rows) > 0 {
 			primary := view.Rows[0]
 			view.Row = primary.Request
-			if contains := g.contains(view.Head, primary.Candidate); contains != nil && *contains {
+			if contains := matches.ancestry.contains(i, primary.Candidate, g.objects[primary.Candidate]); contains != nil && *contains {
 				view.Approved = primary.Approval
 			}
 			if primary.LandingReceipt != "" && primary.Candidate == view.Head {
@@ -310,10 +255,10 @@ func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection
 		case uncertain:
 			view.Classification = "unknown"
 			view.ClassificationReason = "ancestry unavailable or inspection bound reached"
-		case len(matches) > 0 && tipSettled:
+		case len(view.Rows) > 0 && tipSettled:
 			view.Classification = "deletable"
 			deletable = append(deletable, view.Checkout)
-		case len(matches) > 0:
+		case len(view.Rows) > 0:
 			view.Classification = "protected"
 			view.ClassificationReason = "current tip is not proved landed or explicitly abandoned"
 		}
@@ -322,4 +267,43 @@ func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection
 		return unknown()
 	}
 	return deletable
+}
+
+func unknownWorktrees(views []WorktreeView) []string {
+	for i := range views {
+		views[i].Classification = "unknown"
+		views[i].ClassificationReason = "worktree inspection limit or cancellation"
+		views[i].Approved, views[i].LandedInto, views[i].Row = "", "", ""
+		views[i].RemoteContains, views[i].Rows = nil, nil
+		views[i].RowsOmitted = 0
+	}
+	return []string{}
+}
+
+func (index worktreeLandingIndex) gitInputs(views []WorktreeView, g *landingGraph, repository string, budget *worktreeInspectionBudget) ([]string, []string, []string, bool) {
+	var tips, objects, targets []string
+	targetRefs := index.targets[repository]
+	for i := range views {
+		// The checkout listing is cached for eight seconds. A current ref
+		// observation must replace its older tip before cleanup classification.
+		if g.refsKnown && views[i].Branch != "" && !views[i].Detached {
+			views[i].Head = g.refs["refs/heads/"+views[i].Branch]
+		}
+		tips = append(tips, views[i].Head)
+	}
+	for target := range targetRefs {
+		if !budget.take(1) {
+			return nil, nil, nil, false
+		}
+		targets = append(targets, target)
+		tips = append(tips, g.refs[target])
+	}
+	for head := range index.objects {
+		if !budget.take(1) {
+			return nil, nil, nil, false
+		}
+		objects = append(objects, head)
+	}
+
+	return tips, objects, targets, budget.take(0)
 }

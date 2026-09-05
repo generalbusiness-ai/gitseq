@@ -1518,8 +1518,12 @@ heads, protects unsettled and approved-not-landed rows, refreshes cached branch
 tips, and publishes conservative deletion advice without deleting anything.
 If the durable read fails, local checkout facts remain visible with unknown
 classification. A shared 65,536-step budget bounds statement/provenance
-association work and every checkout's row/head comparisons; object inputs are
-deduplicated before the Git batch. Cancellation or budget exhaustion discards
+association work, ancestry propagation, membership joins and ranked output
+selection. A single statement pass joins selected receipts and indexes every
+named head and branch. Checkout membership propagates through the shared
+immutable graph once. Rows with identical match ranks share a bounded newest-row
+list and an exact total; distinct promises and all protected heads remain
+represented. Object inputs are deduplicated before the Git batch. Cancellation or budget exhaustion discards
 all deletion advice and clears partial results to unknown.
 [Landing observations](landing-observations.md) states the
 wire fields, limits, remote-selection policy and cleanup preconditions.

@@ -114,7 +114,8 @@ func TestWorktreeAssociationsShareTotalBudget(t *testing.T) {
 	// the unsettled row; unique identities alone cannot bound the larger case.
 	for _, n := range []int{128, 256, 512} {
 		budget := &worktreeInspectionBudget{ctx: context.Background(), remaining: worktreeInspectionLimit}
-		rows, complete := worktreeLandingInputs(worktreeFanoutFixture(n), budget)
+		index, complete := worktreeLandingInputs(worktreeFanoutFixture(n), budget)
+		rows := index.rows
 		if n == 128 {
 			if !complete || len(rows) != n {
 				t.Fatalf("bounded fixture incomplete: %d %v", len(rows), complete)
