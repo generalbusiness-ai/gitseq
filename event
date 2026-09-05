@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e59ee26d804f0097f0dca64105535049b50962dd","text":"Merge retired a covered predecessor; the successor is at internal/workroom/direct_report_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8153a6c4fef74d7875d98a88fccadef2289602e","text":"Merge retired a covered predecessor; the successor is at docs/concepts/work-loop.md."}
