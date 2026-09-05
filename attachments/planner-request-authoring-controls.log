@@ -1,0 +1,19 @@
+=== RUN   TestPlannerChangedRequestDestinationIsDifferentIntent
+git:sha1:4d19b7f652e9912bb0e28ac3e0f824d24c411b5a#git:sha1:6ec29ed78f573cfcb9f43d2da3e056cf3646f698
+git:sha1:4d19b7f652e9912bb0e28ac3e0f824d24c411b5a#git:sha1:6ec29ed78f573cfcb9f43d2da3e056cf3646f698
+    planner_request_authoring_controls_test.go:11: changed destination silently replayed: first=git:sha1:4d19b7f652e9912bb0e28ac3e0f824d24c411b5a#git:sha1:6ec29ed78f573cfcb9f43d2da3e056cf3646f698 returned=git:sha1:4d19b7f652e9912bb0e28ac3e0f824d24c411b5a#git:sha1:6ec29ed78f573cfcb9f43d2da3e056cf3646f698 wanted refs/heads/other, accepted body=map[conditions:land it target_head:f4b52d1528efa28c7e261ca58844b29cf83fda79 target_ref:refs/heads/main target_repo:git:sha1:4d19b7f652e9912bb0e28ac3e0f824d24c411b5a to:1460375166efae8c60b3b8fca13fbccde436abfc238dc1d58e658c2286772fe5]
+--- FAIL: TestPlannerChangedRequestDestinationIsDifferentIntent (2.12s)
+=== RUN   TestPlannerAcceptedRequestRetrySurvivesDeletedRef
+git:sha1:55ced11ff39feb14c5e78002260a67a7fe095125#git:sha1:5af2836734e109f84e1c9cf838c6d6660c218f21
+    planner_request_authoring_controls_test.go:21: exact accepted retry refused after ref deletion: got= want=git:sha1:55ced11ff39feb14c5e78002260a67a7fe095125#git:sha1:5af2836734e109f84e1c9cf838c6d6660c218f21 err=request body.target_ref: refs/heads/main does not resolve in /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestPlannerAcceptedRequestRetrySurvivesDeletedRef2778041023/001/repo
+--- FAIL: TestPlannerAcceptedRequestRetrySurvivesDeletedRef (1.74s)
+=== RUN   TestPlannerExplicitEmptyHoldOwnerRefuses
+--- PASS: TestPlannerExplicitEmptyHoldOwnerRefuses (1.00s)
+=== RUN   TestCLIRequestMeasuresTheRefAtEachFiling
+git:sha1:37a27e5e0af4e5d7cafa79c2b045ebed79f510e6#git:sha1:38799215d84c7e2cf0c3c1aa53bc8c3beb708480
+git:sha1:37a27e5e0af4e5d7cafa79c2b045ebed79f510e6#git:sha1:38799215d84c7e2cf0c3c1aa53bc8c3beb708480
+git:sha1:37a27e5e0af4e5d7cafa79c2b045ebed79f510e6#git:sha1:b316a6d767f2469019d503e6f15c1420ba83782d
+--- PASS: TestCLIRequestMeasuresTheRefAtEachFiling (2.77s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	8.148s
+FAIL
