@@ -884,18 +884,28 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 		return fmt.Errorf("advance %s from the sealed pre-head %s: %w", target.Ref, target.PreHead, err)
 	}
 	landed = true
-	// The ref carries the landing from here on, so the checkout is caught up
-	// rather than relied upon. A HEAD that no longer names the sealed ref is
-	// reported and left alone: the landing is real where the receipt says it
-	// is, and moving somebody else's branch to repair this checkout would be a
-	// second unasked-for act.
+	// That compare-and-swap is the only branch-ref write this command makes.
+	// The index and working tree already hold the landed tree, because the
+	// merge commit was built from them, so finishing the checkout means only
+	// forgetting the in-progress merge state. `git merge --quit` does exactly
+	// that and touches no ref. A `git reset --hard` here would write the
+	// branch HEAD names a second time, from a stale reading: a fast-forward
+	// landed on the target after the swap would be rolled back to this merge,
+	// and a HEAD switched to another branch in the meantime would drag that
+	// branch here. Checking first cannot help, because the check and the
+	// write are two acts with a window between them.
+	if _, err := git(ctx, *checkout, "merge", "--quit"); err != nil {
+		return fmt.Errorf("forget the in-progress merge state after landing: %w", err)
+	}
+	merging = false
+	// What the checkout now stands on is reported, never repaired: the
+	// landing is real where the receipt says it is, and moving a ref to make
+	// this checkout agree would be a second unasked-for act.
 	standing, err := git(ctx, *checkout, "symbolic-ref", "--quiet", "HEAD")
 	if err != nil || strings.TrimSpace(standing) != target.Ref {
-		fmt.Fprintf(os.Stderr, "warning: %s now carries the merge, but this checkout no longer stands on it; its working tree still holds the staged merge\n", target.Ref)
-	} else if _, err := git(ctx, *checkout, "reset", "--hard", head); err != nil {
-		return fmt.Errorf("bring the checkout to the landed merge: %w", err)
-	} else {
-		merging = false
+		fmt.Fprintf(os.Stderr, "warning: %s now carries the merge, but this checkout no longer stands on it; its working tree holds the landed merge %s\n", target.Ref, head)
+	} else if current, err := git(ctx, *checkout, "rev-parse", "--verify", target.Ref+"^{commit}"); err == nil && strings.TrimSpace(current) != head {
+		fmt.Fprintf(os.Stderr, "warning: %s moved on to %s after the merge landed at %s; the working tree holds the landed merge\n", target.Ref, strings.TrimSpace(current), head)
 	}
 	receipt, ok, err := readMergeReceipt(ctx, *checkout, head)
 	if err != nil {

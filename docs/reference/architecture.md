@@ -1530,9 +1530,11 @@ a projection it may merge on. This carries the fold profile to
   builds the merge commit with `git commit-tree` against the sealed pre-head
   and the candidate, and advances the sealed ref by compare-and-swap from that
   pre-head. There is no window between measurement and landing; a ref that
-  moved keeps its move and the unreferenced commit object is unreachable. The
-  checkout is brought to the landing afterwards, and only while `HEAD` still
-  names the sealed ref. Two consequences are part of the contract: commit hooks
+  moved keeps its move and the unreferenced commit object is unreachable. That
+  swap is the only branch ref the merge writes: afterwards the checkout only
+  forgets its in-progress merge state, and a `HEAD` retargeted or a target that
+  moved on is reported, never repaired. Two consequences are part of the
+  contract: commit hooks
   do not run for a merge, and the receipt message is the exact bytes this layer
   composed rather than what `git commit` cleanup would have left. Whether a
   landed head is still contained in its ref afterwards, and whether a remote

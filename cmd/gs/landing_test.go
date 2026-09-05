@@ -978,3 +978,117 @@ func TestMergeResumeRefusesAnUnknownHoldWarningValue(t *testing.T) {
 		t.Fatalf("unknown hold-warning value resume error = %v", err)
 	}
 }
+
+// firstMainUpdateHook installs a reference-transaction hook that runs body
+// once, after the first committed update of refs/heads/main, inside the
+// checkout. That is the instant just after the landing's compare-and-swap,
+// where anything the checkout cleanup writes would collide with a concurrent
+// actor; body is that actor. It leaves a marker file so the test can prove it
+// fired.
+func firstMainUpdateHook(t *testing.T, repo, body string) string {
+	t.Helper()
+	hooks := t.TempDir()
+	testGit(t, repo, "config", "core.hooksPath", hooks)
+	fired := filepath.Join(hooks, "fired")
+	script := "#!/bin/sh\n[ \"$1\" = committed ] || exit 0\nwhile read old new ref; do\n" +
+		"  [ \"$ref\" = refs/heads/main ] || continue\n" +
+		"  [ ! -e '" + fired + "' ] || continue\n" +
+		"  touch '" + fired + "'\n" +
+		body + "\ndone\n"
+	if err := os.WriteFile(filepath.Join(hooks, "reference-transaction"), []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return fired
+}
+
+// assertMergeStateForgotten checks the checkout finished its merge without
+// writing a ref: no MERGE_HEAD remains, and the index and working tree hold
+// exactly the landed tree.
+func assertMergeStateForgotten(t *testing.T, repo, landed string) {
+	t.Helper()
+	if _, err := exec.Command("git", "-C", repo, "rev-parse", "-q", "--verify", "MERGE_HEAD").Output(); err == nil {
+		t.Fatal("MERGE_HEAD still present after the merge landed")
+	}
+	testGit(t, repo, "diff", "--quiet", "--cached", landed)
+	testGit(t, repo, "diff", "--quiet", landed)
+}
+
+func TestMergeKeepsAFastForwardLandedAfterTheSwap(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	hooks := t.TempDir()
+	advanced := filepath.Join(hooks, "advanced")
+	fired := firstMainUpdateHook(t, fixture.repo,
+		"  next=$(git commit-tree \"$new^{tree}\" -p \"$new\" -m 'Concurrent advance after the swap') || exit 1\n"+
+			"  printf '%s' \"$next\" > '"+advanced+"'\n"+
+			"  git update-ref refs/heads/main \"$next\" \"$new\" || exit 1")
+	stderr, err := captureStderr(t, func() error {
+		return mergeCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+			"--candidate", fixture.candidate, "--approval", approval,
+			"--text", "Keep a concurrent advance landed after the swap.",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(fired); err != nil {
+		t.Fatal("the concurrent advance never ran; the test proves nothing")
+	}
+	child, err := os.ReadFile(advanced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "refs/heads/main"); got != string(child) {
+		t.Fatalf("refs/heads/main = %s, want the concurrent advance %s kept", got, child)
+	}
+	landed := testGit(t, fixture.repo, "rev-parse", string(child)+"^")
+	receipt, ok, err := readMergeReceipt(fixture.ctx, fixture.repo, landed)
+	if err != nil || !ok || receipt.Approval != approval {
+		t.Fatalf("the advance's parent %s is not the landed merge: ok=%v err=%v", landed, ok, err)
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", mergeReceiptRef(approval)); got != landed {
+		t.Fatalf("receipt ref = %s, want the landed merge %s", got, landed)
+	}
+	assertMergeStateForgotten(t, fixture.repo, landed)
+	if !strings.Contains(stderr, "moved on to "+string(child)) {
+		t.Fatalf("stderr does not report the target moving on:\n%s", stderr)
+	}
+}
+
+func TestMergeLeavesASwitchedHeadsBranchAloneAfterTheSwap(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	approval := fixture.review(t)
+	fixture.ratify(t, approval)
+	before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+	testGit(t, fixture.repo, "branch", "raced-branch")
+	fired := firstMainUpdateHook(t, fixture.repo, "  git symbolic-ref HEAD refs/heads/raced-branch || exit 1")
+	stderr, err := captureStderr(t, func() error {
+		return mergeCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
+			"--candidate", fixture.candidate, "--approval", approval,
+			"--text", "Leave a branch HEAD switched to after the swap alone.",
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(fired); err != nil {
+		t.Fatal("the HEAD switch never ran; the test proves nothing")
+	}
+	landed := testGit(t, fixture.repo, "rev-parse", "refs/heads/main")
+	if landed == before {
+		t.Fatal("the merge did not advance the sealed target ref")
+	}
+	if got := testGit(t, fixture.repo, "rev-parse", "refs/heads/raced-branch"); got != before {
+		t.Fatalf("raced-branch = %s, want it left at %s", got, before)
+	}
+	if got := testGit(t, fixture.repo, "symbolic-ref", "HEAD"); got != "refs/heads/raced-branch" {
+		t.Fatalf("HEAD = %s, want the switch to raced-branch left standing", got)
+	}
+	assertMergeStateForgotten(t, fixture.repo, landed)
+	if !strings.Contains(stderr, "no longer stands on it") {
+		t.Fatalf("stderr does not report the switched HEAD:\n%s", stderr)
+	}
+}

@@ -194,10 +194,16 @@ a compare-and-swap. There is no window between the measurement and the
 landing: a ref that moved makes the update fail, the concurrent move stands,
 and the commit object no ref points at is unreachable.
 
-Only after the ref has moved is the checkout brought to the landing, with
-`git reset --hard`, and only while `HEAD` still names the sealed ref. A `HEAD`
-retargeted underneath the merge changes nothing about where the work landed;
-the command says so on standard error and leaves that other branch alone.
+That compare-and-swap is the only branch ref the command writes. The index
+and working tree already hold the landed tree, since the merge commit was
+built from them, so finishing the checkout is `git merge --quit`: it forgets
+the in-progress merge state and touches no ref. A `git reset --hard` would
+write the branch `HEAD` names a second time, from a stale reading — rolling
+back a fast-forward that landed on the target after the swap, or dragging a
+branch `HEAD` was switched to in the meantime — and no check taken before it
+can close that window. A `HEAD` retargeted underneath the merge, or a target
+that moved on after the landing, changes nothing about where the work landed;
+the command says so on standard error and leaves every ref alone.
 
 Two consequences follow from not committing through `HEAD`. Commit hooks —
 `pre-commit`, `prepare-commit-msg`, `commit-msg`, `post-commit` — do not run
