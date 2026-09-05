@@ -98,8 +98,37 @@ export interface Commitment {
   terminal?: string;
   // The validated merge receipt witnessing delivery to this target.
   landing_receipt?: string;
-  // Measured against the target ref, never against main.
+  // Artifact landing audit, independent of commitment closure. A carried
+  // approved artifact can keep this flag on an already landed commitment.
   approved_not_landed?: boolean;
+}
+
+export interface LandingMeasurement {
+  measured_at: number;
+  state: "incorporated" | "landed-then-removed" | "target_gone" | "no_receipt" | "unknown";
+  target_head?: string;
+  ref_incorporated: boolean | null;
+  remote?: string;
+  remote_ref?: string;
+  remote_head?: string;
+  remote_contains: boolean | null;
+  reason?: string;
+}
+
+export interface LandingDetails extends Pick<Commitment,
+  "target_repo" | "target_ref" | "legacy" | "hold_owner" | "release" |
+  "approval" | "candidate" | "latest_resolution" | "terminal" |
+  "approved_not_landed" | "landing_receipt"> {
+  merge_head?: string;
+  receipt_legacy?: boolean;
+  merge_hold_warning?: boolean;
+  git?: LandingMeasurement;
+}
+
+export interface ItemInspection {
+  event: string;
+  commitment?: Commitment;
+  landing?: LandingDetails;
 }
 
 export interface Artifact {
@@ -295,18 +324,6 @@ export interface Status {
   trust_boundary: string;
 }
 
-// What git says about one commit, asked at render time and never stored.
-// "absent" and "unknown" are different answers: a check that fails must not
-// read as a negative, which is the mistake that left a false sentence
-// standing in a design note for seven days.
-export interface Landing {
-  commit: string;
-  status: "landed" | "absent" | "unknown";
-  merge?: string;
-  time?: number;
-  reason?: string;
-}
-
 export interface GraphCommit {
   hash: string;
   parents: string[];
@@ -401,16 +418,13 @@ export const api = {
       .then((r) => json<LocalRepo>(r))
       .then((local) => ({ repo: local.repo ?? "", remote: local.remote ?? "", worktrees: local.worktrees ?? [] })),
   actors: () => fetch("/v0/actors").then((r) => json<Actor[]>(r)),
-  // The merge station's second source. The browser names commits; the branch
-  // is a ref the service resolves, never one a page may choose.
-  landed: (commits: string[]) =>
-    fetch("/v0/landed", {
+  inspect: (event: string, signal?: AbortSignal) =>
+    fetch("/v0/inspect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ commits }),
-    })
-      .then((r) => json<{ branch: string; commits: Landing[] }>(r))
-      .then((answer) => ({ branch: answer.branch ?? "", commits: answer.commits ?? [] })),
+      body: JSON.stringify({ event }),
+      signal,
+    }).then((r) => json<ItemInspection>(r)),
   wait: (cursor: Cursor, timeoutMS = 25000) =>
     fetch("/v0/wait", {
       method: "POST",

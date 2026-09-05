@@ -1829,6 +1829,34 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   `waiting_on` only when the fold projected that field and distinguishes a
   root of this view from missing or out-of-view bases.
 
+  Target and delivery labels use the same projected commitment fields in the
+  table, graph card and thread spine. An explicit approved-not-landed population
+  includes historical closed or satisfied lifecycles without relabelling them;
+  its membership never changes the projected waiting party. Target refs are
+  shortened only for display, with the full repository/ref available and a
+  legacy badge when the fold says so. Opening either presentation preserves
+  the selected promise or report within its existing thread.
+
+  The thread inspects that exact lifecycle through `/v0/inspect`. Only the
+  fold's selected `landing_receipt` makes a sealed landing station; current
+  bounded Git membership is a separate station. Missing refs, unknown ancestry,
+  removal after landing and unavailable reads never erase the receipt or prove
+  a negative. An inspection must match the selected event, target, candidate
+  and receipt before it is displayed. The active thread refreshes the read
+  every ten seconds, including when no durable record has changed, and cancels
+  the previous read on navigation. It displays a compatibility hold warning
+  only from the receipt's explicit warning field.
+
+  The request composer requires an explicit result: a named target, inherited
+  request target, or no Git artifact. A named target uses the loaded workroom's
+  canonical repository ID and an operator-entered branch ref; the service
+  resolves its filing-time head. The browser neither invents that measurement
+  nor defaults a branch. A selected hold requires a roster owner. Prose that
+  asks for a hold without those fields prompts a warning, not an inferred hold.
+  An unchanged retry retains its input and idempotency key; editing its result
+  creates a new intent. The shared producer remains responsible for target
+  resolution, exact replay and admission before signing.
+
   Rendering is deterministic and bounded. A view admits at most 160 thread
   cards, including at most 96 direct-context cards, 160 complete relation
   groups, 64 exact contributors per group, and 20 warnings. Applying a bound
@@ -1975,7 +2003,7 @@ It introduces no replacement Gitseq command or automatic binding migration.
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |
 | `SKILL.md` | Application guidance | Governs agent conduct in Workroom. It is not a kernel protocol specification. |
-| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes as two screens: a board and one thread drawn as a commitment spine. Table remains the default board presentation. Its read-only `Table | Graph` outcome-map control preserves the selected population and search, marks direct context outside focal counts, retains exact contributing event relations, and opens the same full thread; table sorting changes neither graph membership nor placement. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Before opening an ordinary state composer route, it reads the projected participant role to show the fold's refusal early; the signing boundary and fold remain the guarantee. Direct ratification and own-author supersession keep their distinct fold rules. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
+| `ui/`, `internal/service/uidist` | Surface and UI | Renders current Workroom projections, live runtime state, and the Git history facts the service exposes as two screens: a board and one thread drawn as a commitment spine. Table remains the default board presentation. Its read-only `Table | Graph` outcome-map control preserves the selected population and search, marks direct context outside focal counts, retains exact contributing event relations, and opens the same full thread; table sorting changes neither graph membership nor placement. Source closure and the approved-artifact landing audit are separately labelled; a carried disposition comes only from the exact approval artifact in the selected receipt’s fold-verified accounting. Audit counts name commitments and can overlap completed populations. The committed build may not define new semantics; where the fold and Git disagree it shows both rather than choosing, and where the fold projects no relation at all it neither invents one nor gates an affordance on it, per "Layer 5 and layer 7: what the browser may derive" above. Before opening an ordinary state composer route, it reads the projected participant role to show the fold's refusal early; the signing boundary and fold remain the guarantee. Direct ratification and own-author supersession keep their distinct fold rules. Where it navigates away — the repository's remote is the one such link — it re-applies the service's allowlist at the site the `href` is written rather than trusting the field it was handed. |
 
 The important existing dependency direction is real: `internal/kernel` does
 not import `internal/workroom`; `internal/workroom` does not import Git, HTTP,

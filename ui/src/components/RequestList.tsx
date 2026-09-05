@@ -22,6 +22,7 @@ export const defaultListView: ListView = { query: "", population: "live", presen
 
 const COLUMNS: { key: SortKey; label: string; className: string }[] = [
   { key: "state", label: "state", className: "w-[9rem]" },
+  { key: "target", label: "target", className: "w-[9rem]" },
   { key: "waits", label: "waits on", className: "w-[7rem]" },
   { key: "age", label: "age", className: "w-[3.5rem] text-right" },
   { key: "title", label: "title", className: "" },
@@ -119,6 +120,7 @@ export function RequestList({
     live: `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`,
     moved: `${rows.length} resting on reasoning that has moved`,
     stale: `${rows.length} stale ${rows.length === 1 ? "request" : "requests"}, not in flight`,
+    approved: `${rows.length} ${rows.length === 1 ? "commitment" : "commitments"} with an artifact landing audit`,
     done: `${rows.length} completed`,
     closed: `${rows.length} closed, not completed`,
     ratification: `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`,
@@ -197,12 +199,14 @@ export function RequestList({
             )}
           </div>
 
+          {population === "approved" && <p className="mt-2 px-1 text-[11px] text-muted">The approved artifact has no recorded landing. A receipt may carry it while closing the source request. These rows can also appear under completed or closed.</p>}
           {rows.length === 0 ? (
             <p className="py-12 text-center text-xs text-faint">
               {query ? "Nothing here matches that." : "Nothing is waiting."}
             </p>
           ) : presentation === "table" ? (
-            <table data-board-presentation="table" className="mt-2 w-full table-fixed border-collapse text-xs">
+            <div className="overflow-x-auto" role="region" aria-label="Request table" tabIndex={0}>
+            <table data-board-presentation="table" className="mt-2 w-full min-w-[46rem] table-fixed border-collapse text-xs">
               <thead>
                 <tr>
                   {COLUMNS.map((column) => (
@@ -230,10 +234,11 @@ export function RequestList({
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <Row key={row.key} row={row} onOpen={() => onOpenThread(row.event)} />
+                  <Row key={row.key} row={row} onOpen={() => onOpenThread(row.key)} />
                 ))}
               </tbody>
             </table>
+            </div>
           ) : graph ? (
             <OutcomeMap graph={graph} nameOf={nameOf} onOpenThread={onOpenThread} />
           ) : (
@@ -263,7 +268,7 @@ function Row({ row, onOpen }: { row: WorkRow; onOpen: () => void }) {
     <tr
       tabIndex={0}
       role="link"
-      aria-label={`${row.state}, waits on ${row.waitsOnName}, ${row.title}`}
+      aria-label={`${row.state}${row.landing?.delivery ? `, ${row.landing.delivery}` : ""}${row.landing?.artifactAudit ? `, ${row.landing.artifactAudit}` : ""}, target ${row.landing?.target ?? "not applicable"}, waits on ${row.waitsOnName}, ${row.title}`}
       data-state={row.state}
       data-waits={row.waitsOnName}
       data-group={row.group}
@@ -277,7 +282,15 @@ function Row({ row, onOpen }: { row: WorkRow; onOpen: () => void }) {
       }}
       className="cursor-pointer border-b border-border/70 hover:bg-accent/[0.07] focus-visible:outline focus-visible:outline-accent"
     >
-      <td className={cn("truncate px-2 py-1 font-semibold", row.attention ? "text-danger" : "text-muted")}>{row.state}</td>
+      <td className={cn("px-2 py-1 font-semibold", row.attention ? "text-danger" : "text-muted")}>
+        <span className="block truncate">{row.state}</span>
+        {row.landing?.delivery && <span className="block text-[10px] font-normal">{row.landing.delivery}</span>}
+        {row.landing?.artifactAudit && <span className="block text-[10px] font-normal">{row.landing.artifactAudit}</span>}
+      </td>
+      <td className="px-2 py-1 text-muted" title={row.landing?.destination}>
+        <span className="block truncate">{row.landing?.target ?? "—"}</span>
+        {row.landing?.legacy && <span className="rounded border border-border px-1 text-[10px]">legacy</span>}
+      </td>
       <td className={cn("truncate px-2 py-1", row.waitsOnHuman ? "font-semibold text-foreground" : "text-muted")}>{row.waitsOnName}</td>
       <td className="truncate px-2 py-1 text-right font-mono text-faint">{age(row.moved)}</td>
       <td className="truncate px-2 py-1 text-foreground/90">{row.title}</td>

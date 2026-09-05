@@ -1,7 +1,48 @@
-import type { Act, Landing, Projection, Review, Statement } from "./api.ts";
+import type { Act, Commitment, LandingDetails, Projection, Review, Statement } from "./api.ts";
 import { activeRatification } from "./ratification.ts";
 import { buildThreadIndex } from "./threads.ts";
 import { firstLine, kindLabel } from "./util.ts";
+
+// Shared by the table, graph cards and thread spine. These are the fold's
+// destination and delivery facts; presentation does not infer them from Git
+// ancestry, request prose or a historical lifecycle label.
+export interface LandingDisplay {
+  target: string;
+  destination: string;
+  legacy: boolean;
+  delivery: string;
+  artifactAudit: string;
+  holdOwner?: string;
+  release?: string;
+}
+
+export function landingDisplay(commitment?: Commitment, receipt?: Statement, approval?: Review): LandingDisplay | undefined {
+  if (!commitment) return undefined;
+  const ref = commitment.target_ref;
+  const repo = commitment.target_repo;
+  const carried = receipt?.event === commitment.landing_receipt &&
+    approval?.report === commitment.approval && approval?.ratified && !approval.retired &&
+    approval.head === commitment.candidate && approval.artifact &&
+    receipt?.merge_left_live?.some((entry) => entry.artifact === approval.artifact && entry.verified && entry.class === "carried");
+  return {
+    target: ref ? ref.replace(/^refs\/heads\//, "") : repo ? "Incomplete target" : "No Git artifact",
+    destination: ref ? `${repo || "Repository unavailable"} · ${ref}` : repo ? `${repo} · Target ref unavailable` : "This request owes no Git artifact",
+    legacy: commitment.legacy === true,
+    delivery: commitment.terminal === "landed" ? "Source landed" : "",
+    artifactAudit: commitment.approved_not_landed
+      ? carried ? "Approved artifact: carried by receipt" : "Approved artifact: landing not recorded"
+      : "",
+    holdOwner: commitment.hold_owner,
+    release: commitment.release,
+  };
+}
+
+export function sameLandingBasis(commitment: Commitment, value?: LandingDetails): boolean {
+  return !!value && value.target_repo === commitment.target_repo &&
+    value.target_ref === commitment.target_ref &&
+    value.landing_receipt === commitment.landing_receipt &&
+    value.candidate === commitment.candidate;
+}
 
 // One station on the rail. A station that has not happened is still a row:
 // hollow, dim, and naming what would fill it and who owes it.
@@ -39,7 +80,7 @@ export interface Expander {
 export interface Spine {
   stations: Station[];
   expanders: Expander[];
-  /** The commit the merge station asks git about. Undefined when there is none. */
+  /** The candidate head named by the selected commitment. */
   head?: string;
   /** Every durable record that descends from the root, station or not. */
   records: string[];
@@ -49,16 +90,13 @@ export interface SpineContext {
   projection: Projection;
   tickets: Map<string, number>;
   nameOf: (fingerprint: string) => string;
-  /** What git says about the heads this thread names, keyed by commit. */
-  landings?: Map<string, Landing>;
-  /** Which branch the landings are about, for the sentence the station says. */
-  branch?: string;
+  commitment?: Commitment;
+  /** Current bounded observation for this exact lifecycle. */
+  landing?: LandingDetails;
+  landingUnavailable?: boolean;
   /** How many temporary messages hang off this thread. */
   talk?: number;
 }
-
-const isoDay = (seconds?: number) =>
-  seconds && Number.isFinite(seconds) ? new Date(seconds * 1000).toISOString().slice(0, 10) : "";
 
 // The salient set, computed from the fold rather than chosen by hand. A
 // rendering that showed the first approval it found would name the wrong head:
@@ -71,7 +109,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
   const thread = buildThreadIndex(projection).content(root);
   const inThread = new Set(thread.events);
   const request = statements.get(root);
-  const commitment = projection.commitments.find((candidate) => candidate.request === root);
+  const commitment = context.commitment?.request === root ? context.commitment : projection.commitments.find((candidate) => candidate.request === root);
   const sequence = (event: string) => statements.get(event)?.sequence ?? tickets.get(event) ?? 0;
 
   const stations: Station[] = [];
@@ -165,7 +203,9 @@ export function buildSpine(root: string, context: SpineContext): Spine {
   const reviewsHere = (projection.reviews ?? [])
     .filter((review) => inThread.has(review.report) && !review.retired)
     .sort((left, right) => sequence(left.report) - sequence(right.report));
-  const verdict = reviewsHere[reviewsHere.length - 1];
+  const verdict = commitment?.approval
+    ? (projection.reviews ?? []).find((review) => review.report === commitment.approval && !review.retired)
+    : reviewsHere[reviewsHere.length - 1];
   if (verdict) {
     const verdictStatement = statements.get(verdict.report);
     const approved = verdict.verdict === "approved";
@@ -184,42 +224,38 @@ export function buildSpine(root: string, context: SpineContext): Spine {
     if (verdictStatement) claimed.add(verdictStatement.event);
   }
 
-  // Station five reads two sources. The fold knows whether the commitment
-  // closed; only git knows whether the code landed, and a thread can be in
-  // either state without the other. Nothing here is stored: a field somebody
-  // types can be stale by hand, and one was, for seven days.
-  const head = verdict?.head ?? report?.body?.head ?? report?.body?.commit;
-  const landing = head ? context.landings?.get(head) : undefined;
-  const branch = context.branch ?? "main";
-  if (head) {
-    if (landing?.status === "landed") {
-      station({
-        id: "merge",
-        kind: "merge",
-        timestamp: landing.time,
-        commit: landing.merge || head,
-        what: `${head.slice(0, 8)} landed on ${branch}${landing.time ? ` on ${isoDay(landing.time)}` : ""} — asked of git at render time`,
-        present: true,
-      });
-    } else if (landing?.status === "absent") {
-      station({
-        id: "merge",
-        kind: "merge",
-        commit: head,
-        what: `${head.slice(0, 8)} is not on ${branch} yet`,
-        present: false,
-      });
-    } else {
-      station({
-        id: "merge",
-        kind: "merge",
-        commit: head,
-        what: landing
-          ? `whether ${head.slice(0, 8)} is on ${branch} could not be determined — ${landing.reason || "unknown"}`
-          : `asking git whether ${head.slice(0, 8)} is on ${branch}…`,
-        present: false,
-      });
+  const head = commitment?.candidate ?? verdict?.head ?? report?.body?.head ?? report?.body?.commit;
+  const target = commitment?.target_ref;
+  const observed = commitment && sameLandingBasis(commitment, context.landing) ? context.landing : undefined;
+  if (target && commitment) {
+    station({ id: "target", kind: "target", present: true,
+      what: `${target} in ${commitment.target_repo || "an unavailable repository"}${commitment.legacy ? " — legacy destination" : ""}` });
+    if (commitment.hold_owner) {
+      station({ id: "hold", kind: "hold", event: commitment.release, actor: commitment.hold_owner, present: true,
+        what: commitment.release ? `released by ${nameOf(commitment.hold_owner)}` : `hold owner ${nameOf(commitment.hold_owner)} — no release recorded` });
     }
+    station({ id: "merge", kind: "landing", event: commitment.landing_receipt, commit: observed?.merge_head,
+      present: !!commitment.landing_receipt, tone: commitment.landing_receipt ? "ok" : undefined,
+      what: commitment.landing_receipt
+        ? `sealed landing into ${target}${observed?.merge_head ? ` at ${observed.merge_head.slice(0, 8)}` : ""}${observed?.receipt_legacy ? " — legacy receipt" : ""}`
+        : `no sealed landing recorded into ${target}` });
+    const display = landingDisplay(commitment, statements.get(commitment.landing_receipt ?? ""), verdict);
+    if (display?.artifactAudit) {
+      station({ id: "artifact-audit", kind: "artifact audit", event: verdict?.artifact, present: true,
+        what: display.artifactAudit });
+    }
+    if (commitment.landing_receipt && observed?.merge_hold_warning) {
+      station({ id: "hold-warning", kind: "warning", present: true, tone: "danger", what: "the sealed receipt used the unreleased-hold compatibility window" });
+    }
+    const git = observed?.git;
+    const observation = !git
+      ? context.landingUnavailable ? "current Git observation unavailable" : "checking the current target…"
+      : git.state === "target_gone" ? `target ${target} no longer exists`
+      : git.state === "incorporated" ? `current ${target} contains the sealed merge`
+      : git.state === "landed-then-removed" ? `current ${target} no longer contains the sealed merge; the receipt remains valid`
+      : git.state === "no_receipt" ? `target ${target} exists; no sealed merge to measure`
+      : "current target ancestry is unknown";
+    station({ id: "git", kind: "Git now", present: !!git, what: observation });
   }
 
   // Or the ratification that closed the commitment. Both can be true, and
@@ -251,7 +287,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
     });
   }
 
-  for (const blocker of liveBlockers({ commitment, report, verdict, landing, request, nameOf, tickets, projection, inThread })) {
+  for (const blocker of liveBlockers({ commitment, report, verdict, request, nameOf, tickets, projection, inThread })) {
     stations.push(blocker);
   }
 
@@ -269,14 +305,13 @@ function liveBlockers(input: {
   commitment?: Projection["commitments"][number];
   report?: Statement;
   verdict?: Review;
-  landing?: Landing;
   request?: Statement;
   nameOf: (fingerprint: string) => string;
   tickets: Map<string, number>;
   projection: Projection;
   inThread: Set<string>;
 }): Station[] {
-  const { commitment, report, verdict, landing, nameOf, tickets } = input;
+  const { commitment, report, verdict, nameOf, tickets } = input;
   const blockers: Station[] = [];
   // The single word these three replaced covered every wait at once. Each says who
   // owes the next move, so each gets its own sentence rather than one that is
@@ -299,16 +334,13 @@ function liveBlockers(input: {
     });
   }
   if (commitment?.status === "reported" && report) {
-    const landed = landing?.status === "landed";
     blockers.push({
       id: "blocker-open",
       kind: "open",
       event: report.event,
       ticket: tickets.get(report.event),
       timestamp: report.timestamp,
-      what: landed
-        ? `shipped but never closed — the code is on the branch and the commitment is still reported, waiting on ${nameOf(commitment.requester)}`
-        : `reported and not closed — still waits on ${nameOf(commitment.requester)}`,
+      what: `reported and not closed — still waits on ${nameOf(commitment.waiting_on || commitment.requester)}`,
       present: true,
       tone: "danger",
       branch: true,

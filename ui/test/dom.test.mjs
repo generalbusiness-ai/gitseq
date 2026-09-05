@@ -5,6 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 import { JSDOM } from "jsdom";
 
@@ -407,7 +408,7 @@ function ListHost({ RequestList, ...props }) {
   return React.createElement(RequestList, { ...props, view, onView: setView });
 }
 
-const titlesOnScreen = () => [...document.querySelectorAll("tbody tr")].map((row) => row.cells[3].textContent);
+const titlesOnScreen = () => [...document.querySelectorAll("tbody tr")].map((row) => row.cells[4].textContent);
 const headerNamed = (label) =>
   [...document.querySelectorAll("thead th button")].find((button) => button.textContent.trim().startsWith(label));
 
@@ -508,23 +509,24 @@ test("exactly one number heads the list, and each other number opens to its own 
     assert.deepEqual(tabs().map((tab) => tab.textContent), [
       "open3",
       "reasoning moved1",
+      "artifact landing audit0",
       "stale, not in flight1",
       "completed0",
       "closed, not completed0",
       "awaiting ratification1",
     ]);
-    assert.deepEqual(tabs().map((tab) => tab.getAttribute("aria-selected")), ["true", "false", "false", "false", "false", "false"]);
+    assert.deepEqual(tabs().map((tab) => tab.getAttribute("aria-selected")), ["true", "false", "false", "false", "false", "false", "false"]);
 
-    await click(tabs()[2]);
+    await click(tabs()[3]);
     assert.equal(document.querySelector("h2").textContent, "1 stale request, not in flight");
     assert.deepEqual(titlesOnScreen(), ["Abandoned work"]);
-    assert.equal(tabs()[2].getAttribute("aria-selected"), "true");
+    assert.equal(tabs()[3].getAttribute("aria-selected"), "true");
 
     await click(tabs()[1]);
     assert.equal(document.querySelector("h2").textContent, "1 resting on reasoning that has moved");
     assert.deepEqual(titlesOnScreen(), ["Zebra work"]);
 
-    await click(tabs()[5]);
+    await click(tabs()[6]);
     assert.equal(document.querySelector("h2").textContent, "1 act awaits ratification");
     assert.deepEqual(titlesOnScreen(), ["Bounded status"]);
   } finally {
@@ -559,21 +561,21 @@ test("search filters every tab count before the selected population", async () =
     });
     const tabs = populationTabs;
     assert.equal(tabs()[0].textContent, "open3");
-    assert.equal(tabs()[3].textContent, "completed2");
+    assert.equal(tabs()[4].textContent, "completed2");
 
     const search = document.querySelector('[aria-label="Search requests"]');
     await enterText(search, "needle");
     assert.equal(tabs()[0].textContent, "open1");
-    assert.equal(tabs()[3].textContent, "completed1");
+    assert.equal(tabs()[4].textContent, "completed1");
     assert.deepEqual(titlesOnScreen(), ["Needle open"]);
 
-    await click(tabs()[3]);
+    await click(tabs()[4]);
     assert.equal(document.querySelector("h2").textContent, "1 completed");
     assert.deepEqual(titlesOnScreen(), ["Needle completed"]);
 
     await enterText(search, "");
     assert.equal(tabs()[0].textContent, "open3");
-    assert.equal(tabs()[3].textContent, "completed2");
+    assert.equal(tabs()[4].textContent, "completed2");
     assert.deepEqual(titlesOnScreen(), ["Unrelated completed", "Needle completed"]);
   } finally {
     await act(async () => root.unmount());
@@ -603,7 +605,7 @@ test("repeated tab switches replace rows when one request has several commitment
     });
     const tabs = populationTabs;
     for (let repetition = 0; repetition < 3; repetition++) {
-      await click(tabs()[3]);
+      await click(tabs()[4]);
       assert.equal(document.querySelectorAll("tbody tr").length, 2);
       assert.deepEqual(titlesOnScreen(), ["Repeated history", "Repeated history"]);
       const completedKeys = [...document.querySelectorAll("tbody tr")].map((row) => row.dataset.rowKey);
@@ -650,7 +652,7 @@ test("the ratification queue says when nobody, or nobody in particular, can disc
       await act(async () => {
         root.render(React.createElement(ListHost, { RequestList, workroom, onOpenThread() {} }));
       });
-      await click(populationTabs()[5]);
+      await click(populationTabs()[6]);
     };
 
     await show({ hugh: [], codex: [] });
@@ -658,19 +660,19 @@ test("the ratification queue says when nobody, or nobody in particular, can disc
       "an owed act with no ratifier must not read as an empty queue");
     assert.equal(document.querySelectorAll("tbody tr").length, 1,
       "the obligation still exists when nobody can discharge it");
-    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "",
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[2].textContent, "",
       "with no ratifier the queue names nobody rather than guessing");
 
     await show({ hugh: ["ratifier"], codex: ["ratifier"] });
     assert.match(document.body.textContent, /2 actors hold .ratifier./,
       "two candidates do not determine a next mover, and the screen must say so");
     assert.equal(document.querySelectorAll("tbody tr").length, 1);
-    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[2].textContent, "");
 
     await show({ hugh: ["ratifier"], codex: [] });
     assert.doesNotMatch(document.body.textContent, /holds .ratifier./,
       "with exactly one ratifier there is nothing to disclose");
-    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[1].textContent, "hugh");
+    assert.equal([...document.querySelectorAll("tbody tr")][0].cells[2].textContent, "hugh");
   } finally {
     if (root) await act(async () => root.unmount());
     await vite.close();
@@ -830,7 +832,7 @@ test("repeated population and presentation changes neither leak nor duplicate ro
 
     await click(tabNamed("Graph"));
     for (let repetition = 0; repetition < 3; repetition += 1) {
-      await click(populationTabs()[3]);
+      await click(populationTabs()[4]);
       assert.equal(document.querySelector("h2").textContent, "2 completed");
       const completed = [...document.querySelectorAll("[data-outcome-card]")];
       assert.deepEqual(completed.map((card) => card.dataset.outcomeCard), ["e4"], "duplicate lifecycle rows did not collapse to one thread card");
@@ -894,14 +896,17 @@ test("the thread draws one rail of salient stations and keeps its history collap
     return {
       ok: true,
       json: async () => ({
-        branch: "main",
-        commits: [{ commit: "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d", status: "landed", merge: "44d8b4fa7d62f04d9b240434e8c044eddc00b496", time: NOW_S - 7 * 86400 }],
+        event: "promise",
+        landing: { target_repo: "repo", target_ref: "refs/heads/release-2", landing_receipt: "receipt",
+          merge_head: "44d8b4fa7d62f04d9b240434e8c044eddc00b496",
+          git: { state: "landed-then-removed", measured_at: NOW_S, ref_incorporated: false, remote_contains: null } },
       }),
     };
   };
   try {
     const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
     const threadWorkroom = threadRoom();
+    Object.assign(threadWorkroom.status.durable.projection.commitments[0], { target_repo: "repo", target_ref: "refs/heads/release-2", landing_receipt: "receipt" });
     await act(async () => {
       root.render(
         React.createElement(Thread, {
@@ -916,13 +921,13 @@ test("the thread draws one rail of salient stations and keeps its history collap
       );
     });
 
-    // One rail, one node per row, five stations and one blocker branch.
+    // Delivery and current Git membership remain separate stations.
     const stations = [...document.querySelectorAll("[data-station]")];
-    assert.deepEqual(stations.map((row) => row.dataset.station), ["root", "promise", "report", "verdict", "merge", "blocker-open"]);
-    // The merge station asked git rather than reading a stored field.
-    assert.deepEqual(asked, [{ commits: ["b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d"] }]);
-    assert.match(document.body.textContent, /landed on main/);
-    assert.match(document.body.textContent, /shipped but never closed/);
+    assert.deepEqual(stations.map((row) => row.dataset.station), ["root", "promise", "report", "verdict", "target", "merge", "git", "blocker-open"]);
+    // Inspect names the exact lifecycle and measures its declared target.
+    assert.deepEqual(asked, [{ event: "promise" }]);
+    assert.match(document.body.textContent, /sealed landing into refs\/heads\/release-2/);
+    assert.match(document.body.textContent, /no longer contains the sealed merge; the receipt remains valid/);
 
     // History is behind explicit expansion, and every expander says its count.
     const expanders = [...document.querySelectorAll("[aria-expanded]")];
@@ -1118,4 +1123,179 @@ test("the show-all button opens the references it counts", async () => {
     await act(async () => root.unmount());
     await vite.close();
   }
+});
+
+test("the actual request composer requires a result, preserves exact retry, and signs only chosen hold fields", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
+  const root = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+  const sent = [];
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "/v0/act");
+    sent.push(JSON.parse(init.body));
+    if (sent.length <= 2) throw new Error("response lost");
+    return { ok: true, json: async () => ({ id: "accepted" }) };
+  };
+  const select = (element, value) => act(async () => {
+    element.value = value;
+    element.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  });
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const room = structuredClone(workroom);
+    const event = `git:sha1:${"a".repeat(40)}#git:sha1:${"b".repeat(40)}`;
+    const p = room.status.durable.projection;
+    p.statements = [{ event, sequence: 1, actor: "codex-fingerprint", kind: "artifact", text: "candidate", body: { path: "app.go", commit: "c".repeat(40) } }];
+    p.decisions = [{ event, sequence: 1, verdict: "effective", reason: "recorded" }];
+    p.acts = []; p.commitments = []; p.provenance = { [event]: [] };
+    p.actors = { "codex-fingerprint": { name: "codex", roles: ["participant"] } };
+    await act(async () => root.render(React.createElement(Thread, {
+      index: buildRecordIndex(p), workroom: room,
+      session: { credential: "browser", actor: "codex", live: true },
+      frames: [], root: event, pending: [],
+      onBack() {}, onOpenThread() {}, onSay: () => "", onSayFailed() {}, doAct() {},
+    })));
+    const requestReview = () => buttonByText((text) => text.includes("request review"));
+    await click(requestReview());
+    await select(document.querySelector('[aria-label="addressed to"]'), "codex-fingerprint");
+    await enterText(document.querySelector('[aria-label="conditions of satisfaction"]'), "Hold landing until checked");
+    const send = () => document.querySelector('[aria-label="keep reply"]');
+    assert.equal(send().disabled, true, "result silently defaulted");
+    assert.match(document.body.textContent, /Words in the request do not create a landing hold/);
+    await select(document.querySelector('[aria-label="Result owed"]'), "target");
+    await enterText(document.querySelector('input[placeholder="refs/heads/release-2"]'), "refs/heads/release-2");
+    await click(document.querySelector('input[type="checkbox"]'));
+    assert.equal(send().disabled, true, "hold owner silently defaulted");
+    await select(document.querySelector("fieldset label select"), "codex-fingerprint");
+    assert.equal(send().disabled, false);
+    assert.doesNotMatch(document.body.textContent, /Words in the request do not create a landing hold/);
+    await click(send());
+    await click(send());
+    assert.equal(sent.length, 2);
+    assert.deepEqual(sent[1], sent[0], "lost response changed the signed intent or retry key");
+    assert.equal(sent[0].body.target_repo, `git:sha1:${"a".repeat(40)}`);
+    assert.equal(sent[0].body.target_ref, "refs/heads/release-2");
+    assert.equal(sent[0].body.target_head, undefined);
+    assert.equal(sent[0].body.landing, "held");
+    assert.equal(sent[0].body.hold_owner, "codex-fingerprint");
+    await enterText(document.querySelector('input[placeholder="refs/heads/release-2"]'), "refs/heads/main");
+    await click(send());
+    assert.notEqual(sent[2].idempotency_key, sent[0].idempotency_key);
+    assert.equal(sent[2].body.target_ref, "refs/heads/main");
+    await click(requestReview());
+    await select(document.querySelector('[aria-label="addressed to"]'), "codex-fingerprint");
+    await enterText(document.querySelector('[aria-label="conditions of satisfaction"]'), "Report the review verdict");
+    await select(document.querySelector('[aria-label="Result owed"]'), "none");
+    await click(send());
+    assert.equal(sent[3].body.no_git_artifact, "true");
+    for (const key of ["target", "target_repo", "target_ref", "target_head", "landing", "hold_owner"]) assert.equal(sent[3].body[key], undefined);
+  } finally {
+    globalThis.fetch = previousFetch;
+    await act(async () => root.unmount());
+    await vite.close();
+  }
+});
+
+test("approved delivery debt has the same searched rows and exact lifecycle in Table and Graph", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
+  const root = createRoot(document.getElementById("root"));
+  const opened = [];
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const room = listRoom();
+    const p = room.status.durable.projection;
+    const c = p.commitments.find((c) => c.request === "e2");
+    Object.assign(c, { promise: "p2", status: "cancelled", approved_not_landed: true, target_repo: "repo", target_ref: "refs/heads/release-2", legacy: true });
+    p.statements.push({ event: "p2", sequence: 7, actor: "codex", kind: "promise", text: "earlier delivery" });
+    p.decisions.push({ event: "p2", sequence: 7, verdict: "effective" });
+    p.commitments.push({ request: "e2", promise: "p3", status: "satisfied", terminal: "landed", landing_receipt: "receipt" });
+    await act(async () => root.render(React.createElement(ListHost, { RequestList, workroom: room, onOpenThread: (event) => opened.push(event) })));
+    const tab = populationTabs().find((tab) => tab.textContent.startsWith("artifact landing audit"));
+    assert.equal(tab.textContent, "artifact landing audit1");
+    await click(tab);
+    assert.equal(document.querySelectorAll("tbody tr").length, 1);
+    const row = document.querySelector("tbody tr");
+    assert.equal(row.dataset.state, "cancelled");
+    assert.match(row.textContent, /Approved artifact: landing not recorded/);
+    assert.match(row.textContent, /release-2/);
+    await act(async () => row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.deepEqual(opened, ["p2"]);
+    await click(tabNamed("Graph"));
+    const card = document.querySelector('[data-outcome-card="e2"]');
+    assert.match(card.textContent, /cancelled/);
+    assert.match(card.textContent, /Approved artifact: landing not recorded/);
+    await click(card); await click(card);
+    assert.deepEqual(opened, ["p2", "p2"]);
+    await enterText(document.querySelector('[aria-label="Search requests"]'), "no matching title");
+    assert.equal(tab.textContent, "artifact landing audit0");
+    assert.equal(document.querySelectorAll("[data-outcome-card]").length, 0);
+  } finally { await act(async () => root.unmount()); await vite.close(); }
+});
+
+test("a late landing observation cannot cross the selected promise or target", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
+  const root = createRoot(document.getElementById("root"));
+  const previousFetch = globalThis.fetch;
+  let finishOld;
+  const asked = [];
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/v0/inspect");
+    const { event } = JSON.parse(options.body); asked.push(event);
+    if (event === "promise") return await new Promise((resolve) => { finishOld = resolve; });
+    return { ok: true, json: async () => ({ event, landing: { target_repo: "repo", target_ref: "refs/heads/new", landing_receipt: "new-receipt", git: { state: "target_gone" } } }) };
+  };
+  try {
+    const { Thread } = await vite.ssrLoadModule("/src/components/Thread.tsx");
+    const room = threadRoom(); const p = room.status.durable.projection;
+    Object.assign(p.commitments[0], { target_repo: "repo", target_ref: "refs/heads/old", landing_receipt: "old-receipt" });
+    p.commitments.push({ ...p.commitments[0], promise: "new-promise", report: undefined, target_ref: "refs/heads/new", landing_receipt: "new-receipt" });
+    p.statements.push({ event: "new-promise", sequence: 10, actor: "codex", kind: "promise", text: "new lane" });
+    p.decisions.push({ event: "new-promise", sequence: 10, verdict: "effective" });
+    const index = buildRecordIndex(p);
+    const mount = (focus) => act(async () => root.render(React.createElement(Thread, {
+      index, workroom: room, session: { credential: "browser", actor: "codex", live: true }, frames: [], root: "req", focus, pending: [],
+      onBack() {}, onOpenThread() {}, onSay: () => "", onSayFailed() {}, doAct() {},
+    })));
+    await mount("promise"); await mount("new-promise");
+    assert.deepEqual(asked, ["promise", "new-promise"]);
+    assert.match(document.querySelector('[data-station="git"]').textContent, /target refs\/heads\/new no longer exists/);
+    await act(async () => finishOld({ ok: true, json: async () => ({ event: "promise", landing: { target_repo: "repo", target_ref: "refs/heads/old", landing_receipt: "old-receipt", git: { state: "incorporated" } } }) }));
+    assert.match(document.querySelector('[data-station="git"]').textContent, /target refs\/heads\/new no longer exists/);
+    assert.doesNotMatch(document.querySelector('[data-station="git"]').textContent, /contains the sealed merge/);
+  } finally { globalThis.fetch = previousFetch; await act(async () => root.unmount()); await vite.close(); }
+});
+
+test("Table and Graph separate actual source closure from carried-artifact audit and preserve exact keyboard focus", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
+  const root = createRoot(document.getElementById("root"));
+  const opened = [];
+  try {
+    const { RequestList } = await vite.ssrLoadModule("/src/components/RequestList.tsx");
+    const room = listRoom();
+    const { projection } = JSON.parse(readFileSync(new URL("./fixtures/tailapp-carried-source.json", import.meta.url)));
+    room.status.durable.projection = projection;
+    const source = projection.commitments.find((c) => c.terminal === "landed");
+    await act(async () => root.render(React.createElement(ListHost, { RequestList, workroom: room, onOpenThread: (event) => opened.push(event) })));
+    const audit = populationTabs().find((tab) => tab.textContent.startsWith("artifact landing audit"));
+    assert.equal(audit.textContent, "artifact landing audit1");
+    await click(audit);
+    assert.match(document.querySelector("h2").textContent, /1 commitment with an artifact landing audit/);
+    const row = document.querySelector("tbody tr");
+    assert.equal(row.dataset.state, "satisfied");
+    assert.match(row.textContent, /Source landed/);
+    assert.match(row.textContent, /Approved artifact: carried by receipt/);
+    assert.equal(document.querySelectorAll("tbody tr").length, 1);
+    await act(async () => row.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    assert.deepEqual(opened, [source.promise]);
+    await click(tabNamed("Graph"));
+    const card = [...document.querySelectorAll("[data-outcome-card]")].find((card) => card.dataset.outcomeCard === source.request);
+    assert.match(card.textContent, /Source landed/);
+    assert.match(card.textContent, /Approved artifact: carried by receipt/);
+    assert.match(card.getAttribute("aria-label"), /satisfied; Source landed; Approved artifact: carried by receipt/);
+    await click(card); await click(card);
+    assert.deepEqual(opened, [source.promise, source.promise]);
+    await enterText(document.querySelector('[aria-label="Search requests"]'), "no matching source");
+    assert.equal(audit.textContent, "artifact landing audit0");
+    assert.equal(document.querySelectorAll("[data-outcome-card]").length, 0);
+  } finally { await act(async () => root.unmount()); await vite.close(); }
 });

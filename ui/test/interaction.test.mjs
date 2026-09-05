@@ -11,7 +11,7 @@ import { renewCredential } from "../src/lib/lease.ts";
 import { soleCurrentSupersedeBasis } from "../src/lib/supersedeLinks.ts";
 import { repoRemoteHref } from "../src/lib/repolink.ts";
 import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
-import { buildSpine } from "../src/lib/spine.ts";
+import { buildSpine, landingDisplay } from "../src/lib/spine.ts";
 import { interpretationNotice, isInterpretationGap, kindLabel } from "../src/lib/util.ts";
 
 test("a retry keeps its key until the same payload succeeds", () => {
@@ -560,7 +560,7 @@ const context = (projection) => ({
   actors: projection.actors,
 });
 
-test("a row says state, waits-on, age, title and ticket, and nothing else", () => {
+test("a row carries projected landing facts beside state, waits-on, age, title and ticket", () => {
   const projection = room(
     [
       { event: "r1", kind: "request", actor: "hugh", ts: NOW - 7 * DAY, text: "Repair the resident\nsecond line is not the title", body: { to: "claude" } },
@@ -570,7 +570,7 @@ test("a row says state, waits-on, age, title and ticket, and nothing else", () =
   );
   const [row] = workRows(projection, context(projection));
   assert.deepEqual(Object.keys(row).sort(), [
-    "attention", "event", "group", "key", "moved", "search", "stale", "state", "ticket", "title", "waitsOn", "waitsOnHuman", "waitsOnName",
+    "attention", "event", "group", "key", "landing", "moved", "search", "stale", "state", "ticket", "title", "waitsOn", "waitsOnHuman", "waitsOnName",
   ]);
   assert.equal(row.state, "in progress");
   assert.equal(row.waitsOnName, "claude");
@@ -841,7 +841,7 @@ test("the rail carries the salient set and elides the rest into counted expander
   const spine = buildSpine("req", spineContext(projection));
   assert.deepEqual(
     spine.stations.map((station) => station.kind),
-    ["request", "promise", "report", "verdict", "merge", "open"],
+    ["request", "promise", "report", "verdict", "open"],
   );
   // Every record in the thread is either on the rail or in exactly one
   // expander: elision is stated, never silent.
@@ -860,48 +860,46 @@ test("the rail carries the salient set and elides the rest into counted expander
   assert.equal(byId.has("superseded"), false);
 });
 
-test("the merge station reads git, and a check that could not run is not a negative", () => {
+test("landing distinguishes sealed delivery from current target observations", () => {
   const projection = acceptanceThread();
-  const head = "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d";
-
-  const asking = buildSpine("req", spineContext(projection)).stations.find((s) => s.kind === "merge");
-  assert.equal(asking.present, false);
-  assert.match(asking.what, /asking git/);
-  assert.doesNotMatch(asking.what, /not on/);
-
-  const unknown = buildSpine("req", spineContext(projection, {
-    landings: new Map([[head, { commit: head, status: "unknown", reason: "no such commit" }]]),
-    branch: "main",
-  })).stations.find((s) => s.kind === "merge");
-  assert.equal(unknown.present, false);
-  assert.match(unknown.what, /could not be determined/);
-  assert.doesNotMatch(unknown.what, /is not on main yet/);
-
-  const absent = buildSpine("req", spineContext(projection, {
-    landings: new Map([[head, { commit: head, status: "absent" }]]),
-    branch: "main",
-  })).stations.find((s) => s.kind === "merge");
-  assert.equal(absent.present, false);
-  assert.match(absent.what, /is not on main yet/);
+  Object.assign(projection.commitments[0], {
+    target_repo: "git:sha1:repository", target_ref: "refs/heads/release-2",
+    legacy: true, approved_not_landed: true,
+  });
+  const station = (extra, id) => buildSpine("req", spineContext(projection, { ...extra, landing: extra.landing ? { ...projection.commitments[0], ...extra.landing } : undefined })).stations.find((s) => s.id === id);
+  assert.match(station({}, "target").what, /refs\/heads\/release-2.*git:sha1:repository.*legacy/);
+  assert.equal(station({}, "merge").present, false);
+  assert.match(station({}, "merge").what, /no sealed landing recorded/);
+  assert.equal(station({}, "artifact-audit").what, "Approved artifact: landing not recorded");
+  assert.match(station({}, "git").what, /checking the current target/);
+  assert.match(station({ landingUnavailable: true }, "git").what, /unavailable/);
+  const observed = (state) => ({ landing: { git: { state, measured_at: NOW, ref_incorporated: null, remote_contains: null } } });
+  assert.match(station(observed("unknown"), "git").what, /unknown/);
+  assert.doesNotMatch(station(observed("unknown"), "git").what, /no longer|does not contain/);
+  assert.match(station(observed("target_gone"), "git").what, /release-2 no longer exists/);
+  assert.equal(station(observed("incorporated"), "merge").present, false,
+    "current Git membership cannot manufacture a sealed receipt");
+  Object.assign(projection.commitments[0], { landing_receipt: "receipt", terminal: "landed", approved_not_landed: false, status: "satisfied" });
+  const removed = { landing: { merge_head: "44d8b4fa7d62f04d9b240434e8c044eddc00b496", git: { state: "landed-then-removed", ref_incorporated: false, remote_contains: null } } };
+  assert.equal(station(removed, "merge").present, true);
+  assert.equal(station(removed, "merge").event, "receipt");
+  assert.match(station(removed, "merge").what, /sealed landing into refs\/heads\/release-2/);
+  assert.match(station(removed, "git").what, /no longer contains.*receipt remains valid/);
+  assert.doesNotMatch(station(removed, "merge").what, /main/);
 });
 
-test("shipped but never closed reads off the rail without opening anything", () => {
+test("holds and compatibility warnings come from projected and sealed fields", () => {
   const projection = acceptanceThread();
-  const head = "b3bf30833b93aaec5fc3adab7ffa0b6f0fe7792d";
-  const spine = buildSpine("req", spineContext(projection, {
-    landings: new Map([[head, { commit: head, status: "landed", merge: "44d8b4fa7d62f04d9b240434e8c044eddc00b496", time: NOW - 7 * DAY }]]),
-    branch: "main",
-  }));
-  const merge = spine.stations.find((station) => station.kind === "merge");
-  assert.equal(merge.present, true);
-  assert.match(merge.what, /landed on main/);
-  assert.equal(merge.commit, "44d8b4fa7d62f04d9b240434e8c044eddc00b496");
-  // The sentence needs both sources. The fold alone says only "reported,
-  // waiting on codex"; git alone says only that the head is on main.
-  const blocker = spine.stations.find((station) => station.branch);
-  assert.match(blocker.what, /shipped but never closed/);
-  assert.match(blocker.what, /waiting on codex/);
-  assert.equal(blocker.tone, "danger");
+  Object.assign(projection.commitments[0], { target_repo: "repo", target_ref: "refs/heads/release", hold_owner: "owner" });
+  const build = (extra = {}) => buildSpine("req", spineContext(projection, { ...extra, landing: extra.landing ? { ...projection.commitments[0], ...extra.landing } : undefined }));
+  assert.match(build().stations.find((s) => s.id === "hold").what, /owner.*no release recorded/);
+  assert.equal(build().stations.some((s) => s.id === "hold-warning"), false);
+  projection.commitments[0].release = "release";
+  const released = build().stations.find((s) => s.id === "hold");
+  assert.equal(released.event, "release");
+  assert.match(released.what, /released by owner/);
+  projection.commitments[0].landing_receipt = "receipt";
+  assert.match(build({ landing: { merge_hold_warning: true } }).stations.find((s) => s.id === "hold-warning").what, /sealed receipt.*compatibility/);
 });
 
 test("a station that has not happened names what would fill it and who owes it", () => {
@@ -1252,4 +1250,77 @@ test("a remote carrying a query or fragment is declined for the same reason", ()
   assert.equal(repoRemoteHref("https://github.com/org/repo.git?ref=main#L1"), undefined);
   assert.equal(repoRemoteHref("https://github.com/org/repo.git?"), undefined);
   assert.equal(repoRemoteHref("https://github.com/org/repo.git#"), undefined);
+});
+
+
+test("approved debt includes historical lifecycles without relabelling or inventing an owner", () => {
+  const commitments = [
+    { request: "a", promise: "p1", requester: "hugh", status: "cancelled", approved_not_landed: true, target_repo: "repo", target_ref: "refs/heads/release-2" },
+    { request: "b", promise: "p2", requester: "hugh", status: "awaiting-landing", approved_not_landed: true, waiting_on: "claude", target_repo: "repo", target_ref: "refs/heads/release-2" },
+    { request: "c", requester: "hugh", status: "satisfied", terminal: "landed", landing_receipt: "receipt" },
+    { request: "d", requester: "hugh", status: "open" },
+    { request: "e", report: "r5", requester: "hugh", addressed_to: "claude", status: "cancelled", approved_not_landed: true, target_repo: "repo", target_ref: "refs/heads/release-2" },
+  ];
+  const projection = room(commitments.map((c) => ({ event: c.request, kind: "request", actor: "hugh" })), { commitments });
+  const rows = workRows(projection, context(projection), "approved");
+  assert.deepEqual(rows.map((r) => r.key), ["p1", "p2", "r5"]);
+  assert.deepEqual(rows.map((r) => r.state), ["cancelled", "awaiting landing", "cancelled"]);
+  assert.deepEqual(rows.map((r) => r.waitsOn), ["", "claude", ""]);
+  assert.ok(rows.every((r) => r.landing.artifactAudit === "Approved artifact: landing not recorded" && r.landing.target === "release-2"));
+  assert.deepEqual(workRows(projection, context(projection), "closed").map((r) => r.key), ["p1", "r5"]);
+});
+
+
+test("the thread uses its projected exact approval even when the review has its own thread", () => {
+  const selected = { request: "implementation", promise: "promise", report: "artifact", requester: "hugh", status: "awaiting-landing", approval: "approval", candidate: "head", target_repo: "repo", target_ref: "refs/heads/release-2" };
+  const projection = room([
+    { event: "implementation", kind: "request", actor: "hugh" },
+    { event: "promise", kind: "promise", actor: "claude" },
+    { event: "artifact", kind: "artifact", actor: "claude", body: { commit: "head" } },
+    { event: "review-request", kind: "request", actor: "claude" },
+    { event: "approval", kind: "report", actor: "codex", body: { verdict: "approved" } },
+  ], { commitments: [selected, { request: "review-request", report: "approval", requester: "claude", status: "satisfied" }],
+    reviews: [{ report: "approval", reviewer: "codex", verdict: "approved", head: "head", ratified: true }],
+    provenance: { promise: ["implementation"], artifact: ["promise"], "review-request": ["artifact"], approval: ["review-request"] } });
+  const spine = buildSpine("implementation", { ...context(projection), projection, commitment: selected });
+  assert.equal(spine.stations.find((s) => s.id === "verdict").event, "approval");
+  assert.equal(spine.stations.find((s) => s.id === "verdict").commit, "head");
+  assert.equal(spine.stations.find((s) => s.id === "merge").present, false);
+});
+
+test("the actual Tailapp source receipt closes its child while carrying the approved artifact and leaving publication open", () => {
+  const { projection } = JSON.parse(readFileSync(new URL("./fixtures/tailapp-carried-source.json", import.meta.url)));
+  const ctx = context(projection);
+  const source = projection.commitments.find((c) => c.terminal === "landed");
+  const parent = projection.commitments.find((c) => c !== source);
+  const approved = workRows(projection, ctx, "approved");
+  assert.equal(approved.length, 1);
+  assert.equal(approved[0].key, source.promise);
+  assert.equal(approved[0].state, "satisfied");
+  assert.equal(approved[0].waitsOn, "");
+  assert.equal(approved[0].landing.delivery, "Source landed");
+  assert.equal(approved[0].landing.artifactAudit, "Approved artifact: carried by receipt");
+  assert.deepEqual(workRows(projection, ctx, "done").map((r) => r.key), [source.promise]);
+  const live = workRows(projection, ctx, "live");
+  assert.deepEqual(live.map((r) => r.key), [parent.promise]);
+  assert.equal(live[0].landing.delivery, "");
+  assert.equal(live[0].landing.artifactAudit, "");
+  const spine = buildSpine(source.request, { ...ctx, projection, commitment: source });
+  assert.equal(spine.stations.find((s) => s.id === "merge").event, source.landing_receipt);
+  assert.equal(spine.stations.find((s) => s.id === "artifact-audit").what, approved[0].landing.artifactAudit);
+
+  const approval = projection.reviews[0];
+  const receipt = projection.statements.find((s) => s.event === source.landing_receipt);
+  const unknown = "Approved artifact: landing not recorded";
+  assert.equal(landingDisplay(source, { ...receipt, event: "another-receipt" }, approval).artifactAudit, unknown);
+  assert.equal(landingDisplay(source, { ...receipt, merge_left_live: receipt.merge_left_live.map((e) => ({ ...e, verified: false })) }, approval).artifactAudit, unknown);
+  // A newer approval on the same completed commitment has no accounting in
+  // the older source receipt. It must remain visible in the audit population.
+  approval.artifact = "later-artifact";
+  approval.head = source.candidate = "later-head";
+  const later = workRows(projection, ctx, "approved");
+  assert.equal(later.length, 1);
+  assert.equal(later[0].state, "satisfied");
+  assert.equal(later[0].landing.delivery, "Source landed");
+  assert.equal(later[0].landing.artifactAudit, unknown);
 });

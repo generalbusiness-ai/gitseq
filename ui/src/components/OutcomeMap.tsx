@@ -181,7 +181,7 @@ export function OutcomeMap({
                 data-dimmed={(emphasized && !emphasized.has(node.thread)) || undefined}
                 aria-pressed={selectedThread === node.thread}
                 onClick={() => {
-                  if (selectedThread === node.thread) onOpenThread(node.thread);
+                  if (selectedThread === node.thread) onOpenThread(node.focus ?? node.thread);
                   else {
                     setSelectedThread(node.thread);
                     setSelectedRelation(undefined);
@@ -194,7 +194,7 @@ export function OutcomeMap({
                   selectedThread === node.thread && "ring-2 ring-accent",
                 )}
                 style={{ left: position.x, top: position.y, width: OUTCOME_CARD.width, height: OUTCOME_CARD.height }}
-                aria-label={`${node.state}; ${node.title}; ${selectedThread === node.thread ? "activate again to open full thread" : "select connected work"}`}
+                aria-label={`${node.state}${node.landing?.delivery ? `; ${node.landing.delivery}` : ""}${node.landing?.artifactAudit ? `; ${node.landing.artifactAudit}` : ""}; ${node.landing ? `target ${node.landing.target}; ` : ""}${node.title}; ${selectedThread === node.thread ? "activate again to open full thread" : "select connected work"}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <span className="max-w-[9rem] truncate font-serif text-xs font-semibold text-foreground">{node.title}</span>
@@ -205,6 +205,11 @@ export function OutcomeMap({
                   {node.context && <span className="rounded border border-border px-1 py-0.5">context</span>}
                   {tags.map((tag) => <span key={tag} className="rounded border border-border px-1 py-0.5">{tag}</span>)}
                 </div>
+                {node.landing && <p className="mt-1 truncate text-[10px] text-muted" title={node.landing.destination}>
+                  Target: {node.landing.target}{node.landing.legacy && " · legacy"}
+                </p>}
+                {node.landing?.delivery && <p className="mt-1 text-[10px] font-semibold text-muted">{node.landing.delivery}</p>}
+                {node.landing?.artifactAudit && <p className="mt-1 text-[10px] text-muted">{node.landing.artifactAudit}</p>}
                 {node.waitsOn && <p className="mt-2 truncate text-[10px] text-muted">Waits on {nameOf(node.waitsOn)}</p>}
               </button>
             );
@@ -214,7 +219,7 @@ export function OutcomeMap({
       {selectedNode && (
         <p role="status" className="mt-2 flex items-center gap-2 rounded border border-border bg-surface px-2 py-1 text-[11px] text-muted">
           <span className="truncate">Selected: {selectedNode.title}</span>
-          <button type="button" className="ml-auto shrink-0 rounded border border-border px-2 py-1 text-foreground hover:bg-background focus-visible:outline focus-visible:outline-accent" onClick={() => onOpenThread(selectedNode.thread)}>
+          <button type="button" className="ml-auto shrink-0 rounded border border-border px-2 py-1 text-foreground hover:bg-background focus-visible:outline focus-visible:outline-accent" onClick={() => onOpenThread(selectedNode.focus ?? selectedNode.thread)}>
             Open full thread
           </button>
         </p>

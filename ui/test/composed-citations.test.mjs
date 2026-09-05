@@ -175,8 +175,7 @@ async function withPane(body) {
   }
 }
 
-// Open the review request the revision needs, and answer the two fields a
-// request cannot be filed without.
+// Open the review request and choose its explicit no-artifact result.
 async function requestReview(vite, root, workroom) {
   await mount(vite, root, workroom, "art2");
   const opener = labelled("request review");
@@ -185,6 +184,7 @@ async function requestReview(vite, root, workroom) {
   await typeArea(labelled("thread reply"), "Review the revised wording at its exact head");
   await choose(labelled("addressed to"), RAE);
   await typeInput(labelled("conditions of satisfaction"), "same decision, clearer scope");
+  await choose(labelled("Result owed"), "none");
 }
 
 // The whole point, end to end: the gap is shown first, then closed, then the
