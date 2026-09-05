@@ -86,7 +86,10 @@ gs ratify --repo "$REPO" --as bot "$CHANGES"
 
 A `changes-requested` verdict returns the work to the implementer. Any
 change to the head invalidates an approval, so after fixing it you record
-a **new** artifact at the new head and ask for review again:
+a **new** artifact at the new head and ask for review again. The correction
+stays on the same request and promise: the outcome, conditions, performer,
+destination and authority are unchanged, so it needs no child request and
+no transfer. Cite the finding in the new artifact's text:
 
 ```sh
 printf '# Changelog\n\n- Added a changelog.\n' > "$REPO/CHANGELOG.md"
@@ -96,7 +99,7 @@ Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 
 ARTIFACT2=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Changelog implementation at the repaired head' \
+  --text "Changelog implementation at the repaired head, answering $CHANGES" \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" \
   --rests-on "$PROMISE")
 
@@ -143,8 +146,11 @@ know. Early reneging is honourable; late reneging is not.
 
 ## Work discovered halfway through
 
-Do not quietly widen the job. Create a child request resting on the
-current request or promise, and implement that separately:
+Do not quietly widen the job. Work that adds a separate outcome, or changes
+the conditions, authority or performer, gets a child request resting on the
+current request or promise, and is implemented separately (a review finding
+that only shows an existing condition unmet is a correction, above, not new
+work):
 
 ```sh
 CHILD=$(gs state --repo "$REPO" --as bot --kind request \
