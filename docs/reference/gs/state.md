@@ -85,6 +85,8 @@ The check is here because a signer measures a destination and then signs; a
 force-push in between makes the signature describe a world that has moved.
 [`gs merge`](merge.md) resolves the same ref again immediately before it moves
 `HEAD`, so the reading is taken at both act times rather than trusted once.
+The MCP `state` tool and the resident's `/v0/act` endpoint apply the same
+reading, so which surface files the report changes nothing.
 
 It is judged for a genuinely new report only. An exact retry under an
 `--idempotency-key` already accepted — same actor, same words, same body, same

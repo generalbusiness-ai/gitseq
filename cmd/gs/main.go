@@ -783,7 +783,7 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 		return nil
 	}
 	prospective := buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, merger, mergeplan.Signer{
-		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+		Name: actor, Private: private, ResidentCeiling: residentSubmissionCeiling(serverURL),
 	})
 	if !prospective.Allowed {
 		if len(prospective.Reasons) == 0 {
@@ -973,8 +973,19 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	return printJSON(buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
-		Name: actor, Private: private, CheckResidentCeiling: serverURL != "",
+		Name: actor, Private: private, ResidentCeiling: residentSubmissionCeiling(serverURL),
 	}))
+}
+
+// residentSubmissionCeiling is the resident's request-size cap when this
+// command will submit through a resident, and nil when it will not. The merge
+// preflight judges the cap it is given rather than reaching for the transport
+// itself.
+func residentSubmissionCeiling(serverURL string) func(kernel.Request) error {
+	if serverURL == "" {
+		return nil
+	}
+	return service.ValidateSubmissionRequestSize
 }
 
 var buildMergePlan = mergeplan.Build

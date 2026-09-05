@@ -23,7 +23,6 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
-	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -283,12 +282,15 @@ type Approval struct {
 }
 
 // Signer carries the local custody needed to prove that the exact durable
-// succession suffix can be encoded and admitted. CheckResidentCeiling mirrors
-// whether the eventual merge will submit through the resident service.
+// succession suffix can be encoded and admitted. ResidentCeiling is the
+// resident's own request-size cap, supplied by whoever composes the command
+// when the eventual merge will submit through the resident, and nil when it
+// will not. It arrives as a function rather than a flag so that this package,
+// which sits below the transport, does not import it.
 type Signer struct {
-	Name                 string
-	Private              ed25519.PrivateKey
-	CheckResidentCeiling bool
+	Name            string
+	Private         ed25519.PrivateKey
+	ResidentCeiling func(kernel.Request) error
 }
 
 // ProspectiveAct is one act in the canonical merge succession suffix. Labels
@@ -1349,8 +1351,8 @@ func ValidateAdmission(ctx context.Context, workspace *app.Workspace, snapshot a
 		if err := kernel.ValidateRequestSize(request, view.PayloadCeiling); err != nil {
 			return fmt.Errorf("act %d: admission: %w", position, err)
 		}
-		if signer.CheckResidentCeiling {
-			if err := service.ValidateSubmissionRequestSize(request); err != nil {
+		if signer.ResidentCeiling != nil {
+			if err := signer.ResidentCeiling(request); err != nil {
 				return fmt.Errorf("act %d: admission: %w", position, err)
 			}
 		}
