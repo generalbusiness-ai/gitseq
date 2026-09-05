@@ -1,0 +1,20 @@
+[
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3bd902a390689598904ecba6b5c05045ca321324",
+    "exit_code": 0,
+    "stdout": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e90e0eae7e2cb1f6394d97ca534e47ec4923719d\n",
+    "stderr": ""
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a810d558698e003e46d7190fdf38cd7571d0a5e",
+    "exit_code": 0,
+    "stdout": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ecb98bd0d4c688d613261b48c4bd2b02de184f09\n",
+    "stderr": ""
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e7141c404fab6142ea50a4b28329b19406310873",
+    "exit_code": 0,
+    "stdout": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd0c28fa7594fb0c2d62f36a297b225571e1990e\n",
+    "stderr": ""
+  }
+]
