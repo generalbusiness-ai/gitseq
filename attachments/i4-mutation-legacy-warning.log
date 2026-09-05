@@ -1,0 +1,5 @@
+--- FAIL: TestLandingEvidenceRequiresProjectionWitness (0.00s)
+    worktree_landing_test.go:86: released receipt became compatibility warning
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.294s
+FAIL

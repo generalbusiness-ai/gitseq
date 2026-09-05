@@ -1,0 +1,5 @@
+--- FAIL: TestWorktreeAssociationsShareTotalBudget (0.02s)
+    worktree_landing_test.go:137: cancelled inspection completed
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.318s
+FAIL

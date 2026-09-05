@@ -1,0 +1,5 @@
+--- FAIL: TestWorktreeAssociationsShareTotalBudget (0.01s)
+    worktree_landing_test.go:131: 256-by-256 association expansion escaped total budget
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.367s
+FAIL

@@ -1,0 +1,5 @@
+--- FAIL: TestWorktreeBudgetExhaustionDiscardsPartialDeletionAdvice (0.50s)
+    worktree_landing_test.go:162: partial deletion advice escaped: 14561
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.807s
+FAIL
