@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcacaa7637f5be7ea2ed80e9614763a150ebcd75","text":"Merge retired a covered predecessor with no successor at its old path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02a51913fc301b2529a2de4b482c51188132b16f","text":"Author retires an outside-target candidate sealed as abandoned by the I9 merge receipt; the current architecture is published at b8f0308b."}
