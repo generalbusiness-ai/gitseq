@@ -25,13 +25,14 @@ type landingAncestors struct {
 // landingGraph captures immutable object IDs once, then answers all rows from
 // the same bounded graph. No query starts a per-row Git process.
 type landingGraph struct {
-	refs          map[string]string
-	refsKnown     bool
-	objects       map[string]bool
-	parents       map[string][]string
-	ancestors     map[string]landingAncestors
-	shallow       bool
-	walkRemaining int
+	refs             map[string]string
+	refsKnown        bool
+	objects          map[string]bool
+	parents          map[string][]string
+	ancestors        map[string]landingAncestors
+	shallow          bool
+	walkRemaining    int
+	inspectionBudget *worktreeInspectionBudget
 }
 
 func exactObjectID(value string) bool {
@@ -159,6 +160,10 @@ func (g *landingGraph) contains(tip, object string) *bool {
 		a = landingAncestors{nodes: map[string]bool{}, complete: !g.shallow}
 		pending := []string{tip}
 		for len(pending) > 0 {
+			if g.inspectionBudget != nil && !g.inspectionBudget.take(1) {
+				a.complete = false
+				break
+			}
 			if g.walkRemaining == 0 {
 				a.complete = false
 				break

@@ -107,9 +107,15 @@ Limits are explicit: 128 measured status/work rows; 4,096 inventoried refs,
 ancestor visits; a three-second Git inspection deadline. Worktree classification
 also caps its commitment input at 4,096. One shared budget allows 65,536
 inspection steps across statements, direct provenance associations, receipt
-joins, object collection and all checkout row/head comparisons. Each association
-is charged before visiting it; object inputs are deduplicated before allocating
-the Git batch. Cancellation or exhaustion discards the entire batch's deletion
+joins, object collection, graph traversal, membership joins and ranked output
+selection. Each association is charged before visiting it. A single statement
+pass builds the head/branch index and joins only selected receipts. Checkout
+membership propagates once through the captured graph. Rows with the same
+checkout match ranks share their newest 20 row indexes and an exact total; a
+bounded merge selects each checkout's newest rows by rank. This preserves
+distinct promises, every named head, tie order and the exact omitted count
+without expanding the checkout-by-commitment product. Object inputs are
+deduplicated before allocating the Git batch. Cancellation or exhaustion discards the entire batch's deletion
 advice and clears partial classifications to `unknown`, preserving every
 potential unsettled obligation. Output collectors have byte ceilings.
 Crossing a bound reports unknown or omitted rows; it never proves a negative.

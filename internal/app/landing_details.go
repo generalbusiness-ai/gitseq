@@ -47,14 +47,18 @@ func FillLandingEvidence(projection workroom.Projection, rows []*LandingDetails)
 	}
 	for _, statement := range projection.Statements {
 		for _, row := range wanted[statement.Event] {
-			if statement.Retired {
-				continue
-			}
-			row.MergeHead = statement.Body["merge_head"]
-			row.MergeHoldWarning = statement.Body["merge_hold_warning"] == "true"
-			row.ReceiptLegacy = statement.Body["merge_target_repo"] == "" && statement.Body["merge_target_ref"] == ""
+			fillLandingReceipt(row, statement)
 		}
 	}
+}
+
+func fillLandingReceipt(row *LandingDetails, statement workroom.Statement) {
+	if statement.Retired {
+		return
+	}
+	row.MergeHead = statement.Body["merge_head"]
+	row.MergeHoldWarning = statement.Body["merge_hold_warning"] == "true"
+	row.ReceiptLegacy = statement.Body["merge_target_repo"] == "" && statement.Body["merge_target_ref"] == ""
 }
 
 func (w *Workspace) MeasureLandingDetails(ctx context.Context, rows []*LandingDetails) {
