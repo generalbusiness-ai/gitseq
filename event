@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/app/app.go","body":{"commit":"9d7db9f44aa817d28395f646a7230b49e14df284","path":"internal/app/app.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/mergeplan/mergeplan.go","body":{"commit":"9d7db9f44aa817d28395f646a7230b49e14df284","path":"internal/mergeplan/mergeplan.go"}}
