@@ -1,8 +1,0 @@
-=== RUN   TestCheckoutAncestryMatchesContains
-=== RUN   TestCheckoutAncestryMatchesContains/incomplete
-    worktree_index_test.go:418: tip 0000000000000000000000000000000000000002 object 0000000000000000000000000000000000000001 got=0x1131708f98c4 want=<nil>
---- FAIL: TestCheckoutAncestryMatchesContains (0.00s)
-    --- FAIL: TestCheckoutAncestryMatchesContains/incomplete (0.00s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.395s
-FAIL
