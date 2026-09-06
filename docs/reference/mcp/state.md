@@ -40,7 +40,7 @@ ever make the act stale.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 GENESIS=$(gs init --repo "$REPO" --operator alice \
   | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
@@ -49,9 +49,35 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 
-printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"state","arguments":{"kind":"request","text":"Add a changelog","body":{"to":"@bot","conditions":"CHANGELOG.md exists","target_ref":"refs/heads/main"},"rests_on":["%s"]},%s}}\n' "$SEED" "$META" \
   | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 ```
+
+## Request authoring: what a request owes
+
+A request states its result, in `body`, exactly as it does through
+[`gs state`](../gs/state.md#request-authoring-what-a-request-owes), and the same
+refusals apply before anything is appended: `target_ref=refs/heads/<branch>`,
+`target=inherit`, or `no_git_artifact=true`, exactly one of them, optionally
+with `landing=held` and `hold_owner`. This adapter fills `target_repo` and
+resolves `target_head` from the ref at filing; supplying either is refused.
+Requests are signed as `workroom/state@3`.
+
+An exact retry under an `idempotency_key` already accepted is answered from the
+log before any ref is read, so it replays its original event even after the
+branch it named has moved or been deleted. It is rebuilt under the accepted
+act's own schema, so a request this workroom accepted before the landing
+obligation existed — a `workroom/state@2` record stating no result — replays
+rather than being re-signed as `state@3` and refused for stating none. A reused
+key that names a different `target_ref`, states a result the accepted legacy
+request never stated, or changes anything else the caller sent, is refused
+rather than answered with the accepted request; a fresh key naming a ref that
+does not resolve, or stating no result at all, is refused.
+
+The stored schema and the folded result are readable through
+[`inspect`](inspect.md) and the commitment rows in [`work`](work.md) and
+[`status`](status.md): `target_repo`, `target_ref`, `target_head`, and the
+`inherited`, `held`, `hold_owner` and `legacy` facts.
 
 ## Body fields the fold reads
 

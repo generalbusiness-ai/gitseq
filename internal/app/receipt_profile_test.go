@@ -9,7 +9,7 @@ import (
 )
 
 func TestReceiptAccountingRejectsPriorProjectionCaches(t *testing.T) {
-	for _, prior := range []string{"workroom-fold@19", "workroom-fold@20"} {
+	for _, prior := range []string{"workroom-fold@20", "workroom-fold@21"} {
 		t.Run(prior, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -35,7 +35,7 @@ func TestReceiptAccountingRejectsPriorProjectionCaches(t *testing.T) {
 			if !reflect.DeepEqual(got.Snapshot, want) || got.Source != SnapshotSourceSignedCheckpointTail {
 				t.Fatalf("old projection was not rebuilt from its kernel checkpoint: source=%q debt=%d", got.Source, got.Snapshot.Projection.OmittedSupersessions)
 			}
-			if workspace.snapshotProfile != apphost.DefaultApplication+"\x00workroom-fold@21" {
+			if workspace.snapshotProfile != apphost.DefaultApplication+"\x00workroom-fold@22" {
 				t.Fatalf("rebuilt profile = %q", workspace.snapshotProfile)
 			}
 		})

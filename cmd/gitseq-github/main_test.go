@@ -519,7 +519,7 @@ func TestDryRunProposalDoesNotRequireLocalConnectorCustody(t *testing.T) {
 	request := state(app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "fix issue",
 		Body: map[string]string{
-			"to": workspace.View().Actors["human"].Fingerprint, "conditions": "exact head",
+			"to": workspace.View().Actors["human"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true",
 		},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "request",
 	})

@@ -25,6 +25,7 @@ or completed it.
 | `to` | required | The replacement addressee: name, `@name`, or fingerprint. |
 | `text` | required | The replacement request text. |
 | `conditions` | required | Observable conditions of satisfaction. |
+| `body` | optional | String map of further replacement-request fields. The replacement is a new request and states its own result here: `target_ref`, `target=inherit`, or `no_git_artifact=true`. `to` and `conditions` are written over whatever this map says. |
 | `retirement_text` | optional | Why the old request is retired. |
 | `rests_on` | optional | Additional current bases for the replacement request. |
 | `idempotency_key` | required | Stable base key used to derive resumable keys for both acts. |
@@ -41,17 +42,46 @@ or completed it.
     "to": "@second-agent",
     "text": "Check the release",
     "conditions": "the release is checked",
+    "body": {"no_git_artifact": "true"},
     "rests_on": ["git:sha1:<genesis>#git:sha1:<current-basis>"],
     "idempotency_key": "release-check-reassignment"
   }
 }
 ```
 
+The replacement request is signed as `workroom/reassign-if-unclaimed@1`, under
+which the fold reads its stated result exactly as it reads a
+`workroom/state@3` request. Nothing is inherited from the retired request: a
+replacement of a legacy request must say in its own words what it owes.
+
+The pair is two acts in order, so a refusal the replacement earns after the
+retirement has landed would leave the old request withdrawn with nobody asked
+to do the work. Everything the replacement can be judged on from what the call
+stated is therefore judged before the retirement is appended: a missing `to`
+or `conditions`, an address current custody does not hold — a performer who
+has since been retired included — a reserved admission field, a missing or
+doubled result, a `target_ref` outside `refs/heads/`, one naming a ref that
+does not resolve here, a supplied `target_repo` or `target_head`, and an
+`idempotency_key` already spent on some other act. Each of those refuses with
+nothing appended and the old request still open. The guard
+on the old request — no admitted promise, no direct completion, no prior
+retirement — is not knowable then and is judged when each act is appended,
+against the frontier that act actually joins.
+
 The result contains `retirement` and `request` submission results. Unrelated
 durable traffic does not refuse the pair. A promise or direct completion before
 the retirement, or between the retirement and replacement, does. If only the
 retirement lands, the error names it; an exact retry replays that act before
-continuing.
+continuing. The replacement is authored on the same path as
+[`state`](state.md#request-authoring-what-a-request-owes), so its retry is
+answered from the log before any ref is read, and the preflight answers it the
+same way: a key already holding a replacement is a retry only when the whole
+call — old request, words, bases and body — rebuilds to that accepted act, in
+which case it replays even after the branch its `target_ref` named has gone or
+the performer it named has left the roster. A reused key that names a
+different old request, a different branch, or any other change is refused as a
+reused key before any retirement, rather than answered with the accepted
+replacement or allowed to withdraw a second request in its name.
 
 Use the ordinary [`supersede`](supersede.md) tool when a requester knowingly
 withdraws work that has already been promised.

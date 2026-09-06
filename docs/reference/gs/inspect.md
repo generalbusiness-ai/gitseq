@@ -41,10 +41,10 @@ gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
-  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
-  --rests-on "$SEED")
+  --text 'Run the tests' --body to=@bot --body conditions='the result is in the report' \
+  --body no_git_artifact=true --rests-on "$SEED")
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
-  --text 'I will add it' --rests-on "$REQUEST")
+  --text 'I will run them' --rests-on "$REQUEST")
 
 gs inspect --repo "$REPO" "$PROMISE"
 gs inspect --repo "$REPO" --json "$PROMISE" | head -8

@@ -37,12 +37,12 @@ GENESIS=$(gs init --repo "$REPO" --operator alice \
 gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")"
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
-  --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
-  --rests-on "$SEED")
+  --text 'Run the tests' --body to=@bot --body conditions='the result is in the report' \
+  --body no_git_artifact=true --rests-on "$SEED")
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
-  --text 'I will add it' --rests-on "$REQUEST")
+  --text 'I will run them' --rests-on "$REQUEST")
 REPORT=$(gs state --repo "$REPO" --as bot --kind report \
-  --text 'done' --rests-on "$PROMISE")
+  --text 'all tests pass' --rests-on "$PROMISE")
 PORT="${PORT:-7777}"
 META='"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{}}'
 

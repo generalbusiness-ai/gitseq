@@ -13,7 +13,7 @@ const (
 	// ProfileVersion identifies the exact deterministic application projection
 	// contract. Kernel checkpoints are profile-independent verified event
 	// material; application projection caches use this value as their gate.
-	ProfileVersion    = "workroom-fold@21"
+	ProfileVersion    = "workroom-fold@22"
 	SchemaStateLegacy = "workroom/state@0"
 	SchemaStateV1     = "workroom/state@1"
 	SchemaState       = "workroom/state@2"
@@ -35,6 +35,19 @@ const (
 	SchemaSupersedeV1     = "workroom/supersede@1"
 	SchemaRetireUnclaimed = "workroom/retire-if-unclaimed@0"
 	SchemaReassignRequest = "workroom/reassign-if-unclaimed@0"
+	// SchemaReassignRequestV1 files the replacement request of a guarded
+	// reassignment under the landing obligation. The payload shape is
+	// unchanged; the schema is what says the replacement is a state@3 request,
+	// so it must state the section-1 result choice and the fold reads that
+	// choice from its body. Under @0 those names are opaque text, exactly as
+	// they are on a state@2 record, which is what keeps every reassignment
+	// already in the log reading as it always did.
+	//
+	// A fold that does not know this schema cannot decode the record at all
+	// and rules it ineffective, so what the projection contains changes with
+	// it: ProfileVersion advances to workroom-fold@22, and a cache written
+	// under @21 replays rather than being served.
+	SchemaReassignRequestV1 = "workroom/reassign-if-unclaimed@1"
 )
 
 type Kind string
@@ -144,7 +157,7 @@ func decode(schema string, data []byte, pool map[string]string) (any, error) {
 		value = &SupersedeV1{}
 	case SchemaRetireUnclaimed:
 		value = &RetireIfUnclaimed{}
-	case SchemaReassignRequest:
+	case SchemaReassignRequest, SchemaReassignRequestV1:
 		value = &ReassignIfUnclaimed{}
 	default:
 		return nil, fmt.Errorf("unsupported workroom schema %q", schema)

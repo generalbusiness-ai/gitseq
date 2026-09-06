@@ -23,6 +23,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
@@ -1620,8 +1621,9 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key (required)")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the old request")
-	var rests values
+	var rests, bodyValues values
 	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
+	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -1646,7 +1648,34 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// The replacement is a new request and states its own result. --body
+	// carries that choice; --to and --conditions name the two fields this
+	// command has always owned, so they are written last.
+	body, err := pairs(bodyValues)
+	if err != nil {
+		return err
+	}
+	if body == nil {
+		body = make(map[string]string, 2)
+	}
+	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
+	// The pair is retirement then replacement, so a replacement refused for
+	// something its own body already said would leave the old request withdrawn
+	// with no successor. Everything knowable about it now is judged now,
+	// through the same authoring rules that will judge it again at signing.
+	_, private, err := workspace.Actor(actor)
+	if err != nil {
+		return err
+	}
+	replacementAct := app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest,
+		Text: *message, Body: body,
+		RestsOn: rests, IdempotencyKey: *key + "/request",
+	}
+	if err := workspace.PreflightGuardedReplacement(ctx, private, actor, replacementAct); err != nil {
+		return explainLifecycleRefusal(err)
+	}
 	retirement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: *retirementText,
 		IdempotencyKey: *key + "/retirement", CitedOK: *citedOK,
@@ -1654,11 +1683,8 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	replacement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
-		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirement.ID,
-		Text: *message, Body: map[string]string{"to": *to, "conditions": *conditions},
-		RestsOn: rests, IdempotencyKey: *key + "/request",
-	})
+	replacementAct.Retirement = retirement.ID
+	replacement, err := submitAct(ctx, workspace, serverURL, actor, replacementAct)
 	if err != nil {
 		return fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirement.ID, err)
 	}
@@ -1956,8 +1982,16 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 				return position, batchFail("admission", "%v", err)
 			}
 		}
+		// A label names the event its act will mint. Until then it stands
+		// for a placeholder, except when the log already holds that act
+		// under its key: then the label names the real event, so a later act
+		// citing it — a replacement naming its retirement — is rebuilt as
+		// it was accepted and recognised as a retry instead of a conflict.
 		if entry.Label != "" {
 			minted[entry.Label] = syntheticEvent
+			if accepted, held := workspace.AcceptedActUnderKey(ctx, private, actorName, entry.IdempotencyKey); held {
+				minted[entry.Label] = accepted
+			}
 		}
 	}
 	return 0, nil
@@ -3002,18 +3036,34 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if *genesis == "" {
 		return errors.New("attach requires --genesis")
 	}
-	if err := fetchSequenceRefs(ctx, *repo, *remote); err != nil {
+	// Reject an unconfigured transport before touching any configuration.
+	if err := validateConfiguredRemote(ctx, *repo, *remote); err != nil {
 		return err
 	}
-	formatOutput, err := git(ctx, *repo, "rev-parse", "--show-object-format")
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, *repo)
 	if err != nil {
 		return err
 	}
-	workspace, err := app.AttachConfig(ctx, *repo, *genesis, strings.TrimSpace(formatOutput))
+	store := gitstore.Store{Repo: commonDir}
+	format, err := store.ObjectFormat(ctx)
 	if err != nil {
 		return err
 	}
-	verification, err := workspace.Verify(ctx)
+	if err := apphost.ValidateGenesis(format, *genesis); err != nil {
+		return fmt.Errorf("invalid attachment genesis: %w", err)
+	}
+	expected, _, err := store.RefValue(ctx, kernel.Ref(*genesis))
+	if err != nil {
+		return err
+	}
+	if err := fetchSequenceRefs(ctx, *repo, *remote, *genesis); err != nil {
+		return err
+	}
+	head, err := store.Head(ctx, "refs/remotes/"+*remote+"/seq/"+*genesis)
+	if err != nil {
+		return err
+	}
+	verification, err := app.AttachSequence(ctx, *repo, *genesis, format, head, expected)
 	if err != nil {
 		return err
 	}
@@ -3021,28 +3071,42 @@ func attachCommand(ctx context.Context, arguments []string) error {
 }
 
 const (
+	// These are the two historical rules to remove, never fetch destinations.
 	sequenceFetchRefspec       = "refs/seq/*:refs/seq/*"
 	forcedSequenceFetchRefspec = "+" + sequenceFetchRefspec
 )
 
-func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
+func sequenceTrackingRefspec(remote string) string {
+	return "+refs/seq/*:refs/remotes/" + remote + "/seq/*"
+}
+
+func fetchSequenceRefs(ctx context.Context, repo, remote, genesis string) error {
 	if err := validateConfiguredRemote(ctx, repo, remote); err != nil {
 		return err
 	}
+	if _, err := git(ctx, repo, "check-ref-format", "refs/remotes/"+remote+"/seq/check"); err != nil {
+		return fmt.Errorf("configured remote cannot name a sequence tracking namespace: %w", err)
+	}
 	key := "remote." + remote + ".fetch"
 	existing, _ := git(ctx, repo, "config", "--get-all", key)
-	if containsLine(existing, forcedSequenceFetchRefspec) {
-		if _, err := git(ctx, repo, "config", "--fixed-value", "--unset-all", key, forcedSequenceFetchRefspec); err != nil {
-			return fmt.Errorf("remove legacy forced sequence fetch rule: %w", err)
+	for _, legacy := range []string{sequenceFetchRefspec, forcedSequenceFetchRefspec} {
+		if containsLine(existing, legacy) {
+			if _, err := git(ctx, repo, "config", "--fixed-value", "--unset-all", key, legacy); err != nil {
+				return fmt.Errorf("remove legacy sequence fetch rule: %w", err)
+			}
 		}
 	}
-	if !containsLine(existing, sequenceFetchRefspec) {
-		if _, err := git(ctx, repo, "config", "--add", key, sequenceFetchRefspec); err != nil {
+	tracking := sequenceTrackingRefspec(remote)
+	if !containsLine(existing, tracking) {
+		if _, err := git(ctx, repo, "config", "--add", key, tracking); err != nil {
 			return err
 		}
 	}
-	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, sequenceFetchRefspec); err != nil {
-		return fmt.Errorf("fetch sequence refs without rewind: %w", err)
+	// An exact source refuses when the selected remote sequence was deleted.
+	// A wildcard fetch would silently retain its old local tracking value.
+	selected := "+refs/seq/" + genesis + ":refs/remotes/" + remote + "/seq/" + genesis
+	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, selected); err != nil {
+		return fmt.Errorf("fetch untrusted sequence tracking refs: %w", err)
 	}
 	return nil
 }

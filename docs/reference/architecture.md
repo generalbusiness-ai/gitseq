@@ -2,25 +2,29 @@
 title: Architecture layers
 summary: The boundary between Gitseq's semantic-free kernel and replaceable application profiles.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b43f6136b3ad16acfd99ea1978d48d3af45d8f4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a044c9520a718683b86f1ed72a19d027b7bdc63
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5242f122c4a784eb2fb38eb53fb04dcf235d967b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ef0bb48f6842c8f43f9aaacb6bed75584a77e48
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2556ced7f27f284fe201240aa7bed7bfc021e0b9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66e0e12172925f497f0dde1b910e705b157c08e7
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e20de58448b1f20657a26a2465f60d80fabad210
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa2ae0e961a4b33c44f69c0bb6d602ba273a3097
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2c6b2a03e3c03af9a20985a40f85e09f31ee417
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c4f0d4142bfa057005b09e59bc0a3462980842b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c2280f3529b7f1a9abf43fa13b5b46170550d96
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cb46390f7cc0630f8f7518d79c3031c4b226605
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:109d5eb915643120959d224369327a034f6a5d43
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87165f1520bdf1a58e390a53b939b310fcd12df9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a5ba7c376e9417d6c11f5275f47202179381a30e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599960fd61ab6d3288f3977f60ea80a0ae0ca5ea
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4355a1feed949547209289deed2b1b8775f7f8ed
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f5e861fe8e66e258c0b189c15de98b3e5beba0f
 ---
 
 # Architecture layers
@@ -555,6 +559,43 @@ The detailed product design is recorded in
 artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
+
+#### Sequence transport and verified import
+
+`cmd/gs` fetches remote sequences into `refs/remotes/<remote>/seq/*`, separate
+from authoritative `refs/seq/*`. It removes the two historical direct fetch
+mappings while preserving other configuration. Tracking refs may follow a
+remote rewind: they are untrusted observations. Attachment fetches the exact
+selected genesis, so a deleted remote sequence refuses even if an older
+tracking value remains locally. Git also updates tracking
+refs after a push, so their separation protects an append admitted during a
+successful publication. Non-forcing publication alone does not provide that
+protection when the fetch destination names the authoritative ref.
+
+The kernel's `VerifyAt` audits an immutable fetched candidate without moving a
+ref or assigning application meaning. The application boundary imports only a
+fully verified candidate that continues both the authoritative ref observed
+before transport and the saved verified frontier. It compares the saved
+frontier under the configuration lock, then uses Git compare-and-swap against
+the original authoritative ref. Rollback, sibling, verification and validation
+refusals, or a lost comparison, change neither that ref nor saved memory. First
+attachment remains read-only and creates no signing custody. Exclusive
+configuration creation precedes the initial CAS: a losing first import can
+leave that read-only identity with no saved frontier. It never deletes the
+configuration on failure or overwrites a concurrent creator’s identity; retry
+uses the actual local ref and stored configuration.
+
+The authoritative ref and configuration are separate stores. If the ref CAS
+succeeds but checkpoint persistence fails, the operation reports failure with
+the verified ref installed and the previous checkpoint retained. It never
+rewinds a ref to compensate: a newer append may already follow the import.
+After restoring metadata write access, a retry verifies and remembers the
+installed head; if the local sequence advanced further, reopening and auditing
+that actual head is safe, while an older remote candidate still refuses. This
+contract does not promise crash atomicity across the two stores. Kernel
+signature and history rules, configuration custody and Workroom authority are
+unchanged; transport/import ordering at the CLI and application boundary
+changes.
 
 #### Repository configuration custody
 
@@ -1287,15 +1328,23 @@ does not carry the retirement. It is keyed to that one edge and that one
 relation, and reaches neither carried nor abandoned successions.
 
 Filling `target_head` by resolving the ref at filing time, and refusing to file
-when it does not resolve, is layer-7 work in a later slice (I5); this head
-neither does it nor depends on it. The receipt fields and the merge refusals
-are layer-7 work too and are described under `gs merge` below; the
-authorization guard bindings and the status, work, inspect and worktree
-surfaces remain later work. This head admits `state@3` and `supersede@1` in the fold and
-leaves every filer on `state@2` and `supersede@0`, so no request already in
-flight acquires an obligation nobody stated. These admission and projection
-changes advance the profile to `workroom-fold@19`; a cache written under `@18`
-is rejected and history replayed.
+when it does not resolve, is layer-7 work and is described under "Request
+authoring" below. The receipt fields and the merge refusals are layer-7 work
+too and are described under `gs merge`; the status, work, inspect and worktree
+surfaces remain later work. These admission and projection changes advance the
+profile to `workroom-fold@19`; a cache written under `@18` is rejected and
+history replayed.
+
+Two schemas state the section-1 choice: `workroom/state@3`, and
+`workroom/reassign-if-unclaimed@1`, whose payload publishes a replacement
+request. Every older schema carries the same field names as opaque body text,
+including `workroom/reassign-if-unclaimed@0`, so every record already in the log
+reads exactly as it always did. The body-local half of the judgement —
+which encoding, whether the triple is complete and well formed, whether the
+hold is stated coherently — is one exported function this layer and layer 7
+both call, so the surface that files a request refuses the same shapes the fold
+would, in the same words. The ancestry walk and the roster read stay here,
+because only this layer holds the records they read.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
@@ -1463,6 +1512,13 @@ for the common status, work, inspect and worktree shape. The additive
 verified event checkpoint so historical receipts gain the witness without
 rewriting signed records.
 
+`workroom/reassign-if-unclaimed@1` advances it again, to `workroom-fold@22`. A
+fold that does not know that schema cannot decode the record at all and rules
+it ineffective, so an `@21` projection at the same frontier holds no
+replacement request and no commitment for it. A cache written under `@21` is
+therefore rejected and replayed from the verified event checkpoint, which is
+what gives the replacement its request row and the destination it stated.
+
 Pending ratification is a separate attention lane, not a commitment state.
 `internal/statusview` selects effective, unratified, live proposals whose
 captured `role:<name>` satisfier is held by the actor being viewed. It reads the
@@ -1588,6 +1644,69 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   query needs a fact Git holds rather than the projection — whether an
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
+
+  **Request authoring.** Filing a request is where layer 5's landing
+  obligation meets the repository, and one path in `internal/app` does it for
+  every surface: `gs state`, a `gs batch` entry, the MCP `state` tool, the
+  resident's `POST /v0/act`, and the guarded replacement of
+  `reassign-if-unclaimed`. A request-lifecycle state is signed as
+  `workroom/state@3` — the guarded replacement as
+  `workroom/reassign-if-unclaimed@1` — and must state exactly one result. This
+  layer resolves the by-value case: the caller names `target_ref`, and the
+  boundary fills `target_repo` with this workroom's genesis id and reads
+  `target_head` from that ref with `git show-ref --verify`, refusing a ref that
+  does not resolve. A caller-supplied `target_repo` or `target_head` is refused
+  outright rather than compared, because a hand-written measurement is either a
+  guess or one taken elsewhere; that field is also distinct from a release
+  report's `target_pre_head`, which is the signer's own measurement and is
+  checked on the report path. Every refusal here happens before the request is
+  signed, so the frontier is unchanged.
+
+  The measurement is taken per filing, and a retry is answered before any of it
+  happens. The retry identity the kernel indexes — target log, actor key,
+  idempotency namespace, idempotency key — needs nothing measured, so an act
+  already accepted under this caller's key is recovered from the log first; the
+  request is rebuilt as that act was written and is used only when it is byte
+  for byte the accepted one. No ref is read on that path, so an exact retry
+  replays after the branch it named has moved or been deleted outright. Only
+  the server-derived half of the triple is recovered: `target_ref` stays
+  whatever the caller sent, so a reused key naming a different branch rebuilds
+  a different act and is refused as a reused key, with no fresh measurement
+  taken in its name, rather than answered with the request filed against the
+  old destination. That classification — nothing held under the key, the
+  accepted act rebuilt byte for byte, or something else — is made once, by one
+  function, for the signing path and for every preflight in front of it. A
+  fresh filing naming a ref that does not resolve is refused.
+
+  The accepted act's schema is recovered with it, and is what the rebuild is
+  signed under: `workroom/state@2` or `workroom/reassign-if-unclaimed@0` for a
+  record written before the obligation existed, `state@3` or
+  `reassign-if-unclaimed@1` for one written after. This is what makes an
+  existing workroom retryable. Every request already in every log states no
+  result, so re-signing one as `state@3` refuses it for stating none — the one
+  answer a caller who already holds the act must never get. A legacy
+  reproduction reads its body as the opaque text it was, and the gate for the
+  whole recovery is the idempotency key plus a request-lifecycle state or the
+  reassignment verb, never a field of the body, because the body of a legacy
+  request says nothing about whether one exists.
+
+  The guarded reassignment is two acts in order — the retirement, then the
+  replacement — so the same authoring rules run once before the pair begins and
+  again when the replacement is signed. Everything the replacement's own body
+  earns a refusal for is knowable before either act, and learning it after the
+  first one is what would leave the old request withdrawn with no successor and
+  the frontier moved. The preflight decides nothing: it is the same code, over
+  the whole replacement the surface will file — old request, words, bases and
+  body, less the retirement it cannot yet name — and it classifies a held key
+  exactly as the signing path does, so a landed pair resumes without reading a
+  ref, and a key spent on some other act is refused before a retirement is
+  appended in its name. A fresh replacement resolves its addresses through
+  current custody like every other new request, so a performer who has been
+  retired is refused there too; only the byte-for-byte retry of a landed pair
+  may fall back to the durable roster entry retirement keeps, because that
+  comparison is what stops the fallback naming anyone new. The guard itself —
+  no admitted promise, no direct completion — is not knowable then and stays at
+  append, against the frontier each act joins.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

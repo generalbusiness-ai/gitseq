@@ -69,6 +69,15 @@ func (r requestResult) sameDestination(other requestResult) bool {
 	return r.targetRepo == other.targetRepo && r.targetRef == other.targetRef
 }
 
+// statesRequestResult reports whether a record filed under this schema states
+// the section-1 result choice. Two schemas do: workroom/state@3, and the
+// guarded reassignment that publishes a state@3 replacement. Every older
+// schema carries the same field names as opaque text and reads as it always
+// did.
+func statesRequestResult(schema string) bool {
+	return schema == SchemaStateV3 || schema == SchemaReassignRequestV1
+}
+
 // workroomOf reads the workroom half of a canonical event identifier. Every
 // event in a real log is named <workroom>#<event>, so a request carries the
 // genesis id of the repository it was filed in, and target_repo can be checked
@@ -94,6 +103,13 @@ func quotedField(value string) string {
 		value = value[:limit] + "..."
 	}
 	return fmt.Sprintf("%q", value)
+}
+
+// ValidBranchRef is validBranchRef for the surfaces that resolve a target ref
+// before filing. They must refuse exactly the shapes the fold refuses, and a
+// surface that ran Git first would hand an unchecked string to a subprocess.
+func ValidBranchRef(ref string) bool {
+	return validBranchRef(ref)
 }
 
 // validBranchRef reports whether a value is a branch ref this fold will store.
@@ -139,55 +155,120 @@ func isObjectID(value string) bool {
 	return true
 }
 
-// decideRequestResult admits or refuses the section-1 choice on a state@3
-// request. Exactly one of the three encodings must be present: the target
-// triple by value, target=inherit, or no_git_artifact=true.
-func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*requestResult, string) {
-	repo, ref, head := state.Body["target_repo"], state.Body["target_ref"], state.Body["target_head"]
+// RequestChoice is the section-1 result choice as far as one request body can
+// state it: the encoding chosen, the triple it carried by value, and the hold
+// it declared. It is what a producing surface can judge before it signs, and
+// what the fold judges before it consults ancestry.
+//
+// Inheritance is deliberately not resolved here. The walk is the fold's, over
+// records only the fold holds, so a body naming target=inherit says which
+// question to ask and not what the answer is.
+type RequestChoice struct {
+	// Landing is a complete target triple stated by value.
+	Landing bool
+	// Inherit is target=inherit: the triple comes from ancestry.
+	Inherit bool
+	// NoGitArtifact is no_git_artifact=true: the request owes no Git artifact.
+	NoGitArtifact bool
+
+	TargetRepo string
+	TargetRef  string
+	TargetHead string
+
+	// Held is landing=held stated by this body. HoldOwner is the fingerprint
+	// hold_owner named, unchecked against the roster, which only the fold can
+	// read.
+	Held      bool
+	HoldOwner string
+}
+
+// ReadRequestChoice judges the section-1 choice that one state@3 request body
+// states. workroomID is the genesis identifier a by-value target_repo must
+// equal; an empty one refuses a by-value triple, because a landing target
+// cannot be validated against nothing.
+//
+// Everything it refuses is a property of the body alone, so both the fold and
+// the surface that files the request read the same sentence from the same
+// code. What it cannot judge — whether an inherited triple exists, whether a
+// named hold owner is on the live roster — it reports and leaves to the fold.
+func ReadRequestChoice(workroomID string, body map[string]string) (RequestChoice, string) {
+	var choice RequestChoice
+	repo, ref, head := body["target_repo"], body["target_ref"], body["target_head"]
 	triple := repo != "" || ref != "" || head != ""
-	inherit := false
-	if value, stated := state.Body["target"]; stated {
+	if value, stated := body["target"]; stated {
 		if value != "inherit" {
-			return nil, `target must be "inherit" when stated`
+			return choice, `target must be "inherit" when stated`
 		}
-		inherit = true
+		choice.Inherit = true
 	}
-	noArtifact := false
-	if value, stated := state.Body["no_git_artifact"]; stated {
+	if value, stated := body["no_git_artifact"]; stated {
 		if value != "true" {
-			return nil, `no_git_artifact must be "true" when stated`
+			return choice, `no_git_artifact must be "true" when stated`
 		}
-		noArtifact = true
+		choice.NoGitArtifact = true
 	}
 	encodings := 0
-	for _, stated := range []bool{triple, inherit, noArtifact} {
+	for _, stated := range []bool{triple, choice.Inherit, choice.NoGitArtifact} {
 		if stated {
 			encodings++
 		}
 	}
 	switch {
 	case encodings == 0:
-		return nil, "request states no result: name a target, inherit one, or state no_git_artifact"
+		return choice, "request states no result: name a target, inherit one, or state no_git_artifact"
 	case encodings > 1:
-		return nil, "request states more than one result"
+		return choice, "request states more than one result"
+	}
+	if triple {
+		if repo == "" || ref == "" || head == "" {
+			return choice, "target triple is incomplete"
+		}
+		if workroomID == "" || repo != workroomID {
+			return choice, "target_repo must be this workroom's genesis id"
+		}
+		if !validBranchRef(ref) {
+			return choice, "target_ref must name a branch under refs/heads/"
+		}
+		if !isObjectID(head) {
+			return choice, "target_head must be a full lowercase object id"
+		}
+		choice.Landing, choice.TargetRepo, choice.TargetRef, choice.TargetHead = true, repo, ref, head
+	}
+	if value, stated := body["landing"]; stated {
+		if value != "held" {
+			return choice, `landing must be "held" when stated`
+		}
+		if choice.NoGitArtifact {
+			return choice, "landing hold applies only to a request that owes a landing"
+		}
+		choice.Held = true
+	}
+	if owner, stated := body["hold_owner"]; stated {
+		// A request that inherits may inherit a hold too, so whether it has one
+		// to own is the walk's answer and this is not the place to give it.
+		if !choice.Held && !choice.Inherit {
+			return choice, "hold_owner applies only to a held landing request"
+		}
+		choice.HoldOwner = owner
+	}
+	return choice, ""
+}
+
+// decideRequestResult admits or refuses the section-1 choice on a state@3
+// request. Exactly one of the three encodings must be present: the target
+// triple by value, target=inherit, or no_git_artifact=true. The body-local
+// half of that judgement is ReadRequestChoice, shared with the surfaces that
+// file requests; the ancestry walk and the roster read are this fold's alone.
+func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*requestResult, string) {
+	choice, reason := ReadRequestChoice(workroomOf(record.record.ID), state.Body)
+	if reason != "" {
+		return nil, reason
 	}
 	result := &requestResult{}
 	switch {
-	case triple:
-		if repo == "" || ref == "" || head == "" {
-			return nil, "target triple is incomplete"
-		}
-		if workroom := workroomOf(record.record.ID); workroom == "" || repo != workroom {
-			return nil, "target_repo must be this workroom's genesis id"
-		}
-		if !validBranchRef(ref) {
-			return nil, "target_ref must name a branch under refs/heads/"
-		}
-		if !isObjectID(head) {
-			return nil, "target_head must be a full lowercase object id"
-		}
-		result.landing, result.targetRepo, result.targetRef, result.targetHead = true, repo, ref, head
-	case inherit:
+	case choice.Landing:
+		result.landing, result.targetRepo, result.targetRef, result.targetHead = true, choice.TargetRepo, choice.TargetRef, choice.TargetHead
+	case choice.Inherit:
 		inherited, reason := f.inheritTarget(record)
 		if reason != "" {
 			return nil, reason
@@ -199,16 +280,10 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 	// whether this request may name its owner. It is read before the body,
 	// because the body cannot make an inherited hold into a stated one.
 	inheritedHold := result.held
-	if value, stated := state.Body["landing"]; stated {
-		if value != "held" {
-			return nil, `landing must be "held" when stated`
-		}
-		if !result.landing {
-			return nil, "landing hold applies only to a request that owes a landing"
-		}
+	if choice.Held {
 		result.held = true
 	}
-	if owner, stated := state.Body["hold_owner"]; stated {
+	if choice.HoldOwner != "" {
 		if !result.held {
 			return nil, "hold_owner applies only to a held landing request"
 		}
@@ -222,10 +297,10 @@ func (f *foldState) decideRequestResult(record *parsedRecord, state State) (*req
 		// Delegating the release is the author's decision, so any live actor
 		// may be named. An unknown or retired fingerprint names nobody who
 		// could ever sign, and a hold nobody can lift is not a hold.
-		if !f.hasActor(owner) {
+		if !f.hasActor(choice.HoldOwner) {
 			return nil, "hold_owner is not in the live roster"
 		}
-		result.holdOwner = owner
+		result.holdOwner = choice.HoldOwner
 	}
 	if result.held && result.holdOwner == "" {
 		result.holdOwner = record.record.Actor

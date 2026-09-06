@@ -32,6 +32,22 @@ func testRepo(t testing.TB) string {
 	return repo
 }
 
+// testRepoOnMain is testRepo with one commit on refs/heads/main. A request
+// that owes a landing names a ref by value, and this path resolves it at
+// filing, so such a test needs a repository where that ref exists.
+func testRepoOnMain(t testing.TB) string {
+	t.Helper()
+	repo := testRepo(t)
+	if output, err := exec.Command("git", "-C", repo, "symbolic-ref", "HEAD", "refs/heads/main").CombinedOutput(); err != nil {
+		t.Fatalf("git symbolic-ref: %v: %s", err, output)
+	}
+	if output, err := exec.Command("git", "-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+		"commit", "--allow-empty", "-qm", "seed").CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, output)
+	}
+	return repo
+}
+
 func actRecord(t *testing.T, ctx context.Context, workspace *Workspace, actor string, act Act) workroom.Record {
 	t.Helper()
 	submission, err := workspace.Act(ctx, actor, act)
@@ -338,7 +354,7 @@ func TestWorkspaceLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": "agent", "conditions": "tests pass"}, RestsOn: []string{seed.ID}, IdempotencyKey: "request"})
+	request := actRecord(t, ctx, workspace, "human", Act{Verb: VerbState, Kind: workroom.KindRequest, Text: "build", Body: map[string]string{"to": "agent", "conditions": "tests pass", "no_git_artifact": "true"}, RestsOn: []string{seed.ID}, IdempotencyKey: "request"})
 	promise := actRecord(t, ctx, workspace, "agent", Act{Verb: VerbState, Kind: workroom.KindPromise, Text: "I promise", RestsOn: []string{request.ID}, IdempotencyKey: "promise"})
 	report := actRecord(t, ctx, workspace, "agent", Act{Verb: VerbState, Kind: workroom.KindReport, Text: "done", RestsOn: []string{promise.ID}, IdempotencyKey: "report"})
 	actRecord(t, ctx, workspace, "human", Act{Verb: VerbRatify, Target: report.ID, IdempotencyKey: "satisfy"})
@@ -377,7 +393,7 @@ func TestReportFromAStrangerIsRefusedBeforeAppend(t *testing.T) {
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
-		Body:    map[string]string{"to": "agent", "conditions": "tests pass"},
+		Body:    map[string]string{"to": "agent", "conditions": "tests pass", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "request-without-promise",
 	})
 	before, err := workspace.Snapshot(ctx)
@@ -418,7 +434,7 @@ func TestReportPreflightRequiresExactlyOnePromiseFromTheReporter(t *testing.T) {
 	for index := range promises {
 		request := actRecord(t, ctx, workspace, "human", Act{
 			Verb: VerbState, Kind: workroom.KindRequest, Text: fmt.Sprintf("build %d", index),
-			Body:    map[string]string{"to": first.Fingerprint, "conditions": "tests pass"},
+			Body:    map[string]string{"to": first.Fingerprint, "conditions": "tests pass", "no_git_artifact": "true"},
 			RestsOn: []string{seed.ID}, IdempotencyKey: fmt.Sprintf("report-preflight-request-%d", index),
 		})
 		promises[index] = actRecord(t, ctx, workspace, "first", Act{
@@ -470,7 +486,7 @@ func TestApprovedReportMustRestOnItsNamedArtifactBeforeSigning(t *testing.T) {
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "review",
-		Body:    map[string]string{"to": "agent", "conditions": "review the exact artifact"},
+		Body:    map[string]string{"to": "agent", "conditions": "review the exact artifact", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "approval-basis-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
@@ -603,7 +619,7 @@ func TestReportPreflightUsesDeclaredLifecycleKinds(t *testing.T) {
 	declare("delivery", workroom.LifecycleReport, []workroom.BasisConstraint{{Kinds: []workroom.Kind{"undertaking"}, Min: 1, Max: 1}})
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
-		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "custom-lifecycle-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
@@ -923,7 +939,7 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 	}
 	for index, address := range []string{"agent", "@agent", agent.Fingerprint} {
 		record := actRecord(t, ctx, workspace, "human", Act{
-			Verb: VerbState, Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical"},
+			Verb: VerbState, Kind: workroom.KindRequest, Text: "address", Body: map[string]string{"to": address, "conditions": "canonical", "no_git_artifact": "true"},
 			RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "address-" + string(rune('a'+index)),
 		})
 		decoded, err := workroom.Decode(record.Schema, record.Payload)
@@ -935,7 +951,7 @@ func TestBuildRequestCanonicalizesActorAddresses(t *testing.T) {
 		}
 	}
 	if _, err := workspace.Act(ctx, "human", Act{
-		Verb: VerbState, Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never"},
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "bad", Body: map[string]string{"to": "missing", "conditions": "never", "no_git_artifact": "true"},
 		RestsOn: []string{workspace.EventID(workspace.config.Genesis)}, IdempotencyKey: "bad-address",
 	}); err == nil || !strings.Contains(err.Error(), "request body.to") {
 		t.Fatalf("unknown request performer error = %v, want body.to", err)
@@ -959,7 +975,7 @@ func TestRequestPreflightRefusesMissingFieldsBeforeSigning(t *testing.T) {
 		want string
 	}{
 		{name: "conditions", body: map[string]string{"to": "agent"}, want: "request state requires body.conditions"},
-		{name: "performer", body: map[string]string{"conditions": "tests pass"}, want: "request state requires body.to"},
+		{name: "performer", body: map[string]string{"conditions": "tests pass", "no_git_artifact": "true"}, want: "request state requires body.to"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := workspace.Act(ctx, "human", Act{
@@ -1911,7 +1927,7 @@ func TestRetiredActorCannotBeAddressedOrGrantedAuthority(t *testing.T) {
 	// the guarantee durable rather than local.
 	if _, err := workspace.Act(ctx, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "addressed to a retired instance",
-		Body:    map[string]string{"to": instance.Fingerprint, "conditions": "none"},
+		Body:    map[string]string{"to": instance.Fingerprint, "conditions": "none", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "retired-request",
 	}); err == nil || !strings.Contains(err.Error(), "addresses no known actor") {
 		t.Fatalf("request to a retired principal = %v", err)
@@ -2034,7 +2050,7 @@ func TestBuildActRequestRefusesRetiringACitedRecord(t *testing.T) {
 func TestBuildActRequestRefusesRatifyingAnArtifactAndNamesTheClosingAct(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	workspace, seed, err := Init(ctx, testRepoOnMain(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2044,7 +2060,7 @@ func TestBuildActRequestRefusesRatifyingAnArtifactAndNamesTheClosingAct(t *testi
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
-		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges", "target_ref": "refs/heads/main"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "unratifiable-artifact-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
@@ -2099,7 +2115,7 @@ func TestADirectReportCanActuallyBeBuilt(t *testing.T) {
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "Do the thing",
-		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "it is done"},
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "it is done", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "direct-request",
 	})
 
@@ -2168,7 +2184,7 @@ func TestTheWriteBoundaryAsksWhatTheFoldAsks(t *testing.T) {
 		t.Helper()
 		return actRecord(t, ctx, workspace, "human", Act{
 			Verb: VerbState, Kind: workroom.KindRequest, Text: "build " + key,
-			Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+			Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass", "no_git_artifact": "true"},
 			RestsOn: []string{seed.ID}, IdempotencyKey: "request-" + key,
 		})
 	}
@@ -2287,7 +2303,7 @@ func TestVocabularyRedefinitionDoesNotLetARefusedReportBeAppended(t *testing.T) 
 	asPromise := define(workroom.LifecyclePromise, "as-promise")
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "build",
-		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass"},
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "tests pass", "no_git_artifact": "true"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "redefinition-request",
 	})
 	// A live claim, recorded while undertaking was a promise.
@@ -2391,7 +2407,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 	})
 	reviewRequest := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "review the exact head",
-		Body:    map[string]string{"to": "reviewer", "conditions": "exact head"},
+		Body:    map[string]string{"to": "reviewer", "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{implementation.ID}, IdempotencyKey: "profile-rebuild-review-request",
 	})
 	promise := actRecord(t, ctx, workspace, "reviewer", Act{
@@ -2469,7 +2485,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@21"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@22"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2492,7 +2508,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	workspace, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	workspace, seed, err := Init(ctx, testRepoOnMain(t), "human", 1<<20)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2502,7 +2518,7 @@ func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	}
 	request := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "Implement it",
-		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges"},
+		Body:    map[string]string{"to": agent.Fingerprint, "conditions": "approved head merges", "target_ref": "refs/heads/main"},
 		RestsOn: []string{seed.ID}, IdempotencyKey: "profile-awaiting-review-request",
 	})
 	promise := actRecord(t, ctx, workspace, "agent", Act{
@@ -2536,7 +2552,7 @@ func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
 	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@21"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@22"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2612,10 +2628,97 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@21"
+	want := apphost.DefaultApplication + "\x00workroom-fold@22"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
+}
+
+// The replacement schema is the @21-to-@22 transition, and this is its
+// witness. workroom/reassign-if-unclaimed@1 is a schema an @21 fold cannot
+// decode at all: it rules the record ineffective, so the replacement request
+// is not in that projection and neither is the commitment it opens. The @22
+// fold reads it as a request and reads the result it states, so the
+// commitment carries the destination the replacement named. Serving the @21
+// cache at the same frontier would therefore hide a live open commitment and
+// the landing it owes.
+func TestReplacementSchemaRebuildsATwentyOneProfileCache(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	fixture := newAuthoringWorkspace(t)
+	if _, _, err := fixture.workspace.AddActor(ctx, "human", "other", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	original := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindRequest, Text: "do it",
+		Body:    map[string]string{"to": "@agent", "conditions": "finish", "no_git_artifact": "true"},
+		RestsOn: []string{fixture.seed}, IdempotencyKey: "profile-original",
+	})
+	retirement := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbRetireIfUnclaimed, Target: original.ID,
+		Text: "retire before reassignment", IdempotencyKey: "profile-retirement",
+	})
+	replacement := actRecord(t, ctx, fixture.workspace, "human", Act{
+		Verb: VerbReassignIfUnclaimed, Target: original.ID, Retirement: retirement.ID,
+		Text:           "ask the other agent",
+		Body:           map[string]string{"to": "@other", "conditions": "finish", "target_ref": "refs/heads/main"},
+		IdempotencyKey: "profile-replacement",
+	})
+	current := fixture.workspace.mustSnapshot(t, ctx)
+	row := commitmentRow(t, current, replacement.ID)
+	if row.TargetRef != "refs/heads/main" || row.Legacy {
+		t.Fatalf("current replacement commitment = %+v; the seeded cache below would not differ from a replay", row)
+	}
+
+	// What an @21 cache holds at this same frontier: the replacement record
+	// ruled ineffective for a schema that fold does not know, with no statement
+	// and no commitment anywhere in the projection.
+	old := current
+	old.Projection.Decisions = append([]workroom.Decision(nil), current.Projection.Decisions...)
+	for index := range old.Projection.Decisions {
+		if decision := &old.Projection.Decisions[index]; decision.Event == replacement.ID {
+			decision.Verdict = workroom.Ineffective
+			decision.Reason = "unsupported workroom schema under workroom-fold@21"
+		}
+	}
+	old.Projection.Statements = slices.DeleteFunc(append([]workroom.Statement(nil), current.Projection.Statements...), func(statement workroom.Statement) bool {
+		return statement.Event == replacement.ID
+	})
+	old.Projection.Commitments = slices.DeleteFunc(append([]workroom.Commitment(nil), current.Projection.Commitments...), func(commitment workroom.Commitment) bool {
+		return commitment.Request == replacement.ID
+	})
+	fixture.workspace.snapshotMu.Lock()
+	fixture.workspace.snapshotCache = &old
+	fixture.workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
+	fixture.workspace.snapshotProfile = apphost.DefaultApplication + "\x00workroom-fold@21"
+	fixture.workspace.snapshotMu.Unlock()
+
+	rebuilt, err := fixture.workspace.SnapshotWithSource(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decision, ok := rebuilt.Snapshot.Projection.Decision(replacement.ID)
+	if !ok || decision.Verdict != workroom.Effective {
+		t.Fatalf("rebuilt replacement decision = %+v, found=%v; the @21 cache was served", decision, ok)
+	}
+	if got := commitmentRow(t, rebuilt.Snapshot, replacement.ID); got.TargetRef != "refs/heads/main" || got.Legacy {
+		t.Fatalf("rebuilt replacement commitment = %+v, want the stated refs/heads/main target", got)
+	}
+	want := apphost.DefaultApplication + "\x00workroom-fold@22"
+	if fixture.workspace.snapshotProfile != want {
+		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
+	}
+}
+
+func commitmentRow(t *testing.T, snapshot Snapshot, request string) workroom.Commitment {
+	t.Helper()
+	for _, commitment := range snapshot.Projection.Commitments {
+		if commitment.Request == request {
+			return commitment
+		}
+	}
+	t.Fatalf("no commitment row for %s", request)
+	return workroom.Commitment{}
 }
 
 func statementIndex(t *testing.T, projection workroom.Projection, event string) int {

@@ -949,51 +949,51 @@ func (w *Workspace) updateConfig(mutate func(*apphost.Config) (bool, error)) err
 	return nil
 }
 
-func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+func ensureAttachmentConfig(ctx context.Context, repo, genesis, objectFormat string) (string, apphost.Config, error) {
 	if err := apphost.ValidateGenesis(objectFormat, genesis); err != nil {
-		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
+		return "", apphost.Config{}, fmt.Errorf("invalid attachment genesis: %w", err)
 	}
 	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
-		return nil, err
+		return "", apphost.Config{}, err
 	}
 	metaDir := apphost.MetaDir(commonDir)
 	if _, err := os.Stat(filepath.Join(metaDir, apphost.ConfigFile)); errors.Is(err, os.ErrNotExist) {
 		attachAbsenceGate()
 		if err := os.MkdirAll(metaDir, 0o700); err != nil {
-			return nil, err
+			return "", apphost.Config{}, err
 		}
 		created := apphost.Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}
 		if err := apphost.CreateConfig(metaDir, created); err != nil && !errors.Is(err, os.ErrExist) {
-			return nil, err
+			return "", apphost.Config{}, err
 		}
 		// os.ErrExist means a concurrent attach created the configuration
 		// after the absence check. The stored one, not this call's argument,
 		// is now the one to answer for, and the comparison below judges it.
 	} else if err != nil {
-		return nil, err
+		return "", apphost.Config{}, err
 	}
-	// The configuration exists, so opening it is what selects the interpreter.
-	// Attaching and opening then reach the same answer by the same path, and no
-	// workspace leaves this package without one. Comparing after the open — on
-	// the creating path too — makes a reported success an observation of the
-	// stored genesis rather than an echo of the argument: an attach whose
-	// creation lost the race fails here instead of silently answering for a
-	// sequence it never stored.
-	workspace, err := Open(ctx, repo)
+	config, err := apphost.LoadConfig(metaDir)
 	if err != nil {
+		return "", apphost.Config{}, err
+	}
+	if !config.ReadOnly {
+		return "", apphost.Config{}, errors.New("cannot attach over a writable workroom")
+	}
+	if config.Genesis != genesis {
+		return "", apphost.Config{}, errors.New("attached workroom genesis does not match --genesis")
+	}
+	if config.ObjectFormat != objectFormat {
+		return "", apphost.Config{}, errors.New("attached workroom object format changed")
+	}
+	return metaDir, config, nil
+}
+
+func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+	if _, _, err := ensureAttachmentConfig(ctx, repo, genesis, objectFormat); err != nil {
 		return nil, err
 	}
-	if !workspace.config.ReadOnly {
-		return nil, errors.New("cannot attach over a writable workroom")
-	}
-	if workspace.config.Genesis != genesis {
-		return nil, errors.New("attached workroom genesis does not match --genesis")
-	}
-	if workspace.config.ObjectFormat != objectFormat {
-		return nil, errors.New("attached workroom object format changed")
-	}
-	return workspace, nil
+	return Open(ctx, repo)
 }
 
 func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
@@ -1283,16 +1283,84 @@ func (w *Workspace) BuildActRequestReadOnly(ctx context.Context, snapshot Snapsh
 	return w.buildActRequest(ctx, private, actorName, act, &snapshot)
 }
 
+// buildActRequest resolves an accepted retry before it measures anything, then
+// builds the act.
+//
+// A request is the one act whose payload depends on a mutable read, and the
+// one act whose rules have changed under logs that already hold it, so it is
+// the one act whose retry cannot simply be rebuilt from today's inputs. If an
+// act already stands under this caller's key, it is recovered from the log
+// first and the retry is rebuilt as that act was written: under its own
+// schema, on the measurement it stated. No ref is read on that path, so
+// neither a moved or deleted branch nor a rule written after the act was
+// accepted can stand between a caller and the act they already have. The
+// rebuilt act is used only when it is byte for byte the accepted one; anything
+// else — a changed destination, changed words, changed bases — falls through
+// to an ordinary fresh filing, which measures the ref as it stands now and
+// leaves the kernel to refuse the reused key.
 func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot) (kernel.Request, error) {
+	replay, retry, err := w.acceptedRequestReplay(ctx, private, actorName, act, snapshot)
+	switch {
+	case err != nil:
+		return kernel.Request{}, err
+	case retry == replayedRequest:
+		return replay, nil
+	case retry == conflictingRequest:
+		return kernel.Request{}, errReusedKey(act.IdempotencyKey)
+	}
+	return w.buildAct(ctx, private, actorName, act, snapshot, nil)
+}
+
+// mayReproduceAcceptedRequest reports whether this act is one whose accepted
+// form has to be looked up before it is rebuilt.
+//
+// The gate is the idempotency key plus the request-authoring verbs, and
+// deliberately nothing about the body. An earlier gate also required
+// body.target_ref, on the reasoning that only a measured request needs
+// recovering; but a legacy request carries no target_ref at all, so that gate
+// sent every legacy retry down the fresh-filing path to be refused for stating
+// no result. What needs recovering is any act this path would sign
+// differently today than the log already holds it, and the caller's body
+// cannot say whether that is so.
+func (w *Workspace) mayReproduceAcceptedRequest(ctx context.Context, snapshot *Snapshot, act Act) bool {
+	if act.IdempotencyKey == "" {
+		return false
+	}
+	switch act.Verb {
+	case VerbReassignIfUnclaimed:
+		return true
+	case VerbState:
+		request, err := w.requestLifecycle(ctx, snapshot, act.Kind)
+		return err == nil && request
+	}
+	return false
+}
+
+// buildAct is the whole authoring path for one act. reproduction, when it is
+// not nil, is the accepted act buildActRequest recovered, and is the only
+// thing that changes the schema this path signs or keeps it from reading a
+// ref.
+func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot, reproduction *requestReproduction) (kernel.Request, error) {
 	var schema string
 	var payload any
 	guardedRetirement := false
 	rests := append([]string(nil), act.RestsOn...)
 	switch act.Verb {
 	case VerbState:
-		body, err := w.normalizeRequestShape(ctx, snapshot, act.Kind, act.Body)
+		body, request, err := w.normalizeRequestShape(ctx, snapshot, act.Kind, act.Body)
 		if err != nil {
 			return kernel.Request{}, err
+		}
+		// A request states what it owes, and this is where it acquires the
+		// fields that say so. Everything a request-lifecycle state signs from
+		// here on is workroom/state@3, so the choice is never optional and
+		// never silently a legacy reading. Reproducing a legacy act is the one
+		// exception, and it is not an exception to the rule: that act's body
+		// was opaque text when it was signed and stays opaque text now.
+		if request && reproduction.statesItsResult() {
+			if body, err = w.resolveRequestChoice(ctx, act.Kind, body, reproduction.accepted()); err != nil {
+				return kernel.Request{}, err
+			}
 		}
 		// Reserved admission fields are never caller input. The guarded
 		// review path stamps its own onto the body it built, and admission
@@ -1325,6 +1393,9 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 			}
 		}
 		schema = workroom.SchemaState
+		if request {
+			schema = reproduction.signedAs(workroom.SchemaStateV3)
+		}
 		payload = workroom.State{Kind: act.Kind, Text: act.Text, Body: body}
 	case VerbRatify:
 		if err := w.refuseUnratifiableTarget(ctx, act.Target); err != nil {
@@ -1355,11 +1426,11 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		}
 		rests = append([]string{act.Target}, rests...)
 	case VerbReassignIfUnclaimed:
-		body, err := w.normalizeGuardedRequestShape(ctx, act.Body)
+		// The same preparation the surfaces run before they append the guarded
+		// retirement, applied again here against the frontier this act will
+		// actually join.
+		body, err := w.guardedReplacementBody(ctx, act.Body, reproduction)
 		if err != nil {
-			return kernel.Request{}, err
-		}
-		if err := refuseClientReservedFields(act.Body); err != nil {
 			return kernel.Request{}, err
 		}
 		rests = append([]string{act.Retirement}, rests...)
@@ -1374,7 +1445,7 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 		if err != nil {
 			return kernel.Request{}, err
 		}
-		schema = workroom.SchemaReassignRequest
+		schema = reproduction.signedAs(workroom.SchemaReassignRequestV1)
 		payload = workroom.ReassignIfUnclaimed{
 			Text: act.Text, Body: body,
 			Expectation: workroom.UnclaimedExpectation{
@@ -1473,32 +1544,64 @@ func (w *Workspace) refuseUnratifiableTarget(ctx context.Context, target string)
 	return nil
 }
 
-// normalizeGuardedRequestShape keeps a guarded replacement reproducible after
-// its performer leaves local custody. Ordinary requests intentionally resolve
-// only current custody. A retry of this two-act purpose must reconstruct the
-// same signed fingerprint after the successful pair, though, so it may fall
-// back to the durable roster entry that retirement keeps for attribution.
-// Admission still requires that fingerprint to be live for every new act.
-func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[string]string) (map[string]string, error) {
+// normalizeGuardedRequestShape holds a guarded replacement to the request
+// shape. A fresh replacement resolves its addresses the way every other new
+// request does, through current custody only, so a performer who has left the
+// roster is refused before the retirement it would follow. A retry of a landed
+// pair has to reconstruct the same signed fingerprint after that performer
+// left, though, so it alone may fall back to the durable roster entry that
+// retirement keeps for attribution; the byte-for-byte comparison at the end of
+// that path is what keeps the fallback from ever naming anyone new.
+func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[string]string, retry bool) (map[string]string, error) {
 	normalized := cloneBody(body)
 	if strings.TrimSpace(normalized["conditions"]) == "" {
 		return nil, fmt.Errorf("%s state requires body.conditions", workroom.KindRequest)
 	}
-	address := strings.TrimSpace(normalized["to"])
-	if address == "" {
-		return nil, fmt.Errorf("%s state requires body.to", workroom.KindRequest)
+	resolve := w.resolveLiveAddress
+	if retry {
+		resolve = w.resolveHistoricalAddress
 	}
+	for _, field := range []string{"to", "hold_owner"} {
+		address := strings.TrimSpace(normalized[field])
+		if address == "" {
+			if field == "to" {
+				return nil, fmt.Errorf("%s state requires body.to", workroom.KindRequest)
+			}
+			continue
+		}
+		fingerprint, err := resolve(ctx, address)
+		if err != nil {
+			return nil, fmt.Errorf("%s body.%s: %w", workroom.KindRequest, field, err)
+		}
+		normalized[field] = fingerprint
+	}
+	return normalized, nil
+}
+
+// resolveLiveAddress is the address rule for a new request on any surface:
+// current custody, and nothing older.
+func (w *Workspace) resolveLiveAddress(_ context.Context, address string) (string, error) {
+	actor, err := w.ResolveActorAddress(address)
+	if err != nil {
+		return "", err
+	}
+	return actor.Fingerprint, nil
+}
+
+// resolveHistoricalAddress is normalizeGuardedRequestShape's address rule: current
+// custody first, and only on a miss the durable roster entry retirement keeps
+// for attribution.
+func (w *Workspace) resolveHistoricalAddress(ctx context.Context, address string) (string, error) {
 	actor, err := w.ResolveActorAddress(address)
 	if err == nil {
-		normalized["to"] = actor.Fingerprint
-		return normalized, nil
+		return actor.Fingerprint, nil
 	}
 	if !errors.Is(err, ErrUnknownActor) {
-		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+		return "", err
 	}
 	snapshot, snapshotErr := w.Snapshot(ctx)
 	if snapshotErr != nil {
-		return nil, fmt.Errorf("%s body.to: actor is absent from custody and the durable roster could not be read: %w", workroom.KindRequest, snapshotErr)
+		return "", fmt.Errorf("actor is absent from custody and the durable roster could not be read: %w", snapshotErr)
 	}
 	name := strings.TrimPrefix(address, "@")
 	matches := make([]string, 0, 1)
@@ -1508,25 +1611,25 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 		}
 	}
 	if len(matches) != 1 {
-		return nil, fmt.Errorf("%s body.to: %w", workroom.KindRequest, err)
+		return "", err
 	}
-	normalized["to"] = matches[0]
-	return normalized, nil
+	return matches[0], nil
 }
 
-// normalizeRequestShape mirrors the fold's request-lifecycle field and actor
-// checks before the request is signed. The fold remains authoritative if the
-// log moves after this check. The active vocabulary matters: a declared kind
-// can participate in the request lifecycle just as the starter request kind
-// does.
-func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, error) {
+// requestLifecycle reports whether a kind participates in the request
+// lifecycle here. The active vocabulary matters: a declared kind can
+// participate just as the starter request kind does, and only the projection
+// knows which. One rule serves both the shape check below and the retry
+// recovery in buildActRequest, so neither can decide that an act is a request
+// while the other decides it is not.
+func (w *Workspace) requestLifecycle(ctx context.Context, snapshot *Snapshot, kind workroom.Kind) (bool, error) {
 	lifecycle, starter := workroom.StarterLifecycle(kind)
 	if !starter {
 		current := snapshot
 		if current == nil {
 			loaded, err := w.Snapshot(ctx)
 			if err != nil {
-				return nil, fmt.Errorf("validate request shape: %w", err)
+				return false, fmt.Errorf("validate request shape: %w", err)
 			}
 			current = &loaded
 		}
@@ -1538,23 +1641,34 @@ func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapsho
 			}
 		}
 	}
-	if lifecycle != workroom.LifecycleRequest {
-		return body, nil
+	return lifecycle == workroom.LifecycleRequest, nil
+}
+
+// normalizeRequestShape mirrors the fold's request-lifecycle field and actor
+// checks before the request is signed. The fold remains authoritative if the
+// log moves after this check.
+func (w *Workspace) normalizeRequestShape(ctx context.Context, snapshot *Snapshot, kind workroom.Kind, body map[string]string) (map[string]string, bool, error) {
+	request, err := w.requestLifecycle(ctx, snapshot, kind)
+	if err != nil {
+		return nil, false, err
+	}
+	if !request {
+		return body, false, nil
 	}
 	normalized := cloneBody(body)
 	if strings.TrimSpace(normalized["conditions"]) == "" {
-		return nil, fmt.Errorf("%s state requires body.conditions", kind)
+		return nil, true, fmt.Errorf("%s state requires body.conditions", kind)
 	}
 	address := strings.TrimSpace(normalized["to"])
 	if address == "" {
-		return nil, fmt.Errorf("%s state requires body.to", kind)
+		return nil, true, fmt.Errorf("%s state requires body.to", kind)
 	}
 	actor, err := w.ResolveActorAddress(address)
 	if err != nil {
-		return nil, fmt.Errorf("%s body.to: %w", kind, err)
+		return nil, true, fmt.Errorf("%s body.to: %w", kind, err)
 	}
 	normalized["to"] = actor.Fingerprint
-	return normalized, nil
+	return normalized, true, nil
 }
 
 // validateDirectReport holds the direct shape to the fold's own terms before
@@ -1853,16 +1967,10 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 			return kernel.Request{}, err
 		}
 	}
-	namespace := w.config.IdempotencyNamespace
-	if namespace == "" {
-		// Workrooms created before the stable namespace field keep their original
-		// retry identity. Changing it in place could replay an outstanding act.
-		namespace = "gs/" + actorName
-	}
 	signed, err := intent.Sign(intent.Intent{
 		Version: intent.Version, Target: "git:" + w.config.ObjectFormat + ":" + w.config.Genesis,
 		Schema: schema, PayloadTree: "git:" + w.config.ObjectFormat + ":" + tree,
-		RestsOn: rests, IdempotencyNS: namespace, IdempotencyKey: key,
+		RestsOn: rests, IdempotencyNS: w.idempotencyNamespace(actorName), IdempotencyKey: key,
 	}, private)
 	if err != nil {
 		return kernel.Request{}, err
@@ -1870,7 +1978,22 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 	return kernel.Request{Signed: signed, Payload: encoded, Attachments: attachments}, nil
 }
 
+// idempotencyNamespace is the retry namespace this workspace signs under.
+// Workrooms created before the stable namespace field keep their original
+// retry identity; changing it in place could replay an outstanding act.
+func (w *Workspace) idempotencyNamespace(actorName string) string {
+	if w.config.IdempotencyNamespace == "" {
+		return "gs/" + actorName
+	}
+	return w.config.IdempotencyNamespace
+}
+
 func (w *Workspace) normalizePayload(schema string, payload any) (any, error) {
+	// A guarded replacement's request body is already resolved by
+	// normalizeGuardedRequestShape, which reads the durable roster where this
+	// path reads only current custody: a replacement must stay reproducible
+	// after its performer leaves custody, and re-resolving it here would break
+	// exactly the retry that guard exists for.
 	if schema != workroom.SchemaState && schema != workroom.SchemaStateV3 {
 		return payload, nil
 	}
@@ -2585,37 +2708,12 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 	var refused error
 	err := w.updateConfig(func(c *apphost.Config) (bool, error) {
 		refused = nil
-		previous := c.VerifiedFrontier
-		if previous != nil {
-			if verification.Depth < previous.Depth {
-				refused = fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
-				return false, refused
-			}
-			if verification.Head == previous.Head {
-				if verification.Depth != previous.Depth {
-					refused = errors.New("refuse inconsistent verified frontier depth")
-					return false, refused
-				}
-				return false, nil
-			}
-			commits, err := w.Store.RevListAfter(ctx, previous.Head, verification.Head)
-			if err != nil {
-				refused = fmt.Errorf("compare verified frontier: %w", err)
-				return false, refused
-			}
-			if len(commits) == 0 {
-				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not contain previously verified head %s", verification.Head, previous.Head)
-				return false, refused
-			}
-			parents, err := w.Store.CommitParents(ctx, commits[0])
-			if err != nil {
-				refused = fmt.Errorf("compare verified frontier: %w", err)
-				return false, refused
-			}
-			if len(parents) != 1 || parents[0] != previous.Head || verification.Depth != previous.Depth+len(commits) {
-				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
-				return false, refused
-			}
+		if err := checkVerifiedFrontier(ctx, w.Store, c.VerifiedFrontier, verification); err != nil {
+			refused = err
+			return false, err
+		}
+		if c.VerifiedFrontier != nil && c.VerifiedFrontier.Head == verification.Head {
+			return false, nil
 		}
 		c.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
 		return true, nil

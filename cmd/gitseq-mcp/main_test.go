@@ -666,7 +666,7 @@ func allowedMergePlanFixture(t *testing.T) (*app.Workspace, string, string) {
 	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
+		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head", "no_git_artifact": "true"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -955,7 +955,7 @@ func TestStateToolRefusesMalformedRequestBeforeAppend(t *testing.T) {
 		want string
 	}{
 		{name: "missing conditions", body: map[string]any{"to": "@worker"}, want: "request state requires body.conditions"},
-		{name: "unknown performer", body: map[string]any{"to": "@nobody", "conditions": "tests pass"}, want: "request body.to"},
+		{name: "unknown performer", body: map[string]any{"to": "@nobody", "conditions": "tests pass", "no_git_artifact": "true"}, want: "request body.to"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			before := depth(t, workspace)
@@ -2178,36 +2178,63 @@ func TestWhoamiRejectsUntrustedOrUnboundedResidentAnswers(t *testing.T) {
 }
 
 func TestWhoamiRetriesOneConcurrentFrontierMove(t *testing.T) {
-	// This test coordinates a frontier move between two resident reads. Keep
-	// it sequential so package-local load cannot delay the move past the
-	// deliberately narrow retry window it is proving.
+	// Prepare signed history and both answers before the production deadline.
+	// Only the checked ref move belongs between the two resident reads.
 	ctx := context.Background()
 	workspace, genesis := signedWorkspace(t, 1)
 	first, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
+	producer, _ := templateAtDepth(1).copy(t, "producer")
+	if _, err := producer.Act(ctx, "human", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "concurrent", RestsOn: []string{genesis.ID}, IdempotencyKey: "concurrent"}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := producer.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := kernel.Ref(first.Genesis)
+	if output, err := exec.Command("git", "-C", workspace.Repo, "fetch", "--no-tags", producer.Repo, ref).CombinedOutput(); err != nil {
+		t.Fatalf("fetch prepared history: %v: %s", err, output)
+	}
+	verified, err := kernel.VerifyAt(ctx, workspace.Store, first.Genesis, second.Head)
+	if err != nil || verified.Depth != first.Depth+1 {
+		t.Fatalf("prepared successor is not verified: %+v, %v", verified, err)
+	}
 	fingerprint := workspace.View().Actors["human"].Fingerprint
+	var answers [2][]byte
+	for index, snapshot := range []app.Snapshot{first, second} {
+		orientation, ok := statusview.BuildOrientation(snapshot, fingerprint, "human")
+		if !ok {
+			t.Fatal("prepared orientation has no actor")
+		}
+		answers[index], err = json.Marshal(orientation)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	var calls atomic.Int32
 	resident := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		number := calls.Add(1)
-		current := first
 		if number == 1 {
-			if _, err := workspace.Act(ctx, "human", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "concurrent", RestsOn: []string{genesis.ID}, IdempotencyKey: "concurrent"}); err != nil {
-				t.Error(err)
-			}
-		} else {
-			current, err = workspace.Snapshot(ctx)
-			if err != nil {
-				t.Error(err)
+			if err := workspace.Store.UpdateRef(ctx, ref, second.Head, first.Head); err != nil {
+				t.Errorf("move prepared frontier: %v", err)
+				http.Error(writer, "frontier move failed", http.StatusInternalServerError)
+				return
 			}
 		}
-		orientation, _ := statusview.BuildOrientation(current, fingerprint, "human")
-		_ = json.NewEncoder(writer).Encode(orientation)
+		if number > 2 {
+			t.Errorf("unexpected resident read %d", number)
+			http.Error(writer, "unexpected read", http.StatusInternalServerError)
+			return
+		}
+		_, _ = writer.Write(answers[number-1])
 	}))
 	defer resident.Close()
 	result := callWhoami(t, workspace, resident.URL, resident.Client())
-	if calls.Load() != 2 || result["source"] != residentOrientationSource || result["degraded"] != false {
+	frontier := result["frontier"].(statusview.Frontier)
+	if calls.Load() != 2 || result["source"] != residentOrientationSource || result["degraded"] != false || frontier.Head != second.Head || frontier.Depth != second.Depth {
 		t.Fatalf("concurrent frontier was not retried coherently: calls=%d result=%#v", calls.Load(), result)
 	}
 }
