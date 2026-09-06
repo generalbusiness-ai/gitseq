@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a15ac5953b03621bbcbb8110422d995921f7a64","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-06-review-binding-guard.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c4c7652a695c84d5e6d395b4413a5a9c663488e","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main_test.go."}
