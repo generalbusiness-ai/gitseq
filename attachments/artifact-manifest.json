@@ -1,0 +1,149 @@
+[
+  {
+    "path": "docs/reference/architecture.md",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-0-command.json",
+    "result": "/tmp/i5-review-artifact-0.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c0ef1781971e48d3d8c0f9a521b0c8898368a32"
+  },
+  {
+    "path": "docs/reference/landing-observations.md",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-1-command.json",
+    "result": "/tmp/i5-review-artifact-1.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35f90236976491b714e6ccfa182a51d7e9c34ddf"
+  },
+  {
+    "path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-2-command.json",
+    "result": "/tmp/i5-review-artifact-2.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd901001594b8edcf6faa884cfdf8713cdab8fa2"
+  },
+  {
+    "path": "internal/service/uidist/assets/index-YCjmo0iN.css",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-3-command.json",
+    "result": "/tmp/i5-review-artifact-3.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48483227f4ce81e628174d6bf411266ab584a798"
+  },
+  {
+    "path": "internal/service/uidist/index.html",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-4-command.json",
+    "result": "/tmp/i5-review-artifact-4.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3842be26beed9cbddb9e9e9b7a38f8451b22c4fb"
+  },
+  {
+    "path": "ui/src/components/OutcomeMap.tsx",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-5-command.json",
+    "result": "/tmp/i5-review-artifact-5.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27bb6f88608eacd78b92df36e0bac34c3ccef304"
+  },
+  {
+    "path": "ui/src/components/RequestList.tsx",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-6-command.json",
+    "result": "/tmp/i5-review-artifact-6.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eac36249ab4b584b96ffc0eea840727e353c426b"
+  },
+  {
+    "path": "ui/src/components/RequestResultFields.tsx",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-7-command.json",
+    "result": "/tmp/i5-review-artifact-7.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf33a7abe5df889b30170ac8f12b15ecd5e7010e"
+  },
+  {
+    "path": "ui/src/lib/api.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-8-command.json",
+    "result": "/tmp/i5-review-artifact-8.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3619c0de742d68a0994f29fc80542ae2f881d27e"
+  },
+  {
+    "path": "ui/src/lib/outcomeMap.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-9-command.json",
+    "result": "/tmp/i5-review-artifact-9.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e0586bee9bb5bfc2531808d1aa4423db4c0e1cfb"
+  },
+  {
+    "path": "ui/src/lib/outcomeMapLayout.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-10-command.json",
+    "result": "/tmp/i5-review-artifact-10.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b832043a48c4e453b9cdcf538ec5ce8e2e389793"
+  },
+  {
+    "path": "ui/src/lib/requestResult.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-11-command.json",
+    "result": "/tmp/i5-review-artifact-11.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:373a8a14ec606686708621e11ebc2e0552415070"
+  },
+  {
+    "path": "ui/src/lib/rows.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-12-command.json",
+    "result": "/tmp/i5-review-artifact-12.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1991462ea50d0db2aa7f168bdef282dc38c705c"
+  },
+  {
+    "path": "ui/src/lib/spine.ts",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-13-command.json",
+    "result": "/tmp/i5-review-artifact-13.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5db3f153223cf3cdc1e816beaf8476bdca7f8b67"
+  },
+  {
+    "path": "ui/test/components.test.mjs",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-14-command.json",
+    "result": "/tmp/i5-review-artifact-14.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba1cfd76feb1abd134415de63fdb3d61d85ca66d"
+  },
+  {
+    "path": "ui/test/composed-citations.test.mjs",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-15-command.json",
+    "result": "/tmp/i5-review-artifact-15.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c49a4f7f0de0ab6228063f28f1d7cde2a9c53350"
+  },
+  {
+    "path": "ui/test/dom.test.mjs",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-16-command.json",
+    "result": "/tmp/i5-review-artifact-16.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b1b65536d54508a4d4bd54ae97e96924425c8405"
+  },
+  {
+    "path": "ui/test/fixtures/tailapp-carried-source.json",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-17-command.json",
+    "result": "/tmp/i5-review-artifact-17.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ee3e9b57c19dfb581352bccd82f279bbf409ed0"
+  },
+  {
+    "path": "ui/test/interaction.test.mjs",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-18-command.json",
+    "result": "/tmp/i5-review-artifact-18.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:62141abee8affc662686b3c168176135a7ceffbe"
+  },
+  {
+    "path": "ui/test/request-result.test.mjs",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-19-command.json",
+    "result": "/tmp/i5-review-artifact-19.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c68bdaad07fff8430af40fdf513f4b06dc84875e"
+  },
+  {
+    "path": "ui/src/components/Thread.tsx",
+    "head": "1d49d126914dd1fbe2cf150a662fb42b8a5a161f",
+    "command": "/tmp/i5-review-artifact-20-command.json",
+    "result": "/tmp/i5-review-artifact-20.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0fae00055767520da097d824d3f7732892d47ef8"
+  }
+]
