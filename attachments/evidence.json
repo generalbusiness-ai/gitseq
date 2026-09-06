@@ -1,0 +1,214 @@
+{
+  "verified_utc": "2026-09-06T13:59:41.309801+00:00",
+  "historical_frontier": {
+    "head": "e56cf9fa18ff64c9a8f298646bf448b60012ee42",
+    "depth": 19553
+  },
+  "adoption": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc",
+    "sequence": 14703,
+    "timestamp": 1788129165,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "kind": "propose",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "PROPOSAL for hugh: adopt notes/2026-08-30-staleness-root-cause.md (artifact 051fcbf8 at exact head ec80e044 on request/staleness-root-cause) as the plan for fixing why finished and in-flight work sinks into the \"stale, not in flight\" population. ROOT CAUSE, verified against main 95c2b1e3: a merge-published artifact rests on the receipt, the receipt on the approval, the approval on the candidate's artifacts, and each candidate artifact on the artifact it replaced at its path; when a LATER merge at any of those paths retires that predecessor, the edge is artifact-to-artifact (never quieted), so the successor at an unrelated path goes stale \u2014 measured on the internal/app successor #14231, flared by four later merges at other paths (#14379, #14383, #14601, #14624). 154 of 332 live artifacts are stale and there is no fresh in-main artifact at internal/app, SKILL.md or internal/workroom. Downstream, the fold promotes the flag to a status (fold.go:3220, :3266-3268) hiding promised work; admission and reassignment refuse stale bases, forcing a refile loop with no exit; the merge closes only the exact approved head; and one request per review round orphans every earlier round. WHAT IS ADOPTED: P1 \u2014 a cause dated after a receipt does not flare the artifacts that receipt published, keeping the receipt-retired, condemned-succession and undated-cause flares; P2 \u2014 stale is a flag beside the lifecycle word, never a status, with the browser's duplicate 'stale' tab deleted; P3 \u2014 only retired bases are refused (fold half in flight as #13888) and the \"ask the author to refile\" discipline in AGENTS.md and SKILL.md is replaced by \"answer it like a fresh request and record the re-check in the artifact\"; P4 \u2014 no new closure rule: today's orphans are drained once by performer report plus requester ratification, and the drain-decision request #14687 is retired as answered; P5 \u2014 one implementation request per lane; a changes-requested verdict returns to step 3 on the same promise. P1, P2 and P3-fold land under one fold profile bump in the state@1 deploy order. WHAT IS NOT ADOPTED: the first draft's ancestor-head auto-closure and unchanged-path retirement, withdrawn on independent review as a closure-authority and path-authority hole. REVIEW: two passes by an independent Fable-model reviewer (not a workroom actor; findings applied in full, recorded in the note's frontmatter and commit message). If you want a durable second review from codex before ratifying, say so and planner files it. ON RATIFICATION planner files three implementation requests: (1) P2+P3-fold+P1 as one head with the profile bump; (2) P3-text+P5; (3) the one-time drain. Ratify to adopt, or record a dissent naming what to change.",
+    "body": {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:051fcbf8a130baf81fd26ee28abcf465fd1db42f",
+      "head": "ec80e0448f8aa794e011430663421d08f86587ab",
+      "path": "notes/2026-08-30-staleness-root-cause.md",
+      "to": "hugh"
+    },
+    "ratified": true,
+    "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0027017c38c2c178fea72dc5e61601fdc4fecee2",
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:870f9347bf776908dbb5b4b67f26427f63d127aa",
+    "stale_because_path": "docs/concepts/staleness.md"
+  },
+  "ratification": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0027017c38c2c178fea72dc5e61601fdc4fecee2",
+    "timestamp": 1788129783,
+    "actor": "7fbc80f1ba06266cc375cb00507b94a631e5bed989180ad849fcd63175938275",
+    "type": "ratify",
+    "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc",
+    "verdict": "effective",
+    "reason": "authorized ratification"
+  },
+  "direct_descendants": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0027017c38c2c178fea72dc5e61601fdc4fecee2",
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc"
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc",
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:051fcbf8a130baf81fd26ee28abcf465fd1db42f"
+      ]
+    }
+  ],
+  "current_inspection": "1138 at19653",
+  "source_checks": [
+    {
+      "path": "internal/statusview/query.go",
+      "published_head": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "equals_current_main": true,
+      "equals_live_reader": true
+    },
+    {
+      "path": "internal/statusview/actor.go",
+      "published_head": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "equals_current_main": true,
+      "equals_live_reader": true
+    },
+    {
+      "path": "internal/workroom/fold.go",
+      "published_head": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "equals_current_main": true,
+      "equals_live_reader": false
+    },
+    {
+      "path": "SKILL.md",
+      "published_head": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "equals_current_main": true,
+      "equals_live_reader": false
+    }
+  ],
+  "current_attention": {
+    "verified_utc": "2026-09-06T13:46:32.854845+00:00",
+    "results": [
+      {
+        "room": "gitseq",
+        "query": {
+          "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "lanes": [
+            "available_to_you",
+            "waiting_on_you",
+            "not_actionable"
+          ],
+          "statuses": [
+            "stale",
+            "promised"
+          ],
+          "stale": "include",
+          "limit": 50
+        },
+        "response": {
+          "frontier": {
+            "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+            "head": "468f2a146c06bcace7138c1000273e264037a6bb",
+            "depth": 19653
+          },
+          "actor": {
+            "fingerprint": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+            "name": "claude"
+          },
+          "items": [
+            {
+              "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76390a8672d6b8781391883224e8d96fc5ed0e9a",
+              "lane": "not_actionable",
+              "status": "stale",
+              "stale": true,
+              "requester": {
+                "fingerprint": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+                "name": "planner"
+              },
+              "performer": {
+                "fingerprint": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+                "name": "claude"
+              },
+              "waiting_on": {
+                "fingerprint": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+                "name": "claude"
+              },
+              "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:468f2a146c06bcace7138c1000273e264037a6bb",
+              "text": "Claude: implement the adopted shared review-binding guard across review, authorization and every merge, on reconciled current behavior bases.",
+              "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+              "target_ref": "refs/heads/main",
+              "git": {
+                "measured_at": 1788702392,
+                "state": "no_receipt",
+                "target_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+                "ref_incorporated": null,
+                "remote": "origin",
+                "remote_ref": "refs/remotes/origin/main",
+                "remote_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+                "remote_contains": null
+              }
+            }
+          ],
+          "matching_total": 1,
+          "returned": 1,
+          "before": 0,
+          "remaining": 0
+        }
+      },
+      {
+        "room": "tailapp",
+        "query": {
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "lanes": [
+            "available_to_you",
+            "waiting_on_you",
+            "not_actionable"
+          ],
+          "statuses": [
+            "stale",
+            "promised"
+          ],
+          "stale": "include",
+          "limit": 50
+        },
+        "response": {
+          "frontier": {
+            "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+            "head": "4b34dd24e29560a022bc86073695eedd12260ffd",
+            "depth": 4023
+          },
+          "actor": {
+            "fingerprint": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "name": "builder"
+          },
+          "items": [
+            {
+              "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321",
+              "lane": "waiting_on_you",
+              "status": "promised",
+              "requester": {
+                "fingerprint": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+                "name": "hugh"
+              },
+              "performer": {
+                "fingerprint": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+                "name": "builder"
+              },
+              "waiting_on": {
+                "fingerprint": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+                "name": "builder"
+              },
+              "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3cf418397ad9992e898d35252512ccb472463dd0",
+              "text": "Builder: refresh the I7 capability/context decision against the implemented input contract, preserving its full scope and admission gates.",
+              "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+              "target_ref": "refs/heads/main",
+              "git": {
+                "measured_at": 1788702392,
+                "state": "no_receipt",
+                "target_head": "7ecffd53013fd6ca45693a1a8e28b7c8d52432e8",
+                "ref_incorporated": null,
+                "remote": "origin",
+                "remote_ref": "refs/remotes/origin/main",
+                "remote_head": "7ecffd53013fd6ca45693a1a8e28b7c8d52432e8",
+                "remote_contains": null
+              }
+            }
+          ],
+          "matching_total": 1,
+          "returned": 1,
+          "before": 0,
+          "remaining": 0
+        }
+      }
+    ]
+  }
+}
