@@ -2,8 +2,8 @@
 title: MCP whoami
 summary: Show the configured durable actor and selected workroom without disclosing the resident credential.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b22ae0cf87ec8004cf367f1f234d846fd0b17d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:265b14724281203aac18927aa37ecc96dfc92523
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68fce5ef1c832368d54c3de12bc37471afbda627
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376
 ---
 
 # `whoami`
@@ -52,9 +52,9 @@ call whoami '{}' | gitseq-mcp --repo "$REPO" --actor alice 2>/dev/null
 | `actor` | The configured identity: name and fingerprint only. The key path is never returned. |
 | `repo` | The repository this call acted in, as its git common directory. |
 | `genesis` | The genesis hash of that repository's workroom. |
-| `durable` | What the roster says now: name, fingerprint, kind, membership event, and capped roles. |
+| `durable` | What the roster says now: name, fingerprint, kind, membership event, and capped roles. Which of these the adapter checks itself is stated [below](#what-the-adapter-checks-and-what-it-repeats). |
 | `frontier` | The exact durable frontier the answer is anchored to: genesis, head, depth. |
-| `source` | The verified path that produced the answer. |
+| `source` | The path that produced the answer: the resident's bounded orientation, or one of the locally verified fallbacks. |
 | `degraded` | `true` when the resident could not be used and a verified local fallback answered. |
 | `protocol` | The protocol version the adapter serves. |
 
@@ -64,7 +64,8 @@ workroom am I about to speak in".
 
 `actor` is local and `durable` is the record. They can disagree: a
 repository can hold a key for a principal whose membership has been
-retired. Trust `durable` for authority questions.
+retired. Prefer `durable` when they disagree. Neither field grants
+authority: see [below](#what-the-adapter-checks-and-what-it-repeats).
 
 The answer is anchored to an exact durable frontier. A current loopback
 resident is labeled `resident_statusview_current`; the client refuses
@@ -76,6 +77,47 @@ verified path it actually took: `verified_signed_checkpoint_tail`,
 never includes the local actor key path or the resident-minted credential.
 That credential is private adapter state, scoped to one repository and actor,
 and is replaced after resident restart. No MCP tool returns it.
+
+## What the adapter checks and what it repeats
+
+When `degraded` is `false`, `durable` came from the resident. The adapter
+fetched it during this call, over loopback, and checked these things against
+its own copy of the durable log before answering:
+
+- `frontier.genesis` and `frontier.head` equal the workroom's genesis and the
+  head the adapter read immediately before and after the fetch, so the answer
+  describes the frontier the adapter can see, and the head did not move while
+  the resident was consulted;
+- the projection version is the one this adapter understands;
+- `durable.fingerprint` is the selected actor's fingerprint;
+- `durable.name`, `durable.kind` and `durable.membership_event` are present,
+  `durable.roles` names `participant` and holds at most twenty entries, the
+  skipped-roles count is not negative, and `frontier.depth` is not negative;
+- the response arrived within two seconds, under 64 KiB, as strict JSON with
+  no unknown fields, and without following a redirect.
+
+Everything else in `durable` is repeated from the resident, not re-derived
+from the log: the text of `name` and `kind`, which membership event is named,
+which roles appear beside `participant`, the skipped-roles count, and
+`frontier.depth`. A process on this account that answers on the resident's
+listen address can supply any contents that pass the checks above, and the
+answer still says `degraded: false` with `source:
+resident_statusview_current`. That is the documented
+[host posture](../architecture.md#host-posture): every process running as
+the operator account is trusted to speak for the resident, and the adapter
+does not add verification of the resident's contents on top of that trust.
+
+When `degraded` is `true`, the adapter built `durable` itself from a locally
+verified snapshot of the log, so every field is derived from verified
+evidence. The `source` label names the verification path taken. The
+fallback verifies more about the contents than the resident path does; the
+resident path verifies that the answer is anchored to the frontier the
+adapter can see.
+
+On neither path does the answer confer authority. `durable` is a description
+of the roster for orientation. Every durable act you file is signed with the
+selected key and judged again at sequencing against the signed log, so a
+name or role displayed here cannot grant what the log does not record.
 
 ## See also
 
