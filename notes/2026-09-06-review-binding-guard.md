@@ -176,12 +176,19 @@ Run on the committed head with `rbg-gates.sh` and its follow-up:
   `go build ./...` exit 0.
 - `go test -race -count=1` on reviewguard, mergeplan, app, cmd/gs and
   cmd/gitseq-mcp: all pass.
-- `go test -count=1 ./...` over 35 packages: all pass except one timing test
-  in cmd/gitseq-mcp (`TestWhoamiBoundsStallsAndRejectsRedirects`) that timed
-  out while two other suites shared the machine; it passes alone twice.
+- `go test -count=1 ./...` over 35 packages: all pass. On the first
+  candidate one timing test in cmd/gitseq-mcp
+  (`TestWhoamiBoundsStallsAndRejectsRedirects`) timed out while two other
+  suites shared the machine; on the corrected head the full suite ran alone
+  and passed without it.
 - `GOFLAGS=-count=1 make docs`: pass, after the decision-record how-to's
   three reviews were given their adopted-decision witness (that change is in
   this head).
+
+The correction round reran mutants A through H and every gate above on the
+committed corrected tree `7435a0d7`, rebased onto main `33f69956` and differing from the reviewed head only by this note: all eight mutants red
+(H against both the command controls and the resolver unit test under one
+mutation), every gate green.
 
 Existing tests that reviewed artifacts with no request or promise edge were
 given the ratified adoption they lacked: the nested cross-author fixtures in
