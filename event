@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe9eb0d10013e40fc72531c25b96dd4a615d81e0","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main.go."}
+{"kind":"promise","text":"I will retire, as author, the ten Notes merge pointers named in this request (four deleted-path predecessors and six abandoned candidates), citing sealed receipt 2a33a183 in each, after confirming each is live and mine, and report the effective retirement ids."}
