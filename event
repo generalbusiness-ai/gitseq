@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Prove import refusals preserve trusted state; inject real checkpoint permission failures after CAS and verify same-head retry and restart with a newer append.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"internal/app/attach_test.go"}}
+{"kind":"artifact","text":"Audit an immutable fetched candidate with VerifyAt before any authoritative ref moves.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"internal/kernel/kernel.go"}}
