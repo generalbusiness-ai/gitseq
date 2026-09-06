@@ -1,0 +1,12 @@
+[
+  {
+    "path": "spike/querysandbox/README.md",
+    "head": "dec4b2feb870de5a49438621fefd446f619e8290",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d318ab88a5d0aa1973db5b961fae3765c4d42343"
+  },
+  {
+    "path": "spike/querysandbox/sandbox_test.go",
+    "head": "dec4b2feb870de5a49438621fefd446f619e8290",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffcda49b7e0617f7c80edf10fba99b561463b023"
+  }
+]
