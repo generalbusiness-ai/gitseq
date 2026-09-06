@@ -1,4 +1,0 @@
-=== RUN   TestCancellationMutationProof
---- PASS: TestCancellationMutationProof (1.02s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	2.321s
