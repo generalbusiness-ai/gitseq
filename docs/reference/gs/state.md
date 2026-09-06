@@ -34,7 +34,8 @@ the only two acts it cannot make.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 GENESIS=$(gs init --repo "$REPO" --operator alice \
   | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
 gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
@@ -43,7 +44,7 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a changelog' \
   --body to=@bot --body conditions='CHANGELOG.md exists' \
-  --rests-on "$SEED")
+  --body target_ref=refs/heads/main --rests-on "$SEED")
 
 gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST"
@@ -70,6 +71,95 @@ Implementation requests, promises and reports may also carry `branch` and
 `head` (or `commit`) as advisory hints, so a local tool can associate a
 checkout. They claim nothing about that checkout being clean or current;
 the `artifact` is the durable pointer.
+
+## Request authoring: what a request owes
+
+Every request states its result, and a request that states none is refused
+before anything is appended. There are exactly three ways to say it, and a
+request must use exactly one:
+
+| body | meaning |
+|---|---|
+| `target_ref=refs/heads/<branch>` | The request owes a Git artifact landed into that branch of this workroom's own repository. |
+| `target=inherit` | The same obligation, with the destination taken from the nearest ancestor request that named one. |
+| `no_git_artifact=true` | The request owes no Git artifact: a review, a decision, a design conversation, an operation. |
+
+A landing request may also carry `landing=held`, which says the landing waits
+for an exact release, and `hold_owner=@name` (or a fingerprint) naming the one
+actor who may sign it. Children inherit the hold with the target, and a child
+may not rename an owner it merely inherited.
+
+`target_repo` and `target_head` are **not** caller input. This command fills
+`target_repo` with this workroom's genesis identifier and resolves
+`target_head` from `target_ref` at filing, so the stored measurement is the one
+this repository actually held. Supplying either is refused, because a
+hand-written head is either a guess or a measurement taken somewhere else. It
+is also a different field from a release report's `target_pre_head`, which is
+the signer's own measurement and is checked separately.
+
+Refused before any durable append, with the frontier unchanged:
+
+| body | refusal |
+|---|---|
+| no choice at all | `request states no result: name a target, inherit one, or state no_git_artifact` |
+| two choices | `request states more than one result` |
+| `target_ref` outside `refs/heads/` | `body.target_ref must name a branch under refs/heads/` |
+| `target_ref` naming no existing ref | `body.target_ref: refs/heads/x does not resolve in <repo>` |
+| `target_repo` or `target_head` supplied | `body.<field> is resolved at filing and cannot be supplied` |
+
+The destination is part of the request, so nothing edits it in place:
+retargeting is a new request superseding the old one. A ref that moves after
+filing changes nothing durable — `target_head` is the measurement at filing,
+and the release and the merge each re-measure.
+
+### Retrying a request
+
+`target_head` is read from the ref at filing, so a retry cannot take the same
+measurement twice. An exact retry under an `--idempotency-key` already accepted
+is answered from the log instead: the accepted act is recovered before any ref
+is read, the request is rebuilt as that act was written, and the original event
+is returned with nothing appended. No ref is read on that path, so the retry
+still replays after the branch it named has moved or been deleted outright.
+
+Rebuilding it as that act was written means under that act's own schema, on the
+measurement it stated. This is what makes an existing workroom retryable at
+all. Every request filed before the landing obligation existed stands in the
+log as `workroom/state@2` and states no result; re-signing one as
+`workroom/state@3` would refuse it for stating none, which is the one answer a
+caller who already owns the act must never get. So an exact retry of an
+accepted `state@2` request replays that act, and the reproduction is judged by
+the rules that applied when it was signed rather than by today's.
+
+The key alone buys nothing. Only the act stated again byte for byte replays. A
+reused key over any different intent — different words, body, bases,
+attachments, a different `target_ref`, or a result the accepted legacy request
+never stated — falls through to an ordinary fresh filing, which measures the
+ref as it stands now; the reused key is then refused with `idempotency key
+reused with different intent`, or, when that different destination does not
+resolve or no result is stated, refused for that instead. A reused key naming a
+different branch is never answered with the request filed against the old one.
+A fresh key naming a ref that does not resolve, or stating no result at all, is
+refused as any first filing would be.
+
+Requests filed fresh under this rule are signed as `workroom/state@3`. Records
+already in the log under `workroom/state@2` or earlier keep their old reading
+exactly: the same field names there are opaque body text, and a legacy
+commitment that ever carried a reporting artifact still reads as owing
+`refs/heads/main`, flagged `legacy`.
+
+### Which surfaces produce requests
+
+Every producer states a truthful choice; none falls back to a guessed target.
+
+| producer | schema signed | choice it emits |
+|---|---|---|
+| `gs state --kind request` (and any declared request-lifecycle kind) | `workroom/state@3` | whatever the caller's `--body` states |
+| `gs batch` entries of `verb: state`, `kind: request` | `workroom/state@3` | whatever the entry's `body` states |
+| MCP `state` tool | `workroom/state@3` | whatever the call's `body` states |
+| Resident `POST /v0/act` with `act: state`, `kind: request` | `workroom/state@3` | whatever the request's `body` states |
+| `gs reassign-if-unclaimed` and MCP `reassign_if_unclaimed` | `workroom/reassign-if-unclaimed@1` | whatever `--body` / `body` states; the replacement is a new request and restates its own result rather than inheriting the retired one's |
+| `gs review` | *(none)* | Files a verdict report on an existing review commitment; it produces no request. |
+| `gs merge` | *(none)* | Files artifacts, asserts and supersessions in its succession batch; it produces no request. The authorization request that releases a hold is filed by the performer with `gs state`, as `no_git_artifact=true`. |
 
 ## Authorization and release reports
 

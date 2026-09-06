@@ -37,7 +37,8 @@ fields are refused.
 ```text
 [
   {"label": "req", "verb": "state", "kind": "request", "text": "Add a changelog",
-   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists"},
+   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists",
+            "target_ref": "refs/heads/main"},
    "rests_on": ["git:sha1:<genesis>#git:sha1:<event>"],
    "idempotency_key": "changelog-request"},
   {"label": "promise", "verb": "state", "kind": "promise", "text": "I will add it",
@@ -59,7 +60,8 @@ append.
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 GENESIS=$(gs init --repo "$REPO" --operator alice \
   | sed -n 's/.*"genesis": *"\([^"]*\)".*/\1/p')
 gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
@@ -68,7 +70,8 @@ SEED="git:sha1:$GENESIS#git:sha1:$(git -C "$REPO" rev-parse "refs/seq/$GENESIS")
 cat > "$REPO/chain.json" <<JSON
 [
   {"label": "req", "verb": "state", "kind": "request", "text": "Add a changelog",
-   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists"},
+   "body": {"to": "@bot", "conditions": "CHANGELOG.md exists",
+            "target_ref": "refs/heads/main"},
    "rests_on": ["$SEED"], "idempotency_key": "changelog-request"},
   {"label": "note", "verb": "state", "kind": "assert",
    "text": "the changelog convention is one entry per release",

@@ -1328,15 +1328,23 @@ does not carry the retirement. It is keyed to that one edge and that one
 relation, and reaches neither carried nor abandoned successions.
 
 Filling `target_head` by resolving the ref at filing time, and refusing to file
-when it does not resolve, is layer-7 work in a later slice (I5); this head
-neither does it nor depends on it. The receipt fields and the merge refusals
-are layer-7 work too and are described under `gs merge` below; the
-authorization guard bindings and the status, work, inspect and worktree
-surfaces remain later work. This head admits `state@3` and `supersede@1` in the fold and
-leaves every filer on `state@2` and `supersede@0`, so no request already in
-flight acquires an obligation nobody stated. These admission and projection
-changes advance the profile to `workroom-fold@19`; a cache written under `@18`
-is rejected and history replayed.
+when it does not resolve, is layer-7 work and is described under "Request
+authoring" below. The receipt fields and the merge refusals are layer-7 work
+too and are described under `gs merge`; the status, work, inspect and worktree
+surfaces remain later work. These admission and projection changes advance the
+profile to `workroom-fold@19`; a cache written under `@18` is rejected and
+history replayed.
+
+Two schemas state the section-1 choice: `workroom/state@3`, and
+`workroom/reassign-if-unclaimed@1`, whose payload publishes a replacement
+request. Every older schema carries the same field names as opaque body text,
+including `workroom/reassign-if-unclaimed@0`, so every record already in the log
+reads exactly as it always did. The body-local half of the judgement —
+which encoding, whether the triple is complete and well formed, whether the
+hold is stated coherently — is one exported function this layer and layer 7
+both call, so the surface that files a request refuses the same shapes the fold
+would, in the same words. The ancestry walk and the roster read stay here,
+because only this layer holds the records they read.
 
 **Surfaces and guidance.** Workroom also owns its MCP tools and their
 application meanings; the agent practice in `SKILL.md`; connector clauses and
@@ -1504,6 +1512,13 @@ for the common status, work, inspect and worktree shape. The additive
 verified event checkpoint so historical receipts gain the witness without
 rewriting signed records.
 
+`workroom/reassign-if-unclaimed@1` advances it again, to `workroom-fold@22`. A
+fold that does not know that schema cannot decode the record at all and rules
+it ineffective, so an `@21` projection at the same frontier holds no
+replacement request and no commitment for it. A cache written under `@21` is
+therefore rejected and replayed from the verified event checkpoint, which is
+what gives the replacement its request row and the destination it stated.
+
 Pending ratification is a separate attention lane, not a commitment state.
 `internal/statusview` selects effective, unratified, live proposals whose
 captured `role:<name>` satisfier is held by the actor being viewed. It reads the
@@ -1629,6 +1644,69 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   query needs a fact Git holds rather than the projection — whether an
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
+
+  **Request authoring.** Filing a request is where layer 5's landing
+  obligation meets the repository, and one path in `internal/app` does it for
+  every surface: `gs state`, a `gs batch` entry, the MCP `state` tool, the
+  resident's `POST /v0/act`, and the guarded replacement of
+  `reassign-if-unclaimed`. A request-lifecycle state is signed as
+  `workroom/state@3` — the guarded replacement as
+  `workroom/reassign-if-unclaimed@1` — and must state exactly one result. This
+  layer resolves the by-value case: the caller names `target_ref`, and the
+  boundary fills `target_repo` with this workroom's genesis id and reads
+  `target_head` from that ref with `git show-ref --verify`, refusing a ref that
+  does not resolve. A caller-supplied `target_repo` or `target_head` is refused
+  outright rather than compared, because a hand-written measurement is either a
+  guess or one taken elsewhere; that field is also distinct from a release
+  report's `target_pre_head`, which is the signer's own measurement and is
+  checked on the report path. Every refusal here happens before the request is
+  signed, so the frontier is unchanged.
+
+  The measurement is taken per filing, and a retry is answered before any of it
+  happens. The retry identity the kernel indexes — target log, actor key,
+  idempotency namespace, idempotency key — needs nothing measured, so an act
+  already accepted under this caller's key is recovered from the log first; the
+  request is rebuilt as that act was written and is used only when it is byte
+  for byte the accepted one. No ref is read on that path, so an exact retry
+  replays after the branch it named has moved or been deleted outright. Only
+  the server-derived half of the triple is recovered: `target_ref` stays
+  whatever the caller sent, so a reused key naming a different branch rebuilds
+  a different act and is refused as a reused key, with no fresh measurement
+  taken in its name, rather than answered with the request filed against the
+  old destination. That classification — nothing held under the key, the
+  accepted act rebuilt byte for byte, or something else — is made once, by one
+  function, for the signing path and for every preflight in front of it. A
+  fresh filing naming a ref that does not resolve is refused.
+
+  The accepted act's schema is recovered with it, and is what the rebuild is
+  signed under: `workroom/state@2` or `workroom/reassign-if-unclaimed@0` for a
+  record written before the obligation existed, `state@3` or
+  `reassign-if-unclaimed@1` for one written after. This is what makes an
+  existing workroom retryable. Every request already in every log states no
+  result, so re-signing one as `state@3` refuses it for stating none — the one
+  answer a caller who already holds the act must never get. A legacy
+  reproduction reads its body as the opaque text it was, and the gate for the
+  whole recovery is the idempotency key plus a request-lifecycle state or the
+  reassignment verb, never a field of the body, because the body of a legacy
+  request says nothing about whether one exists.
+
+  The guarded reassignment is two acts in order — the retirement, then the
+  replacement — so the same authoring rules run once before the pair begins and
+  again when the replacement is signed. Everything the replacement's own body
+  earns a refusal for is knowable before either act, and learning it after the
+  first one is what would leave the old request withdrawn with no successor and
+  the frontier moved. The preflight decides nothing: it is the same code, over
+  the whole replacement the surface will file — old request, words, bases and
+  body, less the retirement it cannot yet name — and it classifies a held key
+  exactly as the signing path does, so a landed pair resumes without reading a
+  ref, and a key spent on some other act is refused before a retirement is
+  appended in its name. A fresh replacement resolves its addresses through
+  current custody like every other new request, so a performer who has been
+  retired is refused there too; only the byte-for-byte retry of a landed pair
+  may fall back to the durable roster entry retirement keeps, because that
+  comparison is what stops the fallback naming anyone new. The guard itself —
+  no admitted promise, no direct completion — is not knowable then and stays at
+  append, against the frontier each act joins.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

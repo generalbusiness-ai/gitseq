@@ -131,7 +131,7 @@ func (f workflowFixture) buildLandingLane(t *testing.T, name string, requestBody
 	}
 	reviewRequest, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review " + name,
-		Body:    map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": "exact head"},
+		Body:    map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": "exact head", "no_git_artifact": "true"},
 		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: name + "-review-request",
 	})
 	if err != nil {
@@ -1428,7 +1428,7 @@ func (f workflowFixture) ownRequest(t *testing.T, key, text string) string {
 	t.Helper()
 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: text,
-		Body:    map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": text},
+		Body:    map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": text, "no_git_artifact": "true"},
 		RestsOn: []string{f.artifact}, IdempotencyKey: key,
 	})
 	if err != nil {

@@ -59,7 +59,8 @@ is one that runs:
 
 ```sh
 REPO="$(mktemp -d)/project"
-git init -q "$REPO"
+git init -q -b main "$REPO"
+git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
 gs init --repo "$REPO" --operator alice
 ```
 
@@ -327,8 +328,13 @@ satisfaction:
 gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice --kind request \
   --text 'Write CONTRIBUTING.md: how to build and test this project' \
   --body to=@builder \
-  --body conditions='CONTRIBUTING.md exists and checker approves the exact head'
+  --body conditions='CONTRIBUTING.md exists and checker approves the exact head' \
+  --body target_ref=refs/heads/main
 ```
+
+Every request states what it owes. `target_ref` names the branch the result
+must land in; a request that owes no Git artifact at all — a review, a
+decision, an operation — says `--body no_git_artifact=true` instead.
 
 ## Start one session per actor
 

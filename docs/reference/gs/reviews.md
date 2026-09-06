@@ -49,7 +49,7 @@ ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
 gs state --repo "$REPO" --as alice --kind request \
   --text 'bot: review the changelog head' --body to=@bot \
   --body conditions='approve or request changes' --body artifact="$ARTIFACT" \
-  --rests-on "$ARTIFACT" >/dev/null
+  --body no_git_artifact=true --rests-on "$ARTIFACT" >/dev/null
 
 if gs reviews --repo "$REPO" --branch "$BRANCH"; then
   echo 'unexpectedly quiet'

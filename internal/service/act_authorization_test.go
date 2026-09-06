@@ -98,7 +98,7 @@ func (f authorizationFixture) post(input actRequest) (string, string) {
 func (f authorizationFixture) request(key, text string) string {
 	f.t.Helper()
 	id, refusal := f.post(actRequest{Session: f.credential, Act: "state", Kind: "request", Text: text,
-		Body: map[string]string{"to": "reviewer", "conditions": text}, IdempotencyKey: key})
+		Body: map[string]string{"to": "reviewer", "conditions": text, "no_git_artifact": "true"}, IdempotencyKey: key})
 	if refusal != "" {
 		f.t.Fatalf("filing the request %q: %s", key, refusal)
 	}

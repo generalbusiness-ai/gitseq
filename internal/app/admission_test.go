@@ -104,7 +104,7 @@ func TestAdmissionRefusesVerdictShapedReportsOnEveryField(t *testing.T) {
 	workspace, _ := admissionWorkspace(t, ctx)
 	promise := actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindRequest, Text: "review something",
-		Body:           map[string]string{"to": "human", "conditions": "exact head"},
+		Body:           map[string]string{"to": "human", "conditions": "exact head", "no_git_artifact": "true"},
 		IdempotencyKey: "admission-request",
 	})
 	for _, test := range []struct {

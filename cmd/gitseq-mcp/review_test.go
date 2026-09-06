@@ -53,7 +53,7 @@ func reviewFixture(t *testing.T) (*app.Workspace, string, string) {
 		Text: "review feature",
 		Body: map[string]string{
 			"to":         fingerprint("reviewer"),
-			"conditions": "exact head",
+			"conditions": "exact head", "no_git_artifact": "true",
 		},
 		RestsOn:        []string{artifact.Record.ID},
 		IdempotencyKey: "mcp-review-request",

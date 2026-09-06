@@ -160,6 +160,7 @@ REQUEST=$(gs state --repo "$REPO" --as "$OPERATOR" --kind request \
   --text 'Resolve GitHub issue 42' \
   --body to=@worker \
   --body conditions='the issue is fixed, tested, and reviewed at an exact head' \
+  --body target_ref=refs/heads/main \
   --rests-on 'git:sha1:<genesis>#git:sha1:<observation>')
 ```
 

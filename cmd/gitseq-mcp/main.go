@@ -730,11 +730,12 @@ func tools() []map[string]any {
 		}), "artifacts", "promise", "verdict", "text")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
-		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses.", "inputSchema": object(withSelection(map[string]any{
+		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses. The replacement is a new request and states its own result in body: target_ref, target=inherit, or no_git_artifact=true.", "inputSchema": object(withSelection(map[string]any{
 			"old_request":     stringField,
 			"to":              stringField,
 			"text":            stringField,
 			"conditions":      stringField,
+			"body":            map[string]any{"type": "object", "additionalProperties": map[string]string{"type": "string"}},
 			"retirement_text": stringField,
 			"rests_on":        map[string]any{"type": "array", "items": stringField},
 			"idempotency_key": stringField,
@@ -1328,6 +1329,20 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 	}
 }
 
+// replacementBody is the guarded replacement's request body: whatever the
+// caller stated, with the two fields this tool names explicitly on top. A
+// replacement is a new request and owes the same explicit result choice as any
+// other, which is what body carries.
+func replacementBody(arguments map[string]any) map[string]string {
+	body := stringMap(arguments["body"])
+	if body == nil {
+		body = make(map[string]string, 2)
+	}
+	body["to"] = stringValue(arguments["to"])
+	body["conditions"] = stringValue(arguments["conditions"])
+	return body
+}
+
 func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call toolCall, identity *selectedIdentity) (any, error) {
 	oldRequest := stringValue(call.Arguments["old_request"])
 	key := stringValue(call.Arguments["idempotency_key"])
@@ -1337,6 +1352,23 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	retirementText := stringValue(call.Arguments["retirement_text"])
 	if retirementText == "" {
 		retirementText = "retire unclaimed request before reassignment"
+	}
+	body := replacementBody(call.Arguments)
+	// The pair is retirement then replacement, so a replacement refused for
+	// something its own body already said would leave the old request withdrawn
+	// with no successor. Everything knowable about it now is judged now,
+	// through the same authoring rules that will judge it again at signing.
+	if len(identity.private) == 0 {
+		return nil, errors.New("selected identity has no signing key")
+	}
+	replacementAct := app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest,
+		Text:    stringValue(call.Arguments["text"]),
+		Body:    body,
+		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
+	}
+	if err := identity.workspace.PreflightGuardedReplacement(ctx, identity.private, identity.selector, replacementAct); err != nil {
+		return nil, err
 	}
 	retirement, err := s.submit(ctx, current, app.Act{
 		Verb: app.VerbRetireIfUnclaimed, Target: oldRequest, Text: retirementText,
@@ -1349,14 +1381,8 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	if !ok {
 		return nil, errors.New("guarded retirement returned no durable record")
 	}
-	replacement, err := s.submit(ctx, current, app.Act{
-		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirementRecord.ID,
-		Text: stringValue(call.Arguments["text"]),
-		Body: map[string]string{
-			"to": stringValue(call.Arguments["to"]), "conditions": stringValue(call.Arguments["conditions"]),
-		},
-		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
-	}, identity)
+	replacementAct.Retirement = retirementRecord.ID
+	replacement, err := s.submit(ctx, current, replacementAct, identity)
 	if err != nil {
 		return nil, fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirementRecord.ID, err)
 	}

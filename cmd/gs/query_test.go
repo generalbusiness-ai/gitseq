@@ -48,7 +48,7 @@ func newQueryFixture(t *testing.T) queryFixture {
 
 	request, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "Add the changelog",
-		Body: map[string]string{"to": "@worker", "conditions": "it exists"}, RestsOn: []string{fixture.seed},
+		Body: map[string]string{"to": "@worker", "conditions": "it exists", "no_git_artifact": "true"}, RestsOn: []string{fixture.seed},
 		IdempotencyKey: "query-request",
 	})
 	if err != nil {
@@ -75,7 +75,7 @@ func newQueryFixture(t *testing.T) queryFixture {
 	// A cursor test on a one-row page proves nothing about paging.
 	if _, err := workspace.Act(ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "Also write the release note",
-		Body: map[string]string{"to": "@operator", "conditions": "it exists"}, RestsOn: []string{fixture.seed},
+		Body: map[string]string{"to": "@operator", "conditions": "it exists", "no_git_artifact": "true"}, RestsOn: []string{fixture.seed},
 		IdempotencyKey: "query-second-request",
 	}); err != nil {
 		t.Fatal(err)
@@ -488,7 +488,7 @@ func TestReviewsRefusesWhenTheQueueIsNotQuiet(t *testing.T) {
 	fixture := newQueryFixture(t)
 	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the changelog head",
-		Body:    map[string]string{"to": "@worker", "conditions": "approve or request changes", "artifact": fixture.artifact},
+		Body:    map[string]string{"to": "@worker", "conditions": "approve or request changes", "no_git_artifact": "true", "artifact": fixture.artifact},
 		RestsOn: []string{fixture.artifact}, IdempotencyKey: "query-review-request",
 	}); err != nil {
 		t.Fatal(err)

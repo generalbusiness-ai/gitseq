@@ -666,7 +666,7 @@ func allowedMergePlanFixture(t *testing.T) (*app.Workspace, string, string) {
 	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
-		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
+		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head", "no_git_artifact": "true"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -955,7 +955,7 @@ func TestStateToolRefusesMalformedRequestBeforeAppend(t *testing.T) {
 		want string
 	}{
 		{name: "missing conditions", body: map[string]any{"to": "@worker"}, want: "request state requires body.conditions"},
-		{name: "unknown performer", body: map[string]any{"to": "@nobody", "conditions": "tests pass"}, want: "request body.to"},
+		{name: "unknown performer", body: map[string]any{"to": "@nobody", "conditions": "tests pass", "no_git_artifact": "true"}, want: "request body.to"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			before := depth(t, workspace)
