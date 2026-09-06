@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c6be71908d21cb91924c408d495f14b28da6c64b","text":"Merge retired a covered predecessor with no successor at its old path."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ce629d9d6e99f6c3824ab899cf0ec83e64a15cbc","text":"Merge retired a covered predecessor; the successor is at docs/reference/landing-observations.md."}
