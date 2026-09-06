@@ -1848,9 +1848,9 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   only from the receipt's explicit warning field.
 
   The request composer requires an explicit result: a named target, inherited
-  request target, or no Git artifact. A named target uses the loaded workroom's
-  canonical repository ID and an operator-entered branch ref; the service
-  resolves its filing-time head. The browser neither invents that measurement
+  request target, or no Git artifact. A named target sends the operator-entered
+  branch ref; the service resolves its repository ID and filing-time head.
+  The loaded repository ID is display context only. The browser supplies neither measurement
   nor defaults a branch. A selected hold requires a roster owner. Prose that
   asks for a hold without those fields prompts a warning, not an inferred hold.
   An unchanged retry retains its input and idempotency key; editing its result
