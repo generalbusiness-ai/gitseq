@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Pin a checked real-Git append inside a successful push; retain the legacy failure control and prove preservation after migration, including custom mappings and repeated attach.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"cmd/gs/attach_publication_test.go"}}
+{"kind":"artifact","text":"Fetch into separate remote tracking refs, migrate both legacy direct mappings, and preserve the before-fetch authoritative head for verified import.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"cmd/gs/main.go"}}
