@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acf960bc841e4a6f4859562dfc72b40999b91a98","text":"Replaced by the corrected current-basis proposal: this attempt carried the old artifact pointer in its body despite naming the new head and basis."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7f1fe28b6b5a48a692951eb8fa068f67ac1ecad","text":"Replaced by the current-basis proposal after the binding-guard merge retired two direct source bases of its decision artifact."}
