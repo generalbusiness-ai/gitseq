@@ -1,0 +1,8 @@
+--- FAIL: TestAttachAdvancesButRejectsRemoteRewind (0.53s)
+    main_test.go:474: initial attach: git rev-parse --show-object-format: exit status 128: fatal: not a git repository: '/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestAttachAdvancesButRejectsRemoteRewind2256626930/001/auditor'
+--- FAIL: TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss (0.71s)
+    main_test.go:615: initial attach: git rev-parse --show-object-format: exit status 128: fatal: not a git repository: '/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss1700155499/001/auditor'
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	3.710s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	0.612s
+FAIL

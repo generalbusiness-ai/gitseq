@@ -1,0 +1,6 @@
+--- FAIL: TestSequencePublicationPreservesConcurrentAppend (2.27s)
+    --- FAIL: TestSequencePublicationPreservesConcurrentAppend/supported_attachment_mapping (1.15s)
+        attach_publication_test.go:84: local sequence after successful push = e957fbaea22dcc79461746faa714713c6b5ca89d, want 0751a7a8ee31c1fa037ba7070b511339a9c10898 (concurrent append 0751a7a8ee31c1fa037ba7070b511339a9c10898)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	2.729s
+FAIL

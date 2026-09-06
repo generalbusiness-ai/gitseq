@@ -1,0 +1,78 @@
+[
+  {
+    "path": "cmd/gs/attach_publication_test.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-0-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-0.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d84a5d130f97e1f9c060a7efcd2a70a1f760df0a"
+  },
+  {
+    "path": "cmd/gs/main.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-1-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-1.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e3f551d11dc1dc0acd993860ff7ec9a3efe9caf7"
+  },
+  {
+    "path": "cmd/gs/main_test.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-2-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-2.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:57738f27d5930fa5893bd242866ab3346f896924"
+  },
+  {
+    "path": "docs/how-to/publish-and-audit.md",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-3-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-3.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494aef8d7d7251333cd0fa2b07284959d9c1ac55"
+  },
+  {
+    "path": "docs/how-to/use-in-a-cloned-repo.md",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-4-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-4.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3ad4e556061cd9c0f187a73f943d60b531534d9a"
+  },
+  {
+    "path": "docs/reference/architecture.md",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-5-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-5.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffaa81cf38c85fc826738eec022a265d3b72f32c"
+  },
+  {
+    "path": "docs/reference/gs/attach.md",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-6-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-6.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdfb2ff719dce2a5eb097ab88403b1674a4497a0"
+  },
+  {
+    "path": "internal/app/app.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-7-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-7.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea5f9663cd9463b5f1b828006ed16ad2bcb75177"
+  },
+  {
+    "path": "internal/app/attach_test.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-8-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-8.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:588c082cf63cd00376a0d72073052970853d7218"
+  },
+  {
+    "path": "internal/kernel/kernel.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-9-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-9.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bff6f3dda2bdee23c074e90ab30751be1fe53314"
+  },
+  {
+    "path": "internal/app/attach.go",
+    "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+    "command": "/tmp/safe-sequence-v2-artifact-10-command.json",
+    "result": "/tmp/safe-sequence-v2-artifact-10.json"
+  }
+]

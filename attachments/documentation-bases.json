@@ -1,0 +1,227 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:109d5eb915643120959d224369327a034f6a5d43",
+    "path": "internal/service/preview.go",
+    "commit": "d15d10db239591b4e9f51719ba477f8cc3e20c5b",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2556ced7f27f284fe201240aa7bed7bfc021e0b9",
+    "path": "internal/intent",
+    "commit": "3f35d6edf4d0d81002ed1c3dab6d7e80ba27c0f5",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a044c9520a718683b86f1ed72a19d027b7bdc63",
+    "path": "host",
+    "commit": "1e868103416fea2ca832e2e740b4197940cf5057",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b43f6136b3ad16acfd99ea1978d48d3af45d8f4",
+    "path": "cmd/gitseq-mcp/main.go",
+    "commit": "183211c3b5bff170171c5bfbe9bfbc3aacde08f6",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ef0bb48f6842c8f43f9aaacb6bed75584a77e48",
+    "path": "internal/gitstore",
+    "commit": "61439ecd86d34f647ea3b1ac6adf0f072bcff343",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4355a1feed949547209289deed2b1b8775f7f8ed",
+    "path": "cmd/gs/main.go",
+    "commit": "2fba16a1725bb13aedd07e761c5cb39b0d5c9202",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c4f0d4142bfa057005b09e59bc0a3462980842b",
+    "path": "internal/kernel",
+    "commit": "45e061f8cc5ec598d4d18a6a797f1a896d2cef28",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5242f122c4a784eb2fb38eb53fb04dcf235d967b",
+    "path": "internal/service",
+    "commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b",
+    "path": "ui",
+    "commit": "5ea68de49b32fd86ec9a26a78021420955e856cc",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599960fd61ab6d3288f3977f60ea80a0ae0ca5ea",
+    "path": "ui/src/lib/address.ts",
+    "commit": "d15d10db239591b4e9f51719ba477f8cc3e20c5b",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c2280f3529b7f1a9abf43fa13b5b46170550d96",
+    "path": "internal/workroom/fold.go",
+    "commit": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f5e861fe8e66e258c0b189c15de98b3e5beba0f",
+    "path": "internal/kernel/kernel.go",
+    "commit": "bb84821aaee49dc30fb8948675ca2241f06b1fc7",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7",
+    "path": "cmd/gs",
+    "commit": "a9ea290e57448aa58ccdc0fef762f618ecd6597d",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66e0e12172925f497f0dde1b910e705b157c08e7",
+    "path": "cmd/gitseq-github",
+    "commit": "3a5d952c8e1d94ff4d07ce666ca35085571ef857",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66f0c0b0dd991a3edfffb161a3b9fbc9777281e0",
+    "path": "internal/residentclient",
+    "commit": "40bac77a33aa273fddf76cca5e5dbf8284cff2a7",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cb46390f7cc0630f8f7518d79c3031c4b226605",
+    "path": "internal/gitstore/preview.go",
+    "commit": "d15d10db239591b4e9f51719ba477f8cc3e20c5b",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+    "path": "internal/app",
+    "commit": "1e868103416fea2ca832e2e740b4197940cf5057",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db",
+    "path": "internal/app/app.go",
+    "commit": "bb84821aaee49dc30fb8948675ca2241f06b1fc7",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87165f1520bdf1a58e390a53b939b310fcd12df9",
+    "path": "ui/src/components/Preview.tsx",
+    "commit": "d15d10db239591b4e9f51719ba477f8cc3e20c5b",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a5ba7c376e9417d6c11f5275f47202179381a30e",
+    "path": "ui/src/components/Notes.tsx",
+    "commit": "d15d10db239591b4e9f51719ba477f8cc3e20c5b",
+    "retired": false,
+    "stale": true,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa",
+    "path": "host",
+    "commit": "7152e79a741e6c9c277568a6aabec8e9b6cbd792",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2c6b2a03e3c03af9a20985a40f85e09f31ee417",
+    "path": "internal/statusview",
+    "commit": "defbae752dc836ab137486e334b633d96e89a7ad",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eb696dc813fe4f2f438312c0ba96ae5153bc9ae9",
+    "path": "internal/apphost",
+    "commit": "fb4c44c83542028fd28696147dd40b45fd114f52",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa2ae0e961a4b33c44f69c0bb6d602ba273a3097",
+    "path": "internal/connector/github",
+    "commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb",
+    "path": "internal/app/attach.go",
+    "commit": "bb84821aaee49dc30fb8948675ca2241f06b1fc7",
+    "retired": false,
+    "stale": false,
+    "describes_superseded_world": false,
+    "effective": "effective"
+  }
+]
