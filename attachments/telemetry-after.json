@@ -1,0 +1,7 @@
+{
+  "pid": 66700,
+  "command": "/Users/hughpyle/.local/bin/tailapp serve --otlp-http 127.0.0.1:4318",
+  "started": "Mon Aug 31 19:37:03 2026",
+  "executable": "/Users/hughpyle/.local/lib/tailapp/tailapp-20260831T183703Z-5d84ac71d625",
+  "sha256": "5e500c92db3aa7990bc803884e631e4d2b3f0008bd75f0d1b6d9cf5f8d0bc7c9"
+}

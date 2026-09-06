@@ -1,0 +1,44 @@
+[
+  {
+    "room": "tailapp",
+    "port": 7778,
+    "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+    "depth": 4030,
+    "head": "1ba9eafd198509bb58507ad1111304a4d85a20b5",
+    "commitments": 288,
+    "preview_event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5e2f54558c10b87b27ba84977c3ba038c4737f82",
+    "preview_path": "notes/2026-09-05-capability-context-contract.md",
+    "preview_commit": "e5768463a5aef6663501c05b4de5471a79856a2f",
+    "preview_ready": true,
+    "byte_equal": true,
+    "sha256": "ade813b45a7e59b0617c7483aa18ebb8eb8903a9a1fe468271326b842e95f877"
+  },
+  {
+    "room": "gitseq-chess",
+    "port": 7779,
+    "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+    "depth": 842,
+    "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+    "commitments": 84,
+    "preview_event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:83b269da47ceeb221bfd2da55c3a6ef9e0f39a02",
+    "preview_path": "docs/reference/architecture.md",
+    "preview_commit": "b97c6a82ef7e3618721696f5a69efef13da10a79",
+    "preview_ready": true,
+    "byte_equal": true,
+    "sha256": "c7d3ab5f24e21c261ff8c22a90706dec86a171b33ddb35e3eb06c1fa0e52fdfb"
+  },
+  {
+    "room": "gitseq-inventory",
+    "port": 7780,
+    "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+    "depth": 502,
+    "head": "2cf4bd5202c70fbf3d7c4022de8102fcb09e671e",
+    "commitments": 30,
+    "preview_event": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:672606a4e7b51765a4558a482d9478aeb782355e",
+    "preview_path": "scripts/verify-corpora.py",
+    "preview_commit": "9c5d9dffc65090a990debe8e82e6864f85b9dc47",
+    "preview_ready": true,
+    "byte_equal": true,
+    "sha256": "1c6c78f60bfb6fa5586d30d7ae85d9d4b7a929a40ed288f4d93538228efa4c90"
+  }
+]
