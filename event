@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Fetch into separate remote tracking refs, migrate both legacy direct mappings, and preserve the before-fetch authoritative head for verified import.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"cmd/gs/main.go"}}
+{"kind":"artifact","text":"Exercise initial/forward attachment, hostile remotes, remote rollback, and lost-ref replay refusal without installing rejected history.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"cmd/gs/main_test.go"}}
