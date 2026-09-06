@@ -1665,6 +1665,26 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
 
+  **Implementation binding.** Before a review is signed, and again wherever
+  its approval is consumed, one pure resolver in `internal/reviewguard`
+  classifies what the explicitly examined set of artifacts at an exact head
+  is: assigned, when a projected commitment reports the primary by exact
+  `Commitment.Report` equality and further implementation reports are found
+  only inside the examined set; self-initiated, when the reviewer names the
+  adopted decision the primary rests on directly and no commitment claims it;
+  or evidence-only, when the primary's author filed it against a request that
+  owes no Git artifact. It reads one hop of the primary's own provenance and
+  the projected commitment, target and hold facts layer 6 already resolved;
+  it walks no ancestry, parses no prose, and sweeps no other artifacts at the
+  head, and an empty report lookup is never independence. `gs review` and the
+  MCP review tool resolve it at each of the three confirming reads and record
+  the kind and its witnesses in the verdict body; admission re-resolves it at
+  sequencing; `gs merge`, merge authorization and `merge_plan` re-resolve it
+  from the approval's own citations and selectors, so a verdict filed before
+  bindings were recorded is reclassified from its actual primary. An
+  evidence-only approval never lands. The optional read-only `--prepare`
+  form runs the same resolver and signs nothing.
+
   **Request authoring.** Filing a request is where layer 5's landing
   obligation meets the repository, and one path in `internal/app` does it for
   every surface: `gs state`, a `gs batch` entry, the MCP `state` tool, the
