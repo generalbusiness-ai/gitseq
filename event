@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4cf1b905d011e1ae2a91723ddd93c453dbe0870","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b5f04cb67b2a3b3cc6e1b78bf9fcf441590a7988","text":"Merge retired a covered predecessor; the successor is at docs/how-to/connect-github.md."}
