@@ -1,6 +1,0 @@
-{
-  "returncode": 0,
-  "stdout": "{\n  \"fixture\": \"/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-push-tracking-repro-o_5ytm73\",\n  \"pushed_head\": \"88aeee56db667d95b20e0f1af8693279d3ada05e\",\n  \"advance_during_push\": \"c1b6187d810713e3e4592fa412cf90c2cbbc7ccb\",\n  \"local_ref_after_successful_push\": \"88aeee56db667d95b20e0f1af8693279d3ada05e\",\n  \"push_overwrote_concurrent_local_advance\": true\n}\n",
-  "stderr": "",
-  "fixture_removed_after_evidence_saved": true
-}
