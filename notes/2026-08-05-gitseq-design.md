@@ -444,7 +444,8 @@ Recorded so applications converge; the base runs none of it:
   one exception, anchored in genesis; the nexus issuer key is the
   collaboration profile's exception, anchored in its config log.
 - No reliability, promise-keeping or reputation scores (adopted
-  2026-09-06, decision c590c20e). No gitseq deliverable — kernel,
+  2026-08-27 by ratification 4838ff4b of decision c590c20e; recorded
+  here 2026-09-06). No gitseq deliverable — kernel,
   profile, projector, or shipped projection — computes a score of any
   actor's reliability, promise-keeping or reputation, and no
   gitseq-shipped authority check consumes one. Roles are granted and
@@ -732,7 +733,11 @@ III and V: "no agent may promise anything on behalf of any agent but
 itself"; cooperation is voluntary because nothing forces an offer or its
 acceptance; trust is an agent's assessment that promises will be kept),
 and it is already how the fold behaves: only the addressee promises,
-only the requester declares satisfaction. The further reading that a
+and acceptance stays the requester's, whether given explicitly by
+ratifying a report or carried as pre-authorized acceptance in the
+sealed approved merge that closes an implementation commitment (see
+the architecture page's commitment and merge-receipt contracts). The
+further reading that a
 commitment ends without fault when its conditions of satisfaction
 disappear is this project's own, expressed in the terminal states of the
 tenth wave (withdrawn, cancelled, reneged are distinct), not a claim
