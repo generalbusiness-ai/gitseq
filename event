@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/schema.go","body":{"commit":"80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74","path":"internal/workroom/schema.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp/main_test.go."}
