@@ -1,0 +1,225 @@
+{
+  "checked_at": "2026-09-06T20:43:35.929865+00:00",
+  "frontier": 19966,
+  "source_head": "07753351d69c05dedec58f4e2561a793054312a5",
+  "reader_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+  "method": "Imported current buildSpine with Node26.8.1 and passed actual /v0/status projection plus exact selected lifecycle. No source edit, signing, merge or browser interaction. UI spine and interaction tests are byte-identical reader39c to main077.",
+  "sources": [
+    {
+      "path": "ui/src/lib/spine.ts",
+      "head": "07753351d69c05dedec58f4e2561a793054312a5",
+      "blob": "ba42d8032036add087f4f1973e2d32b15c89c30c",
+      "worktree_bytes_match": true
+    },
+    {
+      "path": "ui/test/interaction.test.mjs",
+      "head": "07753351d69c05dedec58f4e2561a793054312a5",
+      "blob": "055eafc483cf45cb884817292f11962b8592db93",
+      "worktree_bytes_match": true
+    },
+    {
+      "path": "docs/reference/gs/merge.md",
+      "head": "07753351d69c05dedec58f4e2561a793054312a5",
+      "blob": "3a7a5a77524caa3cd73ba058512fd4266642c00f",
+      "worktree_bytes_match": true
+    }
+  ],
+  "cases": [
+    {
+      "request_number": 16429,
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55c889fc20e08dd148b11ada8acbf6c245762fe8",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:176f5b1407d2d3a4be1b20088d58cee61b72fe60",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:132826219caf9a0d9d560d074b9d702f18f2f1f7",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:759f8fa3f4f22e6465e5962e05a05206b9c02be2",
+        "candidate": "76e5aee0d4be76e2ee898b2dd1871420002d5fe4",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05c9481865f9bfe8cd72d5668ec99fcd02eba177"
+      },
+      "approval_number": 16654,
+      "world_superseded_at": 16672,
+      "stations": [
+        {
+          "id": "root",
+          "kind": "request",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55c889fc20e08dd148b11ada8acbf6c245762fe8",
+          "ticket": 16429,
+          "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "timestamp": 1788359835,
+          "what": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84 asked 5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 \u2014 codex: recut the approved toolbar live-participant candidate 27e43714 onto current main 3f75695c. Reconcile the source and generated UI against current contr\u2026",
+          "present": true
+        },
+        {
+          "id": "promise",
+          "kind": "promise",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:176f5b1407d2d3a4be1b20088d58cee61b72fe60",
+          "ticket": 16438,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "timestamp": 1788359973,
+          "what": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 claimed it",
+          "present": true
+        },
+        {
+          "id": "report",
+          "kind": "report",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:132826219caf9a0d9d560d074b9d702f18f2f1f7",
+          "ticket": 16650,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "timestamp": 1788370340,
+          "what": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 reported it done at 76e5aee0",
+          "present": true,
+          "commit": "76e5aee0d4be76e2ee898b2dd1871420002d5fe4"
+        },
+        {
+          "id": "verdict",
+          "kind": "verdict",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:759f8fa3f4f22e6465e5962e05a05206b9c02be2",
+          "ticket": 16654,
+          "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "timestamp": 1788370645,
+          "what": "approved by a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d, ratified, over exact head 76e5aee0",
+          "present": true,
+          "tone": "ok",
+          "commit": "76e5aee0d4be76e2ee898b2dd1871420002d5fe4"
+        },
+        {
+          "id": "target",
+          "kind": "target",
+          "present": true,
+          "what": "refs/heads/main in git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8 \u2014 legacy destination"
+        },
+        {
+          "id": "merge",
+          "kind": "landing",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05c9481865f9bfe8cd72d5668ec99fcd02eba177",
+          "present": true,
+          "tone": "ok",
+          "what": "sealed landing into refs/heads/main"
+        },
+        {
+          "id": "git",
+          "kind": "Git now",
+          "present": false,
+          "what": "checking the current target\u2026"
+        },
+        {
+          "id": "blocker-world",
+          "kind": "open",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:759f8fa3f4f22e6465e5962e05a05206b9c02be2",
+          "ticket": 16654,
+          "what": "this approval describes a superseded world \u2014 a merge refuses it until the behaviour is re-anchored",
+          "present": true,
+          "tone": "danger",
+          "branch": true
+        }
+      ],
+      "control_world_blocker": null
+    },
+    {
+      "request_number": 19022,
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f10b9b196d81b6e61d00d8c752dca5765af67bb9",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4021122d63c8a3c8e6f219f955f865536d513e87",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:15f25225ffe951e89eda7c2de4cb5f51c5ab71a0",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2be94cdbf89347ca1afcd9989e1d27f391dde06a",
+        "candidate": "cc24d6c43ddbed19997cb4797b0d2002c77b9a93",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a33a18351a971f2f4f18932b6ff572a250de244"
+      },
+      "approval_number": 19118,
+      "world_superseded_at": 19153,
+      "stations": [
+        {
+          "id": "root",
+          "kind": "request",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f10b9b196d81b6e61d00d8c752dca5765af67bb9",
+          "ticket": 19022,
+          "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "timestamp": 1788676160,
+          "what": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84 asked 5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 \u2014 Codex: make notes discoverable and file references clickable with an in-app preview.",
+          "present": true
+        },
+        {
+          "id": "promise",
+          "kind": "promise",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4021122d63c8a3c8e6f219f955f865536d513e87",
+          "ticket": 19024,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "timestamp": 1788677496,
+          "what": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 claimed it",
+          "present": true
+        },
+        {
+          "id": "report",
+          "kind": "report",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:15f25225ffe951e89eda7c2de4cb5f51c5ab71a0",
+          "ticket": 19114,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "timestamp": 1788682230,
+          "what": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123 reported it done at cc24d6c4",
+          "present": true,
+          "commit": "cc24d6c43ddbed19997cb4797b0d2002c77b9a93"
+        },
+        {
+          "id": "verdict",
+          "kind": "verdict",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2be94cdbf89347ca1afcd9989e1d27f391dde06a",
+          "ticket": 19118,
+          "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "timestamp": 1788684270,
+          "what": "approved by a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84, ratified, over exact head cc24d6c4",
+          "present": true,
+          "tone": "ok",
+          "commit": "cc24d6c43ddbed19997cb4797b0d2002c77b9a93"
+        },
+        {
+          "id": "target",
+          "kind": "target",
+          "present": true,
+          "what": "refs/heads/main in git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8 \u2014 legacy destination"
+        },
+        {
+          "id": "merge",
+          "kind": "landing",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a33a18351a971f2f4f18932b6ff572a250de244",
+          "present": true,
+          "tone": "ok",
+          "what": "sealed landing into refs/heads/main"
+        },
+        {
+          "id": "git",
+          "kind": "Git now",
+          "present": false,
+          "what": "checking the current target\u2026"
+        },
+        {
+          "id": "blocker-world",
+          "kind": "open",
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2be94cdbf89347ca1afcd9989e1d27f391dde06a",
+          "ticket": 19118,
+          "what": "this approval describes a superseded world \u2014 a merge refuses it until the behaviour is re-anchored",
+          "present": true,
+          "tone": "danger",
+          "branch": true
+        }
+      ],
+      "control_world_blocker": null
+    }
+  ],
+  "control": "Changing only approval statement describes_superseded_world to false removes blocker-world in both cases.",
+  "limits": "This proves rendering data, not a new interactive browser journey or permission to merge any historical head. Later retirement or other guards may independently refuse a new merge; neither reopens a completed outcome."
+}
