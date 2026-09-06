@@ -1,6 +1,0 @@
-=== RUN   TestWhoamiRetriesOneConcurrentFrontierMove
-    main_test.go:2195: resident fixture call 1: 230.559917ms
-    main_test.go:2195: resident fixture call 2: 25.294ms
---- PASS: TestWhoamiRetriesOneConcurrentFrontierMove (0.95s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	1.334s
