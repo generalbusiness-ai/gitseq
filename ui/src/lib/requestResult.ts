@@ -1,4 +1,4 @@
-// The operator chooses the obligation. The service resolves the target head
+// The operator chooses the obligation. The service resolves its repository and target head
 // when filing and checks ancestry, roster and authority before signing.
 export interface RequestResult {
   kind: "" | "none" | "inherit" | "target";
@@ -8,14 +8,14 @@ export interface RequestResult {
 }
 export const emptyRequestResult: RequestResult = { kind: "", ref: "", held: false, owner: "" };
 
-export function requestResultBody(result: RequestResult, repo?: string): Record<string, string> | undefined {
+export function requestResultBody(result: RequestResult): Record<string, string> | undefined {
   let body: Record<string, string>;
   switch (result.kind) {
     case "none": return { no_git_artifact: "true" };
     case "inherit": body = { target: "inherit" }; break;
     case "target":
-      if (!repo || !result.ref.trim().startsWith("refs/heads/")) return undefined;
-      body = { target_repo: repo, target_ref: result.ref.trim() };
+      if (!result.ref.trim().startsWith("refs/heads/")) return undefined;
+      body = { target_ref: result.ref.trim() };
       break;
     default: return undefined;
   }

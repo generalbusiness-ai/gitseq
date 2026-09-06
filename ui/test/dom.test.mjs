@@ -1173,7 +1173,7 @@ test("the actual request composer requires a result, preserves exact retry, and 
     await click(send());
     assert.equal(sent.length, 2);
     assert.deepEqual(sent[1], sent[0], "lost response changed the signed intent or retry key");
-    assert.equal(sent[0].body.target_repo, `git:sha1:${"a".repeat(40)}`);
+    assert.equal(sent[0].body.target_repo, undefined, "the producer refuses caller-supplied repository measurements");
     assert.equal(sent[0].body.target_ref, "refs/heads/release-2");
     assert.equal(sent[0].body.target_head, undefined);
     assert.equal(sent[0].body.landing, "held");

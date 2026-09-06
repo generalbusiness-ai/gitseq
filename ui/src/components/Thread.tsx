@@ -544,7 +544,7 @@ function Composer({
   const [conditions, setConditions] = useState("");
   const [result, setResult] = useState(emptyRequestResult);
   const resultRepo = workroom.status?.durable.projection.statements[0]?.event.split("#")[0];
-  const resultBody = requestResultBody(result, resultRepo);
+  const resultBody = requestResultBody(result);
   // Citations the operator named, beside the ones the row resolved. The
   // revision case in docs/how-to/keep-decision-records.md is why this exists:
   // a review request for a revised decision has to rest on the proposal that

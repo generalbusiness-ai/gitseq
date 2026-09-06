@@ -149,8 +149,9 @@ carries it. Late responses for a different event, target, candidate or receipt
 are discarded.
 
 The request form requires the result explicitly. For a named branch, the
-service resolves and records its current head at filing; there is no default
-branch or browser-supplied commit measurement. A hold needs its owner. Asking
+service resolves and records the repository and current head at filing. The
+browser sends only the chosen branch ref, with no default branch or supplied
+repository or commit measurement. A hold needs its owner. Asking
 for a hold only in text produces a warning, without creating authority. Retrying
 an unchanged request keeps the same input and key; changing the result creates
 a new intent.
