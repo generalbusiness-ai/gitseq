@@ -23,6 +23,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
@@ -3002,18 +3003,34 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if *genesis == "" {
 		return errors.New("attach requires --genesis")
 	}
+	// Reject an unconfigured transport before touching any configuration.
+	if err := validateConfiguredRemote(ctx, *repo, *remote); err != nil {
+		return err
+	}
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	store := gitstore.Store{Repo: commonDir}
+	format, err := store.ObjectFormat(ctx)
+	if err != nil {
+		return err
+	}
+	if err := apphost.ValidateGenesis(format, *genesis); err != nil {
+		return fmt.Errorf("invalid attachment genesis: %w", err)
+	}
+	expected, _, err := store.RefValue(ctx, kernel.Ref(*genesis))
+	if err != nil {
+		return err
+	}
 	if err := fetchSequenceRefs(ctx, *repo, *remote); err != nil {
 		return err
 	}
-	formatOutput, err := git(ctx, *repo, "rev-parse", "--show-object-format")
+	head, err := store.Head(ctx, "refs/remotes/"+*remote+"/seq/"+*genesis)
 	if err != nil {
 		return err
 	}
-	workspace, err := app.AttachConfig(ctx, *repo, *genesis, strings.TrimSpace(formatOutput))
-	if err != nil {
-		return err
-	}
-	verification, err := workspace.Verify(ctx)
+	verification, err := app.AttachSequence(ctx, *repo, *genesis, format, head, expected)
 	if err != nil {
 		return err
 	}
@@ -3021,28 +3038,39 @@ func attachCommand(ctx context.Context, arguments []string) error {
 }
 
 const (
+	// These are the two historical rules to remove, never fetch destinations.
 	sequenceFetchRefspec       = "refs/seq/*:refs/seq/*"
 	forcedSequenceFetchRefspec = "+" + sequenceFetchRefspec
 )
+
+func sequenceTrackingRefspec(remote string) string {
+	return "+refs/seq/*:refs/remotes/" + remote + "/seq/*"
+}
 
 func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
 	if err := validateConfiguredRemote(ctx, repo, remote); err != nil {
 		return err
 	}
+	if _, err := git(ctx, repo, "check-ref-format", "refs/remotes/"+remote+"/seq/check"); err != nil {
+		return fmt.Errorf("configured remote cannot name a sequence tracking namespace: %w", err)
+	}
 	key := "remote." + remote + ".fetch"
 	existing, _ := git(ctx, repo, "config", "--get-all", key)
-	if containsLine(existing, forcedSequenceFetchRefspec) {
-		if _, err := git(ctx, repo, "config", "--fixed-value", "--unset-all", key, forcedSequenceFetchRefspec); err != nil {
-			return fmt.Errorf("remove legacy forced sequence fetch rule: %w", err)
+	for _, legacy := range []string{sequenceFetchRefspec, forcedSequenceFetchRefspec} {
+		if containsLine(existing, legacy) {
+			if _, err := git(ctx, repo, "config", "--fixed-value", "--unset-all", key, legacy); err != nil {
+				return fmt.Errorf("remove legacy sequence fetch rule: %w", err)
+			}
 		}
 	}
-	if !containsLine(existing, sequenceFetchRefspec) {
-		if _, err := git(ctx, repo, "config", "--add", key, sequenceFetchRefspec); err != nil {
+	tracking := sequenceTrackingRefspec(remote)
+	if !containsLine(existing, tracking) {
+		if _, err := git(ctx, repo, "config", "--add", key, tracking); err != nil {
 			return err
 		}
 	}
-	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, sequenceFetchRefspec); err != nil {
-		return fmt.Errorf("fetch sequence refs without rewind: %w", err)
+	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, tracking); err != nil {
+		return fmt.Errorf("fetch untrusted sequence tracking refs: %w", err)
 	}
 	return nil
 }

@@ -484,8 +484,8 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 		t.Fatalf("initial verified frontier = %+v, want head %s", attached.View().VerifiedFrontier, first)
 	}
 	fetchRules := strings.Fields(testGit(t, auditor, "config", "--get-all", "remote.origin.fetch"))
-	if contains(fetchRules, forcedSequenceFetchRefspec) || !contains(fetchRules, sequenceFetchRefspec) {
-		t.Fatalf("sequence fetch rules = %#v, want only non-forcing sequence rule", fetchRules)
+	if contains(fetchRules, forcedSequenceFetchRefspec) || contains(fetchRules, sequenceFetchRefspec) || !contains(fetchRules, sequenceTrackingRefspec("origin")) {
+		t.Fatalf("sequence fetch rules = %#v, want separate remote tracking", fetchRules)
 	}
 
 	if _, err := workspace.Act(ctx, "operator", app.Act{
@@ -517,8 +517,8 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("rewind changed local sequence head to %s, want %s", got, second)
 	}
-	if output, err := exec.Command("git", "-C", auditor, "fetch", "origin").CombinedOutput(); err == nil {
-		t.Fatalf("ordinary fetch accepted rewound sequence: %s", output)
+	if output, err := exec.Command("git", "-C", auditor, "fetch", "origin").CombinedOutput(); err != nil {
+		t.Fatalf("ordinary fetch could not refresh untrusted tracking data: %v: %s", err, output)
 	}
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("ordinary fetch rewound local sequence head to %s, want %s", got, second)
@@ -637,20 +637,27 @@ func TestAttachRejectsSpentIdempotencyReplayAfterLocalFrontierLoss(t *testing.T)
 	if fresh.View().VerifiedFrontier == nil || fresh.View().VerifiedFrontier.Head != attack.Head {
 		t.Fatalf("fresh auditor frontier = %+v, want attack head %s", fresh.View().VerifiedFrontier, attack.Head)
 	}
-	// Losing the tracking ref defeats Git's non-force comparison, but it must
-	// not erase the separately persisted verified frontier.
+	// Losing the authoritative ref must not erase the separately persisted
+	// verified frontier or let rejected fetched history fill the empty ref.
 	testGit(t, auditor, "update-ref", "-d", ref)
 	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err == nil || !strings.Contains(err.Error(), "non-descendant verified frontier") {
 		t.Fatalf("attach accepted replay branch %s after losing its ref: %v", attack.Head, err)
 	}
-	attached, err := app.Open(ctx, auditor)
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, auditor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if attached.View().VerifiedFrontier == nil || attached.View().VerifiedFrontier.Head != trusted {
-		t.Fatalf("rejected replay replaced trusted frontier: %+v, want %s", attached.View().VerifiedFrontier, trusted)
+	config, err := apphost.LoadConfig(apphost.MetaDir(commonDir))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if verification, err := kernel.Verify(ctx, attached.Store, workspace.View().Genesis); err != nil || verification.Head != attack.Head {
+	if config.VerifiedFrontier == nil || config.VerifiedFrontier.Head != trusted {
+		t.Fatalf("rejected replay replaced trusted frontier: %+v, want %s", config.VerifiedFrontier, trusted)
+	}
+	if _, err := exec.Command("git", "-C", auditor, "rev-parse", "--verify", ref).CombinedOutput(); err == nil {
+		t.Fatal("rejected replay installed an authoritative ref")
+	}
+	if verification, err := kernel.VerifyAt(ctx, fresh.Store, workspace.View().Genesis, attack.Head); err != nil || verification.Head != attack.Head {
 		t.Fatalf("attack branch was not independently valid, verification=%+v err=%v", verification, err)
 	}
 }

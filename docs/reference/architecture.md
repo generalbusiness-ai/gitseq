@@ -556,6 +556,37 @@ artifact
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5d30c17385f242466e3804a85e1d050a4e30d33`;
 that event is cited here as design history, not as this page's causal basis.
 
+#### Sequence transport and verified import
+
+`cmd/gs` fetches remote sequences into `refs/remotes/<remote>/seq/*`, separate
+from authoritative `refs/seq/*`. It removes the two historical direct fetch
+mappings while preserving other configuration. Tracking refs may follow a
+remote rewind: they are untrusted observations. Git also updates tracking
+refs after a push, so their separation protects an append admitted during a
+successful publication. Non-forcing publication alone does not provide that
+protection when the fetch destination names the authoritative ref.
+
+The kernel's `VerifyAt` audits an immutable fetched candidate without moving a
+ref or assigning application meaning. The application boundary imports only a
+fully verified candidate that continues both the authoritative ref observed
+before transport and the saved verified frontier. It compares the saved
+frontier under the configuration lock, then uses Git compare-and-swap against
+the original authoritative ref. Rollback, sibling, verification and validation
+refusals, or a lost comparison, change neither that ref nor saved memory. First
+attachment remains read-only and creates no signing custody.
+
+The authoritative ref and configuration are separate stores. If the ref CAS
+succeeds but checkpoint persistence fails, the operation reports failure with
+the verified ref installed and the previous checkpoint retained. It never
+rewinds a ref to compensate: a newer append may already follow the import.
+After restoring metadata write access, a retry verifies and remembers the
+installed head; if the local sequence advanced further, reopening and auditing
+that actual head is safe, while an older remote candidate still refuses. This
+contract does not promise crash atomicity across the two stores. Kernel
+signature and history rules, configuration custody and Workroom authority are
+unchanged; transport/import ordering at the CLI and application boundary
+changes.
+
 #### Repository configuration custody
 
 The state a checkout remembers — the repository-private configuration holding

@@ -250,22 +250,29 @@ git -C "$WORK/colleague" config --get-all remote.origin.fetch
 gs status --repo "$WORK/colleague"
 ```
 
-The rule it adds — `refs/seq/*:refs/seq/*`, again with no `+` — makes
-ordinary `git fetch` keep the sequence up to date from then on, and
-refuse anything that is not a fast-forward.
+The rule it adds, `+refs/seq/*:refs/remotes/origin/seq/*`, keeps remote
+observations separate from the authoritative `refs/seq/*` sequence. Ordinary
+`git fetch` refreshes those observations. Run `gs attach` again to verify and
+import newer events; it refuses rollback, siblings, invalid history and a
+local ref that moved during import. Both old direct-to-sequence fetch rules
+are removed without replacing your source-branch mappings.
+
+Keep that separation in publishers too. Git updates remote tracking refs
+after a successful push, so a fetch destination under `refs/seq/*` can
+overwrite a concurrent local append even when the push was non-forcing.
 
 ### What a refused push means
 
 For an append-only log, "non-fast-forward" has one meaning: the remote
-holds events you do not. Either you are simply behind — fetch, and push
-again — or two holders appended to the same log independently and the two
-lines have diverged.
+holds events you do not. Either you are behind, or two holders appended to the same log independently
+and the two lines have diverged. Fetching into tracking refs lets you inspect
+what the remote holds; it does not authorize replacing your local sequence.
 
 The second case is what to avoid, because gitseq has no merge for it. Two
 copies of one workroom, each appending locally, produce two valid
-sequences that are not ancestors of each other. Git refuses both the push
-and the fetch, correctly, and neither side loses anything; but nothing
-reconciles them afterwards, and an attached clone, which records the last
+sequences that are not ancestors of each other. Git refuses the non-fast-forward push. Fetch can record the other side in
+separate tracking refs without changing either authoritative sequence, but
+nothing reconciles them afterwards, and an attached clone, which records the last
 frontier it verified, refuses a sibling sequence rather than choosing one.
 
 ```sh
