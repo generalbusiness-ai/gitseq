@@ -2,6 +2,9 @@
 title: Landing observations
 summary: Keep durable delivery evidence separate from current target and worktree facts.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a51bf9c28f8fc0c4b0669a80d10d3e7ed9f698e0
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa1fb7103f0466394a55535fcd34687358e7a08e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d43258e62f3d48b8a226c084d693237cee1ec5b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9a4296399c2ece5d10f014163dff6baba7dca77
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:22cb07e91e19956f4ad81ba0b2ba1f09e74ee1ad
 ---
@@ -19,7 +22,7 @@ the raw `commitment` block and adds the same shared shape under `landing`.
 
 | Field | Meaning |
 |---|---|
-| `target_repo`, `target_ref` | The fold's resolved destination; empty for a request owing no Git artifact. |
+| `target_repo`, `target_ref` | The fold's resolved destination. Empty fields do not by themselves establish that an older request explicitly chose no Git artifact. |
 | `legacy` | The request's destination was read from its older history. |
 | `hold_owner`, `release` | The hold owner and effective release event, if present. |
 | `approval`, `candidate` | The ratified approval and exact candidate head. |
