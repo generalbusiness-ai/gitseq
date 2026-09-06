@@ -1,0 +1,4 @@
+=== RUN   TestWhoamiRetriesOneConcurrentFrontierMove
+--- PASS: TestWhoamiRetriesOneConcurrentFrontierMove (1.28s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	2.602s
