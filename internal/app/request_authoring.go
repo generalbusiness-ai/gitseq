@@ -193,27 +193,124 @@ func reproducibleRequestSchemas(verb Verb) []string {
 // half of it — target_repo and target_head, never target_ref — for the
 // caller's own body to carry into an ordinary rebuild.
 //
-// The rebuild is used only if it is byte for byte the accepted act, so this
-// can produce an exact replay or nothing. It is not a retry cache, holds no
-// state, and cannot turn a different act into an accepted one: everything the
-// caller stated, the destination ref included, still has to agree.
+// held reports whether any act at all is accepted under the key. A held key
+// whose act this path cannot rebuild — a different verb, a payload shape it
+// does not write — comes back held with a nil reproduction: the kernel would
+// refuse the reuse, and the caller is told so before anything is appended.
 func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed25519.PrivateKey,
-	actorName, key string, verb Verb) (*requestReproduction, kernel.Event, bool) {
-	allowed := reproducibleRequestSchemas(verb)
-	if key == "" || len(allowed) == 0 {
+	actorName, key string, verb Verb) (reproduction *requestReproduction, prior kernel.Event, held bool) {
+	prior, held = w.priorActUnderKey(ctx, private, actorName, key)
+	if !held {
 		return nil, kernel.Event{}, false
 	}
-	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
-		w.idempotencyNamespace(actorName), key)
-	prior, exists, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !exists || !slices.Contains(allowed, prior.Intent.Schema) {
-		return nil, kernel.Event{}, false
+	if !slices.Contains(reproducibleRequestSchemas(verb), prior.Intent.Schema) {
+		return nil, prior, true
 	}
 	accepted, err := workroom.Decode(prior.Intent.Schema, prior.Payload)
 	if err != nil {
-		return nil, kernel.Event{}, false
+		return nil, prior, true
 	}
 	return &requestReproduction{schema: prior.Intent.Schema, measurement: requestMeasurementOf(accepted)}, prior, true
+}
+
+// priorActUnderKey is the retry lookup itself: the act this actor's key
+// already names in this log, found by the identity the kernel indexes —
+// target log, actor key, namespace and key — which needs nothing measured.
+func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (kernel.Event, bool) {
+	if key == "" {
+		return kernel.Event{}, false
+	}
+	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
+		w.idempotencyNamespace(actorName), key)
+	prior, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
+	if err != nil || !held {
+		return kernel.Event{}, false
+	}
+	return prior, true
+}
+
+// AcceptedActUnderKey reports the event identifier this actor's key already
+// names in the log. A batch uses it to let a label of an act the log already
+// holds name that act rather than a placeholder, so a later act in the same
+// batch that cites the label is rebuilt exactly and recognised as the retry it
+// is.
+func (w *Workspace) AcceptedActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (string, bool) {
+	prior, held := w.priorActUnderKey(ctx, private, actorName, key)
+	if !held {
+		return "", false
+	}
+	return w.EventID(prior.Commit), true
+}
+
+// requestRetry is what the log says about an act filed under a key: nothing
+// is held there, the act is the one held there, or something else is.
+type requestRetry int
+
+const (
+	// freshRequest: no accepted act holds the key, so this is a first filing
+	// and measures the world as it stands.
+	freshRequest requestRetry = iota
+	// replayedRequest: the act rebuilds byte for byte to the accepted one, so
+	// the submission replays and nothing is appended.
+	replayedRequest
+	// conflictingRequest: an accepted act holds the key and this act is not
+	// it. The kernel refuses the reuse, and so does everything in front of it.
+	conflictingRequest
+)
+
+// acceptedRequestReplay is the one classification of a keyed request filing,
+// shared by the signing path and by the guarded-replacement preflight so the
+// two cannot disagree about what a key already names.
+//
+// A held key is answered by rebuilding the caller's whole act — old request,
+// words, bases, body, attachments — on the accepted act's schema and
+// measurement, and comparing bytes. Everything the caller stated has to
+// agree; the only value taken from the log rather than from the caller is the
+// retirement event a guarded replacement names, because that is the result
+// of the pair's first act and not a choice the caller made. A rebuild that
+// differs, or that cannot be built at all, is a conflict: the key is spent on
+// an act this one is not, and no fresh measurement is taken in its name.
+//
+// The rebuild is used only when it is byte for byte the accepted act, so this
+// can produce an exact replay or a refusal, never an accepted act from a
+// different one. It holds no state and is not a retry cache.
+func (w *Workspace) acceptedRequestReplay(ctx context.Context, private ed25519.PrivateKey, actorName string,
+	act Act, snapshot *Snapshot) (kernel.Request, requestRetry, error) {
+	if !w.mayReproduceAcceptedRequest(ctx, snapshot, act) {
+		return kernel.Request{}, freshRequest, nil
+	}
+	reproduction, prior, held := w.acceptedRequestReproduction(ctx, private, actorName, act.IdempotencyKey, act.Verb)
+	if !held {
+		return kernel.Request{}, freshRequest, nil
+	}
+	if reproduction == nil {
+		return kernel.Request{}, conflictingRequest, nil
+	}
+	if act.Verb == VerbReassignIfUnclaimed && act.Retirement == "" {
+		accepted, err := workroom.Decode(prior.Intent.Schema, prior.Payload)
+		if err != nil {
+			return kernel.Request{}, conflictingRequest, nil
+		}
+		if replacement, ok := accepted.(*workroom.ReassignIfUnclaimed); ok {
+			act.Retirement = replacement.Expectation.Retirement
+		}
+	}
+	replay, err := w.buildAct(ctx, private, actorName, act, snapshot, reproduction)
+	if err != nil {
+		return kernel.Request{}, conflictingRequest, err
+	}
+	if !replay.Signed.Equal(prior.Signed) {
+		return kernel.Request{}, conflictingRequest, nil
+	}
+	return replay, replayedRequest, nil
+}
+
+// errReusedKey is the refusal a conflicting key earns here, carrying the
+// kernel's own identity for it so a caller cannot tell the two apart and does
+// not have to. It names the key and never the accepted act: that act is the
+// caller's own to look up, and the refusal is not a pointer to it.
+func errReusedKey(key string) error {
+	return fmt.Errorf("%w: %q already names an accepted act this filing does not rebuild", kernel.ErrIdempotencyConflict, key)
 }
 
 // requestMeasurementOf reads the server-derived half of the target triple an
@@ -245,7 +342,7 @@ func requestMeasurementOf(payload any) map[string]string {
 // it appends the guarded retirement, and exactly what buildAct applies again
 // when it signs, so the two cannot drift.
 func (w *Workspace) guardedReplacementBody(ctx context.Context, body map[string]string, reproduction *requestReproduction) (map[string]string, error) {
-	normalized, err := w.normalizeGuardedRequestShape(ctx, body)
+	normalized, err := w.normalizeGuardedRequestShape(ctx, body, reproduction != nil)
 	if err != nil {
 		return nil, err
 	}
@@ -268,22 +365,35 @@ func (w *Workspace) guardedReplacementBody(ctx context.Context, body map[string]
 // retirement is appended.
 //
 // The pair is two acts in order: the retirement, then the replacement. Every
-// refusal the replacement's own body earns — its required fields, an address
-// nobody holds, a reserved field, the result it states, and the ref that
-// result names — is knowable before either act. Learning it after the first
-// act is what leaves the original request withdrawn with no successor and the
-// frontier moved, so those rules run here, over the caller's own body, through
-// the same code that will judge it again at signing. The authoritative
-// judgement stays at append, where the frontier is fixed; nothing here decides
-// anything, and the guard on the old request is not this preflight's question.
+// refusal the replacement earns for what the caller stated — its required
+// fields, an address nobody holds, a reserved field, the result it states,
+// the ref that result names, and a key already spent on some other act — is
+// knowable before either act. Learning it after the first act is what leaves
+// the original request withdrawn with no successor and the frontier moved, so
+// those rules run here, over the caller's whole intent, through the same code
+// that will judge it again at signing. The authoritative judgement stays at
+// append, where the frontier is fixed; nothing here decides anything, and the
+// guard on the old request is not this preflight's question.
 //
-// A retry is answered the way the signing path answers one: from the act
-// already accepted under the replacement's own key. Resuming a landed pair
-// therefore reads no ref here either, so a branch that has since gone cannot
-// refuse a caller the acts they already hold.
+// act is the replacement exactly as the surface will file it, less the
+// retirement it cannot yet name. A key already held is classified the way
+// signing classifies it: the pair is a retry only if this whole replacement
+// rebuilds to the accepted act, in which case no ref is read and a branch that
+// has since gone cannot refuse a caller the acts they already hold; anything
+// else under a held key is refused now, before a retirement is appended in its
+// name. A fresh replacement is judged over the live roster and the ref as it
+// stands.
 func (w *Workspace) PreflightGuardedReplacement(ctx context.Context, private ed25519.PrivateKey,
-	actorName, key string, body map[string]string) error {
-	reproduction, _, _ := w.acceptedRequestReproduction(ctx, private, actorName, key, VerbReassignIfUnclaimed)
-	_, err := w.guardedReplacementBody(ctx, body, reproduction)
+	actorName string, act Act) error {
+	_, retry, err := w.acceptedRequestReplay(ctx, private, actorName, act, nil)
+	switch {
+	case err != nil:
+		return err
+	case retry == replayedRequest:
+		return nil
+	case retry == conflictingRequest:
+		return errReusedKey(act.IdempotencyKey)
+	}
+	_, err = w.guardedReplacementBody(ctx, act.Body, nil)
 	return err
 }

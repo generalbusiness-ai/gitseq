@@ -1667,7 +1667,12 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := workspace.PreflightGuardedReplacement(ctx, private, actor, *key+"/request", body); err != nil {
+	replacementAct := app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest,
+		Text: *message, Body: body,
+		RestsOn: rests, IdempotencyKey: *key + "/request",
+	}
+	if err := workspace.PreflightGuardedReplacement(ctx, private, actor, replacementAct); err != nil {
 		return explainLifecycleRefusal(err)
 	}
 	retirement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
@@ -1677,11 +1682,8 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	replacement, err := submitAct(ctx, workspace, serverURL, actor, app.Act{
-		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirement.ID,
-		Text: *message, Body: body,
-		RestsOn: rests, IdempotencyKey: *key + "/request",
-	})
+	replacementAct.Retirement = retirement.ID
+	replacement, err := submitAct(ctx, workspace, serverURL, actor, replacementAct)
 	if err != nil {
 		return fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirement.ID, err)
 	}
@@ -1979,8 +1981,16 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 				return position, batchFail("admission", "%v", err)
 			}
 		}
+		// A label names the event its act will mint. Until then it stands
+		// for a placeholder, except when the log already holds that act
+		// under its key: then the label names the real event, so a later act
+		// citing it — a replacement naming its retirement — is rebuilt as
+		// it was accepted and recognised as a retry instead of a conflict.
 		if entry.Label != "" {
 			minted[entry.Label] = syntheticEvent
+			if accepted, held := workspace.AcceptedActUnderKey(ctx, private, actorName, entry.IdempotencyKey); held {
+				minted[entry.Label] = accepted
+			}
 		}
 	}
 	return 0, nil

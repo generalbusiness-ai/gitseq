@@ -1361,7 +1361,13 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	if len(identity.private) == 0 {
 		return nil, errors.New("selected identity has no signing key")
 	}
-	if err := identity.workspace.PreflightGuardedReplacement(ctx, identity.private, identity.selector, key+"/request", body); err != nil {
+	replacementAct := app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest,
+		Text:    stringValue(call.Arguments["text"]),
+		Body:    body,
+		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
+	}
+	if err := identity.workspace.PreflightGuardedReplacement(ctx, identity.private, identity.selector, replacementAct); err != nil {
 		return nil, err
 	}
 	retirement, err := s.submit(ctx, current, app.Act{
@@ -1375,12 +1381,8 @@ func (s *mcpServer) reassignIfUnclaimed(ctx context.Context, current *room, call
 	if !ok {
 		return nil, errors.New("guarded retirement returned no durable record")
 	}
-	replacement, err := s.submit(ctx, current, app.Act{
-		Verb: app.VerbReassignIfUnclaimed, Target: oldRequest, Retirement: retirementRecord.ID,
-		Text:    stringValue(call.Arguments["text"]),
-		Body:    body,
-		RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: key + "/request",
-	}, identity)
+	replacementAct.Retirement = retirementRecord.ID
+	replacement, err := s.submit(ctx, current, replacementAct, identity)
 	if err != nil {
 		return nil, fmt.Errorf("guarded retirement %s landed or replayed, but its replacement was refused: %w; re-read the old request before retrying", retirementRecord.ID, err)
 	}

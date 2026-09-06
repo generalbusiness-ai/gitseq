@@ -743,3 +743,133 @@ func TestCLIReassignmentRecoversAnAcceptedReplacement(t *testing.T) {
 		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
 	}
 }
+
+// A key already spent on the replacement of one request cannot be reused to
+// replace another. The preflight classifies the whole replacement against the
+// act the key holds, so the reuse is refused before a retirement is appended,
+// whatever ref the new replacement names: nothing borrows the accepted act's
+// measurement, and nothing measures the absent ref in its name.
+func TestCLIReassignmentRefusesAReusedKeyBeforeTheRetirement(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := fixture.file("collision-first", "the first request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := fixture.file("collision-other", "the other request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, fixture.repo, "branch", "side")
+	second := fixture.workspace.View().Actors["second"].Fingerprint
+	retirement, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbRetireIfUnclaimed, Target: first, Text: "retire the first",
+		IdempotencyKey: "collision-seed/retirement",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: first, Retirement: retirement.Record.ID,
+		Text: "ask again", Body: map[string]string{"to": second, "conditions": "do it", "target_ref": "refs/heads/side"},
+		IdempotencyKey: "collision/request",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"refs/heads/absent", "refs/heads/main"} {
+		t.Run(ref, func(t *testing.T) {
+			before := fixture.frontier()
+			err := reassignIfUnclaimedCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "operator", "--to", "@second",
+				"--text", "ask again", "--conditions", "do it",
+				"--body", "target_ref=" + ref, "--idempotency-key", "collision", other,
+			})
+			if err == nil {
+				t.Fatalf("a replacement under a key spent on %s was accepted", first)
+			}
+			if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+				t.Fatalf("refusal %q is not the reused-key refusal", err)
+			}
+			if strings.Contains(err.Error(), "guarded retirement") {
+				t.Fatalf("the retirement was appended before the reuse was judged: %v", err)
+			}
+			if row := fixture.statement(other); row.Retired {
+				t.Fatalf("the other request was retired with no successor: %+v", row)
+			}
+			if after := fixture.frontier(); after != before {
+				t.Fatalf("the frontier moved from %s to %s on a refused reuse", before, after)
+			}
+		})
+	}
+}
+
+// A fresh replacement addresses the roster as it is: a performer who has been
+// retired is refused before the retirement is appended, the way every other
+// new request refuses them. An exact retry of a pair that landed before the
+// performer left still replays, because that pair is already in the log.
+func TestCLIReassignmentRefusesARetiredAddresseeBeforeTheRetirement(t *testing.T) {
+	fixture := newAuthoringFixture(t)
+	for _, name := range []string{"second", "gone"} {
+		if _, _, err := fixture.workspace.AddActor(fixture.ctx, "operator", name, "agent"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	landed, err := fixture.file("landed-old", "the landed request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := fixture.file("fresh-old", "the fresh request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reassign := func(key, to, old string) error {
+		return reassignIfUnclaimedCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--to", to,
+			"--text", "ask " + key, "--conditions", "do it",
+			"--body", "no_git_artifact=true", "--idempotency-key", key, old,
+		})
+	}
+	if err := reassign("before-leaving", "@second", landed); err != nil {
+		t.Fatalf("reassigning to a live performer: %v", err)
+	}
+	replacement := fixture.eventOf("ask before-leaving")
+	for _, name := range []string{"second", "gone"} {
+		if _, err := fixture.workspace.RetireActor(fixture.ctx, "operator", "@"+name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	frontier := fixture.frontier()
+	if err := reassign("before-leaving", "@second", landed); err != nil {
+		t.Fatalf("exact retry after the performer left: %v", err)
+	}
+	if again := fixture.eventOf("ask before-leaving"); again != replacement {
+		t.Fatalf("the retry returned %s, want the original %s", again, replacement)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the retry appended: frontier %s to %s", frontier, after)
+	}
+
+	err = reassign("to-gone", "@gone", fresh)
+	if err == nil {
+		t.Fatal("a fresh replacement addressed to a retired performer was accepted")
+	}
+	if !strings.Contains(err.Error(), "addresses no known actor") {
+		t.Fatalf("refusal %q does not name the unknown addressee", err)
+	}
+	if strings.Contains(err.Error(), "guarded retirement") {
+		t.Fatalf("the retirement was appended before the addressee was judged: %v", err)
+	}
+	if row := fixture.statement(fresh); row.Retired {
+		t.Fatalf("the fresh request was retired with no successor: %+v", row)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the frontier moved from %s to %s on a refused addressee", frontier, after)
+	}
+}

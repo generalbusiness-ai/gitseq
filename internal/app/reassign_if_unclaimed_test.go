@@ -208,7 +208,7 @@ func TestGuardedRequestHistoricalFallbackDoesNotMaskCustodyFailure(t *testing.T)
 	fixture.workspace.MetaDir = blocked
 	_, err := fixture.workspace.normalizeGuardedRequestShape(context.Background(), map[string]string{
 		"to": "@missing", "conditions": "finish", "no_git_artifact": "true",
-	})
+	}, true)
 	if err == nil || !strings.Contains(err.Error(), "re-read configuration custody") {
 		t.Fatalf("guarded normalization error = %v, want custody failure", err)
 	}

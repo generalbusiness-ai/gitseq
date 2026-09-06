@@ -652,3 +652,157 @@ func TestMCPReassignmentRecoversAnAcceptedReplacement(t *testing.T) {
 		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
 	}
 }
+
+// The same two controls through the adapter: a key spent on another
+// replacement, and a performer who has left the roster, are both refused
+// before the retirement, and an exact retry of a landed pair still replays
+// after the performer left.
+func TestMCPReassignmentRefusesAReusedKeyBeforeTheRetirement(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	if _, _, err := fixture.workspace.AddActor(fixture.ctx, "human", "second", "agent"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := fixture.file("mcp-collision-first", "the first request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := fixture.file("mcp-collision-other", "the other request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mcpAuthoringGit(t, fixture.repo, "branch", "side")
+	second := fixture.workspace.View().Actors["second"].Fingerprint
+	retirement, err := fixture.workspace.Act(fixture.ctx, "human", app.Act{
+		Verb: app.VerbRetireIfUnclaimed, Target: first, Text: "retire the first",
+		IdempotencyKey: "mcp-collision-seed/retirement",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.workspace.Act(fixture.ctx, "human", app.Act{
+		Verb: app.VerbReassignIfUnclaimed, Target: first, Retirement: retirement.Record.ID,
+		Text: "ask again", Body: map[string]string{"to": second, "conditions": "do it", "target_ref": "refs/heads/side"},
+		IdempotencyKey: "mcp-collision/request",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ref := range []string{"refs/heads/absent", "refs/heads/main"} {
+		before := fixture.frontier()
+		_, _, err := fixture.adapter.call(fixture.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
+			"old_request": other, "to": "@second", "text": "ask again", "conditions": "do it",
+			"body":            map[string]any{"target_ref": ref},
+			"idempotency_key": "mcp-collision",
+		}})
+		if err == nil {
+			t.Fatalf("a replacement onto %s under a key spent on %s was accepted", ref, first)
+		}
+		if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+			t.Fatalf("refusal %q is not the reused-key refusal", err)
+		}
+		if strings.Contains(err.Error(), "guarded retirement") {
+			t.Fatalf("the retirement was appended before the reuse was judged: %v", err)
+		}
+		if fixture.retired(other) {
+			t.Fatalf("the other request was retired with no successor")
+		}
+		if after := fixture.frontier(); after != before {
+			t.Fatalf("the frontier moved from %s to %s on a refused reuse", before, after)
+		}
+	}
+}
+
+func TestMCPReassignmentRefusesARetiredAddresseeBeforeTheRetirement(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	for _, name := range []string{"second", "gone"} {
+		if _, _, err := fixture.workspace.AddActor(fixture.ctx, "human", name, "agent"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	landed, err := fixture.file("mcp-landed-old", "the landed request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh, err := fixture.file("mcp-fresh-old", "the fresh request", map[string]string{
+		"to": "@agent", "conditions": "do it", "no_git_artifact": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reassign := func(key, to, old string) (string, error) {
+		value, _, err := fixture.adapter.call(fixture.ctx, toolCall{Name: "reassign_if_unclaimed", Arguments: map[string]any{
+			"old_request": old, "to": to, "text": "ask " + key, "conditions": "do it",
+			"body":            map[string]any{"no_git_artifact": "true"},
+			"idempotency_key": key,
+		}})
+		if err != nil {
+			return "", err
+		}
+		pair, ok := value.(map[string]any)
+		if !ok {
+			t.Fatalf("reassignment result = %#v", value)
+		}
+		record, ok := submissionRecord(pair["request"])
+		if !ok {
+			t.Fatalf("replacement = %#v", pair["request"])
+		}
+		return record.ID, nil
+	}
+	replacement, err := reassign("mcp-before-leaving", "@second", landed)
+	if err != nil {
+		t.Fatalf("reassigning to a live performer: %v", err)
+	}
+	for _, name := range []string{"second", "gone"} {
+		if _, err := fixture.workspace.RetireActor(fixture.ctx, "human", "@"+name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	frontier := fixture.frontier()
+	again, err := reassign("mcp-before-leaving", "@second", landed)
+	if err != nil {
+		t.Fatalf("exact retry after the performer left: %v", err)
+	}
+	if again != replacement {
+		t.Fatalf("the retry returned %s, want the original %s", again, replacement)
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the retry appended: frontier %s to %s", frontier, after)
+	}
+
+	_, err = reassign("mcp-to-gone", "@gone", fresh)
+	if err == nil {
+		t.Fatal("a fresh replacement addressed to a retired performer was accepted")
+	}
+	if !strings.Contains(err.Error(), "addresses no known actor") {
+		t.Fatalf("refusal %q does not name the unknown addressee", err)
+	}
+	if strings.Contains(err.Error(), "guarded retirement") {
+		t.Fatalf("the retirement was appended before the addressee was judged: %v", err)
+	}
+	if fixture.retired(fresh) {
+		t.Fatal("the fresh request was retired with no successor")
+	}
+	if after := fixture.frontier(); after != frontier {
+		t.Fatalf("the frontier moved from %s to %s on a refused addressee", frontier, after)
+	}
+}
+
+// retired reports whether the fold now shows the statement retired.
+func (m mcpAuthoring) retired(event string) bool {
+	m.t.Helper()
+	snapshot, err := m.workspace.Snapshot(m.ctx)
+	if err != nil {
+		m.t.Fatal(err)
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Event == event {
+			return statement.Retired
+		}
+	}
+	m.t.Fatalf("statement %s is not in the projection", event)
+	return false
+}

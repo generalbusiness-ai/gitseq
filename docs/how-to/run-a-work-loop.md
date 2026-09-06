@@ -157,7 +157,7 @@ work):
 CHILD=$(gs state --repo "$REPO" --as bot --kind request \
   --text 'The changelog needs a release-date convention' \
   --body to=@alice --body conditions='a stated convention, in the changelog' \
-  --body no_git_artifact=true --rests-on "$REQUEST")
+  --body target=inherit --rests-on "$REQUEST")
 gs state --repo "$REPO" --as bot --kind assert \
   --text 'Found while adding the changelog: no convention for release dates' \
   --rests-on "$CHILD" >/dev/null

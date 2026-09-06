@@ -66,26 +66,32 @@ replacement of a legacy request must say in its own words what it owes.
 
 The pair is two acts in order, so a refusal the replacement earns after the
 retirement has landed would leave the old request withdrawn with nobody asked
-to do the work. Everything the replacement's own body can be judged on is
-therefore judged before the retirement is appended: a missing `--to` or
-`--conditions`, an address nobody holds, a reserved admission field, a missing
-or doubled result, a `target_ref` outside `refs/heads/`, one naming a ref that
-does not resolve here, and a supplied `target_repo` or `target_head`. Each of
-those refuses with nothing appended and the old request still open. What is
-not knowable then stays where it belongs: the guard on the old request — no
-admitted promise, no direct completion, no prior retirement — is judged when
-each act is appended, against the frontier that act actually joins.
+to do the work. Everything the replacement can be judged on from what you
+stated is therefore judged before the retirement is appended: a missing `--to`
+or `--conditions`, an address current custody does not hold — a performer who
+has since been retired included — a reserved admission field, a missing or
+doubled result, a `target_ref` outside `refs/heads/`, one naming a ref that
+does not resolve here, a supplied `target_repo` or `target_head`, and an
+`--idempotency-key` already spent on some other act. Each of those refuses with
+nothing appended and the old request still open. What is not knowable then
+stays where it belongs: the guard on the old request — no admitted promise, no
+direct completion, no prior retirement — is judged when each act is appended,
+against the frontier that act actually joins.
 
 The command prints JSON containing the retirement and replacement request event
 identifiers. If the first act lands and the second loses a race, the error names
 the retirement. Re-read the old request, then retry the exact command only when
 the guard still describes what you intend. An exact retry replays the landed
 prefix instead of appending it again. The replacement is authored on the same
-path as [`gs state`](state.md#retrying-a-request), so its
-retry is answered from the log before any ref is read: it replays even after
-the branch its `target_ref` named has gone, while a reused key naming a
-different branch is refused rather than answered with the accepted
-replacement.
+path as [`gs state`](state.md#retrying-a-request), so its retry is answered
+from the log before any ref is read, and the preflight answers it the same way:
+a key already holding a replacement is a retry only when the whole command —
+old request, words, bases and body — rebuilds to that accepted act, in which
+case it replays even after the branch its `target_ref` named has gone or the
+performer it named has left the roster. A reused key that names a different
+old request, a different branch, or any other change is refused as a reused
+key before any retirement, rather than answered with the accepted replacement
+or allowed to withdraw a second request in its name.
 
 ## Deliberate withdrawal is different
 

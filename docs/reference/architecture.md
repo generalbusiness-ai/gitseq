@@ -1607,9 +1607,12 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   replays after the branch it named has moved or been deleted outright. Only
   the server-derived half of the triple is recovered: `target_ref` stays
   whatever the caller sent, so a reused key naming a different branch rebuilds
-  a different act, falls through to a fresh measurement, and is refused as a
-  reused key rather than answered with the request filed against the old
-  destination. A fresh filing naming a ref that does not resolve is refused.
+  a different act and is refused as a reused key, with no fresh measurement
+  taken in its name, rather than answered with the request filed against the
+  old destination. That classification — nothing held under the key, the
+  accepted act rebuilt byte for byte, or something else — is made once, by one
+  function, for the signing path and for every preflight in front of it. A
+  fresh filing naming a ref that does not resolve is refused.
 
   The accepted act's schema is recovered with it, and is what the rebuild is
   signed under: `workroom/state@2` or `workroom/reassign-if-unclaimed@0` for a
@@ -1629,10 +1632,17 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   earns a refusal for is knowable before either act, and learning it after the
   first one is what would leave the old request withdrawn with no successor and
   the frontier moved. The preflight decides nothing: it is the same code, over
-  the caller's own body, and it answers a retry from the accepted act exactly
-  as the signing path does, so resuming a landed pair reads no ref there
-  either. The guard itself — no admitted promise, no direct completion — is not
-  knowable then and stays at append, against the frontier each act joins.
+  the whole replacement the surface will file — old request, words, bases and
+  body, less the retirement it cannot yet name — and it classifies a held key
+  exactly as the signing path does, so a landed pair resumes without reading a
+  ref, and a key spent on some other act is refused before a retirement is
+  appended in its name. A fresh replacement resolves its addresses through
+  current custody like every other new request, so a performer who has been
+  retired is refused there too; only the byte-for-byte retry of a landed pair
+  may fall back to the durable roster entry retirement keeps, because that
+  comparison is what stops the fallback naming anyone new. The guard itself —
+  no admitted promise, no direct completion — is not knowable then and stays at
+  append, against the frontier each act joins.
 
   A mutating merge is where the landing obligation of layer 5 meets Git. The
   destination is measured in the governed checkout — never read from a signed

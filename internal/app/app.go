@@ -1299,13 +1299,14 @@ func (w *Workspace) BuildActRequestReadOnly(ctx context.Context, snapshot Snapsh
 // to an ordinary fresh filing, which measures the ref as it stands now and
 // leaves the kernel to refuse the reused key.
 func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.PrivateKey, actorName string, act Act, snapshot *Snapshot) (kernel.Request, error) {
-	if w.mayReproduceAcceptedRequest(ctx, snapshot, act) {
-		if reproduction, prior, found := w.acceptedRequestReproduction(ctx, private, actorName, act.IdempotencyKey, act.Verb); found {
-			replay, err := w.buildAct(ctx, private, actorName, act, snapshot, reproduction)
-			if err == nil && replay.Signed.Equal(prior.Signed) {
-				return replay, nil
-			}
-		}
+	replay, retry, err := w.acceptedRequestReplay(ctx, private, actorName, act, snapshot)
+	switch {
+	case err != nil:
+		return kernel.Request{}, err
+	case retry == replayedRequest:
+		return replay, nil
+	case retry == conflictingRequest:
+		return kernel.Request{}, errReusedKey(act.IdempotencyKey)
 	}
 	return w.buildAct(ctx, private, actorName, act, snapshot, nil)
 }
@@ -1543,16 +1544,22 @@ func (w *Workspace) refuseUnratifiableTarget(ctx context.Context, target string)
 	return nil
 }
 
-// normalizeGuardedRequestShape keeps a guarded replacement reproducible after
-// its performer leaves local custody. Ordinary requests intentionally resolve
-// only current custody. A retry of this two-act purpose must reconstruct the
-// same signed fingerprint after the successful pair, though, so it may fall
-// back to the durable roster entry that retirement keeps for attribution.
-// Admission still requires that fingerprint to be live for every new act.
-func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[string]string) (map[string]string, error) {
+// normalizeGuardedRequestShape holds a guarded replacement to the request
+// shape. A fresh replacement resolves its addresses the way every other new
+// request does, through current custody only, so a performer who has left the
+// roster is refused before the retirement it would follow. A retry of a landed
+// pair has to reconstruct the same signed fingerprint after that performer
+// left, though, so it alone may fall back to the durable roster entry that
+// retirement keeps for attribution; the byte-for-byte comparison at the end of
+// that path is what keeps the fallback from ever naming anyone new.
+func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[string]string, retry bool) (map[string]string, error) {
 	normalized := cloneBody(body)
 	if strings.TrimSpace(normalized["conditions"]) == "" {
 		return nil, fmt.Errorf("%s state requires body.conditions", workroom.KindRequest)
+	}
+	resolve := w.resolveLiveAddress
+	if retry {
+		resolve = w.resolveHistoricalAddress
 	}
 	for _, field := range []string{"to", "hold_owner"} {
 		address := strings.TrimSpace(normalized[field])
@@ -1562,13 +1569,23 @@ func (w *Workspace) normalizeGuardedRequestShape(ctx context.Context, body map[s
 			}
 			continue
 		}
-		fingerprint, err := w.resolveHistoricalAddress(ctx, address)
+		fingerprint, err := resolve(ctx, address)
 		if err != nil {
 			return nil, fmt.Errorf("%s body.%s: %w", workroom.KindRequest, field, err)
 		}
 		normalized[field] = fingerprint
 	}
 	return normalized, nil
+}
+
+// resolveLiveAddress is the address rule for a new request on any surface:
+// current custody, and nothing older.
+func (w *Workspace) resolveLiveAddress(_ context.Context, address string) (string, error) {
+	actor, err := w.ResolveActorAddress(address)
+	if err != nil {
+		return "", err
+	}
+	return actor.Fingerprint, nil
 }
 
 // resolveHistoricalAddress is normalizeGuardedRequestShape's address rule: current

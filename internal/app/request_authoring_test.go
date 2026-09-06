@@ -185,20 +185,32 @@ func TestReusedKeyWithADifferentDestinationIsRefused(t *testing.T) {
 		t.Fatalf("the accepted request now names %q", got)
 	}
 
-	// A reused key that names a branch nobody has is refused for that reason,
-	// which is how the caller can tell the fresh measurement was actually
-	// taken rather than the accepted act's head quietly reused.
+	// A reused key that names a branch nobody has is refused as the same
+	// conflict, and no measurement is taken in its name: the key is spent on
+	// an act this one is not, and the accepted act's head is neither reused
+	// for it nor replaced by a fresh reading of an absent ref.
 	absent := stated
 	absent.body = map[string]string{"to": "agent", "conditions": "it lands", "target_ref": "refs/heads/nowhere"}
 	event, err = fixture.file(absent)
 	if err == nil {
 		t.Fatalf("a reused key naming an absent branch was accepted as %s", event)
 	}
-	if !strings.Contains(err.Error(), "does not resolve in") {
-		t.Fatalf("refusal %q does not name the unresolvable ref", err)
+	if !errors.Is(err, kernel.ErrIdempotencyConflict) {
+		t.Fatalf("refusal %v, want %v", err, kernel.ErrIdempotencyConflict)
 	}
 	if after := fixture.frontier(); after != frontier {
 		t.Fatalf("a refused retarget appended: frontier %s to %s", frontier, after)
+	}
+	// A fresh key naming the same absent branch is measured and refused for
+	// the ref, which is how the two refusals are told apart.
+	fresh := absent
+	fresh.key = "retarget-fresh"
+	event, err = fixture.file(fresh)
+	if err == nil {
+		t.Fatalf("a fresh filing naming an absent branch was accepted as %s", event)
+	}
+	if !strings.Contains(err.Error(), "does not resolve in") {
+		t.Fatalf("refusal %q does not name the unresolvable ref", err)
 	}
 }
 

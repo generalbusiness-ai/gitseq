@@ -38,13 +38,14 @@ It takes no positional arguments.
 REPO="$(mktemp -d)/project"
 git init -q "$REPO"
 git -C "$REPO" commit -q --allow-empty -m 'Initial commit'
+BASE=$(git -C "$REPO" branch --show-current)
 gs init --repo "$REPO" --operator alice >/dev/null
 gs actor-add --repo "$REPO" --as alice --name bot --kind agent >/dev/null
 gs actor-add --repo "$REPO" --as alice --name carol --kind agent >/dev/null
 
 REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --text 'Add a changelog' --body to=@bot --body conditions='it exists' \
-  --body no_git_artifact=true)
+  --body target_ref="refs/heads/$BASE")
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST")
 
