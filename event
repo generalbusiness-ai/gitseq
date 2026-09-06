@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c11603cdf4bd9fddb346c9037e948370c779c760","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/spine.ts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c49a4f7f0de0ab6228063f28f1d7cde2a9c53350","text":"Merge retired a covered predecessor; the successor is at ui/test/composed-citations.test.mjs."}
