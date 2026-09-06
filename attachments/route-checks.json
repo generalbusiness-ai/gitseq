@@ -1,0 +1,66 @@
+[
+  {
+    "room": "gitseq",
+    "url": "http://127.0.0.1:7777",
+    "pid": 91565,
+    "bundle_index_matches_delivered_main": true,
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8370ff141ffb6401309382d240b32b79bb2bc4f2",
+      "path": "internal/service/uidist/index.html"
+    },
+    "resolved_commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+    "status": "ready",
+    "content_bytes": 458,
+    "content_sha256": "b30710f0ae3d59b96212c3558d13f456b74f59a71b5777f329da7f456db74242",
+    "matches_exact_source_or_attachment": true,
+    "elapsed_seconds": 0.054
+  },
+  {
+    "room": "tailapp",
+    "url": "http://127.0.0.1:7778",
+    "pid": 92457,
+    "bundle_index_matches_delivered_main": true,
+    "request": {
+      "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:19b5ca6210ffdbf4ea29e419faae27649a60db46",
+      "path": "docs/reference/resident-upgrade.md"
+    },
+    "resolved_commit": "94baf5a979e11f35333e1340c4d42947e65abddd",
+    "status": "ready",
+    "content_bytes": 6947,
+    "content_sha256": "b7c1debff0c2d5d667c9f951c019078b6ffd6a1d6852e0b9993015ea16bab669",
+    "matches_exact_source_or_attachment": true,
+    "elapsed_seconds": 0.052
+  },
+  {
+    "room": "gitseq-chess",
+    "url": "http://127.0.0.1:7779",
+    "pid": 92764,
+    "bundle_index_matches_delivered_main": true,
+    "request": {
+      "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:8698512a2427d4a0c816dab3c7436cffd3420a60",
+      "attachment": "review.md"
+    },
+    "resolved_commit": "8698512a2427d4a0c816dab3c7436cffd3420a60",
+    "status": "ready",
+    "content_bytes": 7214,
+    "content_sha256": "d7afedafa551f8d419c1af58aec1f02eb148125e96e0751fd57b849a283ba28e",
+    "matches_exact_source_or_attachment": true,
+    "elapsed_seconds": 0.053
+  },
+  {
+    "room": "gitseq-inventory",
+    "url": "http://127.0.0.1:7780",
+    "pid": 93054,
+    "bundle_index_matches_delivered_main": true,
+    "request": {
+      "event": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:4e09e8f070c6bbac62c4339350e69fa0ce61bf9f",
+      "path": "docs/reference/architecture.md"
+    },
+    "resolved_commit": "319c9a08fef247f0bd8e8a784dc52b5af8557f9d",
+    "status": "ready",
+    "content_bytes": 15773,
+    "content_sha256": "e1cfb17d0f069ec74e8bf5b84af70434f60e28d4b3d0b7cafb180d0fa9086974",
+    "matches_exact_source_or_attachment": true,
+    "elapsed_seconds": 0.053
+  }
+]
