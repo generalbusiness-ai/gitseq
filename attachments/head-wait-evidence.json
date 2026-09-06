@@ -1,0 +1,188 @@
+{
+  "checked_utc": "2026-09-06T23:45:17.681050+00:00",
+  "main": "6f4864fdaf2069f9ab917286e537db05bea12f51",
+  "original": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5fd10f2cc1f1d8ef88ad80f9bef8cff3a377ee92",
+  "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20b9a7474ad9a9535a3fe2625c9a667cb22b665e",
+  "prior_partial_delivery": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fafd0c2e78e66d88506a6d3cb5607e72fffc549d",
+  "delivered": "Cancellation-independent Workspace.snapshotFlight, bounded lock-free rebuild progress and atomic verified publication. Aligned waiters coalesce. Bounded actor wait delta is already delivered.",
+  "source": "service.wait line398 calls Poll line424 with a 250ms ticker per wait call; each check uses statusFromLive and Snapshot. app.snapshotWithSource line2490 holds snapshotMu across head/read/audit/fold. gitstore.Head line425 is git rev-parse --verify. Architecture line270 permits bounded polling for external ordinary Git changes.",
+  "probe": {
+    "command": "go test ./internal/service -run '^TestPlanner144WaitCost$' -count=1 -v",
+    "result": "PASS 26.985s",
+    "method": "Real NewObserved service.wait and built-in Git observer, fresh synthetic app.Init log at depths1/31; one or eight concurrent waiters, aligned or 23ms apart; timeout1100ms, three repeats. Assert unchanged frontier and no unexpected live changes. Only the measurement window counts Git processes; fixture setup excluded.",
+    "results": [
+      {
+        "depth": 1,
+        "scenario": "one",
+        "repeat": 1,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1101.57
+      },
+      {
+        "depth": 1,
+        "scenario": "one",
+        "repeat": 2,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1100.361
+      },
+      {
+        "depth": 1,
+        "scenario": "one",
+        "repeat": 3,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.022
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-aligned",
+        "repeat": 1,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.025
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-aligned",
+        "repeat": 2,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.02
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-aligned",
+        "repeat": 3,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1101.067
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-staggered",
+        "repeat": 1,
+        "git_processes": 39,
+        "ref_processes": 39,
+        "mean_wait_ms": 1101.376
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-staggered",
+        "repeat": 2,
+        "git_processes": 40,
+        "ref_processes": 40,
+        "mean_wait_ms": 1101.391
+      },
+      {
+        "depth": 1,
+        "scenario": "eight-staggered",
+        "repeat": 3,
+        "git_processes": 40,
+        "ref_processes": 40,
+        "mean_wait_ms": 1101.504
+      },
+      {
+        "depth": 31,
+        "scenario": "one",
+        "repeat": 1,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.052
+      },
+      {
+        "depth": 31,
+        "scenario": "one",
+        "repeat": 2,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.049
+      },
+      {
+        "depth": 31,
+        "scenario": "one",
+        "repeat": 3,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1100.567
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-aligned",
+        "repeat": 1,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1100.366
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-aligned",
+        "repeat": 2,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.07
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-aligned",
+        "repeat": 3,
+        "git_processes": 5,
+        "ref_processes": 5,
+        "mean_wait_ms": 1102.047
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-staggered",
+        "repeat": 1,
+        "git_processes": 40,
+        "ref_processes": 40,
+        "mean_wait_ms": 1101.695
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-staggered",
+        "repeat": 2,
+        "git_processes": 40,
+        "ref_processes": 40,
+        "mean_wait_ms": 1101.711
+      },
+      {
+        "depth": 31,
+        "scenario": "eight-staggered",
+        "repeat": 3,
+        "git_processes": 40,
+        "ref_processes": 40,
+        "mean_wait_ms": 1101.461
+      }
+    ],
+    "limits": [
+      "Warm unchanged-frontier measurements at small depths; not large-depth performance acceptance.",
+      "Mean wait time measures the requested timeout, not external-change wake latency.",
+      "No before/after implementation comparison, cold-audit availability or failure-path measurement yet.",
+      "No actual resident, durable workroom, telemetry or keys modified.",
+      "Owned detached worktree removed after pass; probe copy and log retained."
+    ]
+  },
+  "current_behavior_bases": [
+    {
+      "path": "internal/app/app.go",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494ee033096e8120d62db5f33e853b3b99f82386",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "same_bytes_as_main": true
+    },
+    {
+      "path": "internal/service/server.go",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325",
+      "commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+      "same_bytes_as_main": true
+    },
+    {
+      "path": "docs/reference/architecture.md",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376",
+      "commit": "07753351d69c05dedec58f4e2561a793054312a5",
+      "same_bytes_as_main": true
+    }
+  ],
+  "ownership": "Claude confirmed in ephemeral replies read1660: no later delivery, disposition or assignment for remaining notifier, safe prior-snapshot availability or scaled measurements. Delivered flight/progress retained; current queue unchanged."
+}
