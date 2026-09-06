@@ -1,0 +1,76 @@
+{
+  "durable": {
+    "head": "3fa43f90cd1e76b9673acae9d3389f86d8c8364a",
+    "depth": 3928,
+    "projection": {
+      "artifacts": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7bfc28b144d68fefcfe29e24f991d15bdc18025b",
+          "path": "internal/inbox/inbox.go",
+          "commit": "7ecffd53013fd6ca45693a1a8e28b7c8d52432e8",
+          "stale": false
+        }
+      ],
+      "statements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321",
+          "lifecycle": "request",
+          "body": {}
+        },
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3b587e6ed5be5292b1ec7c0232a5e4ad3c3ee5c9",
+          "lifecycle": "request",
+          "body": {}
+        }
+      ],
+      "decisions": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7bfc28b144d68fefcfe29e24f991d15bdc18025b",
+          "verdict": "effective"
+        },
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3b587e6ed5be5292b1ec7c0232a5e4ad3c3ee5c9",
+          "verdict": "effective"
+        },
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321",
+          "verdict": "effective"
+        }
+      ],
+      "commitments": [
+        {
+          "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3b587e6ed5be5292b1ec7c0232a5e4ad3c3ee5c9",
+          "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+          "addressed_to": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "status": "open",
+          "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+          "target_ref": "refs/heads/recovery/resident-5d84-pending"
+        },
+        {
+          "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321",
+          "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+          "addressed_to": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "status": "open",
+          "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+          "target_ref": "refs/heads/main"
+        }
+      ],
+      "provenance": {
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7bfc28b144d68fefcfe29e24f991d15bdc18025b": [],
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321": [],
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3b587e6ed5be5292b1ec7c0232a5e4ad3c3ee5c9": []
+      }
+    }
+  },
+  "derivation": {
+    "kind": "Reduced functional classifier input, not a signed workroom snapshot",
+    "full_snapshot_sha256": "df29dbd88e2c3c7a1ae420c793e0659a4f70b1523b409598302f3557b36f1705",
+    "full_snapshot_bytes": 6765705,
+    "reachable_counts": {
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7bfc28b144d68fefcfe29e24f991d15bdc18025b": 16,
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2f561c9230c44429860fb7811c1d6f5901096321": 73,
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3b587e6ed5be5292b1ec7c0232a5e4ad3c3ee5c9": 26
+    },
+    "method": "Keep the selected artifact and all unsettled commitments/statements. Collapse effective historical provenance to reachability among active events and the selected artifact. Other artifacts cannot change this artifact classification. The full snapshot was tested first and is retained locally. Statement bodies retain only head/commit, the fields the classifier reads."
+  }
+}
