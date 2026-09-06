@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3beb029198fae6a3f67fc45b07f6d08e3530f7bc","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/review.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:45507fd7dbfada33516a004bc11d53b6c13f4a51","text":"Merge retired a covered predecessor; the successor is at internal/reviewguard/confirm.go."}
