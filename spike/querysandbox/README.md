@@ -46,6 +46,14 @@ is interrupted. The cancellation mutation opens the same sandbox with the
 deadline decision disabled, observes the named cancellation assertion fail,
 then restores the decision and checks it again.
 
+That mutation proof uses a 1 ms internal deadline and a separate 5 s caller
+watchdog to bound each query. Its named assertion accepts cancellation only
+while the caller context remains live: both deadlines return the same
+`errQueryCancelled` sentinel, so the sentinel alone cannot prove which guard
+acted. A real query with the internal guard disabled and an explicitly expired
+caller deadline confirms that watchdog cancellation fails the same assertion.
+The control needs no timing race, timeout increase, or retry.
+
 The host wrapper returns no more than 32 complete rows or 8 KiB of SQLite value
 data and marks a clipped result as truncated. These two result caps are Go
 wrapper checks, not SQLite authorizer decisions or full process-memory quotas.

@@ -116,14 +116,17 @@ func TestExpensiveQueryIsCancelled(t *testing.T) {
 
 func TestCancellationMutationProof(t *testing.T) {
 	_, path, _ := newFixture(t)
-	assertionFailure := func(sandbox *Sandbox) error {
+	assertionFailure := func(callerErr, queryErr error) error {
+		if callerErr != nil || !errors.Is(queryErr, errQueryCancelled) {
+			return fmt.Errorf("named expensive-query cancellation assertion failed: query=%v, caller=%v", queryErr, callerErr)
+		}
+		return nil
+	}
+	queryAssertionFailure := func(sandbox *Sandbox) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, err := sandbox.Query(ctx, expensiveQuery)
-		if !errors.Is(err, errQueryCancelled) {
-			return fmt.Errorf("named expensive-query cancellation assertion failed: %v", err)
-		}
-		return nil
+		return assertionFailure(ctx.Err(), err)
 	}
 
 	guardedOptions := defaultOptions()
@@ -132,7 +135,7 @@ func TestCancellationMutationProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := assertionFailure(guarded); err != nil {
+	if err := queryAssertionFailure(guarded); err != nil {
 		t.Fatal(err)
 	}
 	guarded.Close()
@@ -143,7 +146,18 @@ func TestCancellationMutationProof(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := assertionFailure(mutant); err == nil || !strings.Contains(err.Error(), "named expensive-query cancellation assertion failed") {
+	// A caller deadline produces the same sentinel as the internal guard.
+	// Expire it explicitly so this control needs no scheduler timing or wait.
+	watchdog, stopWatchdog := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer stopWatchdog()
+	_, watchdogErr := mutant.Query(watchdog, expensiveQuery)
+	if !errors.Is(watchdog.Err(), context.DeadlineExceeded) || !errors.Is(watchdogErr, errQueryCancelled) {
+		t.Fatalf("caller-watchdog control did not cancel the real query: caller=%v query=%v", watchdog.Err(), watchdogErr)
+	}
+	if err := assertionFailure(watchdog.Err(), watchdogErr); err == nil {
+		t.Fatal("caller watchdog satisfied the internal-deadline assertion")
+	}
+	if err := queryAssertionFailure(mutant); err == nil || !strings.Contains(err.Error(), "named expensive-query cancellation assertion failed") {
 		t.Fatalf("disabling the cancellation decision did not fail the named assertion: %v", err)
 	}
 	mutant.Close()
@@ -153,7 +167,7 @@ func TestCancellationMutationProof(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer restored.Close()
-	if err := assertionFailure(restored); err != nil {
+	if err := queryAssertionFailure(restored); err != nil {
 		t.Fatalf("restored cancellation decision: %v", err)
 	}
 }
