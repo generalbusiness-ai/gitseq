@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head companion: ui/src/lib/notes.ts. Delivery account and verification evidence follow on docs/reference/reading-view.md.","body":{"commit":"cc24d6c43ddbed19997cb4797b0d2002c77b9a93","path":"ui/src/lib/notes.ts"}}
+{"kind":"artifact","text":"Exact-head companion: ui/src/lib/records.ts. Delivery account and verification evidence follow on docs/reference/reading-view.md.","body":{"commit":"cc24d6c43ddbed19997cb4797b0d2002c77b9a93","path":"ui/src/lib/records.ts"}}
