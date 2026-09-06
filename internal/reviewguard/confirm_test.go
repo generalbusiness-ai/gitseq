@@ -175,7 +175,7 @@ func TestConfirmRecordsTheResolvedBindingInTheBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body[BodyBinding] != BindingAssigned || body[BodyImplementations] != `["assign"]` || body[BodyDecision] != "" {
+	if body[BodyBinding] != BindingAssigned || body[BodyImplementations] != `["work"]` || body[BodyDecision] != "" {
 		t.Fatalf("binding fields = %v", body)
 	}
 	// Admission re-resolves the same scope and refuses a body whose recorded

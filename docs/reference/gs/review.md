@@ -87,7 +87,13 @@ by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
   `Commitment.Report` equality; other implementation reports are found only
   inside the cited set, and every one of them is included whether or not a
   selector was given. The verdict records `binding=assigned` and
-  `implementations` as the JSON array of requests a sealed receipt closes.
+  `implementations` as the JSON array of exact lifecycle witnesses, one per
+  implementation in examined order: the selected promise, or the report when
+  the lane made no promise. A request can carry a withdrawn promise and a
+  renewed one, so the witness, not the request, is what every consumer
+  re-resolves; it names the requests a sealed receipt closes. A verdict filed
+  before this field carried witnesses recorded requests and still re-resolves
+  while each request has one lifecycle.
 - **self-initiated** — no commitment reports the primary, the primary and
   the named adopted decision rest directly on each other in either direction
   (the work rests on the decision, or the decision adopts this artifact), and

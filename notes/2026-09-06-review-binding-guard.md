@@ -56,7 +56,11 @@ facts, and nothing else.
 **Review.** `ConfirmSelection` resolves the binding at each of the three
 confirming reads and refuses movement between them alongside the existing
 basis and news comparison. `BuildBound` records `binding`, `implementations`
-(a JSON array of request events) and `decision` in the verdict body.
+(a JSON array of exact lifecycle witnesses: the selected promise, or the
+report when the lane made no promise, one per implementation) and `decision`
+in the verdict body. A request can carry a withdrawn promise and a renewed
+one, so the request alone cannot say which lifecycle was reviewed; the
+witness re-resolves to exactly one commitment at every consumer.
 `EvaluateVerdict` re-resolves a verdict that carries a binding at sequencing
 and refuses a moved one. `Prepare` is one read with the same checks and an
 explanation, no verdict.
@@ -132,7 +136,11 @@ selecting only the first of two examined implementations still records both
 requests and still refuses the held companion at `gs merge` and the
 differently targeted companion at `gs review`, appending nothing and moving
 no ref, with the paired no-selector controls kept as distinct tests that
-refuse the same two companions the same way.
+refuse the same two companions the same way; and, from review finding
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d850bca939ba4a138030936a16f06b37498c3cd2`,
+a request whose first promise was withdrawn and renewed prepares with the
+exact current promise, files, is ratified and lands, closing only the renewed
+lifecycle.
 
 ## Correction round
 
@@ -146,6 +154,22 @@ branch, so confirmation, admission, preparation, authorization, merge and the
 receipt all see one complete set. No consumer sweeps, no ancestry. The head
 was also rebased onto landed main `33f69956` (the I6 documentation
 reconciliation), which touched none of these paths.
+
+Planner's second finding, `d850bca9` on `283fe9da`, reproduced with real
+commands that a request with a withdrawn first promise and a renewed second
+one prepared successfully with its exact promise selector, then refused at
+filing: the verdict body recorded only request events, so re-resolution at
+sequencing saw two lifecycles again. The correction is again in the resolver's
+serialization alone: `implementations` now records one exact lifecycle witness
+per implementation, the selected promise or the report when the lane made no
+promise, and `ScopeFromVerdict` feeds those back as selectors, so
+confirmation, admission, authorization, merge and the receipt re-resolve the
+same lifecycle. Planner's command control now runs to the end: prepare, file,
+ratify and land, closing the renewed lifecycle and leaving the withdrawn one
+untouched, with the resolver round trip as a unit test and omission mutant I.
+A verdict filed before this change recorded requests and still re-resolves
+while each request has one lifecycle; no historical row was removed and no
+replacement assignment was filed.
 
 `cmd/gitseq-mcp/review_test.go` proves the tool records the same body fields,
 refuses the same relabel, and prepares without appending.
@@ -165,6 +189,7 @@ guard and running only the control that must catch it:
 | F | self-initiated inferred from an empty lookup | wrong primary and broken assignment pass | red |
 | G | selectors may add an unexamined report | an uncited implementation report is closed | red |
 | H | selectors drop examined companions | a selector hides a held or differently targeted companion at review and merge | red |
+| I | the verdict records requests instead of lifecycle witnesses | a renewed promise prepares, then filing and the resolver round trip refuse on the ambiguous request | red |
 
 Each mutant was applied to a clean committed tree, the named control run
 alone, and the tree restored with `git checkout` before the next.

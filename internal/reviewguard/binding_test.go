@@ -1,6 +1,8 @@
 package reviewguard
 
 import (
+	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -56,7 +58,7 @@ func TestResolveBindsAnAssignedPrimaryByExactReportEquality(t *testing.T) {
 	if binding.Kind != BindingAssigned || len(binding.Implementations) != 1 || binding.Implementations[0].Request != "assign" || binding.Implementations[0].Report != "primary" || binding.Implementations[0].TargetRef != "refs/heads/main" {
 		t.Fatalf("binding = %+v", binding)
 	}
-	if got := binding.BodyFields(); got[BodyBinding] != BindingAssigned || got[BodyImplementations] != `["assign"]` {
+	if got := binding.BodyFields(); got[BodyBinding] != BindingAssigned || got[BodyImplementations] != `["work"]` {
 		t.Fatalf("body fields = %v", got)
 	}
 }
@@ -213,7 +215,7 @@ func TestScopeFromVerdictRoundTripsAndReclassifiesLegacyApprovals(t *testing.T) 
 		projection.Decisions = append(projection.Decisions, workroom.Decision{Event: event, Verdict: workroom.Effective})
 	}
 	scope, err := ScopeFromVerdict(projection, verdict)
-	if err != nil || scope.Examined[0] != "primary" || len(scope.Examined) != 2 || scope.Implementations[0] != "assign" {
+	if err != nil || scope.Examined[0] != "primary" || len(scope.Examined) != 2 || scope.Implementations[0] != "work" {
 		t.Fatalf("scope = %+v %v", scope, err)
 	}
 	again, err := Resolve(projection, scope)
@@ -269,4 +271,46 @@ func TestResolveSelectorsDisambiguateButNeverNarrowTheExaminedSet(t *testing.T) 
 	if err != nil || len(binding.Implementations) != 1 || binding.Implementations[0].Request != "assign" {
 		t.Fatalf("disambiguated binding = %+v %v", binding, err)
 	}
+}
+
+// The verdict body carries a lossless lifecycle witness: a request with a
+// withdrawn first promise and a current second one is selected by its exact
+// promise, and the recorded field re-resolves to the same binding (review
+// finding d850bca9). A legacy body that recorded only the request still
+// resolves while that request has one lifecycle, and refuses once it has two.
+func TestBodyFieldsKeepTheExactLifecycleAcrossTheVerdictRoundTrip(t *testing.T) {
+	old := assignedCommitment("old-report")
+	old.Promise, old.Status = "old-promise", "reneged"
+	current := assignedCommitment("primary")
+	projection := bindingWorld(t, []workroom.Commitment{old, current}, assignedProvenance(), assignedStatements()...)
+	binding, err := Resolve(projection, Scope{Candidate: head, Examined: []string{"primary"}, Implementations: []string{"work"}})
+	if err != nil || len(binding.Implementations) != 1 || binding.Implementations[0].Promise != "work" {
+		t.Fatalf("exact promise selector: %+v %v", binding, err)
+	}
+	var encoded []string
+	if err := json.Unmarshal([]byte(binding.BodyFields()[BodyImplementations]), &encoded); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(encoded, []string{"work"}) {
+		t.Fatalf("recorded lifecycles = %v, want the exact promise", encoded)
+	}
+	again, err := Resolve(projection, Scope{Candidate: head, Examined: []string{"primary"}, Implementations: encoded})
+	if err != nil || !SameBinding(binding, again) {
+		t.Fatalf("round trip lost the lifecycle: %v %+v", err, again)
+	}
+	// A lane that made no promise records its report as the witness.
+	direct := assignedCommitment("primary")
+	direct.Promise = ""
+	single := bindingWorld(t, []workroom.Commitment{direct}, assignedProvenance(), assignedStatements()...)
+	binding, err = Resolve(single, Scope{Candidate: head, Examined: []string{"primary"}})
+	if err != nil || binding.BodyFields()[BodyImplementations] != `["primary"]` {
+		t.Fatalf("report witness = %s %v", binding.BodyFields()[BodyImplementations], err)
+	}
+	// Legacy bodies named requests: unambiguous ones still resolve, ambiguous ones refuse.
+	_, err = Resolve(single, Scope{Candidate: head, Examined: []string{"primary"}, Implementations: []string{"assign"}})
+	if err != nil {
+		t.Fatalf("legacy request selector on one lifecycle: %v", err)
+	}
+	_, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"primary"}, Implementations: []string{"assign"}})
+	mustRefuse(t, err, "matches 2 commitment lifecycles")
 }

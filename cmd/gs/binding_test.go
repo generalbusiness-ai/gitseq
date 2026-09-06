@@ -262,7 +262,7 @@ func TestCombinedImplementationsKeepBothReportsAndRefuseAReorderedPrimary(t *tes
 	}
 	approval := f.lastEvent(t)
 	verdict, _ := mergeplan.StandingStatement(f.snapshot(t).Projection, approval, workroom.KindReport)
-	if verdict.Body[reviewguard.BodyImplementations] != `["`+first+`","`+second+`"]` {
+	if verdict.Body[reviewguard.BodyImplementations] != `["`+promises["first"]+`","`+promises["second"]+`"]` {
 		t.Fatalf("recorded implementations = %s", verdict.Body[reviewguard.BodyImplementations])
 	}
 	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-combined"}); err != nil {
@@ -359,7 +359,7 @@ func TestMergeAuthorizationRefusesANonAssignedApprovalOnItsOwn(t *testing.T) {
 // the requests, the candidate, both artifacts and the reviewer's base args.
 type combinedDelivery struct {
 	first, second, candidate string
-	artifacts                map[string]string
+	promises, artifacts      map[string]string
 	base                     []string
 }
 
@@ -406,7 +406,7 @@ func buildCombinedDelivery(t *testing.T, f workflowFixture, secondExtra map[stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	return combinedDelivery{first: first, second: second, candidate: candidate, artifacts: artifacts, base: []string{"--repo", f.repo, "--as", "reviewer", "--checkout", checkout, "--promise", reviewPromise.Record.ID}}
+	return combinedDelivery{first: first, second: second, candidate: candidate, promises: promises, artifacts: artifacts, base: []string{"--repo", f.repo, "--as", "reviewer", "--checkout", checkout, "--promise", reviewPromise.Record.ID}}
 }
 
 // Review finding 12182bd2: selecting only the first implementation must not
@@ -421,7 +421,7 @@ func TestSelectorCannotHideAnExaminedHeldCompanion(t *testing.T) {
 	}
 	approval := f.lastEvent(t)
 	verdict, _ := mergeplan.StandingStatement(f.snapshot(t).Projection, approval, workroom.KindReport)
-	if verdict.Body[reviewguard.BodyImplementations] != `["`+lane.first+`","`+lane.second+`"]` {
+	if verdict.Body[reviewguard.BodyImplementations] != `["`+lane.promises["first"]+`","`+lane.promises["second"]+`"]` {
 		t.Fatalf("recorded implementations = %s", verdict.Body[reviewguard.BodyImplementations])
 	}
 	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-combined"}); err != nil {
@@ -490,4 +490,85 @@ func TestExaminedCompanionOwedElsewhereRefusesWithoutASelector(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "different targets") {
 		t.Fatalf("companion owed elsewhere without a selector: %v", err)
 	}
+}
+
+// Review finding d850bca9: a request with a withdrawn first promise and a
+// current second one is a valid history. Preparing with the exact current
+// promise, filing, ratifying and landing that verdict must all name the same
+// lifecycle; the sealed receipt closes the current lifecycle and leaves the
+// withdrawn one as it was.
+func TestExactPromiseAfterWithdrawalPreparesFilesRatifiesAndLands(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := buildCombinedDelivery(t, f, nil)
+	var oldPromise string
+	for _, commitment := range f.snapshot(t).Projection.Commitments {
+		if commitment.Request == lane.first {
+			oldPromise = commitment.Promise
+		}
+	}
+	if oldPromise == "" {
+		t.Fatal("missing original promise")
+	}
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbSupersede, Target: oldPromise, Text: "withdraw first attempt", RestsOn: []string{oldPromise}, IdempotencyKey: "withdraw-first"}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindPromise, Text: "resume same request", RestsOn: []string{lane.first}, IdempotencyKey: "resume-first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifact, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "current first report", Body: map[string]string{"path": "first.txt", "commit": lane.candidate}, RestsOn: []string{current.Record.ID}, IdempotencyKey: "current-first-report"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review resumed delivery", Body: map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": "exact head", "no_git_artifact": "true"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "review-resumed"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewPromise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review resumed", RestsOn: []string{request.Record.ID}, IdempotencyKey: "review-resumed-promise"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lifecycles := 0
+	for _, commitment := range f.snapshot(t).Projection.Commitments {
+		if commitment.Request == lane.first {
+			lifecycles++
+		}
+	}
+	if lifecycles != 2 {
+		t.Fatalf("need two actual lifecycles, got %d", lifecycles)
+	}
+	args := append([]string{}, lane.base...)
+	args[len(args)-1] = reviewPromise.Record.ID
+	args = append(args, "--artifact", artifact.Record.ID, "--implementation", current.Record.ID)
+	if err := reviewCommand(f.ctx, append(append([]string{}, args...), "--prepare")); err != nil {
+		t.Fatalf("exact promise prepare refused: %v", err)
+	}
+	before := f.snapshot(t).Depth
+	if err := reviewCommand(f.ctx, append(args, "--verdict", "approved", "--text", "APPROVED resumed delivery")); err != nil {
+		t.Fatalf("filing lost the exact promise (depth %d -> %d): %v", before, f.snapshot(t).Depth, err)
+	}
+	approval := f.lastEvent(t)
+	verdict, _ := mergeplan.StandingStatement(f.snapshot(t).Projection, approval, workroom.KindReport)
+	if verdict.Body[reviewguard.BodyImplementations] != `["`+current.Record.ID+`"]` {
+		t.Fatalf("recorded lifecycle = %s, want the current promise", verdict.Body[reviewguard.BodyImplementations])
+	}
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-resumed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo, "--candidate", lane.candidate, "--approval", approval, "--text", "land the resumed delivery"}); err != nil {
+		t.Fatalf("merge lost the exact promise: %v", err)
+	}
+	for _, commitment := range f.snapshot(t).Projection.Commitments {
+		if commitment.Request != lane.first {
+			continue
+		}
+		if commitment.Promise == current.Record.ID && commitment.Status != "satisfied" {
+			t.Fatalf("current lifecycle not closed by the sealed receipt: %+v", commitment)
+		}
+		if commitment.Promise == oldPromise && commitment.Status == "satisfied" {
+			t.Fatalf("withdrawn lifecycle was closed by the receipt: %+v", commitment)
+		}
+	}
+	testGit(t, f.repo, "merge-base", "--is-ancestor", lane.candidate, testGit(t, f.repo, "rev-parse", "HEAD"))
 }

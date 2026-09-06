@@ -109,6 +109,24 @@ func (b Binding) Requests() []string {
 	return requests
 }
 
+// Lifecycles lists one exact lifecycle witness per implementation, in
+// examined order: the selected promise, or the report when the lane made no
+// promise. A request may carry several lifecycles (a withdrawn promise and a
+// renewed one), so the request alone cannot name what was reviewed; the
+// witness re-resolves to exactly one commitment. Review finding d850bca9
+// reproduced the loss when only requests were recorded.
+func (b Binding) Lifecycles() []string {
+	witnesses := make([]string, 0, len(b.Implementations))
+	for _, implementation := range b.Implementations {
+		if implementation.Promise != "" {
+			witnesses = append(witnesses, implementation.Promise)
+		} else {
+			witnesses = append(witnesses, implementation.Report)
+		}
+	}
+	return witnesses
+}
+
 // SameBinding reports whether two resolutions agree on every witness: kind,
 // candidate, primary, examined set, implementation triples and their targets,
 // decision and evidence request.
@@ -463,7 +481,7 @@ func resolveEvidence(projection workroom.Projection, reports map[string][]workro
 func (b Binding) BodyFields() map[string]string {
 	fields := map[string]string{BodyBinding: b.Kind}
 	if len(b.Implementations) != 0 {
-		encoded, _ := json.Marshal(b.Requests())
+		encoded, _ := json.Marshal(b.Lifecycles())
 		fields[BodyImplementations] = string(encoded)
 	}
 	if b.Decision != "" {
@@ -507,7 +525,7 @@ func scopeFromBody(projection workroom.Projection, body map[string]string, rests
 	scope := Scope{Candidate: head, Examined: examined, Decision: body[BodyDecision], EvidenceOnly: body[BodyBinding] == BindingEvidenceOnly}
 	if encoded := body[BodyImplementations]; encoded != "" {
 		if err := json.Unmarshal([]byte(encoded), &scope.Implementations); err != nil {
-			return Scope{}, fmt.Errorf("verdict body.%s is not a JSON array of request events", BodyImplementations)
+			return Scope{}, fmt.Errorf("verdict body.%s is not a JSON array of implementation lifecycle events", BodyImplementations)
 		}
 	}
 	return scope, nil
