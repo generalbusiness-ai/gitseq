@@ -2,8 +2,10 @@
 title: gs merge
 summary: Merge an approved exact head and publish its artifact succession.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bd891443ff868623f2ad427b4a5becd32359e5d3
 ---
 
 # `gs merge`
@@ -22,7 +24,7 @@ resumable batch.
 | `--checkout` | *(required)* | The working tree receiving the merge. |
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
-| `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. Phase one validates it when present; omission emits a compatibility warning and still proceeds. An implementation request filed under `workroom/state@3` that is not held refuses it outright: it asked for no release. |
+| `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. For a held state@3 request, this is the hold owner's exact release; an unheld state@3 request refuses it. Legacy lanes retain optional phase-one authorization. See the held-landing compatibility window below. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
@@ -294,16 +296,17 @@ must carry these exact body fields:
 | `authorizes_approval` | The ratified implementation approval passed as `--approval`. |
 | `authorizes_request` | The original implementation request whose reporting artifact the approval names. |
 | `target_pre_head` | The full commit at which the authorization measured the target. |
+| `target_repo`, `target_ref` | Required for a state@3 release; must match the request and measured checkout. Optional on legacy authorizations, but checked when present. |
 | `remeasure` | Optional. The only accepted value is `disjoint-paths`. |
 
 The approval's named artifact must project as the report of exactly one
 implementation request. This is how the command checks
 `authorizes_request`; shared prose, branch names, and actor names do not stand
 in for that lane. The authorization report must likewise close exactly one
-authorization commitment. Its signer must be the original implementation
-requester, the live actor whose durable name is exactly `planner`, or a live
-actor carrying `ratifier`. The authorization request's own requester choosing
-to ratify does not widen that signer set.
+authorization commitment. On a held state@3 request, only the hold owner signs the release. On a legacy
+lane, its signer must be the original implementation requester, the live actor
+named exactly `planner`, or a live `ratifier`. Requester ratification does not
+widen either signer rule.
 
 Normally `target_pre_head` must still equal the checkout's `HEAD`. With
 `remeasure=disjoint-paths`, a newer `HEAD` is accepted only when the measured
@@ -311,9 +314,8 @@ head is its ancestor and the exact old/new paths changed by the candidate do
 not intersect those changed on the target since the measurement. Rename and
 delete sources count, as do copy and addition destinations.
 
-Phase one is deliberately compatible with work already in flight. Omitting
-`--authorization` prints a warning on standard error and proceeds under the
-existing approval guard. When the flag is present, every binding is enforced.
+On legacy lanes, omitting `--authorization` prints a compatibility warning
+and proceeds under the existing approval guard. When the flag is present, every binding is enforced.
 The merge commit records both `Gitseq-Authorization:` and
 `Gitseq-Authorization-Ratification:`. The second trailer is the exact event ID
 of the sequencer-admitted ratification that gave the report force. Because
@@ -331,11 +333,10 @@ against the sealed target pre-head; it also requires the report's current
 Passing a later authorization while resuming a legacy receipt is refused:
 ordering is fixed when the merge commit is written.
 
-Phase two should not infer policy from prose. Introduce a structured
-`merge_authorization=required` request field under `workroom/state@3`, project
-it under the next fold profile, and make omission a refusal only after every
-resident and adapter has restarted on that binding. The profile transition is
-the exact activation seam; until it lands, this command remains in phase one.
+Use the delivered `landing=held` request fields for a hold. The current
+[compatibility window](#held-landings-and-the-compatibility-window) and its
+receipt warning are distinct from legacy optional authorization. Source delivery
+does not itself deploy readers or change the active host binding.
 
 ### Staleness is recorded, not refused
 
@@ -348,11 +349,10 @@ a `Gitseq-Staleness:` trailer on the merge commit, and `stale` and
 the head it named.
 
 Two narrower facts are refusals. Retirement withdraws the pointer, so a
-retired approval or artifact proposes nothing. And when the retired
-ancestor was itself an artifact, the record `describes a superseded
-world`: the behaviour it covers has been replaced, so the verdict no
-longer speaks for what would land. That case needs a fresh artifact on
-current bases and a fresh review, not another verdict on the same chain.
+retired approval or artifact proposes nothing. A `describes_superseded_world` cause already present at the verdict also
+refuses, as does a flagged cause the fold cannot date. A cause arising after
+the verdict is recorded rather than refused. A refusal needs a fresh artifact
+on current bases and a fresh review, not another verdict on the same chain.
 
 A refused merge leaves the signed approval standing and asks only that the
 record be brought up to date first.
@@ -504,7 +504,7 @@ live.
 | A file is deleted | Its exact old path is retired with no successor. A live covering directory still receives its successor because the directory changed. |
 | A successor rests on the predecessor the same merge retires | The successor stays current. The work stood on what it replaces, and the merge that publishes one withdraws the other in the same act, so that withdrawal is not news arriving underneath it. Only artifacts that merge actually published — at its merge head, at a path it declared — read it that way; any other record citing the receipt goes stale as usual. |
 
-`workroom/state@1` and the current `workroom/state@2` refuse new artifacts at
+`workroom/state@1` and later state schemas refuse new artifacts at
 `.` and refuse comma-joined pseudo-paths. Historical `state@0` artifacts keep
 their original decisions but valid historical paths remain candidates for
 retirement and succession. New raw submissions cannot use retired state@0 or
@@ -679,7 +679,7 @@ appends its recorded suffix without replanning and without this guard, so a
 receipt sealed under an older reading of reach keeps exactly the authority it
 was sealed with.
 
-### Restart residents at the merged commit
+### Reader compatibility and deployment
 
 The merge-succession change advanced the state schema to `workroom/state@1`,
 and the commitment-lifecycle change advanced the fold profile to
@@ -687,8 +687,11 @@ and the commitment-lifecycle change advanced the fold profile to
 `workroom/state@2` and `workroom/ratify@1`, and advances the application
 projection profile to `workroom-fold@5`. Older state and ratification records
 remain readable, but a binary built before these changes projects commitments
-under the old contract and cannot interpret the new schemas. Restart every
-resident sequencer and MCP adapter at the merged commit.
+under the old contract and cannot interpret the new schemas. These are
+historical compatibility transitions, not instructions to restart a service
+after each source merge. Reader deployment and host-binding replacement need
+their own authorized transition and compatibility evidence; a pushed source
+head or sealed implementation receipt performs neither.
 
 The prospective left-live accounting rule advances the projection profile from
 `workroom-fold@10` to `workroom-fold@11`. Historical receipts without

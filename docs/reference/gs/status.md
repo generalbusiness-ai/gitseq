@@ -2,10 +2,15 @@
 title: gs status
 summary: Project the current state of the workroom, bounded by default.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9936cbb28db1642a5cdabd2f787fb881fb33dbf2
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcf3a656a218276298c194b8e48fa6f70d7b8dde
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982bfe9e7df98bde8c6f8797112498fb300baf4a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adafb7b0046989609ff369efcac5acb605aa403a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f5ca1c3b34c09a4a1a5f26ac366b94c748e3ca9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3c6d28f602ea92883a8c4aa586c5b71f341b5db
 ---
 
 # `gs status`
@@ -102,11 +107,11 @@ retired. The reasoning that led to the record moved; the record itself
 did not. It blocks nothing: a merge may still land the exact head an
 approval named, and it records the movement in its receipt.
 
-**A superseded world** is narrower. It means the retired ancestor was
-itself an artifact, so the behaviour the record describes has been
-replaced. An approval carrying it cannot merge, and the work needs a
-fresh artifact on current bases rather than another review of the same
-chain.
+**A superseded world** crosses a direct retired-artifact edge and then
+artifact-to-artifact provenance. Merge judges its date against the verdict:
+a cause already present when the reviewer signed refuses, a cause arising
+afterwards is recorded, and an undated flagged cause refuses. A refusal needs
+a fresh artifact on current bases, not another review of the same old chain.
 
 The difference matters here because the first one is ordinary. In a
 workroom of any age most closed commitments and most artifacts carry it,
@@ -142,29 +147,26 @@ Nothing is lost. [`--all`](#all) prints a `qualifiers` column with
 `stale` field on every record. The bounded summary the resident serves
 keeps its per-row `stale` field too — only the rendered page is quiet.
 
-## Why this disagrees with the Work drawer
+## Comparing CLI and board counts
 
-The browser UI's Work counts and these totals describe different
-populations on purpose, and neither is a rounding of the other.
+`gs status` counts commitments by lifecycle status and artifacts separately.
+The browser's Table and Graph share these named commitment populations:
 
-`gs status` reports commitments by lifecycle status, and reports
-artifacts on their own line. It never adds the two together, because an
-artifact is not a commitment and a total mixing them matches nothing you
-can act on.
+| Board population | Selection |
+|---|---|
+| open | `open`, `promised`, `reported`, `awaiting-review`, `awaiting-authorization`, `awaiting-landing` |
+| reasoning moved | Open-population commitments carrying ordinary staleness; a subset of open |
+| artifact landing audit | `approved_not_landed`, including historical completed or closed rows |
+| stale, not in flight | Lifecycle status `stale` |
+| completed | `satisfied` |
+| closed, not completed | `superseded`, `cancelled`, `reneged`, `withdrawn`, `abandoned` |
 
-The Work drawer answers a different question — what a reader should look
-at — so it derives `active`, `closed` and `attention` from those same
-commitments, and shows artifacts needing attention beside them rather
-than inside them. `attention` deliberately overlaps `active` and
-`closed`, because staleness and dispute are qualifiers sitting on top of
-a lifecycle status: most of what needs attention is already counted
-somewhere else. Adding the drawer's three figures together therefore
-exceeds the number of commitments, which is correct and is why they are
-not presented as a partition.
-
-So a number here and a number there can differ while both are right. If
-you are reconciling them, compare like with like: the drawer's `total`
-is the commitment count, and everything else is a different cut of it.
+`awaiting ratification` counts proposals separately, not commitments. The audit
+and reasoning-moved populations overlap other populations, so adding every tab
+count is not a commitment total. Source closure and the selected approved
+artifact's landing are labelled separately. Search selects the same rows in
+Table and Graph; graph context cards do not enter the population count.
+See [browser landing presentation](../landing-observations.md#browser-presentation).
 
 Each list keeps the **newest 20** entries and says exactly how many older
 ones it omitted — "Showing 20 of 500; 480 older omitted" — so a shortened
@@ -194,14 +196,14 @@ Succeeded and retired are the same act read for different content, and
 the difference is what the act rested on. `gs supersede` naming a
 successor at the same path — which is what every merge does — says the
 behaviour moved there. A bare `gs supersede` says the behaviour is gone,
-or the claim was never true. Only the second makes the reasoning above it
-flare, so a finished loop no longer flares itself on the merge that
-finished it. In the `--all` tables these read `SUCCEEDED — replaced at
+or the claim was never true. Only the second propagates ordinary reasoning staleness. Descriptive
+artifact-to-artifact edges flare in either case; the sealed successor checkpoint
+prevents the merge from making its own published successor stale at birth. In the `--all` tables these read `SUCCEEDED — replaced at
 the same path` and `RETIRED — withdrawn with no successor`.
 
 | Note | Meaning |
 |---|---|
-| `describes a superseded world` | The retired ancestor was itself an artifact, so the implementation has been replaced. |
+| `describes a superseded world` | A direct retired-artifact edge, followed only through artifact provenance, describes replaced behavior; merge also checks its date. |
 | `unable to flare` | It cites nothing resolvable, so nothing could ever make it stale. Its silence is not currency. |
 | `succession not recorded` | An earlier artifact for the identical path is still live — a probable forgotten supersession. |
 
