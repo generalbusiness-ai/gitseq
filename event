@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ee3e9b57c19dfb581352bccd82f279bbf409ed0","text":"Merge retired a covered predecessor; the successor is at ui/test/fixtures/tailapp-carried-source.json."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81f7c8e081ec8ced4fcd8f4e5c92a6af0598c9aa","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
