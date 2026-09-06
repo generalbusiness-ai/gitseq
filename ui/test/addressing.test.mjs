@@ -175,3 +175,69 @@ test("an address naming an unknown record shows the board, says so, and keeps th
     assert.equal(dom.window.location.hash, `#/thread/${stranger}`, "the address was not preserved in the bar");
   });
 });
+
+test("encoded deep links preserve the record and a broken focus reports its error", async () => {
+  await withApp(`#/thread/${encodeURIComponent(request)}/%E0%A4%A`, async () => {
+    assert.match(document.body.textContent, /#2 · Build the addresses/);
+    assert.match(document.querySelector('[role="alert"]').textContent, /malformed encoding/);
+  });
+});
+
+test("a shared preview closes to its record without leaving the application", async () => {
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async (url, ...args) => String(url).includes("/v0/preview")
+    ? { ok: true, json: async () => ({ event: request, repo: "/repo", commit: "a".repeat(40), path: "review.md", status: "ready", content: "# Exact evidence\nSecond line", limit: 524288 }) }
+    : savedFetch(url, ...args);
+  try {
+    await withApp(`#/thread/${request}?preview_event=${encodeURIComponent(request)}&evidence=review.md`, async () => {
+      const preview = document.querySelector('[aria-labelledby="preview-title"]');
+      assert.ok(preview);
+      assert.match(preview.textContent, /Exact evidence/);
+      const close = [...preview.querySelectorAll("button")].find(button => button.textContent === "Close preview");
+      assert.equal(document.activeElement, close, "dialog takes initial focus");
+      const last = [...preview.querySelectorAll("button,a[href]")].at(-1);
+      last.focus();
+      await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })));
+      assert.equal(document.activeElement, close, "Tab stays inside the preview");
+      await act(async () => document.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+      assert.equal(document.querySelector('[aria-labelledby="preview-title"]'), null);
+      assert.equal(dom.window.location.hash, `#/thread/${request}`);
+      assert.match(document.body.textContent, /#2 · Build the addresses/);
+    });
+  } finally { globalThis.fetch = savedFetch; }
+});
+
+test("Notes is addressable and browser history returns to its reading view", async () => {
+  await withApp("#/notes", async () => {
+    assert.ok(document.querySelector('section[aria-label="Notes"]'));
+    const requests = [...document.querySelectorAll('nav[aria-label="Reading views"] button')].find(button => button.textContent === "Requests");
+    await act(async () => requests.click());
+    assert.ok(document.querySelector('[role="tablist"]'));
+    await traverse(() => dom.window.history.back());
+    assert.ok(document.querySelector('section[aria-label="Notes"]'));
+    assert.equal(dom.window.location.hash, "#/notes");
+  });
+});
+
+test("a delayed earlier preview cannot appear under a newer target", async () => {
+  const savedFetch = globalThis.fetch;
+  const replies = new Map();
+  globalThis.fetch = async (url, options, ...args) => {
+    if (!String(url).includes("/v0/preview")) return savedFetch(url, options, ...args);
+    const input = JSON.parse(options.body);
+    return new Promise(resolve => replies.set(input.path, content => resolve({ ok: true, json: async () => ({ event: request, repo: "/repo", commit: "a".repeat(40), path: input.path, status: "ready", content, limit: 524288 }) })));
+  };
+  const base = `#/thread/${request}?preview_event=${encodeURIComponent(request)}`;
+  try {
+    await withApp(`${base}&file=first.go`, async () => {
+      assert.ok(replies.has("first.go"));
+      await traverse(() => { dom.window.history.pushState({}, "", `${base}&file=second.go`); dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate")); });
+      await act(async () => replies.get("second.go")("the second file"));
+      await act(async () => replies.get("first.go")("the stale first file"));
+      const preview = document.querySelector('[aria-labelledby="preview-title"]');
+      assert.match(preview.textContent, /the second file/);
+      assert.doesNotMatch(preview.textContent, /stale first/);
+      assert.equal(document.activeElement.textContent, "Close preview");
+    });
+  } finally { globalThis.fetch = savedFetch; }
+});

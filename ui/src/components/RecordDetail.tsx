@@ -1,3 +1,4 @@
+import { EvidenceLinks, PreviewLink, ReferenceText } from "./Preview";
 import { useState } from "react";
 import type { Projection } from "../lib/api";
 import type { RecordIndex } from "../lib/records";
@@ -74,12 +75,13 @@ export function RecordDetail({
       )}
       {(statement?.text || act?.text) && (
         <Row label="text">
-          <span className="whitespace-pre-wrap break-words text-foreground/90">{statement?.text ?? act?.text}</span>
+          <span className="whitespace-pre-wrap break-words text-foreground/90">{event ? <ReferenceText text={statement?.text ?? act?.text ?? ""} event={event} /> : statement?.text ?? act?.text}</span>
         </Row>
       )}
+      {event && <Row label="evidence"><EvidenceLinks event={event} /></Row>}
       {act && <Row label="target">{ref(act.target)}</Row>}
       {statement?.body &&
-        Object.entries(statement.body).map(([key, value]) => (
+        Object.entries(statement.body).filter(([key]) => !artifact || !["path", "commit"].includes(key)).map(([key, value]) => (
           <Row key={key} label={key}>
             {index.has(value) ? (
               ref(value)
@@ -88,11 +90,11 @@ export function RecordDetail({
                 <span className="text-foreground/90">{nameOf(value)}</span> <Id value={value} />
               </>
             ) : (
-              <span className="whitespace-pre-wrap break-words font-mono">{value}</span>
+              <span className="whitespace-pre-wrap break-words font-mono">{event ? <ReferenceText text={value} event={event} /> : value}</span>
             )}
           </Row>
         ))}
-      {artifact && <Row label="path"><span className="font-mono">{artifact.path}</span></Row>}
+      {artifact && <Row label="path"><PreviewLink target={{ event: artifact.event, path: artifact.path, commit: artifact.commit }}><span className="font-mono">{artifact.path}</span></PreviewLink></Row>}
       {artifact && <Row label="at commit"><Id value={artifact.commit} /></Row>}
       {review && (
         <Row label="review">

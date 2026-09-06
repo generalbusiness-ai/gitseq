@@ -89,7 +89,8 @@ type Server struct {
 	observer  observe.Observer
 	// waitSlots is the shared long-poll budget. A handler acquires by sending
 	// and releases by receiving; capacity is the bound.
-	waitSlots chan struct{}
+	waitSlots    chan struct{}
+	previewSlots chan struct{}
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -104,7 +105,7 @@ func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, 
 		return nil, err
 	}
 	workspace.SetObserver(observer)
-	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer, waitSlots: make(chan struct{}, DefaultWaitConcurrency)}
+	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer, waitSlots: make(chan struct{}, DefaultWaitConcurrency), previewSlots: make(chan struct{}, 8)}
 	server.routes()
 	return server, nil
 }
@@ -117,6 +118,7 @@ func (s *Server) routes() {
 	s.mux.Handle("GET /", uiHandler())
 	s.mux.HandleFunc("GET /v0/identity", s.handleIdentity)
 	s.mux.HandleFunc("GET /v0/graph", s.handleGraph)
+	s.mux.HandleFunc("POST /v0/preview", s.handlePreview)
 	s.mux.HandleFunc("GET /v0/worktrees", s.handleWorktrees)
 	s.mux.HandleFunc("POST /v0/landed", s.handleLanded)
 	s.mux.HandleFunc("GET /v0/actors", s.handleActors)
