@@ -395,7 +395,16 @@ async function json<T>(response: Response): Promise<T> {
   return value as T;
 }
 
+export interface PreviewResponse {
+  repo: string; event: string; commit?: string; path?: string;
+  status: string; message?: string; content?: string;
+  entries?: string[]; attachments?: string[]; omitted?: number; heads?: string[]; limit: number;
+}
+
 export const api = {
+  preview: (input: { event: string; path?: string; commit?: string; attachment?: string }, signal?: AbortSignal) =>
+    fetch("/v0/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal })
+      .then((r) => json<PreviewResponse>(r)),
   status: () => fetch("/v0/status", { cache: "no-store" }).then((r) => json<Status>(r)),
   // Deliberately a separate call from status. /v0/status queues behind the
   // rebuild it would be reporting on, which is the whole reason a verifying

@@ -5,6 +5,8 @@ import { buildOutcomeMap } from "../lib/outcomeMap.ts";
 import { age, matchingRows, POPULATIONS, ratificationRows, sortAfterClick, sortRows, workRows, type Population, type Sort, type SortKey, type WorkRow } from "../lib/rows";
 import { cn } from "../lib/util";
 import { OutcomeMap } from "./OutcomeMap";
+import { ExactRecordResult } from "./Notes";
+import { exactRecord } from "../lib/notes";
 import { RebuildNotice } from "./RebuildNotice";
 
 
@@ -135,7 +137,8 @@ export function RequestList({
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search…"
+            placeholder="Search or open #number…"
+            onKeyDown={(event) => { const record = exactRecord(projection, query); if (event.key === "Enter" && record) onOpenThread(record.event); }}
             aria-label="Search requests"
             className="h-8 w-full max-w-md rounded-md border border-input bg-background pl-8 pr-3 text-xs outline-none placeholder:text-faint focus:border-accent/60"
           />
@@ -144,6 +147,7 @@ export function RequestList({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3 sm:px-6">
         <div className="mx-auto max-w-5xl">
+          <ExactRecordResult projection={projection} query={query} onOpen={onOpenThread} />
           {/* One tab per population. Every count is one click from exactly
               the rows it counts, and the tab strip is the only place the
               operator chooses which rows exist. */}

@@ -14,7 +14,7 @@ export interface RecordIndex {
   sequence: (event: string) => number | undefined;
   restsOn: (event: string) => string[];
   restedOnBy: (event: string) => string[];
-  /** True when the projection has a statement or act with this id. */
+  /** True when the verified projection knows this durable event. */
   has: (event: string) => boolean;
   /** The commitment a request, promise or report event belongs to. */
   commitment: (event: string) => Projection["commitments"][number] | undefined;
@@ -129,7 +129,7 @@ export function buildRecordIndex(projection: Projection): RecordIndex {
     sequence: (event) => statements.get(event)?.sequence ?? decisions.get(event)?.sequence,
     restsOn: (event) => projection.provenance[event] ?? [],
     restedOnBy: (event) => restedOnBy.get(event) ?? [],
-    has: (event) => statements.has(event) || acts.has(event),
+    has: (event) => statements.has(event) || acts.has(event) || decisions.has(event),
     commitment: (event) => commitments.get(event),
     threadRoot,
     citableProposals,

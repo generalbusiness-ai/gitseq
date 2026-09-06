@@ -13,17 +13,10 @@ import { publishRefusal, signingRefusal } from "./lib/authority";
 import { reconciledPendingIDs, RetryKeys } from "./lib/interaction";
 import { firstLine } from "./lib/util";
 import { tabTitle } from "./lib/title";
-import { formatAddress, parseAddress, type Address } from "./lib/address";
+import { formatAddress, parseAddress, type Address, type PreviewAddress } from "./lib/address";
 
-// Two screens. The board is the default and answers the whole question through
-// Table and Graph presentations of one population; the thread answers "what
-// does this one wait on?". A thread carries the record the user clicked as
-// focus when navigation resolved it into a wider commitment.
-type Screen = { kind: "list" } | { kind: "thread"; event: string; focus?: string };
-
-function screenOf(address: Address): Screen {
-  return address.kind === "thread" ? { kind: "thread", event: address.event, focus: address.focus } : { kind: "list" };
-}
+import { Notes } from "./components/Notes";
+import { Preview, PreviewContext } from "./components/Preview";
 
 // The reader arrives at the screen the address names, so a reload or a
 // shared link lands where it says. Outside a browser there is no address to
@@ -40,11 +33,14 @@ export default function App() {
   }, [workroom.project]);
   const session = useSession();
   const { frames } = useFrames(workroom);
-  const [screen, setScreen] = useState<Screen>(() => screenOf(initialAddress()));
+  const [screen, setScreen] = useState<Address>(initialAddress);
   const [listView, setListView] = useState<ListView>(() => {
     const address = initialAddress();
     return address.kind === "list" && address.population ? { ...defaultListView, population: address.population } : defaultListView;
   });
+  const [notesQuery, setNotesQuery] = useState("");
+  const lastReadingView = useRef<"list" | "notes">(screen.kind === "notes" ? "notes" : "list");
+  if (screen.kind !== "thread") lastReadingView.current = screen.kind;
   // Optimistic say echoes: appended on send, reconciled when the frame lands.
   const [pending, setPending] = useState<PendingSay[]>([]);
 
@@ -64,19 +60,20 @@ export default function App() {
     const target = formatAddress(address);
     // Re-choosing the screen already on show is not a step in the visit.
     if (window.location.hash !== target) window.history.pushState({}, "", target);
-    setScreen(screenOf(address));
+    setScreen(address);
   }, []);
   useEffect(() => {
     const arrive = () => {
       const address = parseAddress(window.location.hash);
-      setScreen(screenOf(address));
+      setScreen(address);
       if (address.kind === "list" && address.population) {
         const population = address.population;
         setListView((view) => (view.population === population ? view : { ...view, population }));
       }
     };
     window.addEventListener("popstate", arrive);
-    return () => window.removeEventListener("popstate", arrive);
+    window.addEventListener("hashchange", arrive);
+    return () => { window.removeEventListener("popstate", arrive); window.removeEventListener("hashchange", arrive); };
   }, []);
 
   const openThread = useCallback(
@@ -86,7 +83,7 @@ export default function App() {
     },
     [index, navigate],
   );
-  const showList = useCallback(() => navigate({ kind: "list", population: listView.population }), [listView.population, navigate]);
+  const showList = useCallback(() => navigate(lastReadingView.current === "notes" ? { kind: "notes" } : { kind: "list", population: listView.population }), [listView.population, navigate]);
 
   // Typing a filter is not navigation; choosing a tab is, and the tab rides in
   // the address so a link names the queue it shows. replaceState keeps one
@@ -241,12 +238,19 @@ export default function App() {
     [filing, awaiting, session.credential, publishDenied],
   );
 
+  const openPreview = useCallback((preview: PreviewAddress) => navigate({ ...screen, preview }), [navigate, screen]);
+  const closePreview = useCallback(() => {
+    const { preview: _, ...base } = screen;
+    navigate(base);
+  }, [screen, navigate]);
+
   const publishBasis =
     screen.kind === "thread"
       ? { event: screen.event, label: firstLine(index?.statement(screen.event)?.text ?? screen.event, 60) }
       : undefined;
 
   return (
+    <PreviewContext.Provider value={{ address: screen, open: openPreview }}>
     <div className="flex h-full flex-col">
       <TopBar
         workroom={workroom}
@@ -258,8 +262,13 @@ export default function App() {
         }}
         selectedEvent={screen.kind === "thread" ? screen.event : undefined}
       />
+      <nav aria-label="Reading views" className="flex gap-4 border-b border-border px-4 py-2 text-sm">
+        <button type="button" aria-current={screen.kind === "list" ? "page" : undefined} onClick={() => navigate({ kind: "list", population: listView.population })} className="text-accent underline">Requests</button>
+        <button type="button" aria-current={screen.kind === "notes" ? "page" : undefined} onClick={() => navigate({ kind: "notes" })} className="text-accent underline">Notes</button>
+      </nav>
+      {screen.error && <p role="alert" className="border-b border-border px-4 py-2 text-sm text-danger">{screen.error}</p>}
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {screen.kind === "list" || !index || unknownAddress ? (
+        {screen.kind === "notes" ? <Notes workroom={workroom} query={notesQuery} onQuery={setNotesQuery} onOpen={openThread} /> : screen.kind === "list" || !index || unknownAddress ? (
           <>
             {unknownAddress && (
               <p className="border-b border-border px-4 py-2 text-xs text-faint" data-testid="unknown-address">
@@ -279,6 +288,7 @@ export default function App() {
             focus={threadFocus}
             pending={pending}
             onBack={showList}
+            backLabel={lastReadingView.current === "notes" ? "notes" : "requests"}
             onOpenThread={openThread}
             onSay={echoSay}
             onSayFailed={dropPending}
@@ -287,6 +297,7 @@ export default function App() {
           />
         )}
       </main>
+      {screen.preview && <Preview target={screen.preview} onClose={closePreview} />}
       {publishing && (
         <PublishArtifact
           basis={publishBasis}
@@ -303,6 +314,7 @@ export default function App() {
       )}
       {!session.actor && <JoinGate workroom={workroom} onJoin={session.setActor} />}
     </div>
+    </PreviewContext.Provider>
   );
 }
 
