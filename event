@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02eeccb102c91b4d869be473882e40e60527dfc2","text":"Merge retired a covered predecessor; the successor is at cmd/gs/merge_lock_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:09ad92ba53ac97b67bee7785699deefac7df40c8","text":"Merge retired a covered predecessor; the successor is at docs/how-to/keep-decision-records.md."}
