@@ -1,0 +1,149 @@
+{
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "6f2293d4bd28afcaba85b965416d51904646edb2",
+    "depth": 19830
+  },
+  "counts": {
+    "requests_with_multiple_commitments": 27,
+    "first_withdrawn_later_not_withdrawn": 2
+  },
+  "examples": [
+    {
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43be4c094939c8d8cff52a2741fa7776463b8be2",
+      "lifecycles": [
+        {
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b196e17b25a676e63d1b4dad72d69fafbd1dade4",
+          "report": null,
+          "status": "reneged",
+          "terminal": null,
+          "landing_receipt": null
+        },
+        {
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e9c1ee272cf854606d59eefa981d9044be79a6f",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:363fff34a454fdf8a56b778ac6a00f0806c0fded",
+          "status": "satisfied",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ad455d73649f31ab4eead2848bfdd838d4ab90"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8c2069b481a1aecf513e5701d49afb29d4d6482",
+      "lifecycles": [
+        {
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4ddf796f15e75f87d4c19f575735b9980b1d9a68",
+          "report": null,
+          "status": "reneged",
+          "terminal": null,
+          "landing_receipt": null
+        },
+        {
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18f159529b433f3c925b9fecfc0a8353745c8476",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc9509880c44bfdf2ff728c4f25c6cb6ffc44037",
+          "status": "satisfied",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7db3b347bd73f7b97e95b7e65213cbf300fca4ac"
+        }
+      ]
+    }
+  ],
+  "live_inspections": [
+    {
+      "frontier": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "6f2293d4bd28afcaba85b965416d51904646edb2",
+        "depth": 19830
+      },
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8c2069b481a1aecf513e5701d49afb29d4d6482",
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8c2069b481a1aecf513e5701d49afb29d4d6482",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4ddf796f15e75f87d4c19f575735b9980b1d9a68",
+        "status": "reneged"
+      },
+      "landing": {}
+    },
+    {
+      "frontier": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "6f2293d4bd28afcaba85b965416d51904646edb2",
+        "depth": 19830
+      },
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18f159529b433f3c925b9fecfc0a8353745c8476",
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8c2069b481a1aecf513e5701d49afb29d4d6482",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18f159529b433f3c925b9fecfc0a8353745c8476",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc9509880c44bfdf2ff728c4f25c6cb6ffc44037",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:475dc2cc3dba2f99c779f860071feaf60f51b83b",
+        "candidate": "924bd7736e131130da714c3abec4e3c9443d3ed1",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7db3b347bd73f7b97e95b7e65213cbf300fca4ac"
+      },
+      "landing": {
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:475dc2cc3dba2f99c779f860071feaf60f51b83b",
+        "candidate": "924bd7736e131130da714c3abec4e3c9443d3ed1",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7db3b347bd73f7b97e95b7e65213cbf300fca4ac",
+        "merge_head": "5a89dcaf7d0558591b5740c171d7902d09385dd7",
+        "receipt_legacy": true,
+        "git": {
+          "measured_at": 1788718694,
+          "state": "incorporated",
+          "target_head": "33f69956167115d7cc3235b6b1864ed904f2802a",
+          "ref_incorporated": true,
+          "remote": "origin",
+          "remote_ref": "refs/remotes/origin/main",
+          "remote_head": "33f69956167115d7cc3235b6b1864ed904f2802a",
+          "remote_contains": true
+        }
+      }
+    },
+    {
+      "frontier": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "6f2293d4bd28afcaba85b965416d51904646edb2",
+        "depth": 19830
+      },
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43be4c094939c8d8cff52a2741fa7776463b8be2",
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43be4c094939c8d8cff52a2741fa7776463b8be2",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b196e17b25a676e63d1b4dad72d69fafbd1dade4",
+        "status": "reneged"
+      },
+      "landing": {}
+    }
+  ],
+  "source_checks": [
+    {
+      "path": "internal/statusview/query.go",
+      "blob_at_publication_reader_and_main": {
+        "2348ebe66e226a889f08a1b90ccc3d6a45f437e4": "d0db16fbe163621e7b24768fd452a81ea7c2e466",
+        "39c7a0e74f4a828ba8223acbacc3f2c82eb58016": "d0db16fbe163621e7b24768fd452a81ea7c2e466",
+        "33f69956167115d7cc3235b6b1864ed904f2802a": "d0db16fbe163621e7b24768fd452a81ea7c2e466"
+      }
+    },
+    {
+      "path": "cmd/gs/query.go",
+      "blob_at_publication_reader_and_main": {
+        "2348ebe66e226a889f08a1b90ccc3d6a45f437e4": "0b4c57e6df723334b901c3915ae3980876880f11",
+        "39c7a0e74f4a828ba8223acbacc3f2c82eb58016": "0b4c57e6df723334b901c3915ae3980876880f11",
+        "33f69956167115d7cc3235b6b1864ed904f2802a": "0b4c57e6df723334b901c3915ae3980876880f11"
+      }
+    }
+  ],
+  "novice_candidate_ancestor_of_current_main": true
+}
