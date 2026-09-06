@@ -1,0 +1,802 @@
+{
+  "observed_utc": "2026-09-06T21:05:12.583144+00:00",
+  "cases": [
+    {
+      "artifact": "d134c147385a96976ce9833a1446afb5c7b425db",
+      "candidate": "d816892bb305f10194a7403427838f1d643e66b3",
+      "changed_paths": [
+        "tailapps/agent-guard/README.md",
+        "tailapps/session-cost/README.md"
+      ],
+      "builder_checks": {
+        "head": "d816892bb305f10194a7403427838f1d643e66b3",
+        "ci": [
+          {
+            "check": "root-test",
+            "command": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 33.22
+          },
+          {
+            "check": "core-test",
+            "command": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.73
+          },
+          {
+            "check": "root-race",
+            "command": [
+              "go",
+              "test",
+              "-race",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 33.38
+          },
+          {
+            "check": "core-race",
+            "command": [
+              "go",
+              "test",
+              "-race",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 2.38
+          },
+          {
+            "check": "root-vet",
+            "command": [
+              "go",
+              "vet",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.33
+          },
+          {
+            "check": "core-vet",
+            "command": [
+              "go",
+              "vet",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.12
+          },
+          {
+            "check": "boundary",
+            "command": [
+              "./scripts/check-jsonataddl-boundary.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 0.39
+          },
+          {
+            "check": "root-module",
+            "command": [
+              "./scripts/check-root-module.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 28.66
+          },
+          {
+            "check": "root-vuln",
+            "command": [
+              "./scripts/vulncheck.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 2.49
+          },
+          {
+            "check": "core-vuln",
+            "command": [
+              "../scripts/vulncheck.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 1.71
+          },
+          {
+            "check": "demo",
+            "command": [
+              "./scripts/demo.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 1.99
+          }
+        ],
+        "links": {
+          "relative_links": [
+            {
+              "source": "tailapps/session-cost/README.md",
+              "target": "../../docs/reference/resident-upgrade.md",
+              "resolved": "docs/reference/resident-upgrade.md",
+              "exists": true
+            },
+            {
+              "source": "tailapps/agent-guard/README.md",
+              "target": "../../docs/reference/resident-upgrade.md",
+              "resolved": "docs/reference/resident-upgrade.md",
+              "exists": true
+            }
+          ],
+          "behavior_basis_bytes_equal": true
+        },
+        "clean_checkout": true
+      },
+      "builder_sequential_reported_seconds": 105.4,
+      "pr_ci": {
+        "headSha": "d816892bb305f10194a7403427838f1d643e66b3",
+        "jobs": [
+          {
+            "completedAt": "2026-09-06T19:04:44Z",
+            "conclusion": "success",
+            "databaseId": 101541346234,
+            "name": "verify",
+            "startedAt": "2026-09-06T19:01:51Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-09-06T19:01:53Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-09-06T19:01:52Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:01:54Z",
+                "conclusion": "success",
+                "name": "Check out repository",
+                "number": 2,
+                "startedAt": "2026-09-06T19:01:53Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:02:04Z",
+                "conclusion": "success",
+                "name": "Set up Go",
+                "number": 3,
+                "startedAt": "2026-09-06T19:01:54Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:02:50Z",
+                "conclusion": "success",
+                "name": "Test",
+                "number": 4,
+                "startedAt": "2026-09-06T19:02:04Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:03:59Z",
+                "conclusion": "success",
+                "name": "Race test",
+                "number": 5,
+                "startedAt": "2026-09-06T19:02:50Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:03:59Z",
+                "conclusion": "success",
+                "name": "Vet",
+                "number": 6,
+                "startedAt": "2026-09-06T19:03:59Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:03:59Z",
+                "conclusion": "success",
+                "name": "Verify module boundary",
+                "number": 7,
+                "startedAt": "2026-09-06T19:03:59Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:33Z",
+                "conclusion": "success",
+                "name": "Verify root public dependency and paired workspace",
+                "number": 8,
+                "startedAt": "2026-09-06T19:03:59Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:39Z",
+                "conclusion": "success",
+                "name": "Scan reachable dependency vulnerabilities",
+                "number": 9,
+                "startedAt": "2026-09-06T19:04:33Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:41Z",
+                "conclusion": "success",
+                "name": "Demo",
+                "number": 10,
+                "startedAt": "2026-09-06T19:04:39Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:41Z",
+                "conclusion": "success",
+                "name": "Verify clean checkout",
+                "number": 11,
+                "startedAt": "2026-09-06T19:04:41Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:41Z",
+                "conclusion": "success",
+                "name": "Post Set up Go",
+                "number": 21,
+                "startedAt": "2026-09-06T19:04:41Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:42Z",
+                "conclusion": "success",
+                "name": "Post Check out repository",
+                "number": 22,
+                "startedAt": "2026-09-06T19:04:41Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:04:42Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 23,
+                "startedAt": "2026-09-06T19:04:42Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34053568561/job/101541346234"
+          }
+        ],
+        "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34053568561"
+      },
+      "main_ci": {
+        "headSha": "1c02c5af40818fc43267e8fd5d7742d8331437aa",
+        "jobs": [
+          {
+            "completedAt": "2026-09-06T19:22:28Z",
+            "conclusion": "success",
+            "databaseId": 101543867371,
+            "name": "verify",
+            "startedAt": "2026-09-06T19:19:36Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-09-06T19:19:39Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-09-06T19:19:37Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:19:40Z",
+                "conclusion": "success",
+                "name": "Check out repository",
+                "number": 2,
+                "startedAt": "2026-09-06T19:19:39Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:19:49Z",
+                "conclusion": "success",
+                "name": "Set up Go",
+                "number": 3,
+                "startedAt": "2026-09-06T19:19:40Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:20:34Z",
+                "conclusion": "success",
+                "name": "Test",
+                "number": 4,
+                "startedAt": "2026-09-06T19:19:49Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:21:43Z",
+                "conclusion": "success",
+                "name": "Race test",
+                "number": 5,
+                "startedAt": "2026-09-06T19:20:34Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:21:44Z",
+                "conclusion": "success",
+                "name": "Vet",
+                "number": 6,
+                "startedAt": "2026-09-06T19:21:43Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:21:44Z",
+                "conclusion": "success",
+                "name": "Verify module boundary",
+                "number": 7,
+                "startedAt": "2026-09-06T19:21:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:17Z",
+                "conclusion": "success",
+                "name": "Verify root public dependency and paired workspace",
+                "number": 8,
+                "startedAt": "2026-09-06T19:21:44Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:23Z",
+                "conclusion": "success",
+                "name": "Scan reachable dependency vulnerabilities",
+                "number": 9,
+                "startedAt": "2026-09-06T19:22:17Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:25Z",
+                "conclusion": "success",
+                "name": "Demo",
+                "number": 10,
+                "startedAt": "2026-09-06T19:22:23Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:25Z",
+                "conclusion": "success",
+                "name": "Verify clean checkout",
+                "number": 11,
+                "startedAt": "2026-09-06T19:22:25Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:25Z",
+                "conclusion": "success",
+                "name": "Post Set up Go",
+                "number": 21,
+                "startedAt": "2026-09-06T19:22:25Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:25Z",
+                "conclusion": "success",
+                "name": "Post Check out repository",
+                "number": 22,
+                "startedAt": "2026-09-06T19:22:25Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:22:25Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 23,
+                "startedAt": "2026-09-06T19:22:25Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34054539937/job/101543867371"
+          }
+        ],
+        "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34054539937"
+      }
+    },
+    {
+      "artifact": "74d12336beb0c1bc265bbb5632c72fc875829e1e",
+      "candidate": "571a5c7a5d58523674826accb9546cddd53e0ba5",
+      "changed_paths": [
+        "docs/reference/mcp.md"
+      ],
+      "builder_checks": {
+        "head": "571a5c7a5d58523674826accb9546cddd53e0ba5",
+        "ci": [
+          {
+            "check": "root-test",
+            "command": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 30.47
+          },
+          {
+            "check": "core-test",
+            "command": [
+              "go",
+              "test",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.73
+          },
+          {
+            "check": "root-race",
+            "command": [
+              "go",
+              "test",
+              "-race",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 34.07
+          },
+          {
+            "check": "core-race",
+            "command": [
+              "go",
+              "test",
+              "-race",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 2.4
+          },
+          {
+            "check": "root-vet",
+            "command": [
+              "go",
+              "vet",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.34
+          },
+          {
+            "check": "core-vet",
+            "command": [
+              "go",
+              "vet",
+              "./..."
+            ],
+            "exit_code": 0,
+            "seconds": 0.13
+          },
+          {
+            "check": "boundary",
+            "command": [
+              "./scripts/check-jsonataddl-boundary.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 0.39
+          },
+          {
+            "check": "root-module",
+            "command": [
+              "./scripts/check-root-module.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 28.03
+          },
+          {
+            "check": "root-vuln",
+            "command": [
+              "./scripts/vulncheck.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 2.31
+          },
+          {
+            "check": "core-vuln",
+            "command": [
+              "../scripts/vulncheck.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 1.76
+          },
+          {
+            "check": "demo",
+            "command": [
+              "./scripts/demo.sh"
+            ],
+            "exit_code": 0,
+            "seconds": 1.68
+          }
+        ],
+        "links": {
+          "links": [
+            {
+              "target": "resident-upgrade.md",
+              "resolved": "docs/reference/resident-upgrade.md",
+              "checked": true
+            },
+            {
+              "target": "metrics.md",
+              "resolved": "docs/reference/metrics.md",
+              "checked": true
+            },
+            {
+              "target": "query-sql.md",
+              "resolved": "docs/reference/query-sql.md",
+              "checked": true
+            }
+          ],
+          "behavior_source_bytes_equal": true
+        },
+        "clean_checkout": true
+      },
+      "builder_sequential_reported_seconds": 102.31,
+      "pr_ci": {
+        "headSha": "571a5c7a5d58523674826accb9546cddd53e0ba5",
+        "jobs": [
+          {
+            "completedAt": "2026-09-06T19:35:28Z",
+            "conclusion": "success",
+            "databaseId": 101545803840,
+            "name": "verify",
+            "startedAt": "2026-09-06T19:32:38Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-09-06T19:32:40Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-09-06T19:32:39Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:32:41Z",
+                "conclusion": "success",
+                "name": "Check out repository",
+                "number": 2,
+                "startedAt": "2026-09-06T19:32:40Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:32:48Z",
+                "conclusion": "success",
+                "name": "Set up Go",
+                "number": 3,
+                "startedAt": "2026-09-06T19:32:41Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:33:33Z",
+                "conclusion": "success",
+                "name": "Test",
+                "number": 4,
+                "startedAt": "2026-09-06T19:32:48Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:34:42Z",
+                "conclusion": "success",
+                "name": "Race test",
+                "number": 5,
+                "startedAt": "2026-09-06T19:33:33Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:34:43Z",
+                "conclusion": "success",
+                "name": "Vet",
+                "number": 6,
+                "startedAt": "2026-09-06T19:34:42Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:34:43Z",
+                "conclusion": "success",
+                "name": "Verify module boundary",
+                "number": 7,
+                "startedAt": "2026-09-06T19:34:43Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:17Z",
+                "conclusion": "success",
+                "name": "Verify root public dependency and paired workspace",
+                "number": 8,
+                "startedAt": "2026-09-06T19:34:43Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:24Z",
+                "conclusion": "success",
+                "name": "Scan reachable dependency vulnerabilities",
+                "number": 9,
+                "startedAt": "2026-09-06T19:35:17Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:26Z",
+                "conclusion": "success",
+                "name": "Demo",
+                "number": 10,
+                "startedAt": "2026-09-06T19:35:24Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:26Z",
+                "conclusion": "success",
+                "name": "Verify clean checkout",
+                "number": 11,
+                "startedAt": "2026-09-06T19:35:26Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:26Z",
+                "conclusion": "success",
+                "name": "Post Set up Go",
+                "number": 21,
+                "startedAt": "2026-09-06T19:35:26Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:26Z",
+                "conclusion": "success",
+                "name": "Post Check out repository",
+                "number": 22,
+                "startedAt": "2026-09-06T19:35:26Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:35:26Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 23,
+                "startedAt": "2026-09-06T19:35:26Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34055217927/job/101545803840"
+          }
+        ],
+        "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34055217927"
+      },
+      "main_ci": {
+        "headSha": "e3ad5f920d63274ac0998903e0399e413f9f848c",
+        "jobs": [
+          {
+            "completedAt": "2026-09-06T19:52:09Z",
+            "conclusion": "success",
+            "databaseId": 101548107601,
+            "name": "verify",
+            "startedAt": "2026-09-06T19:49:20Z",
+            "status": "completed",
+            "steps": [
+              {
+                "completedAt": "2026-09-06T19:49:21Z",
+                "conclusion": "success",
+                "name": "Set up job",
+                "number": 1,
+                "startedAt": "2026-09-06T19:49:21Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:49:22Z",
+                "conclusion": "success",
+                "name": "Check out repository",
+                "number": 2,
+                "startedAt": "2026-09-06T19:49:21Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:49:29Z",
+                "conclusion": "success",
+                "name": "Set up Go",
+                "number": 3,
+                "startedAt": "2026-09-06T19:49:22Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:50:14Z",
+                "conclusion": "success",
+                "name": "Test",
+                "number": 4,
+                "startedAt": "2026-09-06T19:49:29Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:51:24Z",
+                "conclusion": "success",
+                "name": "Race test",
+                "number": 5,
+                "startedAt": "2026-09-06T19:50:14Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:51:24Z",
+                "conclusion": "success",
+                "name": "Vet",
+                "number": 6,
+                "startedAt": "2026-09-06T19:51:24Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:51:25Z",
+                "conclusion": "success",
+                "name": "Verify module boundary",
+                "number": 7,
+                "startedAt": "2026-09-06T19:51:24Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:51:58Z",
+                "conclusion": "success",
+                "name": "Verify root public dependency and paired workspace",
+                "number": 8,
+                "startedAt": "2026-09-06T19:51:25Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:04Z",
+                "conclusion": "success",
+                "name": "Scan reachable dependency vulnerabilities",
+                "number": 9,
+                "startedAt": "2026-09-06T19:51:58Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:06Z",
+                "conclusion": "success",
+                "name": "Demo",
+                "number": 10,
+                "startedAt": "2026-09-06T19:52:04Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:06Z",
+                "conclusion": "success",
+                "name": "Verify clean checkout",
+                "number": 11,
+                "startedAt": "2026-09-06T19:52:06Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:06Z",
+                "conclusion": "success",
+                "name": "Post Set up Go",
+                "number": 21,
+                "startedAt": "2026-09-06T19:52:06Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:06Z",
+                "conclusion": "success",
+                "name": "Post Check out repository",
+                "number": 22,
+                "startedAt": "2026-09-06T19:52:06Z",
+                "status": "completed"
+              },
+              {
+                "completedAt": "2026-09-06T19:52:06Z",
+                "conclusion": "success",
+                "name": "Complete job",
+                "number": 23,
+                "startedAt": "2026-09-06T19:52:06Z",
+                "status": "completed"
+              }
+            ],
+            "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34056077282/job/101548107601"
+          }
+        ],
+        "url": "https://github.com/generalbusiness-ai/tailapps/actions/runs/34056077282"
+      }
+    }
+  ],
+  "limits": [
+    "Local durations are recorded builder evidence, not root reruns.",
+    "GitHub run headSha identifies candidate association; actual PR checkout tree may be a synthetic merge. Do not infer byte-identical environments or wasted wall time by adding overlapped runs.",
+    "Full CI remains useful integration evidence; recommendation concerns manual full-suite duplication before PR review and redundant review reruns, not deleting CI gates."
+  ],
+  "source_context": {
+    "tail_workflow": "name: CI\n\non:\n  push:\n    branches: [main]\n  pull_request:\n    branches: [main]\n\npermissions:\n  contents: read\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    timeout-minutes: 20\n    steps:\n      - name: Check out repository\n        uses: actions/checkout@v7\n\n      - name: Set up Go\n        uses: actions/setup-go@v7\n        with:\n          go-version: '1.26.7'\n          cache-dependency-path: |\n            go.sum\n            jsonataddl/go.sum\n\n      - name: Test\n        run: |\n          go test ./...\n          (cd jsonataddl && GOWORK=off go test ./...)\n\n      - name: Race test\n        run: |\n          go test -race ./...\n          (cd jsonataddl && GOWORK=off go test -race ./...)\n\n      - name: Vet\n        run: |\n          go vet ./...\n          (cd jsonataddl && GOWORK=off go vet ./...)\n\n      - name: Verify module boundary\n        run: |\n          test \"$(cd jsonataddl && GOWORK=off go list -m -f '{{.Path}}')\" = 'github.com/generalbusiness-ai/tailapps/jsonataddl'\n          ./scripts/check-jsonataddl-boundary.sh\n\n      - name: Verify root public dependency and paired workspace\n        run: ./scripts/check-root-module.sh\n\n      - name: Scan reachable dependency vulnerabilities\n        run: |\n          ./scripts/vulncheck.sh\n          (cd jsonataddl && GOWORK=off ../scripts/vulncheck.sh)\n\n      - name: Demo\n        run: ./scripts/demo.sh\n\n      - name: Verify clean checkout\n        run: test -z \"$(git status --porcelain)\"\n",
+    "tail_embeds": "// Package tailapps contains the first-party Tailapp source sets. The engine\n// installs these through the same public service used for agent-authored apps;\n// embedding is distribution, not a privileged execution path.\npackage tailapps\n\nimport (\n\t\"embed\"\n\t\"fmt\"\n\n\t\"github.com/generalbusiness-ai/tailapps/internal/profile\"\n)\n\n//go:embed activity-stats/application.sql activity-stats/folds/*.jsonata agent-guard/application.sql agent-guard/folds/*.jsonata daily-review/application.sql daily-review/folds/*.jsonata session-cost/application.sql session-cost/folds/*.jsonata signal-counts/application.sql signal-counts/folds/*.jsonata url-reputation/application.sql url-reputation/folds/*.jsonata\nvar sources embed.FS\n\nfunc Load(name string) (*profile.Profile, error) {\n\tswitch name {\n\tcase \"activity-stats\", \"agent-guard\", \"daily-review\", \"session-cost\", \"signal-counts\", \"url-reputation\":\n\t\treturn profile.Load(sources, name, name)\n\tdefault:\n\t\treturn nil, fmt.Errorf(\"unknown bundled tailapp %q\", name)\n\t}\n}\n\nfunc Names() []string {\n\treturn []string{\"activity-stats\", \"agent-guard\", \"daily-review\", \"session-cost\", \"signal-counts\", \"url-reputation\"}\n}\n\n// Source returns a private copy of a bundled Tailapp's ordinary source set.\n// Bundles still travel through the public registry/compiler/activation path;\n// this function is distribution, not a privileged runtime.\nfunc Source(name string) (map[string][]byte, error) {\n\tcompiled, err := Load(name)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tresult := make(map[string][]byte, len(compiled.Sources))\n\tfor path, content := range compiled.Sources {\n\t\tresult[path] = append([]byte(nil), content...)\n\t}\n\treturn result, nil\n}\n",
+    "gitseq_agents_head": "07753351d69c05dedec58f4e2561a793054312a5",
+    "gitseq_agents_artifact": "a1c15fb28f5df85b922f551195b7b736f2488138"
+  }
+}
