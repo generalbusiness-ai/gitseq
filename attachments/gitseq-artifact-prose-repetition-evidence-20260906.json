@@ -1,0 +1,422 @@
+[
+  {
+    "room": "gitseq",
+    "candidate": "21b7e74225885452ab0ad0dc49b33aaf2c326d54",
+    "artifact_count": 52,
+    "total_text_characters": 29319,
+    "exact_common_prefix_characters": 0,
+    "prefix_copies_beyond_first_characters": 0,
+    "events": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f9e94d6c94f9be736d2e8da293c2fc8cee510d02",
+        "path": "internal/app/request_authoring.go",
+        "text_characters": 11487
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf4dce00685ed00f6e840610979ef043d84942de",
+        "path": "internal/workroom/schema.go",
+        "text_characters": 343
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c70fd8772a37527165b2f8bea152eb5b0905f56c",
+        "path": "internal/workroom/landing.go",
+        "text_characters": 479
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b94af4afc0bacc56a5854cbd03b51eb64ee98e4",
+        "path": "internal/workroom/fold.go",
+        "text_characters": 397
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e1717049e8d1bb61968c4a001dce2112842d08f",
+        "path": "internal/service/request_authoring_test.go",
+        "text_characters": 324
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af7f234e05a6055f87e5b6ebe3ffeab9bf1d63c2",
+        "path": "internal/service/act_authorization_test.go",
+        "text_characters": 324
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b54062d31662da6f5540fea857f5b549f207692c",
+        "path": "internal/perfscenario/fixture.go",
+        "text_characters": 352
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f591ddc7a51cc86cafb9df35e7c6c9d6a1274eba",
+        "path": "internal/mergeplan/mergeplan_test.go",
+        "text_characters": 318
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4712728c403bc45eff2008d46c3ee2f3ecd72824",
+        "path": "internal/kernel/kernel.go",
+        "text_characters": 376
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24ef64a44555d4fbb9539a360440770d3d6acd85",
+        "path": "internal/intent/intent.go",
+        "text_characters": 372
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30222319e4eaf2c1e1318ab78c3f7f48af3394aa",
+        "path": "internal/app/request_authoring_test.go",
+        "text_characters": 460
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7969e828638dd739c819c302b1bd0204e762d8ba",
+        "path": "internal/app/receipt_profile_test.go",
+        "text_characters": 318
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e320e39cc7f3abe4312a99f11996067cb253b0bb",
+        "path": "internal/app/reassign_if_unclaimed_test.go",
+        "text_characters": 324
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b3169bbc5f115b052ab830e4b22f3f7e9c9abea0",
+        "path": "internal/app/app_test.go",
+        "text_characters": 457
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:183729d555dc38ddb65806bdcf39052f572405e3",
+        "path": "internal/app/app.go",
+        "text_characters": 551
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b544f77d508f8ba8c67cb65916d987dd75f2d65",
+        "path": "internal/app/admission_test.go",
+        "text_characters": 312
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c16f92265eaf66cb82d074be010dfb12ff02a253",
+        "path": "internal/app/admission.go",
+        "text_characters": 292
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9930225e8477277ed8ad12ce9a48daf131e79c83",
+        "path": "docs/reference/mcp/state.md",
+        "text_characters": 349
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9790c1c258ed0f8b18aad68dd00e599df19b69fc",
+        "path": "docs/reference/mcp/reassign_if_unclaimed.md",
+        "text_characters": 322
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ca28310168f03027151d4ae08562a11484670a4",
+        "path": "docs/reference/mcp/ratify.md",
+        "text_characters": 334
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8d89e2a14e758bd374d76939938ff3d52a6c736e",
+        "path": "docs/reference/gs/work.md",
+        "text_characters": 331
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ecc81c46b338c58b8a7465c19f655903984127ed",
+        "path": "docs/reference/gs/status.md",
+        "text_characters": 333
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87c80b94b7bd46de4434de584233ebda7bac495c",
+        "path": "docs/reference/gs/state.md",
+        "text_characters": 437
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff4c6f85c09937041d80dd5e0b2a259b6aae6a59",
+        "path": "docs/reference/gs/reviews.md",
+        "text_characters": 334
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d173e652476e175a823e01183c031e2336e9d19",
+        "path": "docs/reference/gs/review.md",
+        "text_characters": 333
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9318b535336e38c86190b3532178fe04a0bef0e",
+        "path": "docs/reference/gs/reassign-if-unclaimed.md",
+        "text_characters": 357
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:46be88a67aaa262a0ef63dac1aea06c9dcde1440",
+        "path": "docs/reference/gs/ratify.md",
+        "text_characters": 333
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17378e95dcf8ad808cfab43206235acc8528dc9e",
+        "path": "docs/reference/gs/provenance.md",
+        "text_characters": 337
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e53b5523197a67043513a63af69eece4c1cd3b4",
+        "path": "docs/reference/gs/merge.md",
+        "text_characters": 332
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ad779442ac4ab43f49824844b2ba1d7f16d3a7a",
+        "path": "docs/reference/gs/inspect.md",
+        "text_characters": 334
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c307a25266e05ba8f48a1a82fb57f452605b427a",
+        "path": "docs/reference/gs/batch.md",
+        "text_characters": 329
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81f7c8e081ec8ced4fcd8f4e5c92a6af0598c9aa",
+        "path": "docs/reference/architecture.md",
+        "text_characters": 409
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7608b9fa83b0eeddd56179cb7df93376e3375465",
+        "path": "docs/how-to/run-a-work-loop.md",
+        "text_characters": 336
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a54c67cda9d4573f273ef6a142c59bb22e3d721",
+        "path": "docs/how-to/keep-decision-records.md",
+        "text_characters": 342
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b56958940dec1f71f67e98fc25cf63ac2b539e",
+        "path": "docs/how-to/end-to-end.md",
+        "text_characters": 331
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc3e7e3decef8796c7badab0957f7ebd937f3213",
+        "path": "docs/how-to/connect-github.md",
+        "text_characters": 335
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea88a02f15935fcca02c8fbda665d848dccda526",
+        "path": "docs/getting-started.md",
+        "text_characters": 329
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e591250a5e1738211e5b64851598c3b39d5a838",
+        "path": "cmd/gs/request_authoring_test.go",
+        "text_characters": 314
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5012cf3e0559d66f8444ca907984532c8a9d0ccf",
+        "path": "cmd/gs/query_test.go",
+        "text_characters": 302
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acabdb5cad8be5f4a95c3e93e240347e8aced3fc",
+        "path": "cmd/gs/merge_lock_test.go",
+        "text_characters": 307
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e9676a172d655f34452277a33294c9b51b181f9",
+        "path": "cmd/gs/main_test.go",
+        "text_characters": 365
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50f71c7d41285dd78846c5304a3efdb1b0741f15",
+        "path": "cmd/gs/main.go",
+        "text_characters": 396
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c85b98c570f86cdc48c3c70446fed2cd9a0d4bef",
+        "path": "cmd/gs/landing_test.go",
+        "text_characters": 304
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:306bb08e8393eb393c1206d3436c9105944c550d",
+        "path": "cmd/gitseq-mcp/selector_test.go",
+        "text_characters": 313
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:16436f509d32624dde54a3601842ebcbddda9eed",
+        "path": "cmd/gitseq-mcp/review_test.go",
+        "text_characters": 311
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dc42fbeb36db1c1299b91c8b03d8352619ac95fb",
+        "path": "cmd/gitseq-mcp/request_authoring_test.go",
+        "text_characters": 322
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb3c1eb9c18b66580bebff6bc0e6b121921e1178",
+        "path": "cmd/gitseq-mcp/reassign_if_unclaimed_test.go",
+        "text_characters": 326
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:005aa5fda826ab0040451cc64728b31dcb97bd2e",
+        "path": "cmd/gitseq-mcp/main_test.go",
+        "text_characters": 309
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80c6982c09fe2c92925bc2b51b781803c4ea376a",
+        "path": "cmd/gitseq-mcp/main.go",
+        "text_characters": 372
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e48892bf673ebad58dac9023f76832889921de70",
+        "path": "cmd/gitseq-mcp/late_actor_test.go",
+        "text_characters": 315
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:91cc27e6cf7f96bf9e267681f2f96c279d7fada4",
+        "path": "cmd/gitseq-github/main_test.go",
+        "text_characters": 312
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be4c2221a9b92563aaee10a4cdb446faf819090d",
+        "path": "SKILL.md",
+        "text_characters": 388
+      }
+    ]
+  },
+  {
+    "room": "gitseq-chess",
+    "candidate": "fc3fa1f50edb10efd631d0708309d1839c06a7da",
+    "artifact_count": 14,
+    "total_text_characters": 29771,
+    "exact_common_prefix_characters": 2102,
+    "prefix_copies_beyond_first_characters": 27326,
+    "events": [
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:613eb5a15b30847fedf2048c5c0fc267ecb196b5",
+        "path": "cmd/chess/web_actions.go",
+        "text_characters": 2126
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:4c1da32cf7bdf32c1da61bfedab5514cbff24175",
+        "path": "cmd/chess/web.go",
+        "text_characters": 2118
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:7598ae6d46ecfa9f0414b98582816dfe3b903b20",
+        "path": "cmd/chess/service_actions.go",
+        "text_characters": 2130
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:d966458aea07f225a955a1f4f7cd9baf1d912952",
+        "path": "cmd/chess/repository.go",
+        "text_characters": 2125
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:353dd6fc483e4e48e4f99d466cc4cf444750edb6",
+        "path": "cmd/chess/main_test.go",
+        "text_characters": 2124
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:f33a5404e537b4b69f455bb1ecca49f4a9de8459",
+        "path": "cmd/chess/main.go",
+        "text_characters": 2119
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:1e43e30471e984ca8caa420e4f170e99def2c314",
+        "path": "cmd/chess/agent_transport_test.go",
+        "text_characters": 2135
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:3e6e2536feac4f9b567856abf98237d6588a7310",
+        "path": "cmd/chess/agent_refusal_test.go",
+        "text_characters": 2133
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:c7818c50e02b2230805ca0e2c4d4efac39b14e90",
+        "path": "cmd/chess/agent_pending.go",
+        "text_characters": 2128
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:8bd46b55ffa46c688002af788cde71bc872184e4",
+        "path": "cmd/chess/agent_lock_unsupported.go",
+        "text_characters": 2137
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:e6b6adaa6e46fc69ecbe309e01eb1eaad97482ea",
+        "path": "cmd/chess/agent_lock_unix.go",
+        "text_characters": 2130
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:541afeafbee79656c0bdbdb6505cbe8009c2a127",
+        "path": "cmd/chess/agent_commands.go",
+        "text_characters": 2129
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:93714c7967643df21d5f13774e7f8856062b1af5",
+        "path": "cmd/chess/agent_client.go",
+        "text_characters": 2127
+      },
+      {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:664eca017598694524e74b00eb5571de4b881197",
+        "path": "chess.go",
+        "text_characters": 2110
+      }
+    ]
+  },
+  {
+    "room": "tailapp",
+    "candidate": "62c0d8f42adcf56963ba89df27aa09f90c3c7532",
+    "artifact_count": 12,
+    "total_text_characters": 19177,
+    "exact_common_prefix_characters": 1543,
+    "prefix_copies_beyond_first_characters": 16973,
+    "events": [
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:16a5202bcb8a77171695328979c3aea55ff199a9",
+        "path": "notes/2026-08-28-tailapp-architecture.md",
+        "text_characters": 1720
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:78d29eb19d02f6a04ab2bf2925433b45dc643e6a",
+        "path": "docs/reference/releases.md",
+        "text_characters": 1706
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:39d7a70a3982c0481a1213f314af8a0a53366e84",
+        "path": "README.md",
+        "text_characters": 1689
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5446b76c3ce535b33bbdcf78dd3b922f20fa7a26",
+        "path": "scripts/root_module_test.go",
+        "text_characters": 1571
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:70d2a3ba606b1cde567ab30871120661628dab46",
+        "path": "scripts/release_test.go",
+        "text_characters": 1567
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8aa1ea72f4d0c00a16cbd41fd8950ef10ee92922",
+        "path": "scripts/check-root-module.sh",
+        "text_characters": 1572
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:bc8b98988b30bf0e7d5b18ba86eade7e375bee08",
+        "path": "scripts/build.sh",
+        "text_characters": 1560
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:bd5f48bb4607c605acce49943d2b80a8243083a0",
+        "path": "go.work",
+        "text_characters": 1551
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b1e8cf419fc837ff0fb42ae3888719286c1dc0ac",
+        "path": "go.sum",
+        "text_characters": 1550
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:3ebd2c84347d64101d93ac6fbffb8375f6e92c18",
+        "path": "go.mod",
+        "text_characters": 1550
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:66ad1bc42c7603826e8ecb733f4f3d837288f028",
+        "path": ".github/workflows/release.yml",
+        "text_characters": 1573
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:bf301d11f2d7a60377f927ff7451ad3f653430a2",
+        "path": ".github/workflows/ci.yml",
+        "text_characters": 1568
+      }
+    ]
+  }
+]
