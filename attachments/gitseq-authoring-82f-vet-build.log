@@ -1,3 +1,0 @@
-COMMAND ['go', 'vet', './...']
-COMMAND ['go', 'build', '-o', '/tmp/gitseq-authoring-82f-gs', './cmd/gs']
-COMMAND ['git', 'diff', '--check']
