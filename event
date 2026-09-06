@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exercise initial/forward attachment, hostile remotes, remote rollback, and lost-ref replay refusal without installing rejected history.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"cmd/gs/main_test.go"}}
+{"kind":"artifact","text":"Reuse one configuration-identity check for attachment and one saved-frontier continuation rule for import and verified reads.","body":{"commit":"23961eb1e739b9838060aca87d44127611a23bbf","path":"internal/app/app.go"}}
