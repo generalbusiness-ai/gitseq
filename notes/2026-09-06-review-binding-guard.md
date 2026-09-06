@@ -132,11 +132,39 @@ refuses the same relabel, and prepares without appending.
 Run on the committed tree by `rbg-mut.sh`, each removing one consumer or
 guard and running only the control that must catch it:
 
-MUTANT_RESULTS
+| Mutant | Removed | Control | Result |
+|---|---|---|---|
+| A | review filing skips the resolver | evidence artifact signs as an assigned delivery | red |
+| B | merge landing keeps the old zero-match pass-through | evidence-only and legacy zero-match approvals land | red |
+| C | authorization consumer trusts the primary's exact report lookup | authorization of an evidence-only approval passes | red |
+| D | merge plan skips the binding check | `merge_plan` admits an evidence-only approval | red |
+| E | admission skips binding re-resolution | a verdict whose binding moved after confirmation seals | red |
+| F | self-initiated inferred from an empty lookup | wrong primary and broken assignment pass | red |
+| G | selectors may add an unexamined report | an uncited implementation report is closed | red |
+
+Each mutant was applied to a clean committed tree, the named control run
+alone, and the tree restored with `git checkout` before the next.
 
 ## Gates
 
-GATE_RESULTS
+Run on the committed head with `rbg-gates.sh` and its follow-up:
+
+- `gofmt -l` clean; `git diff --check` clean; `go vet ./...` and
+  `go build ./...` exit 0.
+- `go test -race -count=1` on reviewguard, mergeplan, app, cmd/gs and
+  cmd/gitseq-mcp: all pass.
+- `go test -count=1 ./...` over 35 packages: all pass except one timing test
+  in cmd/gitseq-mcp (`TestWhoamiBoundsStallsAndRejectsRedirects`) that timed
+  out while two other suites shared the machine; it passes alone twice.
+- `GOFLAGS=-count=1 make docs`: pass, after the decision-record how-to's
+  three reviews were given their adopted-decision witness (that change is in
+  this head).
+
+Existing tests that reviewed artifacts with no request or promise edge were
+given the ratified adoption they lacked: the nested cross-author fixtures in
+cmd/gs and the merge-plan fixture in cmd/gitseq-mcp. They now name their
+proposal with the self-initiated selector, which is the behaviour this
+delivery introduces.
 
 ## Limits
 
