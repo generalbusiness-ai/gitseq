@@ -16,6 +16,11 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cb46390f7cc0630f8f7518d79c3031c4b226605
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:109d5eb915643120959d224369327a034f6a5d43
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87165f1520bdf1a58e390a53b939b310fcd12df9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a5ba7c376e9417d6c11f5275f47202179381a30e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599960fd61ab6d3288f3977f60ea80a0ae0ca5ea
 ---
 
 # Architecture layers
@@ -1535,6 +1540,24 @@ a projection it may merge on. This carries the fold profile to
 `workroom-fold@10`, since the published projection bytes change.
 
 ### 7. CLI, MCP, skills, connectors, and UI
+
+The reading UI includes a Notes view selected from declared `render: note`
+kinds, independently of request and approval populations. Exact record-number
+lookup spans all verified durable decisions. A reusable preview keeps the
+owning record and exact Git revision in the address and dialog; raw and
+percent-encoded record/focus links name the same records.
+
+`POST /v0/preview` extends the layer-7 read contract. It resolves source heads
+only from the selected record or directly cited artifacts, and evidence only
+from that signed event's attachment tree. Ambiguity requires an explicit cited
+head; absence never falls back to main or the worktree. Layer 1 supplies bounded,
+hash-verified immutable commit/tree/blob reads, without Git replacements,
+filters, symbolic links or submodules. The endpoint admits only records in the
+resident's verified projection, applies same-origin JSON checks and bounded
+input, concurrency, time, metadata, text and listing limits. React renders
+Markdown and source as inert text with safe links. These additions change no
+kernel, fold, custody, signing or completion authority. [Reading notes, source
+files, and evidence](reading-view.md) specifies the read limits and navigation.
 
 Landing observations are layer-7 Git facts, separate from the layer-6 receipt
 witness. A bounded batch captures immutable ref heads and computes local and
