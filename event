@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffcda49b7e0617f7c80edf10fba99b561463b023","text":"Merge retired a covered predecessor; the successor is at spike/querysandbox/sandbox_test.go."}
+{"kind":"assert","text":"Review note for Hugh: reserve verdict for actual reviews. Ordinary completed reports currently create unresolved review entries in both workrooms; a small authoring clarification can prevent that noise. See the attached review and clickable evidence. Recommendation only."}
