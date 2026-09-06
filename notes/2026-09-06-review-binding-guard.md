@@ -131,7 +131,8 @@ own; and, from review finding
 selecting only the first of two examined implementations still records both
 requests and still refuses the held companion at `gs merge` and the
 differently targeted companion at `gs review`, appending nothing and moving
-no ref.
+no ref, with the paired no-selector controls kept as distinct tests that
+refuse the same two companions the same way.
 
 ## Correction round
 

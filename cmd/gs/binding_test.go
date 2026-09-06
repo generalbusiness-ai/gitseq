@@ -456,3 +456,38 @@ func TestSelectorCannotHideAnExaminedCompanionOwedElsewhere(t *testing.T) {
 		t.Fatal("refused review appended to the workroom")
 	}
 }
+
+// Paired control for the held case: with no selector, examining both reports
+// refuses the held companion at gs merge exactly as the selector case does.
+func TestExaminedHeldCompanionRefusesWithoutASelector(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := buildCombinedDelivery(t, f, map[string]string{"landing": "held"})
+	if err := reviewCommand(f.ctx, append(lane.base, "--artifact", lane.artifacts["first"], "--artifact", lane.artifacts["second"], "--verdict", "approved", "--text", "APPROVED both")); err != nil {
+		t.Fatal(err)
+	}
+	approval := f.lastEvent(t)
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-combined"}); err != nil {
+		t.Fatal(err)
+	}
+	head := testGit(t, f.repo, "rev-parse", "HEAD")
+	err := mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo, "--candidate", lane.candidate, "--approval", approval, "--text", "land both without the held second's release"})
+	if err == nil || !strings.Contains(err.Error(), "is held") {
+		t.Fatalf("held companion without a selector: %v", err)
+	}
+	if testGit(t, f.repo, "rev-parse", "HEAD") != head {
+		t.Fatal("refused merge moved the target")
+	}
+}
+
+// Paired control for the target case: with no selector, examining both
+// reports refuses the differently targeted companion at gs review.
+func TestExaminedCompanionOwedElsewhereRefusesWithoutASelector(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := buildCombinedDelivery(t, f, map[string]string{"target_ref": "refs/heads/other"})
+	err := reviewCommand(f.ctx, append(lane.base, "--artifact", lane.artifacts["first"], "--artifact", lane.artifacts["second"], "--verdict", "approved", "--text", "APPROVED both"))
+	if err == nil || !strings.Contains(err.Error(), "different targets") {
+		t.Fatalf("companion owed elsewhere without a selector: %v", err)
+	}
+}
