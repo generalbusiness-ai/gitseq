@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Exact-head companion: ui/test/preview.test.mjs. Delivery account and verification evidence follow on docs/reference/reading-view.md.","body":{"commit":"cc24d6c43ddbed19997cb4797b0d2002c77b9a93","path":"ui/test/preview.test.mjs"}}
+{"kind":"artifact","text":"Directory companion for removal of the two former embedded assets. This names the widest live service directory affected by their deletion; exact added and modified files have separate companions.","body":{"commit":"cc24d6c43ddbed19997cb4797b0d2002c77b9a93","path":"internal/service"}}
