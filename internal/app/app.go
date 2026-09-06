@@ -949,51 +949,51 @@ func (w *Workspace) updateConfig(mutate func(*apphost.Config) (bool, error)) err
 	return nil
 }
 
-func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+func ensureAttachmentConfig(ctx context.Context, repo, genesis, objectFormat string) (string, apphost.Config, error) {
 	if err := apphost.ValidateGenesis(objectFormat, genesis); err != nil {
-		return nil, fmt.Errorf("invalid attachment genesis: %w", err)
+		return "", apphost.Config{}, fmt.Errorf("invalid attachment genesis: %w", err)
 	}
 	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
 	if err != nil {
-		return nil, err
+		return "", apphost.Config{}, err
 	}
 	metaDir := apphost.MetaDir(commonDir)
 	if _, err := os.Stat(filepath.Join(metaDir, apphost.ConfigFile)); errors.Is(err, os.ErrNotExist) {
 		attachAbsenceGate()
 		if err := os.MkdirAll(metaDir, 0o700); err != nil {
-			return nil, err
+			return "", apphost.Config{}, err
 		}
 		created := apphost.Config{Version: 0, Genesis: genesis, ObjectFormat: objectFormat, ReadOnly: true}
 		if err := apphost.CreateConfig(metaDir, created); err != nil && !errors.Is(err, os.ErrExist) {
-			return nil, err
+			return "", apphost.Config{}, err
 		}
 		// os.ErrExist means a concurrent attach created the configuration
 		// after the absence check. The stored one, not this call's argument,
 		// is now the one to answer for, and the comparison below judges it.
 	} else if err != nil {
-		return nil, err
+		return "", apphost.Config{}, err
 	}
-	// The configuration exists, so opening it is what selects the interpreter.
-	// Attaching and opening then reach the same answer by the same path, and no
-	// workspace leaves this package without one. Comparing after the open — on
-	// the creating path too — makes a reported success an observation of the
-	// stored genesis rather than an echo of the argument: an attach whose
-	// creation lost the race fails here instead of silently answering for a
-	// sequence it never stored.
-	workspace, err := Open(ctx, repo)
+	config, err := apphost.LoadConfig(metaDir)
 	if err != nil {
+		return "", apphost.Config{}, err
+	}
+	if !config.ReadOnly {
+		return "", apphost.Config{}, errors.New("cannot attach over a writable workroom")
+	}
+	if config.Genesis != genesis {
+		return "", apphost.Config{}, errors.New("attached workroom genesis does not match --genesis")
+	}
+	if config.ObjectFormat != objectFormat {
+		return "", apphost.Config{}, errors.New("attached workroom object format changed")
+	}
+	return metaDir, config, nil
+}
+
+func AttachConfig(ctx context.Context, repo, genesis, objectFormat string) (*Workspace, error) {
+	if _, _, err := ensureAttachmentConfig(ctx, repo, genesis, objectFormat); err != nil {
 		return nil, err
 	}
-	if !workspace.config.ReadOnly {
-		return nil, errors.New("cannot attach over a writable workroom")
-	}
-	if workspace.config.Genesis != genesis {
-		return nil, errors.New("attached workroom genesis does not match --genesis")
-	}
-	if workspace.config.ObjectFormat != objectFormat {
-		return nil, errors.New("attached workroom object format changed")
-	}
-	return workspace, nil
+	return Open(ctx, repo)
 }
 
 func (w *Workspace) Actor(name string) (apphost.Actor, ed25519.PrivateKey, error) {
@@ -2585,37 +2585,12 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 	var refused error
 	err := w.updateConfig(func(c *apphost.Config) (bool, error) {
 		refused = nil
-		previous := c.VerifiedFrontier
-		if previous != nil {
-			if verification.Depth < previous.Depth {
-				refused = fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verification.Depth, previous.Depth)
-				return false, refused
-			}
-			if verification.Head == previous.Head {
-				if verification.Depth != previous.Depth {
-					refused = errors.New("refuse inconsistent verified frontier depth")
-					return false, refused
-				}
-				return false, nil
-			}
-			commits, err := w.Store.RevListAfter(ctx, previous.Head, verification.Head)
-			if err != nil {
-				refused = fmt.Errorf("compare verified frontier: %w", err)
-				return false, refused
-			}
-			if len(commits) == 0 {
-				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not contain previously verified head %s", verification.Head, previous.Head)
-				return false, refused
-			}
-			parents, err := w.Store.CommitParents(ctx, commits[0])
-			if err != nil {
-				refused = fmt.Errorf("compare verified frontier: %w", err)
-				return false, refused
-			}
-			if len(parents) != 1 || parents[0] != previous.Head || verification.Depth != previous.Depth+len(commits) {
-				refused = fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s", verification.Head, previous.Head)
-				return false, refused
-			}
+		if err := checkVerifiedFrontier(ctx, w.Store, c.VerifiedFrontier, verification); err != nil {
+			refused = err
+			return false, err
+		}
+		if c.VerifiedFrontier != nil && c.VerifiedFrontier.Head == verification.Head {
+			return false, nil
 		}
 		c.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}
 		return true, nil

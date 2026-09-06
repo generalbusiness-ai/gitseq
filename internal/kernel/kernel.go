@@ -1084,6 +1084,13 @@ func Verify(ctx context.Context, store gitstore.Store, genesis string) (Verifica
 	if err != nil {
 		return Verification{}, err
 	}
+	return VerifyAt(ctx, store, genesis, head)
+}
+
+// VerifyAt audits one immutable candidate without installing it at the
+// authoritative sequence ref. Fetching objects is not acceptance: importers
+// must also compare this verified history with their local frontier.
+func VerifyAt(ctx context.Context, store gitstore.Store, genesis, head string) (Verification, error) {
 	log, err := scanHead(ctx, store, genesis, head, false, nil)
 	if err != nil {
 		return Verification{}, err
