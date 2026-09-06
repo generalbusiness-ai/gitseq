@@ -10,8 +10,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:efb1cee98973256e776e07c3de278c95f781685c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84777074e8f726a673e6afbab13a8189fb1b4726
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f5ca1c3b34c09a4a1a5f26ac366b94c748e3ca9
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eb6ed282bdb85fdccf2f0a6e989f8105fcf600c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68fce5ef1c832368d54c3de12bc37471afbda627
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b3a68c6256221f6cba88ff1ee5d392e305a5fe33
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1c15fb28f5df85b922f551195b7b736f2488138
@@ -58,10 +58,13 @@ This is a frozen historical case: the live binding assignment has since
 advanced. A separate actual current-reader query confirms that an unclaimed
 stale request remains in `available_to_you` with no invented promise, performer
 or waiting party. The code baseline is main
-`33f69956167115d7cc3235b6b1864ed904f2802a`; the four readers run reviewed
-`39c7a0e74f4a828ba8223acbacc3f2c82eb58016`. Relevant behavior files are
-byte-identical. The read-only snapshot was verified from the signed log without actor
-or sequencer keys and without rewinding its checkpoint.
+`07753351d69c05dedec58f4e2561a793054312a5`; the four readers run reviewed
+`39c7a0e74f4a828ba8223acbacc3f2c82eb58016`. The fold and status-query files
+remain byte-identical. The landed review-binding guard changes CLI/MCP review
+and merge checks, not this lifecycle defect or the P2 filter contract. Preserve
+that guard in the later implementation. The read-only snapshot was verified
+from the signed log without actor or sequencer keys and without rewinding its
+checkpoint.
 
 ## Bounded P2 implementation
 
@@ -81,7 +84,7 @@ One implementation head must reconcile these consumers together:
 | Fold and model (`internal/workroom/fold.go:120`) | Remove the two stale-status overrides; retain stale qualifiers, causes, promise and waiting-party fields. Completion, retirement, transfer and landing precedence remain unchanged. |
 | Profile and schemas (`internal/workroom/schema.go:13`) | Advance the next unused fold profile from the then-current version (now `workroom-fold@22`). No new signed-event schema is required: record bytes and act-time authority are unchanged. Update projection descriptions and golden expectations. |
 | Bounded status (`internal/statusview/view.go:124`), actor status (`internal/statusview/actor.go:254`) and work query (`internal/statusview/query.go:270`) | Route stale open/promised rows through their normal relationship lanes. Counts retain lifecycle totals and stale totals per lifecycle. Keep closed-history summaries, omission counts, limits, cursors and the independent approved-not-landed audit. |
-| CLI (`cmd/gs/main.go:2387`), MCP (`cmd/gitseq-mcp/main.go:700`) and HTTP (`internal/service/server.go:285`) | Use the same projection and filter contract; update input enums/help and output descriptions together. No adapter may silently return an older classification as current. |
+| CLI (`cmd/gs/main.go:2427`), MCP (`cmd/gitseq-mcp/main.go:700`) and HTTP (`internal/service/server.go:285`) | Use the same projection and filter contract; update input enums/help and output descriptions together. No adapter may silently return an older classification as current. |
 | Browser types (`ui/src/lib/api.ts:65`) and row populations (`ui/src/lib/rows.ts:48`) | Include stale open/promised rows in open work and its existing reasoning-moved subset. Remove the duplicate stale-not-in-flight population, its counter and dead selection branches. Table, Graph and threads must agree. Preserve the landing audit, completed/closed populations, standing proposals and bounded context. |
 | Maintained references and examples | Reconcile the affected I6 status/work/work-loop pages, architecture and tool schema examples. Keep historical evidence labelled as historical; do not rewrite recorded events. |
 
