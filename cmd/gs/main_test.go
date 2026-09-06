@@ -2624,6 +2624,23 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 // the merge retires a cross-author pointer above the reviewed path: reach that
 // the fold's symmetric lineage authorizes and the command's prospective
 // direction refuses.
+// adopt files a ratified proposal that adopts one artifact, the positive
+// witness a self-initiated review names with --self-initiated.
+func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
+	t.Helper()
+	proposal, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPropose, Text: "adopt " + key,
+		RestsOn: []string{artifact}, IdempotencyKey: key + "-proposal",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: proposal.Record.ID, IdempotencyKey: key + "-adopt"}); err != nil {
+		t.Fatal(err)
+	}
+	return proposal.Record.ID
+}
+
 func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string, string, string) {
 	t.Helper()
 	f := newWorkflowFixture(t)
@@ -2652,6 +2669,7 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 	if err != nil {
 		t.Fatal(err)
 	}
+	decision := f.adopt(t, nested.Record.ID, "nested")
 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested head",
 		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
@@ -2670,6 +2688,7 @@ func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, stri
 	if err := reviewCommand(f.ctx, []string{
 		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
 		"--artifact", nested.Record.ID, "--promise", promise.Record.ID,
+		"--self-initiated", decision,
 		"--verdict", "approved", "--text", "APPROVED exact head",
 	}); err != nil {
 		t.Fatal(err)
@@ -2716,6 +2735,7 @@ func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, strin
 	if err != nil {
 		t.Fatal(err)
 	}
+	decision := f.adopt(t, removed.Record.ID, "removed-nested")
 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested deletion",
 		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
@@ -2734,6 +2754,7 @@ func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, strin
 	if err := reviewCommand(f.ctx, []string{
 		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
 		"--artifact", removed.Record.ID, "--promise", promise.Record.ID,
+		"--self-initiated", decision,
 		"--verdict", "approved", "--text", "APPROVED exact deletion head",
 	}); err != nil {
 		t.Fatal(err)

@@ -372,8 +372,11 @@ func resolveSelfInitiated(projection workroom.Projection, reports map[string][]w
 	if request, _, found := ownedEdge(projection, statement); found {
 		return Binding{}, fmt.Errorf("primary %s was filed for request %s; a broken or evidence-only assignment does not become self-initiated by selecting a mode", quoted(binding.Primary), quoted(request))
 	}
-	if !slices.Contains(projection.Provenance[binding.Primary], decision) {
-		return Binding{}, fmt.Errorf("primary %s does not rest directly on adopted decision %s", quoted(binding.Primary), quoted(decision))
+	// The witness is one direct edge in either direction: the primary rests
+	// on the decision that authorized the work, or the decision is the
+	// adoption of this very artifact and rests on it.
+	if !slices.Contains(projection.Provenance[binding.Primary], decision) && !slices.Contains(projection.Provenance[decision], binding.Primary) {
+		return Binding{}, fmt.Errorf("primary %s and adopted decision %s do not rest directly on each other", quoted(binding.Primary), quoted(decision))
 	}
 	if err := adoptedDecision(projection, decision); err != nil {
 		return Binding{}, err

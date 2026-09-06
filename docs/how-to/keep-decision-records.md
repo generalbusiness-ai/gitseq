@@ -163,12 +163,16 @@ REVIEW_PROMISE=$(gs state --repo "$REPO" --as rae --kind promise \
 
 APPROVAL=$(gs review --repo "$REPO" --as rae --checkout "$REPO" \
   --artifact "$ARTIFACT" --promise "$REVIEW_PROMISE" \
+  --self-initiated "$PROPOSAL" \
   --verdict approved --text 'APPROVED: consequences and trade-off are stated')
 ```
 
 `gs review` signs only if the checkout is clean and sitting on the
 artifact's exact commit, so the verdict names a commit somebody actually
-read. Then the verdict is ratified — and **only the review requester
+read. Nobody assigned this decision, so no request reports the artifact;
+`--self-initiated` names the ratified proposal as the adopted decision
+the work stands on, and the verdict records that binding. Without it the
+review refuses rather than assume the work was independent. Then the verdict is ratified — and **only the review requester
 may ratify a verdict**. Not the reviewer, not a ratifier; the person who
 asked is the one positioned to say the question was answered.
 

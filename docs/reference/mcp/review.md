@@ -26,8 +26,8 @@ admission refuses it and names this tool.
 |---|---|---|
 | `artifacts` | required | Array of artifact events standing at the reviewed head; the first is the primary the verdict names. Each must be effective, not retired, and stand at the exact head. |
 | `promise` | required | The reviewer's own promise to review. |
-| `verdict` | required | `approved` or `changes-requested`. |
-| `text` | required | The review itself. Acknowledgment means seen; judgment lives here in words. |
+| `verdict` | optional | `approved` or `changes-requested`. Required to file a verdict; omitted with `prepare`. |
+| `text` | optional | The review itself. Acknowledgment means seen; judgment lives here in words. Required to file a verdict; omitted with `prepare`. |
 | `implementations` | optional | Array of implementation requests, or their exact promise or report, that a combined candidate closes. Same rule as `--implementation` on the command line. |
 | `self_initiated` | optional | The adopted decision a self-initiated primary rests on directly. |
 | `evidence_only` | optional | The primary is evidence against a request that owes no Git artifact; the verdict is valid and not mergeable. |

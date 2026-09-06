@@ -129,7 +129,15 @@ func TestResolveSelfInitiatedNeedsARatifiedDecisionThePrimaryRestsOn(t *testing.
 	_, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"other"}, Decision: "draft"})
 	mustRefuse(t, err, "not ratified")
 	_, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"own"}, Decision: "draft"})
-	mustRefuse(t, err, "does not rest directly on adopted decision")
+	mustRefuse(t, err, "do not rest directly on each other")
+	// The adoption may instead rest on the artifact it adopts, as a decision
+	// record's proposal does.
+	adopted := bindingWorld(t, nil, map[string][]string{"record": nil, "adopt": {"record"}},
+		workroom.Statement{Event: "record", Actor: "dana", Kind: workroom.KindArtifact, Body: map[string]string{"path": "docs/decisions/0001.md", "commit": head}},
+		workroom.Statement{Event: "adopt", Actor: "dana", Kind: workroom.KindPropose, Ratified: true, RatifiedBy: "ok"})
+	if binding, err := Resolve(adopted, Scope{Candidate: head, Examined: []string{"record"}, Decision: "adopt"}); err != nil || binding.Kind != BindingSelfInitiated {
+		t.Fatalf("adoption resting on the record: %+v %v", binding, err)
+	}
 	_, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"own"}})
 	mustRefuse(t, err, "rests on no request or promise of its author")
 	// A direct assignment edge cannot be overridden by adding the witness.

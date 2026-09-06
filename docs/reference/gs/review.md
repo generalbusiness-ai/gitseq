@@ -87,9 +87,10 @@ by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
   `Commitment.Report` equality; other implementation reports are found only
   inside the cited set. The verdict records `binding=assigned` and
   `implementations` as the JSON array of requests a sealed receipt closes.
-- **self-initiated** — no commitment reports the primary, the primary rests
-  directly on the named adopted decision, and no cited artifact reports a
-  commitment. The verdict records `binding=self-initiated` and `decision`.
+- **self-initiated** — no commitment reports the primary, the primary and
+  the named adopted decision rest directly on each other in either direction
+  (the work rests on the decision, or the decision adopts this artifact), and
+  no cited artifact reports a commitment. The verdict records `binding=self-initiated` and `decision`.
 - **evidence-only** — the primary's author filed it against a request owing
   no Git artifact. The verdict records `binding=evidence-only`; a merge on it
   refuses before Git or the workroom moves.

@@ -35,8 +35,10 @@ or evidence-only. It returns a `Binding` whose kind is one of:
   first selected report must be the supplied primary; every implementation
   must owe its landing to one target.
 - `self-initiated`: no commitment reports any examined artifact, the primary
-  rests directly on the named decision, the primary's own one-hop edge leads to
-  no request, and the decision is a ratified proposal or a satisfied request.
+  and the named decision rest directly on each other in either direction (the
+  work rests on the decision, or the decision adopts this artifact, as a
+  decision record's proposal does), the primary's own one-hop edge leads to no
+  request, and the decision is a ratified proposal or a satisfied request.
 - `evidence-only`: the primary's one-hop edge leads to a request addressed to
   its author that states `no_git_artifact=true`, and nothing examined reports
   a commitment.
