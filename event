@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bff6f3dda2bdee23c074e90ab30751be1fe53314","text":"Merge retired a covered predecessor; the successor is at internal/kernel/kernel.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdfb2ff719dce2a5eb097ab88403b1674a4497a0","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/attach.md."}
