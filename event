@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will reconcile the historical P1–P5 plan against current decisions and delivered behavior, reproduce the stale attention case, and publish a bounded current-source decision and P2 handoff on request/staleness-plan-recovery. I will seek ordinary adoption before independent review and preserve the separate receipt-propagation and authority questions."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:40b5a2082a7e101aba76fa898136bd78948691bf"}
