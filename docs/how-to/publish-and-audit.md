@@ -4,6 +4,10 @@ summary: Share the sequence, and verify it from a clone you did not create.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4cf1b905d011e1ae2a91723ddd93c453dbe0870
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f5e861fe8e66e258c0b189c15de98b3e5beba0f
 ---
 
 # Publish and audit

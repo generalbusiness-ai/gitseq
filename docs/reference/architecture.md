@@ -21,6 +21,10 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87165f1520bdf1a58e390a53b939b310fcd12df9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a5ba7c376e9417d6c11f5275f47202179381a30e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599960fd61ab6d3288f3977f60ea80a0ae0ca5ea
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4cf1b905d011e1ae2a91723ddd93c453dbe0870
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f5e861fe8e66e258c0b189c15de98b3e5beba0f
 ---
 
 # Architecture layers

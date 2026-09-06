@@ -7,14 +7,15 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eb696dc813fe4f2f438312c0ba96ae5153bc9ae9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:66f0c0b0dd991a3edfffb161a3b9fbc9777281e0
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4cf1b905d011e1ae2a91723ddd93c453dbe0870
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f5e861fe8e66e258c0b189c15de98b3e5beba0f
 ---
 
-<!-- The rests_on identifiers above are the live behaviour artifacts, as of
-     main de274aac, at the paths this page describes: cmd/gs (the `init`,
-     `attach` and `--server` resolution behaviour), internal/app (workroom
-     layout, resident advertisement), internal/apphost (git-directory
-     resolution and the meta directory), internal/kernel (the compare-and-swap
-     append), and internal/residentclient (loopback validation). -->
+<!-- The bases name the implementation paths for the behavior described here.
+     The exact safe-publication code artifacts supplement the wider existing
+     layout, custody, resident and transport-validation bases. -->
 
 # Use gitseq in a repository you already have
 
