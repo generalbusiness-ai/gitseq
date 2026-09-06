@@ -401,7 +401,8 @@ branch, including through an external pull request, is a separate process and
 does not change the group's current target branch.
 
 - Cite artifacts as `path@commit`. Never copy a document into an event.
-  Make source references clickable, for example `[source](path@full-commit:42)`.
+  Make source references clickable, using the exact path, full commit and
+  line you examined.
   For the Notes preview, use the record's artifact or review head, or its
   explicit `head` or `commit` field. Only when none is present may the reader
   select directly cited artifact revisions. A current-main hash is not
