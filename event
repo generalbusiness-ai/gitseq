@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ab6bb3cb458e425053942896e8c8c3877c29e9","text":"Merge retired a covered predecessor; the successor is at internal/app/reassign_if_unclaimed_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf0d557de7e03b40e5ce319061ed44eee7cd165d","text":"Merge retired a covered predecessor; the successor is at internal/app/admission.go."}
