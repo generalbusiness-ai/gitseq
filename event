@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:37695adbaf7b8ef729e4e4a523009d61d2acb807","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp/late_actor_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a2fd4ce262098627671b192b55273a32ef3477f","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/batch.md."}
