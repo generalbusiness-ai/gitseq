@@ -1,0 +1,39 @@
+{
+  "measured_at": "2026-09-06T23:07:01.879998+00:00",
+  "main": "07753351d69c05dedec58f4e2561a793054312a5",
+  "original140": "5e951e505e8787702255f47aa69a99db395462ca",
+  "golden_result": "JSON fixtures have explicit byte comparisons at fold_test.go1150-1170 and1253-1276; RenderStatus still compares only against a fresh re-render. No tests run this cycle.",
+  "ineffective_basis": "computeStaleness at fold.go2458ff skips non-effective records. DeadBases does not inspect verdicts; producer/admission notices use DeadBases and therefore do not cover an otherwise unretired ineffective intermediary. Source evidence only; no fresh multihop probe yet.",
+  "cli_dissent_control": {
+    "binary": "/tmp/planner-gs-0775335",
+    "server": "http://127.0.0.1:7777",
+    "bounded": {
+      "exit": 0,
+      "bytes": 24934,
+      "dissent_section": true,
+      "historical382_and_recent16915_found": true,
+      "output": "/tmp/planner-status-bounded-omission-control-20260906.txt"
+    },
+    "all": {
+      "exit": 0,
+      "bytes": 2637147,
+      "dissent_section": false,
+      "none_of_12_live_dissent_texts_found": true,
+      "output": "/tmp/planner-status-all-omission-20260906.txt"
+    }
+  },
+  "other_visibility": "Full renderer has no ratified-governance or opaque-statement sections; opaque event IDs do appear in non-effective attempt rows, so do not claim absolute opaque invisibility.",
+  "ineffective_basis_probe": {
+    "tested_at": "2026-09-06T23:16:54.379402+00:00",
+    "head": "07753351d69c05dedec58f4e2561a793054312a5",
+    "source": "/tmp/planner-140-ineffective-hop-20260907_test.go",
+    "command": "go test ./internal/workroom -run '^TestPlanner140IneffectiveHop$' -count=1 -v",
+    "exit": 1,
+    "package_seconds": 0.332,
+    "effective_hop_control": "PASS: effective middle; leaf.stale=true; DeadBases middle=stale",
+    "ineffective_hop": "FAIL: ineffective middle; effective retirement and leaf verified; leaf.stale=false; DeadBases empty",
+    "scope": "Pure fold and shared producer/admission classification. No live durable writes, keys or restart. This establishes the residual condition, not a preferred fix."
+  },
+  "author_confirmation": "Claude confirms on September6 that no later disposition or active owner covers these remaining conditions; self-request retirement preserved the substance but no re-scope was filed. Bounded dissent delivery and intervening staleness lanes did not close them.",
+  "current_main_reconciliation": "Main6f4864 differs from probed077 only at notes/2026-08-05-gitseq-design.md; the tested implementation is unchanged."
+}
