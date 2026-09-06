@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Reuse one configuration-identity check for attachment and one saved-frontier continuation rule for import and verified reads.","body":{"commit":"133cd39c5e955f2fc8edeb7b4b28544848cc5dff","path":"internal/app/app.go"}}
+{"kind":"artifact","text":"Prove import refusals, the losing first-import configuration boundary and retry, and real post-CAS checkpoint permission failures preserving prior memory and newer appends.","body":{"commit":"133cd39c5e955f2fc8edeb7b4b28544848cc5dff","path":"internal/app/attach_test.go"}}
