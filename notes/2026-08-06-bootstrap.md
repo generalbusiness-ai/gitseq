@@ -21,9 +21,9 @@ commits — the current hand-run practice.
 - **The workroom log**: durable acts only. Chatter never lands here.
 - **The design-note log** (`refs/seq/design`, hand-run): the plan was
   to seal it via the continuation gate below and continue prose in the
-  successor. Status as of 2026-09-07: that gate was never run, no
-  `refs/seq/design` exists in this repository or on origin, and design
-  prose continues in ordinary `main` commits to
+  successor. Status as of 2026-09-07: no `refs/seq/design`, and no
+  verified migration of that log, has been located in this repository
+  or on origin, and design prose continues in ordinary `main` commits to
   [the design note](2026-08-05-gitseq-design.md); see
   [the design-log status](#the-continuation-gate) below.
 - **Ephemeral conversations**: anchored to what they're about,
@@ -258,15 +258,21 @@ is the acceptance test for continuation, not the act that discovers
 it.
 
 **Design-log status (recorded 2026-09-07).** The paragraph above is the
-historical proposal and is kept as history. None of its steps was
-performed: the genesis descriptor has no continuation fields, no
-candidate successor was built, no reader traversal was run, and no seal
-exists. Audited facts at the time of writing: `git for-each-ref
+historical proposal and is kept as history; its opening sentence
+describes the descriptor as it was then, not now. The general
+continuation facilities it asked for exist in the kernel: the genesis
+descriptor carries a predecessor genesis and a sealed head, and
+`VerifyContinuation` in `internal/kernel` checks a successor's
+descriptor against the verified frontier of its predecessor. What has
+not been located is any application of them to this hand-run log.
+Audited facts at the time of writing: `git for-each-ref
 refs/seq/design` returns nothing in this repository and `git ls-remote
-origin refs/seq/design` returns nothing on origin; this repository's
-only durable log is the workroom log at `refs/seq/<genesis>`. Those
-absences say nothing about whether a hand-run copy once existed on
-another machine, and this note does not claim one did or did not. The
+origin refs/seq/design` returns nothing on origin; no sealed successor
+of such a log has been found in either place; this repository's only
+durable log is the workroom log at `refs/seq/<genesis>`. Those absences
+say nothing about whether a hand-run copy, a scratch candidate or a
+traversal once existed on another machine, and this note does not claim
+one did or did not. The
 design note's own prose kept moving by ordinary `main` commits (its
 eleventh and twelfth waves and the 2026-09-06 addition), and the work of
 designing gitseq is coordinated in the present workroom; the route in is

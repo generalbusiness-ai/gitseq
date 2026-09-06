@@ -3,7 +3,7 @@ date: 2026-08-05, revised 2026-08-06 (tenth wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
   plan ratified, review-repaired, and simplified (BOOTSTRAP.md). This repo's own first-parent history
   is the first (hand-run) log; refs/seq/design was to carry it (no such
-  ref exists here or on origin as of 2026-09-07; see the bootstrap note's
+  ref has been located here or on origin as of 2026-09-07; see the bootstrap note's
   design-log status).
   Restructured after adversarial review (kernel / collaboration
   profile / application profiles); the six-case adversarial spike
