@@ -1,0 +1,301 @@
+
+> gitseq-workroom-ui@0.1.0 test
+> node --test test/*.test.mjs
+
+✔ addresses parse and format each screen, and an id rides whole (551.548583ms)
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a deep link opens the record it names and keeps the id whole in the bar (1024.622916ms)
+An update to App inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a list address opens its tab, and opening a thread then going back and forward walks the visit (230.218708ms)
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ an address naming an unknown record shows the board, says so, and keeps the address (143.888583ms)
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ encoded deep links preserve the record and a broken focus reports its error (132.720459ms)
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a shared preview closes to its record without leaving the application (137.242958ms)
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ Notes is addressable and browser history returns to its reading view (139.059083ms)
+An update to App inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+An update to Root inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://react.dev/link/wrap-tests-with-act
+✔ a delayed earlier preview cannot appear under a newer target (132.118333ms)
+✔ a ratification is offered by the satisfier admitted with the statement, not the one in force now (1339.868083ms)
+✔ a departed requester is not offered the ratification the fold refuses them (167.020416ms)
+✔ the composer shows every citation it will sign before the send control can be used (139.920292ms)
+✔ an addressed proposal-ratification request offers the requested decision directly (575.727042ms)
+✔ a ratification is offered only to an actor the fold would let ratify (300.479458ms)
+✔ a departed ratifier keeps all direct ratifications and no composer routes (322.550084ms)
+✔ every Toolbar state route withholds its composer from a departed participant (212.720958ms)
+✔ every row is one line of exactly five fixed columns (424.274708ms)
+✔ the outcome graph preserves the table selection and exposes only recorded relations (130.399208ms)
+✔ a withdrawn ratification offers the decision again (34.533875ms)
+✔ withdraw is not offered on a roster record the viewer authored (37.021417ms)
+✔ a record's detail shows full ids, body fields and both directions of provenance (65.488083ms)
+✔ thread rows start closed and only rows naming something are expandable (104.011167ms)
+✔ the request list renders the population and sort its caller holds (77.557083ms)
+✔ a record with many references shows the first twelve and says how many more there are (48.151292ms)
+✔ an https remote turns the repository path into a link that cannot reach its opener (45.812167ms)
+✔ an unlinkable remote renders exactly as no remote does (41.775958ms)
+✔ a script-bearing remote never reaches an href (42.905208ms)
+✔ a remote carrying userinfo does not leak it into the DOM (41.477708ms)
+✔ a remote carrying a query or fragment does not leak it into the DOM (44.813084ms)
+✔ a revision's review request can rest on the adoption the row cannot resolve (1363.23275ms)
+✔ a citation may be named by its whole event identifier (178.733667ms)
+✔ a name the projection does not carry is refused, not passed through (119.24275ms)
+✔ the citation list is bounded however many records the operator names (133.642084ms)
+✔ an operator's citation can be taken out again before signing (88.6655ms)
+✔ a withdrawal takes no operator citation (82.484208ms)
+✔ the cited proposal is chosen by the fold's sequence, not by serialisation order (614.335875ms)
+✔ the citation prefill is bounded however many proposals qualify (331.867167ms)
+✔ only what the fold says is ratified, standing and effective is cited (268.6145ms)
+✔ the prefill follows the fold's citation edge and never a shared path (233.595334ms)
+✔ an artifact row offers both acts and gates neither on an adoption it cannot know (137.865958ms)
+WebSocket server error: Port 24678 is already in use
+✔ the rebuild notice explains verification without implying failure or currentness (671.556166ms)
+(node:4772) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✔ the focus button toggles advisory focus for the selected event (629.461625ms)
+✔ the clear button empties advisory focus (107.649042ms)
+✔ an out-of-range timestamp degrades instead of throwing (50.634333ms)
+✔ a render throw is contained by the error boundary (32.87425ms)
+✔ clicking a column sorts, clicking again reverses, and a third click restores priority order (128.671625ms)
+✔ age and ticket headers start recent first, reverse, then restore priority (114.4055ms)
+✔ exactly one number heads the list, and each other number opens to its own rows (84.394208ms)
+✔ search filters every tab count before the selected population (71.818209ms)
+✔ repeated tab switches replace rows when one request has several commitment lifecycles (75.37375ms)
+✔ the ratification queue says when nobody, or nobody in particular, can discharge it (73.896459ms)
+✔ clicking a row opens that request's thread (63.040541ms)
+✔ Graph uses the table population and search, selects a component, and opens the existing thread (90.87525ms)
+✔ Fit to view contains both maximum legal outcome-map shapes in a real viewport (133.571583ms)
+✔ repeated population and presentation changes neither leak nor duplicate rows or graph nodes (96.010042ms)
+✔ the thread draws one rail of salient stations and keeps its history collapsed (89.387084ms)
+✔ clicking a thread row opens its full detail, clicking again closes it, and references navigate (92.675ms)
+✔ the request list keeps its population when the operator leaves and returns (63.092083ms)
+✔ the show-all button opens the references it counts (51.716875ms)
+✔ a retry keeps its key until the same payload succeeds (1.4485ms)
+✔ a completed semantic action gets a new key when attempted again (0.166542ms)
+✔ thread identity includes its exact target (0.155167ms)
+✔ temporary event discussion is isolated by exact event anchor (0.696208ms)
+✔ temporary event discussion keeps nested replies visible with their exact depth (0.132708ms)
+✔ optimistic temporary replies reconcile only inside their sending scope (0.074209ms)
+✔ view-independent reconciliation is exact, arrival-sensitive, and one-to-one (0.112958ms)
+✔ temporary delivery anchors an event exactly and preserves frame conversation identity (0.077958ms)
+✔ failed temporary delivery removes its optimistic echo and preserves the transport failure (1.18925ms)
+✔ presence labels preserve actor names containing spaces (0.243208ms)
+✔ presence counts people, not the sessions each of them leases (16.890667ms)
+✔ multiple activity leases aggregate deterministically and stay bounded (0.225583ms)
+✔ UI focus selection adds, removes, and stays bounded (0.07525ms)
+✔ browser heartbeats renew the lease without revalidating activity focus (0.43675ms)
+✔ a rejected browser credential is forgotten and the next heartbeat re-mints (0.139958ms)
+✔ a transport failure does not discard a browser credential (0.071125ms)
+✔ avatar initials read the actor's name, not a decorated label (0.196917ms)
+✔ presence keeps distinct actors apart even when they share a name (0.067ms)
+✔ presence fingerprints expand without falling back to a shared name (0.08975ms)
+✔ quoted mentions address actor names containing spaces (0.841042ms)
+✔ mentions require token boundaries and unique roster names (0.099541ms)
+✔ browser frame decoding accepts legacy and addressed signed payloads (0.177917ms)
+✔ thread indexing keeps citations out of reply summaries and thread content (0.330166ms)
+✔ the original supersession exposes its sole current linked item (0.110917ms)
+✔ a supersession with no additional current basis does not guess (0.029166ms)
+✔ a supersession with multiple current bases does not guess (0.039708ms)
+✔ retired provenance does not make one current linked item ambiguous (0.033834ms)
+✔ a stale-only basis does not produce a false link (0.029834ms)
+✔ stale provenance does not make one current linked item ambiguous (0.040416ms)
+✔ the fc209 evidence-only artifact remains a neutral linked item (0.061958ms)
+✔ the e8e same-kind evidence artifact is not promoted to a typed replacement (0.055958ms)
+✔ supersede provenance links are labeled neutrally on every surface (0.257ms)
+✔ every kind wears its own name, bar the two whose names read as jargon (0.043583ms)
+✔ an unreadable act carries its own reason and consequence (0.086042ms)
+✔ the everyday surface does not expose record taxonomy or authority roles (0.935792ms)
+✔ a row says state, waits-on, age, title and ticket, and nothing else (0.336875ms)
+✔ an artifact completion stays visible as awaiting review and waits on its performer (0.095084ms)
+✔ only world-staleness and dispute make a row need attention (0.074333ms)
+✔ a row ages from the last durable event anywhere in its thread (0.082625ms)
+✔ the default order is the priority rule, oldest first except while running (0.166792ms)
+✔ a third click on a column returns to priority order (0.053917ms)
+✔ age and ticket sorts start with the most recent work (0.117333ms)
+✔ each projected commitment row has a stable unique identity (0.04925ms)
+✔ a sort reorders the rows that are there and hides none (0.090959ms)
+✔ every commitment lands in exactly one of the five populations, and closed rows say why (0.136875ms)
+✔ lifecycle-stale requests are a separate population, not rows in the default list (0.049875ms)
+✔ salience takes the latest verdict, not the first approval it finds (0.567167ms)
+✔ the rail carries the salient set and elides the rest into counted expanders (4.559458ms)
+✔ the merge station reads git, and a check that could not run is not a negative (0.300875ms)
+✔ shipped but never closed reads off the rail without opening anything (19.355709ms)
+✔ a station that has not happened names what would fill it and who owes it (0.153792ms)
+✔ a world-stale approval is loud on the rail, and ordinary staleness is not (0.240166ms)
+✔ the lifecycle-stale population holds claimed work too, and is not described as unclaimed (0.140583ms)
+✔ no surface claims the lifecycle-stale rows are unclaimed (0.364709ms)
+✔ world-staleness stays loud in the lifecycle-stale population, and ordinary staleness stays quiet (0.115166ms)
+✔ the closing station names the ratification in force, not the first one (0.234875ms)
+✔ every record resolves to the request whose thread it belongs to (0.97425ms)
+✔ ratifying a proposal is the closing station of its thread, not a superseded claim (0.200625ms)
+✔ a proposal's closing station follows a withdrawn and replaced ratification (0.107917ms)
+✔ a request reported without a claim shows the promise station as skipped, not owed (0.106167ms)
+✔ only http and https remotes become a link (0.074791ms)
+✔ an unenumerated scheme carrying an authority is still refused (0.031709ms)
+✔ a script-bearing remote never becomes a link (0.052291ms)
+✔ git's non-web transports fall back to plain text (0.078917ms)
+✔ a remote carrying userinfo is declined rather than stripped (0.032583ms)
+✔ a remote carrying a query or fragment is declined for the same reason (0.034208ms)
+✔ a proposal whose citation chain reaches an unrelated request opens as itself (568.810417ms)
+✔ a promise, a report and an act still open into the commitment they answer (108.649375ms)
+✔ a proposal opened directly is announced as a proposal and owes nobody a claim (958.597167ms)
+✔ arrival opens and marks the record the user clicked without a further click (243.877792ms)
+✔ a commitment reached by citation is its own thread, not a descendant of what it cited (31.614291ms)
+✔ the founding seed's thread renders its own records and not another commitment's (110.338292ms)
+✔ the for-you count opens a list of what is addressed to you, newest first (985.761375ms)
+✔ opening one row jumps to that thread and leaves the others unread (313.488666ms)
+✔ mark all read empties the list and the bell goes quiet (156.749292ms)
+✔ with nothing addressed to you the list says so plainly (64.133292ms)
+✔ the panel closes on Escape and on a click outside it (113.480042ms)
+✔ thread roots reuse the commitment-boundary reply rule (0.731042ms)
+✔ a non-commitment record with an absent first basis remains its own thread root (0.09225ms)
+✔ a focal thread pulls one-hop context and preserves the exact direct relation (22.166333ms)
+✔ ratification uses only a direct basis and the fold-projected ratified_by act (0.408875ms)
+✔ a three-thread provenance chain preserves only its two recorded direct relations (0.224792ms)
+✔ parallel direct relations retain every exact contributor and both readings (0.271375ms)
+✔ supersession names the exact act and projected successor without guessing a replacement (0.324ms)
+✔ serialization order cannot change nodes, relations, or placement (0.31475ms)
+✔ one deterministic lifecycle row supplies a focal card's title, state, and waiting actor (0.219958ms)
+✔ the presentation layout keeps multiple roots leftmost and every arrow on card boundaries (0.346875ms)
+✔ fit uses the real largest legal layouts and nonzero viewport dimensions (0.785417ms)
+✔ cycles remain visible, share a stable layer, and produce a bounded warning (0.46875ms)
+✔ a missing recorded basis is truthful context outside the view, not a broken line (0.128834ms)
+✔ the default preserves measured-size direct context and bounds whole cards and complete edges atomically (6.021708ms)
+✔ the total-card bound caps a large focal population (1.463875ms)
+✔ direct context uses only the total-card budget left after focal threads (17.11275ms)
+✔ an oversized aggregate is omitted rather than lying with a partial contributor list (0.183041ms)
+✔ high-cardinality contributors are bounded while they are accumulated (39.099084ms)
+✔ relation-group selection stays bounded and deterministic before materialisation (0.517959ms)
+✔ Notes uses declared render kinds and exact lookup spans all durable events (531.156792ms)
+✔ encoded event/focus and preview links round-trip; malformed encoding preserves valid root (223.185458ms)
+✔ source references preserve exact paths and lines and reject unsafe URL schemes (102.948084ms)
+✔ Markdown remains inert text and source links use the shared in-app preview (509.515ms)
+✔ a known non-statement durable event opens readable record detail (490.778208ms)
+✔ publish is offered to a live participant who is present, and to nobody else (1207.686875ms)
+✔ withdraw stays offered to a departed author on a record they authored (245.5605ms)
+✔ publish stops the moment authority does, at the dialog and at the boundary that signs (324.042333ms)
+✔ the publish dialog keeps the focus contract and writes both artifacts of a replacement through the real fold (2438.480708ms)
+✔ an unratified act that needs no ratification is not counted, and one that needs it is (586.2435ms)
+✔ a proposal belonging to no commitment and no thread still appears (281.2645ms)
+✔ a ratified or retired act is no longer owed (215.381375ms)
+✔ standing dissent clears a proposal and withdrawing the dissent restores it (284.945792ms)
+✔ captured role satisfier and staleness survive into the queue (198.01175ms)
+✔ an act the fold refused is not owed to anybody (62.211375ms)
+✔ with no ratifier or several, the queue names nobody rather than guessing (108.55275ms)
+✔ the list shows the ratification queue as its own count, and says when nobody can discharge it (228.874333ms)
+✔ the founding seed is not owed a ratification the fold refuses from everybody (55.865792ms)
+✔ the list renders this log's rows and does not offer the founding seed for ratification (72.8285ms)
+✔ a state write is refused exactly when the fold would refuse it (0.552458ms)
+✔ own-author supersession stays outside the guard, for a departed author (0.086291ms)
+✔ a role-satisfied ratification is NOT refused for want of participation (0.073834ms)
+✔ an originating-requester ratification does require participation (0.065542ms)
+✔ a ratification whose target is not in the projection is refused, not guessed (2.840875ms)
+✔ a ratification of a target the fold never ruled effective is refused (0.104583ms)
+✔ a ratification of a retired target is refused (0.073917ms)
+✔ standing fails closed when the decision cannot be resolved (0.050875ms)
+✔ superseding somebody else's record is refused unless you hold ratifier (0.089959ms)
+✔ a supersede whose target is not in the projection is refused, not guessed (0.101ms)
+✔ a supersede with no viewer identity is refused (0.05625ms)
+✔ withdrawing your own roster grant is refused: the fold decides it by standing (0.067542ms)
+✔ a live participant's reply does reach the wire (1365.911667ms)
+✔ membership lost after the control is offered files nothing (157.960834ms)
+✔ Enter in the composer does reach the wire under a live lease (107.546291ms)
+✔ a lease that expires after the control is offered files nothing (97.83125ms)
+✔ App files a ratification when the target's standing is good (615.5765ms)
+✔ App files nothing when the ratify target is retired after the control is offered (540.395917ms)
+✔ App files nothing when the ratify target loses its effective ruling after the control is offered (537.377084ms)
+✔ the tab title is the served checkout's folder name plus workroom (0.554792ms)
+✔ a service started from a linked worktree is named after that worktree (0.103875ms)
+✔ the title falls back to workroom before the service answers or when it names nothing (0.064792ms)
+✔ index.html ships the static fallback title and references the favicon (0.250875ms)
+ℹ tests 196
+ℹ suites 0
+ℹ pass 196
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5856.47175

@@ -1,0 +1,39 @@
+ok  	github.com/generalbusiness-ai/gitseq	1.369s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	5.404s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	114.563s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	2.086s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	422.634s
+ok  	github.com/generalbusiness-ai/gitseq/host	37.860s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	25.907s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	27.045s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	108.959s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	4.415s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	3.172s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.772s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	4.037s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	7.994s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	183.451s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	5.080s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	17.212s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	2.888s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	79.711s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	15.135s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.054s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.101s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	9.152s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.178s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.154s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	38.155s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	13.797s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.412s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.010s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	1.919s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	28.747s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.355s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	4.631s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	1.261s
+--- FAIL: TestCancellationMutationProof (5.04s)
+    sandbox_test.go:147: disabling the cancellation decision did not fail the named assertion: <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/querysandbox	5.904s
+FAIL
