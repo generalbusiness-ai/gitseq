@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f24447c7015ac5241ca273325aaeaab0061ae69","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/api.ts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:318f91fe69f716de58512c0838e5bb110c09f799","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
