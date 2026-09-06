@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fe61152cc15e444c4c89470993dca70157ecef1f","text":"Merge retired a covered predecessor; the successor is at ui/test/dom.test.mjs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26d55020c46d6e6cc7a034b7f5be986456f4c690","text":"Retire my abandoned ui/test/components.test.mjs candidate, sealed as abandoned by I5 receipt #19559 after exact-head delivery. Protected siblings and carried pointers stay live."}
