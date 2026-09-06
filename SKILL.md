@@ -402,10 +402,11 @@ does not change the group's current target branch.
 
 - Cite artifacts as `path@commit`. Never copy a document into an event.
   Make source references clickable, for example `[source](path@full-commit:42)`.
-  For the Notes preview, the exact revision must be the owning record's source
-  head or one of its directly cited artifact revisions. A current-main hash
-  is not sufficient when the record cites only older published revisions.
-  Link the exact cited revision whose bytes you examined; see
+  For the Notes preview, use the record's artifact or review head, or its
+  explicit `head` or `commit` field. Only when none is present may the reader
+  select directly cited artifact revisions. A current-main hash is not
+  sufficient when only older revisions are eligible. Link the eligible exact
+  revision whose bytes you examined; see
   [Reading notes, source files, and evidence](docs/reference/reading-view.md).
 - Use `request/<slug>` for a new implementation branch unless the durable
   request records a better prefix. Existing historical branch names do not
