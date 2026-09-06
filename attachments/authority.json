@@ -1,0 +1,323 @@
+{
+  "historical_adoption": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc",
+    "sequence": 14703,
+    "timestamp": 1788129165,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "kind": "propose",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "PROPOSAL for hugh: adopt notes/2026-08-30-staleness-root-cause.md (artifact 051fcbf8 at exact head ec80e044 on request/staleness-root-cause) as the plan for fixing why finished and in-flight work sinks into the \"stale, not in flight\" population. ROOT CAUSE, verified against main 95c2b1e3: a merge-published artifact rests on the receipt, the receipt on the approval, the approval on the candidate's artifacts, and each candidate artifact on the artifact it replaced at its path; when a LATER merge at any of those paths retires that predecessor, the edge is artifact-to-artifact (never quieted), so the successor at an unrelated path goes stale \u2014 measured on the internal/app successor #14231, flared by four later merges at other paths (#14379, #14383, #14601, #14624). 154 of 332 live artifacts are stale and there is no fresh in-main artifact at internal/app, SKILL.md or internal/workroom. Downstream, the fold promotes the flag to a status (fold.go:3220, :3266-3268) hiding promised work; admission and reassignment refuse stale bases, forcing a refile loop with no exit; the merge closes only the exact approved head; and one request per review round orphans every earlier round. WHAT IS ADOPTED: P1 \u2014 a cause dated after a receipt does not flare the artifacts that receipt published, keeping the receipt-retired, condemned-succession and undated-cause flares; P2 \u2014 stale is a flag beside the lifecycle word, never a status, with the browser's duplicate 'stale' tab deleted; P3 \u2014 only retired bases are refused (fold half in flight as #13888) and the \"ask the author to refile\" discipline in AGENTS.md and SKILL.md is replaced by \"answer it like a fresh request and record the re-check in the artifact\"; P4 \u2014 no new closure rule: today's orphans are drained once by performer report plus requester ratification, and the drain-decision request #14687 is retired as answered; P5 \u2014 one implementation request per lane; a changes-requested verdict returns to step 3 on the same promise. P1, P2 and P3-fold land under one fold profile bump in the state@1 deploy order. WHAT IS NOT ADOPTED: the first draft's ancestor-head auto-closure and unchanged-path retirement, withdrawn on independent review as a closure-authority and path-authority hole. REVIEW: two passes by an independent Fable-model reviewer (not a workroom actor; findings applied in full, recorded in the note's frontmatter and commit message). If you want a durable second review from codex before ratifying, say so and planner files it. ON RATIFICATION planner files three implementation requests: (1) P2+P3-fold+P1 as one head with the profile bump; (2) P3-text+P5; (3) the one-time drain. Ratify to adopt, or record a dissent naming what to change.",
+    "body": {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:051fcbf8a130baf81fd26ee28abcf465fd1db42f",
+      "head": "ec80e0448f8aa794e011430663421d08f86587ab",
+      "path": "notes/2026-08-30-staleness-root-cause.md",
+      "to": "hugh"
+    },
+    "ratified": true,
+    "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0027017c38c2c178fea72dc5e61601fdc4fecee2",
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:870f9347bf776908dbb5b4b67f26427f63d127aa",
+    "stale_because_path": "docs/concepts/staleness.md"
+  },
+  "historical_ratification": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0027017c38c2c178fea72dc5e61601fdc4fecee2",
+    "timestamp": 1788129783,
+    "actor": "7fbc80f1ba06266cc375cb00507b94a631e5bed989180ad849fcd63175938275",
+    "type": "ratify",
+    "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2177aed9497d2efab5eaa80f8b4109a1932596dc",
+    "verdict": "effective",
+    "reason": "authorized ratification"
+  },
+  "governing_records": [
+    {
+      "record": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2210e4ea0311efc4eccfff9d3a2c4463ea12f3d6",
+        "sequence": 11588,
+        "timestamp": 1787713902,
+        "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "kind": "report",
+        "lifecycle": "report",
+        "satisfier": "originating-requester",
+        "text": "RULING: keep every merge-published successor resting directly on the sealed merge receipt. Do not re-anchor it to a ratified decision, and do not weaken the fresh-bases discipline to live-not-retired.\n\nFreshness is restored by a temporal Workroom-fold rule on the direct receipt-to-published-successor edge. For a genuine successor published by that receipt, ordinary staleness causes already active at or before the receipt's own sequence are settled by the merge and do not make the successor stale at birth. Any active relevant cause arising after the receipt still propagates. Direct retirement of the receipt still flares the successor. The receipt remains historically stale when that is true; only its published successor begins a new current implementation epoch.\n\nThis exception is narrow and fail-closed. It applies only when the fold recognizes an effective valid prospective merge receipt and plan carrying both merge_changed_paths and merge_left_live, with merge_changed_paths canonical; the artifact cites that receipt directly; and the artifact is signed by the receipt author, at the receipt's exact merge_head, at a declared exact successor path. A malformed half-pair, a historical receipt with neither field, or an unrelated record that merely cites a receipt gains no checkpoint. The pair is only the existing prospective-format version seam. Whether individual left-live sibling or abandoned claims verify is not a freshness condition and grants no semantic authority. Receipt 03c440d4 for merge 72c3b724 and successors 13c9a0a2/1fb4d37a satisfies the prospective shape.\n\nImplementation needs a dated ordinary-cause computation, including undated fail-closed handling: comparing stale-now with stale-as-of-receipt is insufficient when old and new causes coexist.\n\ndescribes_superseded_world is unchanged. World staleness already present at the verdict continues to invalidate merge authority; post-verdict moved-world news remains recorded under the existing temporal rule; direct artifact-to-artifact provenance and a later condemned succession chain continue to flare. The repair settles only ordinary reasoning already accounted for at merge publication.\n\nOwnership is layer 5, the Workroom application interpreter. Enforce it in internal/workroom/fold.go's staleness computation and projection, not in the kernel and not solely in gs. The CLI continues only to validate and construct the signed receipt and successors. Bump the Workroom fold/profile version, rebuild cache compatibility coverage, document the contract in docs/reference/architecture.md and docs/reference/gs/merge.md, and test stale-at-birth restoration, mixed old-plus-new causes, later approval and receipt retirement, unrelated receipt borrowers, world-stale chains, condemned successions, a valid paired prospective receipt, a malformed half-pair, a legacy receipt without the pair, and unverified left-live testimony remaining orthogonal.\n\nThe left-live and paired-field receipt meanings do not change. They still govern snapshot accounting, sibling protection, abandoned debt, and unaccounted-successor warnings. Historical receipts without the pair retain their existing parsing, accounting, and freshness projection. The checkpoint neither grants retirement authority nor changes the receipt plan, live/retired state, individual left-live verification, or left-live classification. Implement this only through a child request on then-current bases.",
+        "body": {
+          "conclusion": "paired prospective receipt creates temporal ordinary-staleness checkpoint for its exact same-author published successor; legacy projection, left-live verification, and fresh-bases discipline unchanged; implementation deferred"
+        },
+        "ratified": true,
+        "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25eab16d08073db70e87b16919551c6a017cca3f"
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87b1146d6dab7a9a07f9928b40a3f0eb6ec2b32a"
+      ],
+      "commitment": null
+    },
+    {
+      "record": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc20c44a986f249869bfb81473263e7356ac2663",
+        "sequence": 12104,
+        "timestamp": 1787772926,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "claude: recut the receipt-checkpoint freshness head on an authorized basis. This is the child request the ratified verdict e97c164b names as the smallest repair, and filing it is mine to do \u2014 the reason your head is blocked is that I never issued it.\n\nWHAT IS AND IS NOT WRONG WITH 4981c6d0. Nothing technical. The reviewer went through the ruling clause by clause and confirmed every one: settlement only for causes dated at or before the receipt sequence unless plan-named; the walk rooted at the receipt so its own retirement still flares; left-live verification read nowhere in the gate; undated causes failing closed with a white-box test pinning that arm; the checkpoint confined to the direct successor-cites-receipt basis with describes_superseded_world untouched in every branch; both white-box tests justified and mutation-shown to be load-bearing; the fold version bump forcing replay, with the revert proven to fail its test. They also independently reproduced the empirical claim at identical frontiers. Architecture, Security and Simplification conclusions are all clean, and they say so explicitly.\n\nThe sole blocking change is process, and it is mine. Commit 4981c6d0 was cut before any child request authorized the added scope, so its Rests-On names only 160c9acb, which did not cover docs/concepts/staleness.md. Codex raised that in 6d67044b and was right that the authorization was missing. I supplied the scope acceptance in b38b96c8 as requester, but an assert is not the request AGENTS.md asks for, and the commit still rests on a basis that does not authorize what it contains. This request is that authorization, so the recut has something honest to name.\n\nI want to be plain that the page itself is not in question. I accepted docs/concepts/staleness.md as within the documentation intent of 160c9acb and I still do: a contract that changes how staleness is computed is exactly what a concepts page exists to explain, and cutting a good page to cure a filing defect would trade real documentation for ceremony. Recut the content you have; do not remove it.\n\nWHAT TO DO. Recut the desired content with a Rests-On trailer naming this request, and republish exact-path successor artifacts at internal/workroom, internal/app, docs/reference/architecture.md, docs/reference/gs/merge.md and docs/concepts/staleness.md \u2014 the five the verdict names, whose predecessors 0c0c5bce, 1bc530db, 2c556762, 17124e24 and 398dc206 the merge step will retire. Then request a fresh independent exact-head review; the verdict is explicit that it does not approve 4981c6d0 and that any later head gets a fresh review.\n\nON ARCHITECTURE.MD, READ MY CORRECTION c9fa3e2e FIRST. Two ticks ago I told you in request d14e96fb not to publish an architecture.md candidate from this lane while the decision-records one was live. That instruction was wrong and I have reversed it: this lane goes first and republishes the page as its verdict requires, and the decision-records lane rebases onto the result afterwards. I had ruled on ownership of that path without reading the verdict that already governed it. Follow the correction, not the earlier request.\n\nWHY THIS IS THE PRIORITY IN YOUR QUEUE. Three lanes are waiting on this one to merge: the JSONata spike must not start before it, the plain-language architecture.md rewrite is sequenced after it closes, and the UI presentation defects sit behind it. It is the widest unblock on the board and it is one process step from done.",
+        "body": {
+          "branch": "request/receipt-checkpoint-freshness",
+          "conditions": "One exact clean pushed head recut from the content of 4981c6d0, carrying a Rests-On trailer that names this child request as its authorizing basis. Content preserved, including docs/concepts/staleness.md, which the requester accepts as within the documentation intent of 160c9acb. Exact-path successor artifacts published at internal/workroom, internal/app, docs/reference/architecture.md, docs/reference/gs/merge.md and docs/concepts/staleness.md, whose predecessors 0c0c5bce, 1bc530db, 2c556762, 17124e24 and 398dc206 the merge step retires. This lane publishes architecture.md ahead of the decision-records lane per correction c9fa3e2e, which reverses the contrary instruction in request d14e96fb. Full gate matrix green at the exact head with -count=1. Fresh independent exact-head review requested from an actor other than yourself, recording Architecture, Security and Simplification conclusions; verdict e97c164b does not approve any head. Do not merge.",
+          "severity": "high",
+          "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+        },
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:398dc206518f4fb9c9f7372a994cecf01072f62c",
+        "stale_because_path": "docs/concepts/staleness.md"
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:160c9acb42b202d74d22d36f7566698223f58e01",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b38b96c8bcf7299ceadaa0f8335301ceecc2941c",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6d67044b7ae491c207377e7bb7ad4172f236c584"
+      ],
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc20c44a986f249869bfb81473263e7356ac2663",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30cc9e7281aac2f83ee7dcddac41df14236fece3",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24435d567242d895d5d3af9589bb5b55dc1b651b",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c28d60d9f305fa45d02b2b8e783bfa2545b49365",
+        "candidate": "10c6d6233ad97ac14d427a20bfac63c200e8b54b",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6cfc2bba1d9a462be5b8ed1dd4ec01f3cd295dd"
+      }
+    },
+    {
+      "record": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e578bc01690d1de93b7147fce86be40284cd403d",
+        "sequence": 16262,
+        "timestamp": 1788347596,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "claude: complete the staleness write-boundary fix \u2014 successor to my d8b2b7a6, refiled on fresh current-main bases per your 3de1b28f so the review chain can be fresh. This request replaces d8b2b7a6, which I am retiring in its favour; the work is already implemented at exact clean pushed head 8d30745d1643c7323191420c9dfc789ee7930204 on request/stale-bases-admission, and that head's existing \"Rests-On: d8b2b7a6\" trailer IS acceptable \u2014 the trailer is immutable, it resolves to the retired predecessor this request names, and no recut is required. Remaining work: republish the per-path artifacts for head 8d30745d resting on your promise on THIS request, then obtain the independent review on those fresh artifacts. Substance, carried from d8b2b7a6 (itself carried from 8f7d36fd): (1) split refuseDeadBases (internal/app/admission.go:79 and :173) so a RETIRED basis stays refused while a merely-stale basis is admitted with the staleness recorded on the row (StalenessNote precedent); (2) drop the staleness precondition from the reassign_if_unclaimed guard (internal/workroom/fold.go:1226) keeping the zero-promise/zero-completion claim guard intact; (3) update docs/concepts/staleness.md and the MCP state reference; (4) mutation-sensitive tests at both decision sites covering refused-retired, admitted-stale-recorded, and stale-unclaimed-reassignable versus claimed-refused.",
+        "body": {
+          "conditions": "refuseDeadBases split so retired bases stay refused while merely-stale bases are admitted with staleness recorded (StalenessNote precedent); staleness precondition dropped from the reassign_if_unclaimed guard with the zero-promise/zero-completion claim guard intact; docs/concepts/staleness.md and the MCP state reference updated; mutation-sensitive tests at both decision sites covering refused-retired, admitted-stale-recorded, and stale-unclaimed-reassignable versus claimed-refused; exact clean pushed head off current main with full gates green (head 8d30745d1643c7323191420c9dfc789ee7930204 already satisfies this; its Rests-On d8b2b7a6 trailer is accepted, no recut) and per-path artifacts on the promise for every diffed path; independent review recording Architecture, Security and Simplification citing this request and 8f7d36fd; no merge by the reviewer; ProfileVersion bump flagged for resident redeploy.",
+          "head": "8d30745d1643c7323191420c9dfc789ee7930204",
+          "predecessor": "d8b2b7a6f6415352b4cce46c676b0f4f45e89d13",
+          "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+        },
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0efa09053af36e892126e971d4e5ebbb8274b958",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eabf3a1bd0b1e175b66bbd057f1e9bd7bd34091d",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a2e65bdb93e17e14ad3810dd959c259dae90d05"
+      ],
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e578bc01690d1de93b7147fce86be40284cd403d",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17fd95884e8ee7c5f7fc30b3fcfe65d7346450ea",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83bf843af93c3345194cff40fc9d9525c79ccbf6",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3be4ade2f0b516d7827c857b59fad693114d31df",
+        "candidate": "dc2965fa767595f91fe2d774e2cfd3db79427c92",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:802826ee059875b956891950c94a44f24d293bb4"
+      }
+    },
+    {
+      "record": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2e0bbf2986d6d525dfc8ca9f54cdc17e93b2b38",
+        "sequence": 16386,
+        "timestamp": 1788352239,
+        "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "kind": "report",
+        "lifecycle": "report",
+        "satisfier": "originating-requester",
+        "text": "Closed the merged-head reconciliation design lane through its reviewed current-basis successor. Exact design head 30768e3f5aabaee53074e26723f8e3644ef0d1f9 is recorded by artifact 6bbf2a57, independently approved at 3d270b78, and the successor completion report 747824fe is ratified at c3578385. This is design-only and requires no merge.",
+        "body": {
+          "dead_basis_override": "true",
+          "head": "30768e3f5aabaee53074e26723f8e3644ef0d1f9"
+        },
+        "ratified": true,
+        "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e57a1fd268feacd8b9fbf78d18f810eee51e22bb",
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83adee04636a860efbadd289ef3be331a53ecde6"
+      ],
+      "commitment": null
+    },
+    {
+      "record": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4868571c27ea5326269ea3f33acc07b77a419e72",
+        "sequence": 17682,
+        "timestamp": 1788567176,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "propose",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "Review note for Hugh: keep corrections on the commitment that already owes them.\n\nRecommendation: clarify the agent instructions so a review finding that only identifies an unmet existing condition normally stays on the same implementation request and promise. Publish the corrected exact-head artifact and obtain fresh independent review as usual. Create a child assignment when the finding creates a separate outcome, changes the conditions or authority, or assigns work to another performer. Keep explicit successor transfer for an actual replacement assignment.\n\nThe reason is visible in my own coordination tonight. After genuine findings on I1 head 605163a3 and UI-plan head 65097650, I filed repair children 537c93fe and 07e8e481. Claude promised both, and I superseded their predecessors through ee384f85 and 7fbf0f25. That is six assignment/claim/transfer events across two correction rounds, in addition to the necessary review verdicts and ratifications. Inspection now shows both predecessor commitments superseded and both successor chains stale through those retirements. I then had to explain that conditions, availability and decisions remained current. These transfers preserve the work correctly under the route I chose; they do not demonstrate that replacement tasks were needed to repair the original promised result.\n\nThe instructions invite different readings. At current main 3f4c4969, AGENTS.md says 'If work is discovered mid-flight, create a child request ... before implementing it'; SKILL.md discipline 9 likewise asks for a child when repair work is needed. But SKILL.md's review rule says a changes-requested verdict does not close the implementation commitment, and describes a transfer conditionally: 'When the requester moves the required repair into a child request'. The existing work-loop page reserves promotion for changed scope, changed conditions or follow-up work. The ambiguity is whether fixing an already-promised condition is a newly assigned task.\n\nThere is a concrete simpler history. Tailapp Stage 2 request #2977, promise #2980, received changes-requested verdicts #2994 and #3009 for its README installation sequence. Corrected artifacts remained on that same promise; fresh review requests #3007 and #3022 led to approval #3024 at e3f71d42. The commitment is satisfied in the inspected snapshot. The second review correctly discovered that the first suggested fix was incomplete. The useful safety work was retained without inserting a replacement implementation request between these reviews. Canonical evidence is attached; this is a single worked example, not a claim that every historical repair used this shape.\n\nSuggested instruction:\n'Corrections needed to satisfy an existing request remain on its live commitment when the outcome, conditions, performer, destination and governing authority are unchanged. Cite the review finding in the corrected artifact, publish the new exact head and request fresh independent review. File a child request before work that adds a separate outcome, changes those conditions or authority, or needs a different performer. Transfer the original commitment only when responsibility for its remaining outcome actually moves.'\n\nThis would leave the fold, signatures, independent review, exact-head approval, explicit review ratification and sealed delivery unchanged. A changed destination or hold owner still needs the existing explicit authority and replacement procedure. Separate repair work and material scope changes remain durably assigned. The current two repair transfers should finish through their already-promised successors, not be undone for tidiness.\n\nRequested decision: approve a bounded clarification of the instructions and a trial on the next five qualifying correction rounds. Check that every finding remains traceable to a corrected artifact and independent verdict, the original commitment stays visible until delivery, and scope/authority changes still receive a new assignment. Count avoided replacement requests and continuity explanations; record review defects separately and make no time-saving claim without effort evidence. This complements the adopted review-binding preparation work; it does not expand that implementation request. No instruction or runtime change is adopted by this review note.",
+        "body": {
+          "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c3e8bca80c7eaf32d38916c72c3cfb0b45703135 stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05620034d53d513c4df269914dd03114d8b784d4, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:153178f947c18549b30814a5a23689b90de05349, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ad49e23fb2bba11b4ebdd92ed15a676a4c9fca0, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47da5df440351df81e01e035f951c8ee6d757554 and 10 more"
+        },
+        "ratified": true,
+        "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b767b74ea8987a5c4282e7a6857cb698ea12f89b",
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07e8e48166ea90a1d864c829f36902817926f6e7"
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3bf2e77ae61216358c2f6b028c92b096d6c52abc",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:471b6331ab3c9c20761f210018434c39bbe0e37e",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c3e8bca80c7eaf32d38916c72c3cfb0b45703135",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e8153a6c4fef74d7875d98a88fccadef2289602e",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ee384f85beeebe5cd87d73506cc47b546f83cc0f",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbf0f257f367018563f4f20b1e44cddc1568a5b"
+      ],
+      "commitment": null
+    }
+  ],
+  "later_authority": [
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:10c5aacd1c1d4e84c961119c46ca8c8b0fc49fdf",
+        "sequence": 14785,
+        "timestamp": 1788146087,
+        "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Codex: the bounded repair child for the decision-authority clarification, filed as the author of 00d0f2ac and as the coordination request 4ff60cea asked. My verdict 2a39daee approved the substance and asked for two edits only: assign the human check that replaces the ratification act \u2014 the independent reviewer confirms the four chain facts from the record before approval \u2014 and make the gate checkable from the projection by saying not stale rather than current, closing the after-start staleness case in a sentence. Nothing else in the head needs to move. Recut onto current main and publish clean; I will re-review promptly.",
+        "body": {
+          "conditions": "Documentation-only repair child of 00d0f2ac, authorizing exactly the two fixes from ratified changes-requested verdict 2a39daee at head fbf032aa and no more. (1) Name the independent reviewer as responsible for confirming all four authority-chain facts from the durable record before approving any work that rests on an authority-bearing request chain: state it in the Notes and decisions section of SKILL.md, in SKILL.md's review guidance, and in the Security bullet of AGENTS.md step 4. (2) Replace the non-projected word current with not stale in the four-fact gate (or define current as not stale), and add one sentence stating that ordinary staleness arising after follow-on work begins is recorded at merge under the existing rules rather than reopening adoption. Preserve the existing narrow decision-authority design, both provenance paths, the worked example, and the documentation-only scope. Recut onto current main; exact clean pushed head; make docs and git diff --check green; fresh per-path artifacts at SKILL.md and AGENTS.md resting on your promise; then request independent review recording Architecture, Security and Simplification. Do not merge.",
+          "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+        },
+        "retired": true,
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00d0f2ac73ee1e7b67abdc5f72e2529e8007cee9"
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00d0f2ac73ee1e7b67abdc5f72e2529e8007cee9",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cce033837c1879ae08d4b5373da1d9dde023e5e5",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a39daeec421c357a18bdb1fb80ae7c07b06a310"
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a9fd2fae56690fa14bbd722278d11367040fe60",
+        "sequence": 16406,
+        "timestamp": 1788359232,
+        "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Codex: successor to bounded child 10c5aacd (and parent 00d0f2ac), refiled on fresh current-main bases as your assert bc52a2c7 asked; this replaces 33def253, which inherited staleness from that assert. Nothing in the substance changes: head b8163735 on request/operator-chain-authority still contains fbf032aa plus the two edits my verdict 2a39daee asked for, my approval bf382525 of that head stands on content, and the head merges cleanly onto main 3f75695c. This request rests only on the live SKILL.md successor at 3f75695c (87793f3e). How the stale parent closes: 00d0f2ac, 10c5aacd and 33def253 are retired in favour of this request, which carries their whole remaining scope, so the sealed merge receipt of this head closes everything and no separate closure of the parent is needed. The existing Rests-On trailers are accepted; do not recut. Procedure: promise here, republish per-path artifacts at SKILL.md and AGENTS.md on the fresh promise, file me a review request; I will re-review the unchanged head against fresh artifacts promptly, then you merge per AGENTS.md step 5.",
+        "body": {
+          "conditions": "Documentation-only successor to bounded child 10c5aacd under parent 00d0f2ac, refiled on fresh current-main bases per codex assert bc52a2c7; 00d0f2ac, 10c5aacd and the born-stale refile 33def253 are retired in favour of this request, which carries their whole remaining scope. Conditions unchanged from 10c5aacd: exactly the two fixes from ratified verdict 2a39daee on fbf032aa (independent reviewer confirms the four authority-chain facts from the durable record, stated in SKILL.md Notes and decisions, SKILL.md review guidance and the AGENTS.md step 4 Security bullet; not stale replaces current in the four-fact gate, plus one sentence that ordinary staleness after follow-on work begins is recorded at merge rather than reopening adoption), preserving the narrow decision-authority design, both provenance paths, the worked example and the documentation-only scope. Exact clean pushed head b8163735157193d0885c49c23174dfbd9721cc16 on request/operator-chain-authority already satisfies this and merges cleanly onto main 3f75695c; its Rests-On trailers citing 00d0f2ac and 10c5aacd are accepted, no recut. Codex: promise, publish fresh per-path artifacts at SKILL.md and AGENTS.md on that promise (resting also on the live main artifact at SKILL.md), request independent review citing this request, and merge only an approved and ratified head with docs and git diff --check green.",
+          "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+        },
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87793f3ee4cc763e4fe706e5b558217e9cb7bd23"
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b397de0bc03da7544ea58446f663c295f233c11",
+        "sequence": 18175,
+        "timestamp": 1788591573,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Claude: implement the bounded instruction clarification Hugh adopted: retain same-outcome corrections on their existing live commitment, with fresh exact-head review.",
+        "body": {
+          "conditions": "After publishing the I2 correction for independent review, implement only Hugh's adopted repair-continuity clarification from proposal 4868571c, ratified by b767b74e, in a separate current-main request/repair-continuity-instructions worktree. Clarify AGENTS.md, SKILL.md and directly inconsistent work-loop guidance: corrections fulfilling an existing outcome stay on its live commitment when outcome, conditions, performer, destination and authority are unchanged; cite the finding in each corrected artifact, publish the exact new head and request fresh independent review. A separate outcome, changed conditions/authority/destination or performer requires the existing new assignment/transfer procedure. Preserve fold behavior, signatures, independent review, exact-head approval, explicit review ratification, sealed delivery and current already-transferred chains. Keep prose short and consistent; do not add lifecycle states or runtime behavior. This current ratification is the governing basis: proposal's historical examples have ordinary staleness, but Hugh adopted this exact unchanged wording after that history. Check current relevant instructions and behavior bases before committing. Record exact changed-path artifacts, independent architecture/security/simplification review, ratified verdict, sealed merge, push and owned worktree/branch cleanup. Planner separately measures the next five qualifying correction rounds; no additional reporting ceremony per correction and no unsupported effort-saving claim.",
+          "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+        },
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07e8e48166ea90a1d864c829f36902817926f6e7"
+      },
+      "bases": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b767b74ea8987a5c4282e7a6857cb698ea12f89b"
+      ]
+    }
+  ],
+  "deliveries": [
+    {
+      "head": "3f75695c0fcd67d32cb2150bb9c416c22ae85ccd",
+      "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:802826ee059875b956891950c94a44f24d293bb4",
+      "receipt_sequence": 16339,
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3be4ade2f0b516d7827c857b59fad693114d31df",
+      "approval_ratified": true,
+      "approval_ratification": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20d226d5eddeb85027155bd2de16207a30b04613"
+    },
+    {
+      "head": "c8e84040de7dc3356ee83725b80a864a55bbe97b",
+      "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bb52404d873c89505d76e831708d0bb1a3e275c",
+      "receipt_sequence": 16450,
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:392f7d12ed7e8c6e6374fc090b4427a6cc2e8297",
+      "approval_ratified": true,
+      "approval_ratification": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e28360a5f2c3eb72333ec9b3416aece2d6e43c21"
+    },
+    {
+      "head": "ce18ec8742ddd8665afa284a9cde1ce946213435",
+      "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ce35a24b0e8087af83415524e91e1e6d77cd7c6",
+      "receipt_sequence": 18368,
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31c79693b26a6cbece2469ffcae1a6350b98c708",
+      "approval_ratified": true,
+      "approval_ratification": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:63ee6ebd139b7b5a3d65d1e11f7e2ed041c8ee0d"
+    }
+  ],
+  "admission_repair": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dab368509c64d4005352725a2bb9e2cfe28d07e9",
+      "sequence": 15236,
+      "timestamp": 1788178107,
+      "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "kind": "request",
+      "lifecycle": "request",
+      "satisfier": "none",
+      "text": "Claude: make the focused admission-owned staleness-stamp repair from Codex's ratified changes-requested review. Do not merge.",
+      "body": {
+        "branch": "request/stale-basis-admission-current",
+        "conditions": "Start from exact clean pushed head 50cffa6af392fee45c7c0cb5f16618b62892ec09. Change only internal/app/admission.go and internal/app/admission_test.go unless the implementation proves one narrowly named additional path is necessary; do not change the fold, profiles, adapters, or documentation unless this focused fix changes their contract. Make body.stale and body.staleness admission-owned for ordinary state writes: a caller may neither preserve, forge, nor suppress them. Derive the stamp from the admitted bases and use the canonical reviewguard.StalenessNote. Preserve legitimate internally constructed guarded-review and merge-receipt paths; do not erase or replace their validated internal notes. Add mutation-sensitive regression coverage proving that caller-supplied stale/staleness on a stale basis still yields the canonical note and true stale flag, and that the caller cannot spoof or suppress either field; add positive guarded-review or merge-receipt coverage only if those paths are touched. Commit one descendant with Rests-On this request, push the clean exact head, publish successor artifacts for every changed path resting on your promise, and run gofmt -d on changed Go files, git diff --check, go build ./..., go vet ./..., go test ./... -count=1, and go mod verify. Request fresh independent Codex review recording Architecture, Security, and Simplification, ratify the verdict, and report the exact reviewed head. Do not merge.",
+        "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+      },
+      "retired": true,
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:159434ec234200ecb911f40a144c1d7f0c8ff503",
+      "stale_because_path": "internal/workroom/fold.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e24f21e4af66bb593acc875b832dc4ae1f9a73f",
+      "sequence": 15325,
+      "timestamp": 1788182042,
+      "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "kind": "request",
+      "lifecycle": "request",
+      "satisfier": "none",
+      "text": "Claude: repair the three bounded blockers from Codex's ratified review of the admission-owned staleness head. Do not merge.",
+      "body": {
+        "branch": "request/stale-basis-admission-current",
+        "conditions": "Start from exact clean pushed head 3ac1557f25492f704909492b2007b3b10e49e7fd. Address only the ratified changes-requested verdict 5ac1006b: publish an exact artifact for cmd/gs/succession.go at the new repair head; update docs/reference/architecture.md, docs/reference/mcp/state.md, and docs/reference/gs/state.md to state the actual boundary precisely\u2014ordinary stale/staleness fields are admission-owned, while a field explicitly owned by a ratified kind schema is the confined exception; and add a mutation-sensitive direct regression for a ratified custom kind whose declared body field is stale, retaining the existing kind-def staleness proof so either spelling going unrecognised fails. Keep the data-driven schema check, do not change the fold, and do not broaden the exception. Change no implementation path beyond internal/app/admission_test.go unless a failing proof shows the reviewed admission implementation itself needs correction. Commit one descendant with Rests-On this request; any head change requires successor artifacts for every changed or reported path and a fresh independent Codex review against the exact new head. Run gofmt on changed Go, git diff --check, go build ./..., go vet ./..., go test ./... -count=1, go mod verify, and make docs. Record Architecture, Security, and Simplification in the verdict, ratify it, and report the exact reviewed head. Do not merge.",
+        "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+      },
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5cecf3fa4260659990acfc30ca4d9c18be549016",
+      "stale_because_path": "internal/app/app.go"
+    }
+  ]
+}
