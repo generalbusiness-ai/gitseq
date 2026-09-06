@@ -591,6 +591,16 @@ type Act struct {
 	// the reserved review fields through the builder, and their contents are
 	// still judged by admission against the workroom.
 	GuardedReview bool
+
+	// NewSubmission is a precondition on mutable state outside the log, judged
+	// only when this act is a genuinely new submission. An exact retry of an
+	// act already accepted under its idempotency key replays that event and
+	// appends nothing, so re-judging it against a world that has moved since
+	// would turn a lost-response recovery into a refusal. It is a
+	// process-local judgement rather than a field of the act: never accepted
+	// as input, never carried by a plan that travels as JSON, and left nil
+	// when there is nothing outside the log to judge.
+	NewSubmission func(context.Context) error `json:"-"`
 }
 
 type Submission struct {
@@ -1384,7 +1394,37 @@ func (w *Workspace) buildActRequest(ctx context.Context, private ed25519.Private
 			return kernel.Request{}, err
 		}
 	}
+	if err := w.refuseNewSubmission(ctx, act.NewSubmission, request); err != nil {
+		return kernel.Request{}, err
+	}
 	return request, nil
+}
+
+// refuseNewSubmission judges a caller's mutable-state precondition against the
+// same replay lookup the kernel is about to make. The signed request is the
+// whole question: dedup matches the actor key, the idempotency namespace and
+// key, and the exact signed intent, so a payload, basis or actor that differs
+// by one byte is a new submission and is judged, and a reused key alone buys
+// nothing. Only the act already in this log under this actor's own key
+// replays, and the check is skipped for it because the event it returns was
+// already accepted when the world still agreed with it.
+//
+// Like the guarded-retirement replay above, this reads the caller's own log.
+// A resident that has sequenced the retry the local checkout has not yet seen
+// still looks new here, which refuses a recovery instead of admitting a bad
+// act, and fetching the workroom repairs it.
+func (w *Workspace) refuseNewSubmission(ctx context.Context, precondition func(context.Context) error, request kernel.Request) error {
+	if precondition == nil {
+		return nil
+	}
+	replay, err := kernel.CheckReplay(ctx, w.Store, request)
+	if err != nil {
+		return fmt.Errorf("check submission replay: %w", err)
+	}
+	if replay {
+		return nil
+	}
+	return precondition(ctx)
 }
 
 // refuseUnratifiableTarget keeps a locally built ratification out of the

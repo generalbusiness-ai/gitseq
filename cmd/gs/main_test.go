@@ -1260,7 +1260,7 @@ func TestMergeAuthorizationRequiresRatificationAndPreReceiptOrdering(t *testing.
 	ratified := statementByEvent(t, projection, authorization)
 	ratificationSequence := eventSequence(projection, ratified.RatifiedBy)
 	_, err = validateMergeAuthorization(fixture.ctx, projection, fixture.repo, fixture.candidate, approval, authorization,
-		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, ratificationSequence, "")
+		fixture.measuredTarget(t), true, ratificationSequence, "")
 	if err == nil || !strings.Contains(err.Error(), "is not before merge receipt") {
 		t.Fatalf("late ratification ordering error = %v", err)
 	}
@@ -1288,7 +1288,7 @@ func TestMergeAuthorizationRequiresExactlyOneAuthorizationLane(t *testing.T) {
 				kept = append(kept, workroom.Commitment{Report: authorization}, workroom.Commitment{Report: authorization})
 			}
 			snapshot.Projection.Commitments = kept
-			_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
+			_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, fixture.measuredTarget(t), true, snapshot.Depth+1, "")
 			if err == nil || !strings.Contains(err.Error(), "authorization report belongs to") {
 				t.Fatalf("%s authorization lanes error = %v", test.name, err)
 			}
@@ -1309,7 +1309,7 @@ func TestMergeAuthorizationRefusesIneffectiveRatification(t *testing.T) {
 			snapshot.Projection.Decisions[index].Verdict = "ineffective"
 		}
 	}
-	_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
+	_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization, fixture.measuredTarget(t), true, snapshot.Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "ratification is not an effective sequenced event") {
 		t.Fatalf("ineffective ratification error = %v", err)
 	}
@@ -1321,7 +1321,7 @@ func TestMergeAuthorizationRequiredModeRefusesAbsence(t *testing.T) {
 	approval := fixture.review(t)
 	fixture.ratify(t, approval)
 	_, err := validateMergeAuthorization(fixture.ctx, fixture.snapshot(t).Projection, fixture.repo, fixture.candidate, approval, "",
-		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, fixture.snapshot(t).Depth+1, "")
+		fixture.measuredTarget(t), true, fixture.snapshot(t).Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "--authorization is required") {
 		t.Fatalf("required authorization error = %v", err)
 	}
@@ -1341,7 +1341,7 @@ func TestMergeAuthorizationRefusesBlockingStaleness(t *testing.T) {
 		}
 	}
 	_, err := validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization,
-		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
+		fixture.measuredTarget(t), true, snapshot.Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "describes a superseded world") {
 		t.Fatalf("world-stale authorization error = %v", err)
 	}
@@ -1352,7 +1352,7 @@ func TestMergeAuthorizationRefusesBlockingStaleness(t *testing.T) {
 		}
 	}
 	_, err = validateMergeAuthorization(fixture.ctx, snapshot.Projection, fixture.repo, fixture.candidate, approval, authorization,
-		testGit(t, fixture.repo, "rev-parse", "HEAD"), true, snapshot.Depth+1, "")
+		fixture.measuredTarget(t), true, snapshot.Depth+1, "")
 	if err == nil || !strings.Contains(err.Error(), "retired") {
 		t.Fatalf("retired authorization error = %v", err)
 	}
@@ -4572,6 +4572,18 @@ func (f workflowFixture) reviewError() error {
 		"--artifact", f.artifact, "--promise", f.promise,
 		"--verdict", "approved", "--text", "APPROVED exact head",
 	})
+}
+
+// measuredTarget is the destination a merge measures in this fixture's own
+// checkout: what the authorization guard compares a report's stated
+// target_repo and target_ref against.
+func (f workflowFixture) measuredTarget(t *testing.T) mergeplan.Target {
+	t.Helper()
+	target, err := mergeplan.ResolveTarget(f.ctx, f.workspace, f.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return target
 }
 
 func (f workflowFixture) ratify(t *testing.T, approval string) {

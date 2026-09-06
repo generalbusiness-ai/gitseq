@@ -1269,9 +1269,15 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			checkout = current.workspace.Repo
 		}
 		_, resident := current.endpoint()
+		signer := mergeplan.Signer{Name: identity.selector, Private: identity.private}
+		if resident {
+			// The merge will submit through the resident, so the preflight
+			// judges the resident's own request-size cap as well.
+			signer.ResidentCeiling = service.ValidateSubmissionRequestSize
+		}
 		return mergeplan.Build(ctx, current.workspace, checkout,
 			stringValue(call.Arguments["candidate"]), stringValue(call.Arguments["approval"]), identity.actor.Fingerprint,
-			mergeplan.Signer{Name: identity.selector, Private: identity.private, CheckResidentCeiling: resident}), nil
+			signer), nil
 	case "say":
 		arguments := residentArguments(call.Arguments)
 		arguments["credential"] = current.credentialValue()
@@ -1301,7 +1307,12 @@ func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, 
 			evidence[name] = []byte(content)
 		}
 		allowDead, _ := call.Arguments["allow_dead_basis"].(bool)
-		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead}, identity)
+		// The same act-time re-resolution `gs state` runs, wired the same way:
+		// a report claiming a measured landing target is judged against the ref
+		// now, so this surface cannot file one the command line would refuse,
+		// and an exact retry replays here exactly as it does there.
+		return s.submit(ctx, current, app.Act{Verb: app.VerbState, Kind: workroom.Kind(kind), Text: text, Body: body, RestsOn: rests, Attachments: evidence, IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), AllowDeadBasis: allowDead,
+			NewSubmission: mergeplan.AuthorizationTargetPrecondition(current.workspace.Repo, body)}, identity)
 	case "review":
 		return s.review(ctx, current, call, identity)
 	case "ratify":

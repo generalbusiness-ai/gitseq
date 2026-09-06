@@ -913,16 +913,43 @@ instead. The explicitly ratified review approval remains a pre-merge
 requirement, and the same sealed receipt closes the implementation commitment
 whose reporting artifact it merges.
 
-The `cmd/gs` composition surface also owns phase-one merge authorization. An
-optional `--authorization` names an ordinary ratified Workroom report that
-closes an authorization request and binds the exact candidate, ratified
-approval, original implementation request, and measured target head. The CLI
-identifies the exact implementation and authorization commitments and admits
-only a report signed by the original implementation requester, the live actor
-named exactly `planner`, or a live actor carrying `ratifier`. It checks those
-facts and bindings twice before Git moves. A newer target is accepted only
-under an explicit `disjoint-paths` remeasurement whose candidate and target
-path sets do not intersect.
+The `cmd/gs` composition surface also owns merge authorization. An
+`--authorization` names an ordinary ratified Workroom report that closes an
+authorization request and binds the exact candidate, ratified approval,
+original implementation request, and measured target head. The CLI identifies
+the exact implementation and authorization commitments, checks those facts and
+bindings twice before Git moves, and accepts a newer target only under an
+explicit `disjoint-paths` remeasurement whose candidate and target path sets do
+not intersect.
+
+Who may sign, and whether anything may be signed at all, follows the request.
+A `workroom/state@3` request that is **not held** needs no authorization: the
+implementer merges on the ratified exact approval, `--authorization` is refused,
+and the receipt carries no authorization fields. A **held** request is released
+only by its exact hold owner, whose ratified release report the receipt seals;
+that release must also state `target_repo` and `target_ref` matching both the
+request's resolved destination and the checkout's measured one. A **legacy**
+request, filed before `state@3` and unable to carry a hold, keeps the phase-one
+reading: `--authorization` is optional, judged by the signer list of original
+implementation requester, live actor named exactly `planner`, or live actor
+carrying `ratifier`, with the two destination fields optional and checked when
+present; omission warns.
+
+The same two destination fields are re-resolved when an authorization or
+release report is filed. `gs state` and the MCP `state` tool resolve the
+report's `target_ref` in the workroom repository and refuse a
+`target_pre_head` the ref no longer holds, unless the report states
+`remeasure=disjoint-paths`, where the measured head need only be an ancestor.
+The merge re-resolves the same ref immediately before it moves `HEAD`, so a
+force-push between the measurement and the signature is refused where it
+happened rather than discovered later. The filing-time reading rides as the
+act's new-submission precondition, so an exact idempotent retry of an already
+accepted report replays that event without being measured against a ref that
+has moved since, while a different act under the same key and a report under a
+fresh key are both judged. The resident's own `/v0/act` endpoint, which the
+browser and other HTTP callers write through, applies the same precondition to
+the act it signs: the precondition cannot travel in JSON, so every write
+surface wires it on rather than inheriting it.
 
 The Git receipt seals both the authorization report and its exact
 sequencer-admitted `RatifiedBy` event. Embedding that unpredictable event ID in
@@ -1562,8 +1589,13 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   `merge_hold_warning` for the length of the stated compatibility window. A
   held request whose release is in force seals exactly that release as the
   receipt's authorization and its ratification witness, and refuses an
-  `--authorization` naming anything else; the phase-one signer list still
-  judges that release, because the hold-owner signer rule is a later slice.
+  `--authorization` naming anything else. That release is signed by exactly the
+  hold owner, who must still be a live roster actor when the merge reads the
+  delegation, and it states the destination it was measured against; the
+  phase-one signer list applies only to legacy lanes. A held request with no
+  release in force and an `--authorization` naming some other report is
+  refused: the window lets such a landing proceed unauthorized and warned, not
+  under an authority its hold never granted.
 
   The request is found through the commitment lane that reports the approved
   artifact, so an approval whose artifact reports no lane receives no
@@ -1963,7 +1995,7 @@ It introduces no replacement Gitseq command or automatic binding migration.
 | `host` | Durable application host, public surface | Exports binding at init, configured and attached-clone opening against a declared application, local-custody append, prepare/submit for externally actor-signed acts, and the verified record stream — and no projection, because the outside application owns its fold. It delegates canonical signing-byte construction to `internal/intent`, so no public host API names the kernel's domain tag. Attached opening receives a genesis and sequencer-key path through public fields, verifies before interpreting, and never initializes or exposes `internal/apphost.Config`. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. Endorsement has two entry points over one validation and encoding site: `Endorse` signs with a held actor key, and `PrepareEndorsement` fills the genesis, validates the anchor, BIP-340-verifies any carried Nostr proof, and returns a `host.PreparedAct` for an actor to sign outside the process, taking and retaining no actor private key and writing nothing. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
-| `internal/mergeplan` | Application workflow evaluation | Owns the typed, read-only Workroom merge preflight shared by CLI, MCP, and the mutating merge path: exact approval and implementer checks, isolated prospective Git merge, reviewed scope, live-artifact classification and succession, and prospective admission of the canonical durable suffix. It may read ordinary Git and Workroom state, but it does not append acts or write the source repository. |
+| `internal/mergeplan` | Application workflow evaluation | Owns the typed, read-only Workroom merge preflight shared by CLI, MCP, and the mutating merge path: exact approval and implementer checks, isolated prospective Git merge, reviewed scope, live-artifact classification and succession, and prospective admission of the canonical durable suffix. It may read ordinary Git and Workroom state, but it does not append acts or write the source repository. The resident's request-size ceiling is a function the composing command supplies, so this package stays below the transport rather than importing it. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. The read-only merge-plan surface stages the prospective merge only in a disposable clone and exposes the same typed approval, classification, succession, and reviewed-scope evaluator that `merge` consumes. Command grouping must not move Workroom concepts into the kernel packages. |

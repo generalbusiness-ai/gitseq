@@ -9,6 +9,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -196,10 +197,19 @@ func (s *Server) handleAct(writer http.ResponseWriter, request *http.Request) {
 			attachments[name] = []byte(content)
 		}
 	}
+	// An authorization or release report says which commit its target ref held
+	// when the signer looked. The resident is a write surface like the CLI and
+	// the MCP adapter, and applies the same filing-time re-resolution: a report
+	// measured against a world that has already moved is refused here rather
+	// than signed and left for the merge to refuse. The precondition cannot
+	// travel in the act, which is JSON on this path, so each surface wires it
+	// on. It rides as the act's new-submission precondition, so an exact retry
+	// of a report already accepted replays it instead of being measured again.
 	submission, err := s.workspace.Act(request.Context(), actorName, app.Act{
 		Verb: app.Verb(input.Act), Kind: workroom.Kind(input.Kind), Text: input.Text,
 		Body: input.Body, Target: input.Target, RestsOn: input.RestsOn,
 		Attachments: attachments, IdempotencyKey: input.IdempotencyKey,
+		NewSubmission: mergeplan.AuthorizationTargetPrecondition(s.workspace.Repo, input.Body),
 	})
 	write(writer, submission.Record, err)
 }
