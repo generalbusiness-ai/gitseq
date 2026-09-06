@@ -1,0 +1,41 @@
+ok  	github.com/generalbusiness-ai/gitseq	1.375s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	4.314s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	109.440s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	2.287s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	402.893s
+ok  	github.com/generalbusiness-ai/gitseq/host	37.031s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	24.584s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	15.184s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	105.223s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	6.746s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	3.120s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	4.899s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	3.295s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	6.717s
+--- FAIL: TestGateEveryPageNamesAGoverningAct (0.01s)
+    basis_test.go:29: docs/reference/reading-view.md: front matter names no governing act; prose that cannot go stale is not documentation, it is a rumour
+--- FAIL: TestGateNoPageIsUnableToFlare (0.01s)
+    basis_test.go:59: docs/reference/reading-view.md: the fold marks this page unable to flare; its silence would not be currency
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/docset	166.824s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.658s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	3.547s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	71.663s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	16.633s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.889s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	2.990s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	9.091s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.270s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.044s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	34.371s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	11.801s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.075s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	2.708s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	1.787s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	26.904s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	2.030s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.346s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	1.793s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	6.355s
+FAIL
