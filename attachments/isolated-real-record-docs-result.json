@@ -1,0 +1,66 @@
+{
+  "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
+  "source_objects": "read-only shared Git objects; independent refs and fresh read-only config, no copied private custody",
+  "steps": [
+    {
+      "command": [
+        "git",
+        "clone",
+        "--shared",
+        "--no-checkout",
+        "/Users/hughpyle/play/gitseq-worktrees/safe-sequence-publication",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-publication-docs-133-f4nohrkd/checkout"
+      ],
+      "exit": 0,
+      "seconds": 0.04
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-publication-docs-133-f4nohrkd/checkout",
+        "checkout",
+        "--detach",
+        "133cd39c5e955f2fc8edeb7b4b28544848cc5dff"
+      ],
+      "exit": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": [
+        "/tmp/gitseq-publication-133cd39c5-gs",
+        "attach",
+        "--repo",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-publication-docs-133-f4nohrkd/checkout",
+        "--genesis",
+        "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8"
+      ],
+      "exit": 0,
+      "seconds": 3.71
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-race",
+        "-count=1",
+        "-v",
+        "./internal/docset/..."
+      ],
+      "exit": 0,
+      "seconds": 116.47
+    }
+  ],
+  "custody": {
+    "read_only": true,
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "verified_frontier": {
+      "head": "0d749c1a07e2ae3daa83d4d1a5473fe422bce3bf",
+      "depth": 19241
+    },
+    "actor_count": 0,
+    "has_sequencer_key": false
+  },
+  "passed": true,
+  "fixture_removed": true
+}

@@ -73,6 +73,7 @@
     "path": "internal/app/attach.go",
     "head": "133cd39c5e955f2fc8edeb7b4b28544848cc5dff",
     "command": "/tmp/safe-sequence-v2-artifact-10-command.json",
-    "result": "/tmp/safe-sequence-v2-artifact-10.json"
+    "result": "/tmp/safe-sequence-v2-artifact-10.json",
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d749c1a07e2ae3daa83d4d1a5473fe422bce3bf"
   }
 ]

@@ -1,0 +1,39 @@
+ok  	github.com/generalbusiness-ai/gitseq	1.361s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	464.478s
+ok  	github.com/generalbusiness-ai/gitseq/host	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/host/live	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	73.862s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	(cached)
+--- FAIL: TestGateEveryNamedActResolvesToALiveRecord (88.67s)
+    anchor_test.go:51: refuse verified frontier rollback: depth 19230 is shorter than previously verified depth 19240
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/docset	130.158s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	10.115s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	(cached)
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	(cached)
+FAIL
