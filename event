@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at spike/querysandbox/sandbox_test.go","body":{"commit":"3b71806061c90fe462ba857f788dc1ec7e2d2580","path":"spike/querysandbox/sandbox_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a5dd9f68cfb09166c45e1833ac82afc55cca95d","text":"Merge retired a covered predecessor; the successor is at spike/querysandbox/sandbox_test.go."}
