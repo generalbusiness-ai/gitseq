@@ -1,0 +1,87 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0cf303355992d16f8af0b9bbea8abb9e378815ce",
+    "path": "cmd/gs",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:202c55b59efc2950fc331b1a2fa2d2d920c3b868",
+    "path": "cmd/gitseq-mcp/main_test.go",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35448093a9a4f45b561074d29556e1b51ae618f0",
+    "path": "cmd/gs/main.go",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:527df99a4f9744541aa7767e25e11494ed6099dc",
+    "path": "cmd/gs/main.go",
+    "commit": "832c4ae5b9a72d1291fdc7bd69807a91f659635e"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5482574d95a6d299e817b5f92170eec681e89edc",
+    "path": "docs/reference/mcp/review.md",
+    "commit": "6779fd7c62949adbc1397dddd6ef4609f5525620"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8677ac91c0c3e7f998febaba1f94fe3b333e5443",
+    "path": "cmd/gitseq-mcp/main.go",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f8682b37bcdaf0927f33ddda29b5bba63fc6937",
+    "path": "internal/mergeplan/mergeplan.go",
+    "commit": "ac2b28dc2300249568714547e3d8061ca8667913"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:940c3a1bc0e11adcf35912166ed66fa2c6ed7a4c",
+    "path": "cmd/gitseq-mcp/main.go",
+    "commit": "ac2b28dc2300249568714547e3d8061ca8667913"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9414ce0e45849e9c8a1ad21518ad74c415a87354",
+    "path": "cmd/gs/main_test.go",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae3d2240675fd0a3a5bc4c9fbe3dc8cc46e2a417",
+    "path": "internal/mergeplan/mergeplan.go",
+    "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af21fe4087f8603576d8ac8e0646b34edbf0b2c6",
+    "path": "cmd/gs/main_test.go",
+    "commit": "906b0a9441ab52c8ccf8e86bb68cb2d0bcb9706b"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c78d7645dd5450d0ed153ea1375dbe3dbf6ffc10",
+    "path": "cmd/gs/main.go",
+    "commit": "ac2b28dc2300249568714547e3d8061ca8667913"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e3b3b8adeca90713c1801f87496335560b5a0a82",
+    "path": "cmd/gs/main_test.go",
+    "commit": "ac2b28dc2300249568714547e3d8061ca8667913"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eed9d16c4b52e4c196c8858d1bbf4648c4c8c87b",
+    "path": "cmd/gitseq-mcp/main_test.go",
+    "commit": "ac2b28dc2300249568714547e3d8061ca8667913"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f21afd771e970cfcd1076dfd4c3f5290378b406b",
+    "path": "cmd/gs/main.go",
+    "commit": "906b0a9441ab52c8ccf8e86bb68cb2d0bcb9706b"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f37fb40380ff7c0b6b6df6a763806a08cadce269",
+    "path": "docs/reference/mcp/review.md",
+    "commit": "94f50d6f67318c161d6baf5e5738b0ae104bda5e"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f87cd709de511c563a7b391bf84efe672c0d1e37",
+    "path": "cmd/gs/main_test.go",
+    "commit": "832c4ae5b9a72d1291fdc7bd69807a91f659635e"
+  }
+]
