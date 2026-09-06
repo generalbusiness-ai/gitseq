@@ -1,0 +1,55 @@
+{
+  "sealed_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a33a18351a971f2f4f18932b6ff572a250de244",
+  "main": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+  "required_deleted_predecessors": [
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1157a75889fda95f29f58d78e043de4bdc5783a5",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c0c9c90ec72ca6c2891479af98246e5f91963ec",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d471c842e95bfb875591e6fa99fb580412a0420d",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de9fb61a7f880db20932730a953b9478dfdf7250"
+  ],
+  "abandoned_other_author_candidates": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3aa6cd46c593a99c32e7fd1ad3ad90817c6e9eb3",
+      "path": "internal/service/uidist",
+      "commit": "f6489c78a4e9c11460ebe95e3312f1acd1d0de2c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43f4dc46941b940128e260ba4a2baeb5fab105b7",
+      "path": "internal/service/uidist",
+      "commit": "95374ec2b44779fc712de97c0bec4270c94b9fcb",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b21f72d5841c6b0a9eaec24ffa671fc32f43dea",
+      "path": "internal/service/uidist",
+      "commit": "93f0b2a6fe2431b42dc38fbd2a03cd65132f0b3e",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6c8d77db63265d30fb45bbb6eb7011804faf12f1",
+      "path": "internal/service/uidist",
+      "commit": "6e29fa9935c262f8b3a2eb232a8fe80324f346ff",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ba9c062dbb1c41c10f2d48493ab17aeeaba2ff8",
+      "path": "internal/service/uidist",
+      "commit": "7da8b753682d38aa118e709943df0ee8c03e5c37",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2c3a918f845cf00d84721f2f2f1f61fb89ff03d",
+      "path": "internal/service/uidist",
+      "commit": "477637589ee395b996dd1c16ca7c93ee132de486",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    }
+  ],
+  "reason": "Deleted paths have no successor and receipt supplies no cross-author retirement authority; the four attempted retirements were ineffective. Six additional historical candidates were sealed abandoned and require author/ratifier cleanup."
+}
