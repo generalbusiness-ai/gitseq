@@ -1,0 +1,18 @@
+=== RUN   TestPlannerChangedRequestDestinationIsDifferentIntent
+git:sha1:0dc1ba1d3b4a463ef9412f8d9b12113fcda7462a#git:sha1:7f4322b9d6f6de3538e89fe0d19fa1941ac88f0a
+--- PASS: TestPlannerChangedRequestDestinationIsDifferentIntent (1.98s)
+=== RUN   TestPlannerAcceptedRequestRetrySurvivesDeletedRef
+git:sha1:68a30e9557af6b864213add937eba76d629236b3#git:sha1:8ad00948f507e3402d4d7aaedadd3bce2a313031
+git:sha1:68a30e9557af6b864213add937eba76d629236b3#git:sha1:8ad00948f507e3402d4d7aaedadd3bce2a313031
+--- PASS: TestPlannerAcceptedRequestRetrySurvivesDeletedRef (2.17s)
+=== RUN   TestPlannerExplicitEmptyHoldOwnerRefuses
+--- PASS: TestPlannerExplicitEmptyHoldOwnerRefuses (0.98s)
+=== RUN   TestPlannerLegacyAcceptedRequestRetriesThroughCLI
+git:sha1:dda42b33d790dde583bf16fdd88e5026d45ffdbf#git:sha1:9fbfb174ac60450f366984b114efe532e094711c
+--- PASS: TestPlannerLegacyAcceptedRequestRetriesThroughCLI (2.11s)
+=== RUN   TestPlannerInvalidReplacementLeavesOldAssignmentLive
+git:sha1:50119ad3664f0da9d4896a350f876032339cd1f8#git:sha1:7e2738d46624745b8a019fb28005bd919c6d8b8f
+    gitseq-request-authoring-planner-reassign-preflight_test.go:11: replacement refused: request state: request states no result: name a target, inherit one, or state no_git_artifact; original commitment: {Request:git:sha1:50119ad3664f0da9d4896a350f876032339cd1f8#git:sha1:7e2738d46624745b8a019fb28005bd919c6d8b8f Requester:79fed513c6d70ccf3f0ff3872aee293407f160474839c6b541ac6827dc828477 AddressedTo:c944e46c80aac49fb1e12cb692e2cc763284811d119d7a5dfe64048d98637247 Performer: Promise: Report: Status:open SuccessorRequest: Stale:false WaitingOn: TargetRepo: TargetRef: Legacy:false HoldOwner: Release: Approval: Candidate: LatestResolution: Terminal: ApprovedNotLanded:false LandingReceipt:}
+--- PASS: TestPlannerInvalidReplacementLeavesOldAssignmentLive (2.31s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	11.025s

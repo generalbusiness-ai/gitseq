@@ -1,0 +1,21 @@
+=== RUN   TestPlannerRetiredReplacementAddresseeRefusesBeforeRetirement
+git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:07855058903bc1558737f89b9ee20e475342c8e7
+{
+  "retirement": "git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:e493712c47adcc54572dea5c902cfd9d9489dfa1",
+  "request": "git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:db79bb0df2c21de3ed53069cd0d5c2f1d5998850"
+}
+    planner_retired_addressee_test.go:10: decision={Event:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:df3e0d09df961e95f27b45aa0866fe3da20d8a42 Sequence:5 Verdict:effective Reason:authorized ratification}
+    planner_retired_addressee_test.go:10: decision={Event:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:fe9e1f51b62149f118770ccbf96952a7863bfa43 Sequence:6 Verdict:effective Reason:authorized governance supersession}
+    planner_retired_addressee_test.go:10: decision={Event:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:07855058903bc1558737f89b9ee20e475342c8e7 Sequence:7 Verdict:effective Reason:statement recorded}
+    planner_retired_addressee_test.go:10: decision={Event:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:e493712c47adcc54572dea5c902cfd9d9489dfa1 Sequence:8 Verdict:effective Reason:authorized supersession}
+    planner_retired_addressee_test.go:10: decision={Event:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:db79bb0df2c21de3ed53069cd0d5c2f1d5998850 Sequence:9 Verdict:ineffective Reason:requested performer is not in the live roster}
+    planner_retired_addressee_test.go:10: actor name=operator retired=false
+    planner_retired_addressee_test.go:10: actor name=agent retired=false
+    planner_retired_addressee_test.go:10: actor name=second retired=true
+    planner_retired_addressee_test.go:10: commitment={Request:git:sha1:f4a6d5cfc0ec6e8c10e562b3f2a79371cae2b726#git:sha1:07855058903bc1558737f89b9ee20e475342c8e7 Requester:36a3e0e8ac8d1489318a147454d92925e6d8721c9ddf3754fbd01751ecef0d73 AddressedTo:b1ca463aeb1dbb3df6136bd266667cdc646a73e16b2447a339a2deecf9e7d725 Performer: Promise: Report: Status:withdrawn SuccessorRequest: Stale:false WaitingOn: TargetRepo: TargetRef: Legacy:false HoldOwner: Release: Approval: Candidate: LatestResolution: Terminal: ApprovedNotLanded:false LandingReceipt:}
+    planner_retired_addressee_test.go:11: refusal=<nil>, original=withdrawn retired=true
+    planner_retired_addressee_test.go:12: known retired addressee bypassed preflight and retired the original with no successor
+--- FAIL: TestPlannerRetiredReplacementAddresseeRefusesBeforeRetirement (4.32s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	4.780s
+FAIL

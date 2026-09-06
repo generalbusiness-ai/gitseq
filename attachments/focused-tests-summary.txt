@@ -1,0 +1,5 @@
+Command: go test -race -count=1 ./cmd/gs ./cmd/gitseq-mcp ./internal/service ./internal/app -run Test.*(Request|Reassignment|ReplacementSchemaRebuildsATwentyOneProfileCache).* -v
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	38.747s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	13.188s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	12.309s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	13.193s
