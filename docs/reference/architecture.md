@@ -8,7 +8,6 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a044c9520a718683b86f1ed72a19d027b7bdc63
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5242f122c4a784eb2fb38eb53fb04dcf235d967b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ef0bb48f6842c8f43f9aaacb6bed75584a77e48
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2556ced7f27f284fe201240aa7bed7bfc021e0b9
@@ -28,6 +27,19 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494ee033096e8120d62db5f33e853b3b99f82386
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2198b8aaa2da6921f555c380d24385edaabcb787
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982bfe9e7df98bde8c6f8797112498fb300baf4a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adafb7b0046989609ff369efcac5acb605aa403a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1dee44934842b9277a1125af2e9ea6d01f0ec786
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f5ca1c3b34c09a4a1a5f26ac366b94c748e3ca9
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3c6d28f602ea92883a8c4aa586c5b71f341b5db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0438e5f5a6b2167feceb5a0c8646280a4227794c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bd891443ff868623f2ad427b4a5becd32359e5d3
 ---
 
 # Architecture layers
@@ -1011,11 +1023,10 @@ durable receipt preserves the same pair, so later ratification cannot rewrite
 the order in which a merge occurred. This changes no kernel guarantee,
 Workroom vocabulary, fold rule, projection, or cache profile.
 
-Phase two should use a declared application seam rather than search request
-prose. A future `workroom/state@3` request field
-`merge_authorization=required`, projected under the next fold profile, can make
-the flag mandatory after every resident and adapter restarts on that binding.
-Until then omission warns and preserves the in-flight phase-one migration.
+The delivered structured hold is `landing=held`, with the owner and exact
+release described below. It is not inferred from prose. The current merge
+compatibility window records an unreleased hold as a warning; unheld state@3
+requests and legacy requests keep their distinct authorization rules.
 
 For an added or modified file, and a rename destination, the merge adapter
 publishes the successor at the exact changed-file path and selects only live
@@ -1142,7 +1153,7 @@ request. At the supersession's own position it requires one effective child
 request cited after the target, the same requester on both requests, a direct
 child-to-parent provenance edge, and a live ratified changes-requested verdict
 that explicitly names the reporting artifact and its exact commit. The old
-commitment then becomes terminal `superseded` and carries
+commitment then closes as `superseded` and carries
 `successor_request`; it is never relabelled satisfied, cancelled, or reneged.
 The qualification is sealed on the supersession, so retiring or failing the
 child later changes only the child row. Retiring the supersession itself
@@ -1333,8 +1344,8 @@ relation, and reaches neither carried nor abandoned successions.
 Filling `target_head` by resolving the ref at filing time, and refusing to file
 when it does not resolve, is layer-7 work and is described under "Request
 authoring" below. The receipt fields and the merge refusals are layer-7 work
-too and are described under `gs merge`; the status, work, inspect and worktree
-surfaces remain later work. These admission and projection changes advance the
+too and are described under `gs merge`. The delivered status, work, inspect,
+worktree and browser surfaces are described in layers 6 and 7 below. These admission and projection changes advance the
 profile to `workroom-fold@19`; a cache written under `@18` is rejected and
 history replayed.
 
@@ -1556,10 +1567,16 @@ omission rules that follow are part of the projection contract rather than
 presentation detail.
 
 Ordinary reasoning staleness qualifies a status; it does not reopen a finished
-commitment. A superseded, satisfied, or withdrawn commitment is omitted from every default
-lane whether or not it is stale, and the per-status counts carry it instead,
-so a caller reading a default lane is reading work still owed rather than
-history.
+commitment. Status omits superseded, satisfied, withdrawn and abandoned commitments
+from its bounded lanes and retains them in the per-status counts. Work queries
+keep approved-artifact landing debt even after source closure; absent that debt,
+the default query also omits those closed rows. Ordinary staleness alone does
+not bring them back.
+
+For claimed work with no live completion, the current fold can replace
+`promised` with `stale` while retaining its waiting party. The query classifies
+that lifecycle as `not_actionable`. Unclaimed stale intake remains available.
+These are current attention rules, not evidence that a claim was withdrawn.
 
 The staleness policy on a work query is a named value and not an absence: an
 omitted policy means `summary`, which is not `include`, and the explicit
@@ -1685,8 +1702,8 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   signed under: `workroom/state@2` or `workroom/reassign-if-unclaimed@0` for a
   record written before the obligation existed, `state@3` or
   `reassign-if-unclaimed@1` for one written after. This is what makes an
-  existing workroom retryable. Every request already in every log states no
-  result, so re-signing one as `state@3` refuses it for stating none — the one
+  existing workroom retryable. A legacy request may state no
+  result, so re-signing it as `state@3` would refuse it for stating none — the one
   answer a caller who already holds the act must never get. A legacy
   reproduction reads its body as the opaque text it was, and the gate for the
   whole recovery is the idempotency key plus a request-lifecycle state or the

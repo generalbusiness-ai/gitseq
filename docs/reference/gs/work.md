@@ -2,8 +2,12 @@
 title: gs work
 summary: Select the work one actor still owes or is owed, bounded and paged.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1055e9d1a044c420c25d249f91c79988cfcda4d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adafb7b0046989609ff369efcac5acb605aa403a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
 ---
 
 # `gs work`
@@ -27,7 +31,7 @@ Rows expose [landing evidence and current Git observations](../landing-observati
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
-| `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Repeat to name several. |
+| `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`; add `approved_not_landed` explicitly for that audit. Repeat to name several. |
 | `--status` | | Row state: the commitment lifecycle states or `awaiting-ratification`. Repeat to name several. |
 | `--target-ref` | | Exact destination filter, such as `refs/heads/release`. |
 | `--approved-not-landed` | absent | Filter delivery debt; `--approved-not-landed=false` explicitly selects rows without it. |
@@ -106,16 +110,22 @@ useful display index in one workroom, but it is not accepted in `--rests-on`,
 targets, or `Rests-On:` trailers. `--json` also carries every event ID in full.
 
 `--stale summary`, which is what a call naming no policy receives, answers
-*what is still owed*. A superseded, satisfied, or withdrawn commitment carrying only
-ordinary reasoning staleness is counted in `closed_stale_omitted` rather
+*what is still owed*. A superseded, satisfied, withdrawn or abandoned commitment carrying only
+ordinary reasoning staleness, with no approved-artifact landing debt, is counted in `closed_stale_omitted` rather
 than listed. Naming any `--status` also overrides the summary. The other
 three policies return exactly what they say: `include` adds the closed
 stale rows, `only` returns records carrying staleness in any lifecycle
 state, `exclude` returns records carrying none.
 
-A cursor is bound to its exact head **and** its exact filters. Changing
+An approved artifact can retain landing debt after source closure, so the
+audit preserves the original status and waiting party. `latest_review` and
+the fold-selected `approval` are distinct fields: a newer review is not itself
+a sealed landing.
+
+A cursor is bound to its exact durable head **and** its exact filters. Changing
 either is refused rather than silently splicing two selections into one
-answer; restart the query instead.
+answer; restart the query instead. Current Git observations may change between
+pages without moving that durable frontier.
 
 ## Cost
 

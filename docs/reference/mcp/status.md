@@ -2,10 +2,13 @@
 title: MCP status
 summary: Project durable work, live presence, and this session's priority ephemeral chat.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982bfe9e7df98bde8c6f8797112498fb300baf4a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adafb7b0046989609ff369efcac5acb605aa403a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
 ---
 
 # `status`
@@ -82,7 +85,7 @@ priority ephemeral chat: 0 unacknowledged; depth 1, you hold 3 roles, 0 awaiting
 or waiting party; it merely names you as the actor who may claim it. Its status
 is normally `open`. If the request's bases moved before anyone claimed it, its
 status is `stale` and its `stale` flag is `true`, but the unfinished request
-remains in this lane. `waiting_on_you` begins only after a promise or explicit
+remains in this lane. `waiting_on_you` begins when a promise, reporting artifact or explicit
 report gives you an admissible next act. A reporting artifact instead projects
 `awaiting-review` waiting on its performer, and `awaiting-landing` once a
 ratified approval names it — or `awaiting-authorization`, waiting on the hold
@@ -99,18 +102,21 @@ standing direct dissent. It is selected for every actor who currently holds
 the role named by the proposal's captured satisfier. Ratification,
 supersession, or dissent clears it. Ordinary staleness does not hide it.
 
-A rejected implementation parent closes as terminal `superseded` only after an
-explicit qualifying linked supersession. Its row carries `successor_request`
-naming the repair child; it appears in history rather than a live lane. The
-child's later outcome does not rewrite that pointer.
+An implementation parent closes as `superseded` only after an explicit
+qualifying linked supersession transfers its rejected repair or carries its
+approved artifact into a successor request. Its row carries `successor_request`
+and appears in history rather than a live lane. The successor's later outcome
+does not rewrite that pointer; this closure does not set a `terminal` value.
 
 Lane rows carry the same action fields as [`work`](work.md): full
 `conditions` for open and stale unclaimed requests, `report_status`, `reported_head`, and the
 latest effective review for that exact head with its explicit `ratified` flag.
 Routine triage therefore does not need one `inspect` call per row.
 
-The lanes hold work still owed. A superseded, satisfied, or withdrawn commitment is
-finished, and ordinary reasoning staleness under it does not reopen it —
+The lanes hold work still owed. A superseded, satisfied, withdrawn or abandoned
+commitment is finished; approved-artifact landing debt remains separately
+selectable through the explicit `work` audit lane. Ordinary reasoning
+staleness alone does not reopen it —
 that staleness blocks nothing and reaches most closed commitments, so a
 lane full of it hid the rows that were still owed. `totals
 .stale_commitments` counts it per status instead, and

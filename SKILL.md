@@ -3,6 +3,15 @@ name: workroom
 description: How to work in the gitseq workroom over its MCP server.
   Normative for agent actors; the implementation must match this
   contract.
+rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2198b8aaa2da6921f555c380d24385edaabcb787
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0438e5f5a6b2167feceb5a0c8646280a4227794c
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
 ---
 
 # Working in the workroom
@@ -69,9 +78,10 @@ acknowledging. See [Live attention](docs/reference/live-attention.md).
 - `work {lanes?, statuses?, stale?, limit?, cursor?}` — a bounded,
   resident-side query for your durable work: with no filters, proposals
   awaiting a ratification your roles authorize and current open, promised,
-  and reported commitments, including open requests addressed to you, plus
-  stale commitments in every lifecycle state. Settled non-stale
-  history needs an explicit status filter. Filters are finite choices, not
+  and reported commitments, including open requests addressed to you. The
+  default omits closed history carrying only ordinary staleness but retains
+  approved-artifact landing debt. Name a status or `stale=include` to inspect
+  closed stale history; see the work reference for the explicit audit lane. Filters are finite choices, not
   an expression language; a continuation is tied to the exact durable head
   and filters.
 - `inspect {event}` — one exact canonical durable event with its decision,
@@ -148,8 +158,9 @@ done, report straight against the request. Only the addressee may do that,
 and not while their own promise on that request is live — one commitment
 takes one closure. For implementing work, your exact-head artifact serves as the
 implementation report (discipline 8). It projects `awaiting-review`, waiting on
-you until an independent approval names the exact head, and then
-`awaiting-landing`, still waiting on you: an artifact has satisfier `none`, so
+you until a ratified independent approval names the exact head, then
+`awaiting-authorization` on the hold owner if release is needed, or
+`awaiting-landing` on you: an artifact has satisfier `none`, so
 asking the requester to ratify it would ask for an act the fold refuses, and
 the merge of the approved head is yours to sign. That independently approved merge closes the commitment, with
 no duplicate report or post-merge ratification. The review
@@ -185,6 +196,11 @@ separate request and authorize themselves. Omission warns on those older lanes,
 and held requests should carry the structured guard. An unheld `state@3`
 request needs no authorization at all: merge on the ratified exact approval,
 and `gs merge` refuses an `--authorization` nobody asked for.
+
+The current merge compatibility window can land an unreleased held request
+with an explicit receipt warning. Keep a request's instruction to wait: obtain
+its owner's release through the sequence above. Source delivery and pushing
+main do not deploy a reader or authorize a live-service transition.
 
 `gs state` resolves the `target_ref` of such a report when you file it and
 refuses a `target_pre_head` the ref no longer holds, so re-measure and re-sign
@@ -385,6 +401,14 @@ branch, including through an external pull request, is a separate process and
 does not change the group's current target branch.
 
 - Cite artifacts as `path@commit`. Never copy a document into an event.
+  Make source references clickable, using the exact path, full commit and
+  line you examined.
+  For the Notes preview, use the record's artifact or review head, or its
+  explicit `head` or `commit` field. Only when none is present may the reader
+  select directly cited artifact revisions. A current-main hash is not
+  sufficient when only older revisions are eligible. Link the eligible exact
+  revision whose bytes you examined; see
+  [Reading notes, source files, and evidence](docs/reference/reading-view.md).
 - Use `request/<slug>` for a new implementation branch unless the durable
   request records a better prefix. Existing historical branch names do not
   change.
@@ -397,8 +421,11 @@ does not change the group's current target branch.
   `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`. It is
   the only name the fold resolves. Copy it whole from the tool result that
   returned it; never assemble one around a fragment you read somewhere. A
-  citation that resolves to nothing is admitted in silence — the act
-  appends, reports success, and connects to nothing.
+  new canonical citation naming this workroom but no position in its sequence
+  is refused at admission. Foreign identifiers and other opaque references are
+  carried without that check; historical unresolved citations remain readable.
+  Resolve the intended basis instead of treating successful admission as proof
+  that it supports your claim.
 - **Say `#N` when you mean it out loud.** Every projected event carries a
   `sequence`, its position in this workroom's log, the founding seed being
   #1. Use it in prose, reports and conversation — a number can be read back

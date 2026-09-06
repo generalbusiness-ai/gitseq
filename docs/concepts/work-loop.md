@@ -2,19 +2,28 @@
 title: The work loop
 summary: How promises become exact artifacts, independently approved merges, or explicit reports.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2198b8aaa2da6921f555c380d24385edaabcb787
 ---
 
 # The work loop
 
 ## The shape
 
-A **request** names whom it is to and its conditions of satisfaction. A
-**promise** rests on that request and claims it. For implementing work, an
+A **request** names its addressee, conditions of satisfaction and result.
+For a new request, choose a target branch, inherit a request target, or state
+`no_git_artifact=true`. The filing boundary resolves a named branch to this
+repository and its current head; callers supply neither measurement.
+A **promise** rests on that request and shows that work is underway. For implementing work, an
 **artifact** rests on the promise, names the exact implementation head, and
 serves as the completion report. An independent reviewer records a verdict;
 the review requester ratifies an approval before `gs merge` may use it. The
-merge of that approved exact head closes the implementation commitment.
+sealed merge of that approved exact head into the owed destination closes the
+implementation commitment. Approval, Git incorporation and a sealed landing
+are separate facts.
 
 ```text
 request ─▶ promise ─▶ artifact ─▶ independent verdict ─▶ ratify ─▶ merge ─▶ satisfied
@@ -26,12 +35,18 @@ scrutiny. The review, its verdict, its explicit pre-merge ratification, and the
 different-agent rule are unchanged. The merge is the durable acceptance of the
 implementation result, so no second ratification follows it.
 
-Work that resolves without a merge still uses the general route: the promisor
+Work whose request explicitly owes no Git artifact uses the general route: the promisor
 files an explicit **report**, and the original requester ratifies it, so long
 as that requester is still a live participant. You never declare your own
 unmerged work complete. Retiring the requester's membership retires this
 authority with it: a later ratification is kept in the log but judged
 ineffective, even when the report was filed after they left.
+
+A promise is optional. The addressee may report directly against the request
+when no promise of their own is live on it. Once they promise, their artifact
+or report closes that one claim. Self-initiated work follows the adopted
+basis directly, without a self-request or self-promise; see
+[the agent discipline](../../SKILL.md).
 
 A free-standing promise projects as dangling, because nobody is
 positioned to declare it satisfied. A report on a promise that does not
@@ -42,7 +57,8 @@ force.
 
 A commitment is one request paired with one promise. A request nobody has
 promised is a commitment too, with the promise half empty. The fold
-projects ten statuses and no others.
+projects the thirteen statuses below. `terminal` separately records a landed,
+reported or abandoned closure; it is not another lifecycle status.
 
 Before anyone promises:
 
@@ -54,32 +70,11 @@ request ─▶ open ────┼─ a cited event is retired ─────�
                     └─ someone promises ───────────────▶ promised
 ```
 
-After a promise, the same commitment continues:
-
-```text
-                    ┌─ requester retires the request ──▶ cancelled
-                    │
-                    ├─ promisor retires the promise ───▶ reneged
-promised ───────────┤
-                    ├─ a cited event is retired ───────▶ stale
-                    │
-                    ├─ promisor files explicit report ──▶ reported
-                    │                                      │
-                    │       requester ratifies report ─────┤
-                    │                                      │
-                    └─ promisor files artifact ─▶ awaiting-review
-                                                           │
-                          ratified approval, request held ─┼─▶ awaiting-authorization
-                                                           │        │
-                                                           │  hold released
-                                                           │        │
-                      ratified approval, request not held ─┴────────┴─▶ awaiting-landing
-                                                           ├─ approved exact head merges ─▶ satisfied
-                                                           │
-                         rejected repair explicitly moved ─┼─▶ superseded
-                                                           │
-                            approved head declared dropped ┴─▶ abandoned
-```
+After a promise, the artifact route passes through `awaiting-review`, then
+`awaiting-authorization` if a hold needs release, and `awaiting-landing`.
+A sealed approved merge closes it as `satisfied`. The no-Git-artifact route
+passes through `reported`; requester ratification closes it as `satisfied`.
+Retirement and explicit transfer or abandonment have the meanings below.
 
 | Status | What it means | Who caused it |
 |---|---|---|
@@ -90,27 +85,34 @@ promised ───────────┤
 | `awaiting-review` | Completion claimed by an artifact that no ratified approval names yet; waits on the performer, whose next move is to obtain independent review. | the promisor |
 | `awaiting-authorization` | A ratified approval names the artifact, the request is held, and no release names this candidate and approval; waits on the hold owner. | the requester, by holding the landing |
 | `awaiting-landing` | A ratified approval names the artifact and nothing holds it; waits on the performer, who signs the merge into the target ref. | the promisor |
-| `superseded` | A ratified `changes-requested` verdict rejected the reporting artifact, and an explicit linked supersession moved the required repair to `successor_request`. | the requester, or a ratifier |
+| `superseded` | An explicit linked supersession transferred a rejected repair, or carried an approved artifact into a successor request. `successor_request` names that request. | the requester, or a ratifier |
 | `satisfied` | The approved exact head merged, or the requester accepted an explicit report. | the merge or the requester |
 | `cancelled` | The request was retired after a promise existed. | the requester, or a ratifier |
 | `reneged` | The promise was retired. | the promisor, or a ratifier |
 | `abandoned` | A supersession deliberately dropped an approved head instead of carrying it. | the requester, or a ratifier |
 | `stale` | Something it rests on died, and no live report stands. | nobody — a consequence |
 
-Four details the diagram cannot carry.
+Five details qualify these states.
 
 **Retirement beats staleness.** A retired request projects `withdrawn`,
 not `stale`, even when both are true.
 
+**Unfinished stale claims retain their evidence.** When no live completion reports a claim, current folding can replace
+`promised` with `stale` while retaining the promise and waiting party. Status and work then classify a claimed stale row as `not_actionable`;
+an unclaimed stale request remains available to its addressee. Staleness is
+not withdrawal or completion.
+
 **Cancelled beats reneged.** If the request and the promise are both
 retired, the commitment reads `cancelled`.
 
-**Existing completion authority is preserved.** A sealed merge is terminal.
-Otherwise the newest live explicit report keeps the authority reports had
-before artifacts could report implementation work. A conforming artifact is
-the report when the promise has no live explicit report. It conforms when its
-promisor authored it, it names a commit, and it rests on exactly one promise:
-the promise it reports.
+**Completion follows the stated result.** A request owing a landing cannot
+close through an explicit report: an admitted `resolution` report is evidence
+in `latest_resolution` and changes neither status nor waiting party. A sealed
+receipt takes precedence; otherwise the newest live approved reporting artifact,
+then the newest live reporting artifact, answers the claim. An explicit
+no-Git-artifact request closes only through a report and requester ratification.
+An artifact on that request stays visible but does not report its completion.
+Legacy requests retain their historical completion authority.
 
 **`satisfied` and stale are not exclusive.** Staleness is computed while
 the completion and closing records are read, so a commitment can be both
@@ -126,16 +128,16 @@ them, so it is worth saying plainly.
 The fold enforces, in `internal/workroom/kinds.go`:
 
 - which kinds carry a lifecycle edge, and the basis each requires — a
-  promise rests on exactly one request, a report on exactly one promise;
+  promise rests on exactly one request, a report answers one promise or an admissible direct request;
 - who may confer force, through each kind's satisfier: the originating
   requester for a report, the `ratifier` role for `propose`, `assert`
   and the governance kinds.
 
 And in `internal/workroom/fold.go`:
 
-- the ten statuses above, and which event causes each;
-- that only the promisor may report — anyone else is refused with *only
-  the promisor may report completion*;
+- the statuses above, their resolved destination and hold, and which event causes each;
+- that a promise is reported by its promisor, and a direct request by its
+  addressee only while that actor has no live promise on it;
 - that a promisor's exact-head artifact resting on one promise discharges the
   same report obligation, and a sealed merge receipt for that artifact closes
   the commitment;
@@ -172,33 +174,52 @@ What stops such a report reaching `main` is the merge guard, not the fold.
 So a green projection is narrower evidence than it looks, but not empty.
 It shows that nobody claimed authority they did not hold, that each act
 carries the bases its own kind requires — a promise resting on exactly one
-request, an explicit report on a promise, or a reporting artifact on its
-single promise — and, where work was merged through `gs merge`, that an
+request, an explicit report or reporting artifact on its admitted claim — and, where work was merged through `gs merge`, that an
 independent reviewer approved that exact commit and the approval was ratified. It
 does not show that the branch was named well, that the commit carried
 its trailer, or that anyone tidied up afterwards.
 
-It also does not show that every citation resolves, and the difference
-matters more than it sounds. The fold checks `rests_on` only against the
-basis constraints of the citing kind: a reference that names no event in
-this workroom is skipped in silence, and a kind with no basis constraints
-never has its citations inspected at all. An effective artifact or assert
-can therefore carry a citation pointing at nothing while the projection
-stays green around it.
+New admission refuses a canonical `rests_on` identifier that names this
+workroom but no position in its sequence. Foreign-workroom identifiers and
+other opaque references are carried without that check, and historical
+unresolved citations remain readable. The fold assigns meaning only to bases
+it can resolve. Copy full canonical identifiers from tool results and inspect
+their meaning; an effective record does not prove that a foreign citation
+supports its claim.
 
-That is not a hole to route around; it is what "gitseq has no ontology"
-costs. The fold cannot know which of your references were load-bearing.
-But it means a mistyped or invented identifier fails quietly — it appends,
-it reports success, and the act it was supposed to connect to simply never
-hears about it. Resolve identifiers before citing them rather than
-trusting a green projection to catch a bad one.
+## The result, hold and delivery audit
+
+A named result supplies `target_ref=refs/heads/<branch>`; the boundary fills
+`target_repo` and the advisory filing-time `target_head`. `target=inherit`
+walks request ancestry up to eight levels and refuses missing or conflicting
+nearest targets. An explicit no-Git-artifact request stops inheritance through
+it. See [request authoring](../reference/gs/state.md#request-authoring-what-a-request-owes).
+
+A landing request may state `landing=held`, with the requester as owner unless
+`hold_owner` names another live actor. Inheritance preserves the hold for that
+destination. Only its owner may release it, through the exact ratified report
+on the performer's authorization request. A new unheld request needs no
+release. The [merge contract](../reference/gs/merge.md#held-landings-and-the-compatibility-window)
+describes the current warning window for an unreleased hold and the distinct
+legacy authorization behavior; those compatibility rules do not turn approval
+into a release.
+
+`approved_not_landed` asks whether the selected approved artifact has a sealed
+receipt for its destination. It is independent of source closure and current
+Git ancestry: a receipt may close the source commitment through changed-path
+companions while carrying the selected artifact. Legacy satisfied rows can
+therefore remain in the artifact landing audit. Preserve their historical
+status and projected waiting party. Current ref removal, missing objects or
+unknown ancestry never erase a sealed receipt. See
+[landing observations](../reference/landing-observations.md) for the fields,
+count labels and bounded Git checks.
 
 ## Honest states
 
 A completion artifact before merge, or an unratified explicit report, is
 **honest status**, not failure. The artifact reads `awaiting-review` and waits
-on its performer until an approval names it, then `awaiting-landing` and waits
-on the performer to sign the merge; the
+on its performer until an approval names it, then waits on the hold owner
+if release is needed or on the performer for landing; the
 explicit report reads `reported` and waits on its requester. Do not treat
 either as a gap to be chased.
 
@@ -265,11 +286,12 @@ goes ahead and the verdict records what had moved.
 
 After the review requester explicitly ratifies an approved report,
 [`gs merge`](../reference/gs/merge.md) enforces the other boundary. It
-refuses an unratified or retired approval or artifact, one that describes
-a superseded world, a non-approval verdict, a candidate other than the
+refuses an unratified or retired approval or artifact, one that already
+described a superseded world when the verdict was signed, a non-approval verdict, a candidate other than the
 approved head, and a dirty checkout. Ordinary staleness is not on that
 list: the reviewed head is immutable, so the merge lands it and records
-what had moved in its receipt. It hands git the approved object ID, never
+what had moved in its receipt. An undated superseded world refuses; a world
+that moved only after the verdict is recorded. It hands Git the approved object ID, never
 a branch name, so advancing the reviewed branch cannot retarget the
 merge. Its sealed receipt then closes the implementation promise whose
 reporting artifact was reviewed; it does not replace or imply the earlier

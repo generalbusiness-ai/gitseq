@@ -2,9 +2,13 @@
 title: MCP work
 summary: Page through the selected actor's durable work through a bounded resident-side selection.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b22ae0cf87ec8004cf367f1f234d846fd0b17d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adafb7b0046989609ff369efcac5acb605aa403a
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
 ---
 
 # `work`
@@ -17,7 +21,7 @@ never fetches the complete `/v0/status` projection.
 
 | argument | required | meaning |
 |---|---|---|
-| `lanes` | optional | Typed relationship lanes: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is all five. |
+| `lanes` | optional | Typed relationship lanes: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`. Default is those five; `approved_not_landed` is an additional explicit audit lane. |
 | `statuses` | optional | Row states to include: commitment lifecycle states plus `awaiting-ratification` for the non-commitment proposal lane. An unknown state is an error, not a guess. |
 | `target_ref` | optional | Exact destination filter, such as `refs/heads/release`. |
 | `approved_not_landed` | optional | Boolean delivery-debt filter; false differs from absence. |
@@ -46,7 +50,8 @@ selected actor, even when their bases moved and their status became `stale`
 `cancelled` or `reneged` state, which nobody has closed.
 
 A `superseded`, `satisfied`, `withdrawn`, or `abandoned` commitment is finished, and the default
-leaves it out. Ordinary reasoning staleness does not bring it back: a
+leaves it out unless it carries approved-artifact landing debt. Ordinary
+reasoning staleness alone does not bring it back: a
 basis moving under a closed commitment is the normal condition of an
 append-only log, it blocks nothing, and listing every one of them buried
 the rows that were still owed. The response says how many were left out
@@ -56,7 +61,7 @@ The four staleness policies:
 
 | `stale` | What comes back |
 |---|---|
-| `summary` (default) | Work still owed. Closed commitments carrying ordinary staleness are counted in `closed_stale_omitted`, not listed. |
+| `summary` (default) | Work still owed. Closed commitments carrying only ordinary staleness and no landing debt are counted in `closed_stale_omitted`, not listed. |
 | `include` | The default lanes **and** every closed commitment carrying staleness, each with its own `stale` field. |
 | `only` | Only records carrying staleness, in any lifecycle state. |
 | `exclude` | Only records carrying no staleness. |
@@ -78,7 +83,8 @@ Every response gives the exact durable frontier, the matching total,
 the returned count, the preceding count, the remaining count, and a
 next cursor only when more remain. A cursor is bound to its exact head
 and filters, so a moved head is an explicit refusal: restart the query
-to read the new world rather than mixing two projections.
+to read the new world rather than mixing two projections. The cursor does not
+freeze current Git observations between pages.
 
 Each returned row also carries the facts needed for routine action without an
 `inspect` round trip:
@@ -88,8 +94,10 @@ Each returned row also carries the facts needed for routine action without an
 | `conditions` | The full, untruncated `body.conditions` for an unclaimed request whose status is `open` or `stale`. |
 | `report_status` | The reported statement's `body.status`, when present. |
 | `reported_head` | The exact head named by the report or reporting artifact. |
+| `approval`, `candidate` | The fold-selected ratified approval and candidate, separate from the latest review and current Git incorporation. |
+| `landing_receipt`, `terminal` | The validated receipt witness and closure reason; see the shared landing fields above. |
 | `latest_review` | The latest effective review for that exact head: its report event, verdict, and explicit `ratified`, `retired`, and `stale` booleans. |
-| `successor_request` | On a terminal `superseded` row, the exact repair child named by the qualifying linked supersession. |
+| `successor_request` | On a closed `superseded` row, the exact successor carrying a rejected repair or an approved artifact. |
 
 The page still caps its row count. It does not shorten `conditions` or omit
 these fields merely to fit more rows into one answer.
