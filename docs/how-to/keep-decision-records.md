@@ -202,8 +202,8 @@ while it is the same decision; when the decision itself changes, write a
 new file and stamp the old one.** This step is the first case.
 
 A revision is the same loop at the same path. The decision was already
-adopted, so no new proposal is needed — the review request cites the
-existing one.
+adopted, so no new proposal is needed — the revised artifact rests on the
+existing one, and the review names it as the work's adopted basis.
 
 ```sh
 git -C "$REPO" switch -q -c decision/use-postgres-wording
@@ -222,7 +222,8 @@ HEAD2=$(git -C "$REPO" rev-parse HEAD)
 
 ARTIFACT2=$(gs state --repo "$REPO" --as dana --kind artifact \
   --text 'Revised wording of the PostgreSQL decision' \
-  --body path=docs/decisions/0001-use-postgres.md --body commit="$HEAD2")
+  --body path=docs/decisions/0001-use-postgres.md --body commit="$HEAD2" \
+  --rests-on "$PROPOSAL")
 
 REVIEW_REQUEST2=$(gs state --repo "$REPO" --as dana --kind request \
   --text 'Review the revised wording at its exact head' --body to=@rae \
@@ -234,6 +235,7 @@ REVIEW_PROMISE2=$(gs state --repo "$REPO" --as rae --kind promise \
   --text 'I will review the revision' --rests-on "$REVIEW_REQUEST2")
 APPROVAL2=$(gs review --repo "$REPO" --as rae --checkout "$REPO" \
   --artifact "$ARTIFACT2" --promise "$REVIEW_PROMISE2" \
+  --self-initiated "$PROPOSAL" \
   --verdict approved --text 'APPROVED: same decision, clearer scope')
 gs ratify --repo "$REPO" --as dana "$APPROVAL2"
 
@@ -318,6 +320,7 @@ REVIEW_PROMISE3=$(gs state --repo "$REPO" --as rae --kind promise \
   --text 'I will review the replacement' --rests-on "$REVIEW_REQUEST3")
 APPROVAL3=$(gs review --repo "$REPO" --as rae --checkout "$REPO" \
   --artifact "$NEW" --artifact "$STAMP" --promise "$REVIEW_PROMISE3" \
+  --self-initiated "$PROPOSAL2" \
   --verdict approved \
   --text 'APPROVED: the replacement explains itself and the old file points forward')
 gs ratify --repo "$REPO" --as dana "$APPROVAL3"
