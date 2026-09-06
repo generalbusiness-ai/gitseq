@@ -1,0 +1,6 @@
+{
+  "room": "gitseq-chess",
+  "report": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:8698512a2427d4a0c816dab3c7436cffd3420a60",
+  "ratification": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:ec4492f9f21e31cac348200f50a12b10f537ba28",
+  "reviewer_scope": "Planner read report, observations, handoff and structured public CLI evidence, and observed the terminal rematch in native Chrome; the gameplay investigation itself was performed by Codex."
+}
