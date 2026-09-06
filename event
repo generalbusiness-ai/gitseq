@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui/test/preview.test.mjs","body":{"commit":"b2ed92662464b9ca7670395fce26fe723fa069d1","path":"ui/test/preview.test.mjs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0739dc3d9833620e90976f7858fbc66a9a781d8d","text":"Merge retired a covered predecessor; the successor is at internal/service/uidist/index.html."}
