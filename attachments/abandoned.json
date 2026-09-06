@@ -1,0 +1,30 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a9b9e1afb9061f7edc732a3379117fcfd0b05af",
+    "path": "docs/concepts/work-loop.md",
+    "commit": "50cffa6af392fee45c7c0cb5f16618b62892ec09",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:796632e797841d0e0473c2ac06ac6e78da13fd90",
+    "path": "SKILL.md",
+    "commit": "6b3d954c4b21eb4190fb97a58692c1e081d09b4e",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9e0f6bececf03d9b3d8bf6c279e25618dde0fd9",
+    "path": "docs/concepts/work-loop.md",
+    "commit": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa58df1d978b65772548a9b803e21278f9e9b615",
+    "path": "SKILL.md",
+    "commit": "50cffa6af392fee45c7c0cb5f16618b62892ec09",
+    "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "class": "abandoned"
+  }
+]
