@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d749c1a07e2ae3daa83d4d1a5473fe422bce3bf","text":"Merge retired a covered predecessor; the successor is at internal/app/attach.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f6d29de4728b2e0d6c08fdba716ea027f6d52a7","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/attach.md."}
