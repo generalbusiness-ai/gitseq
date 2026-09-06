@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41b0f332dd322bbdd30e88d83586733db9c8eec3","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp/main_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18bb8e5b05abee33d95c7f4ccfc9657a2334ba43","text":"Author cleanup of this exact abandoned candidate after sealed whoami fixture delivery at 3001d2ab. The six protected siblings, carried pointer and landed successor remain live."}
