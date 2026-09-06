@@ -1,0 +1,308 @@
+{
+  "source": "Tailapp projection at depth 3814, after source seal and before publication completion, 2026-09-05. Reduced to two commitments and directly named records; canonical IDs and projected closure/accounting fields retained.",
+  "projection": {
+    "commitments": [
+      {
+        "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5",
+        "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+        "performer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+        "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7f5a4f731e44f77e2c8c23cdb5357bb7dcea5136",
+        "status": "awaiting-review",
+        "stale": true,
+        "waiting_on": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "target_ref": "refs/heads/main",
+        "legacy": true
+      },
+      {
+        "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8eb99e7320111cefff12e0918116ea8e86c0930b",
+        "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+        "performer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7",
+        "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:197595192e5ed45b1ee4041931d5ff48a2989b6f",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "target_ref": "refs/heads/main",
+        "legacy": true,
+        "approval": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950",
+        "candidate": "8c674fa9ecb4797f7de4322ac97cb3ffe2d21672",
+        "terminal": "landed",
+        "approved_not_landed": true,
+        "landing_receipt": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a535982067d341ade6e788b214ab69dc497c7bb4"
+      }
+    ],
+    "reviews": [
+      {
+        "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950",
+        "timestamp": 1788615588,
+        "reviewer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+        "verdict": "approved",
+        "head": "8c674fa9ecb4797f7de4322ac97cb3ffe2d21672",
+        "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437",
+        "implementer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "resolved_by": "named",
+        "independence": "independent",
+        "ratified": true,
+        "stale": true
+      }
+    ],
+    "statements": [
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5",
+        "sequence": 3785,
+        "timestamp": 1788611290,
+        "actor": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+        "kind": "request",
+        "lifecycle": "request",
+        "text": "Builder: deliver the separately reviewed I5 nested-module release from the sealed input-contract integration, so Inventory can adopt an immutable public version."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+        "sequence": 3786,
+        "timestamp": 1788611808,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "promise",
+        "lifecycle": "promise",
+        "text": "I will prepare and deliver the separately reviewed I5 nested-module release from sealed c57f34b2. I acknowledge the recorded ordinary staleness and Hugh\u2019s explicit current confirmation of unchanged release conditions, destination, governing decision and my availability. I will verify the next unused appropriate version, clean module/release gates and exact candidate checksums and composed identity; request Checker review; publish only after exact approval and ratification; then verify actual release CI and clean public resolution. Inventory adoption and production activation remain separate."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7f5a4f731e44f77e2c8c23cdb5357bb7dcea5136",
+        "sequence": 3794,
+        "timestamp": 1788614403,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "artifact",
+        "lifecycle": "none",
+        "text": "Corrected I5 v0.2.0 release candidate at exact a0d64245b02f8fe55a17622f4e451e7df589e21c, path jsonataddl. Fixes packaged install version and consolidates release ordering after ratified changes-requested db87db21. Only two documentation files change; runtime code, pins and composed identity are unchanged. All12 prepublication gates passed again. Module checksum is h1:rD0TyYRPHT+DapFEacbd+jLQKHo6I+mi2ufpcCd+eKY=; go.mod checksum is h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY=. Source seal, approved tag publication, actual release CI and clean public resolution are still owed; no tag or activation claimed."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8eb99e7320111cefff12e0918116ea8e86c0930b",
+        "sequence": 3795,
+        "timestamp": 1788614445,
+        "actor": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+        "kind": "request",
+        "lifecycle": "request",
+        "text": "Builder: deliver the two-file source correction needed for the I5 module release, while preserving the separate publication commitment."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7",
+        "sequence": 3798,
+        "timestamp": 1788614698,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "promise",
+        "lifecycle": "promise",
+        "text": "I will deliver the authorized two-file release documentation correction under this source-only child, preserving the parent publication commitment. I will reuse the existing clean a0d64245 tree, bind the final source head to this child, publish fresh exact artifacts, obtain Checker source and tuple review, ratify and seal only this child, then verify refs/CI/owned cleanup. Module publication and actual public resolution remain under parent b9d6cd89 and promise9f5158a0."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:197595192e5ed45b1ee4041931d5ff48a2989b6f",
+        "sequence": 3801,
+        "timestamp": 1788614864,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "artifact",
+        "lifecycle": "none",
+        "text": "Corrected I5 v0.2.0 release candidate at exact 8c674fa9ecb4797f7de4322ac97cb3ffe2d21672, path docs/reference/releases.md. Fixes packaged install version and consolidates release ordering after ratified changes-requested db87db21. Only two documentation files change; runtime code, pins and composed identity are unchanged. All12 prepublication gates passed again. Module checksum is h1:rD0TyYRPHT+DapFEacbd+jLQKHo6I+mi2ufpcCd+eKY=; go.mod checksum is h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY=. Source seal, approved tag publication, actual release CI and clean public resolution are still owed; no tag or activation claimed."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437",
+        "sequence": 3802,
+        "timestamp": 1788614865,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "artifact",
+        "lifecycle": "none",
+        "text": "Corrected I5 v0.2.0 release candidate at exact 8c674fa9ecb4797f7de4322ac97cb3ffe2d21672, path jsonataddl. Fixes packaged install version and consolidates release ordering after ratified changes-requested db87db21. Only two documentation files change; runtime code, pins and composed identity are unchanged. All12 prepublication gates passed again. Module checksum is h1:rD0TyYRPHT+DapFEacbd+jLQKHo6I+mi2ufpcCd+eKY=; go.mod checksum is h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY=. Source seal, approved tag publication, actual release CI and clean public resolution are still owed; no tag or activation claimed."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950",
+        "sequence": 3806,
+        "timestamp": 1788615588,
+        "actor": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+        "kind": "report",
+        "lifecycle": "report",
+        "text": "APPROVED at exact 8c674fa9ecb4797f7de4322ac97cb3ffe2d21672 against the primary module artifact 1303f88f (jsonataddl) and companions 82434a27 (jsonataddl/README.md) and 19759519 (docs/reference/releases.md). This replaces the a0d64245 approval c5081b3b for the same file tree. Verified in a fresh detached checkout: 8c674fa9 is one commit whose parent is a0d64245, its tree 38e73621258f3c862bda29bfdbb8d166039e9c25 is identical to the a0d64245 tree, git diff --stat between the two is empty, and the only change is the commit itself, which carries Rests-On for Hugh's source-only child 8eb99e73. The module zip rebuilt from this head the way the proxy builds it (x/mod zip.CreateFromVCS plus dirhash) has 113 entries with the same names, sizes and CRCs as the a0d64245 archive, differs from the reviewed c57f34b2 archive only in README.md, and reproduces the proposed tuple exactly: Sum h1:rD0TyYRPHT+DapFEacbd+jLQKHo6I+mi2ufpcCd+eKY= and GoModSum h1:fpGrE/1ODSULhyxThhr3TL4JtpfcX3PdA4kJBnKWJRY= computed over the jsonataddl/go.mod at this head, which is byte-identical to c57f34b2 and v0.1.2; the method was validated earlier by reproducing the public sum.golang.org record for v0.1.2. Runtime code, pins, go.mod and go.sum are unchanged, so the composed identity jsonata-ddl-runtime:sha256:3e60ce38390fa376d766b5880cb8f79ebd9196f0e4036335beb9285783efbd33 pinned at internal/profile/runtime_test.go:25 stands. CI 33968911148 and release dry-run 33968911165 passed on this exact commit; the twelve release gates passed on the byte-identical a0d64245 tree. The README and releases.md correction resolves ratified db87db21 as found at a0d64245: the packaged README installs jsonataddl/v0.2.0, states the v0.1.2 input-contract and MaxInputDepth migration and identity re-pin, and delegates release ordering to releases.md, which owns the v0.2.0 preflight, expected-checksum comparison and the separate root-requirement follow-up. Source approval versus publication: this verdict approves the source tree for sealing under child 8eb99e73 (promise f4679b6b). It is also the gate-2 permission to publish jsonataddl/v0.2.0 at this same exact commit only once that commit is incorporated through a sealed merge into public main; publication remains the work of parent b9d6cd89 (promise 9f5158a0): repeat the absence preflight immediately before pushing only this exact annotated nested tag (the proxy list, sumdb and origin still show no v0.2.0), require actual tag CI and a fresh-cache external-consumer resolution matching both h1 values, and record the final release evidence. Ordinary staleness of the request bases is acknowledged as the request states; no design replacement. Inventory activation, the root requirement bump and I7 remain separate. Architecture: core and host contracts preserved; documentation-only tree, no layer added. Security: public absence confirmed, tuple immutable and reproduced from the reviewed bytes, expected-versus-public checksum equality is an explicit documented gate, preflight fails closed, zip is an exact image with no vendor, symlinks, build tags or generated files. Simplification: one detailed release procedure in releases.md and a version-neutral README apart from its own install line."
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a535982067d341ade6e788b214ab69dc497c7bb4",
+        "sequence": 3808,
+        "timestamp": 1788616049,
+        "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+        "kind": "assert",
+        "lifecycle": "none",
+        "text": "approved candidate merged",
+        "merge_left_live": [
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0bc9a5dcda410094a1c9b838086217ce0b2746b0",
+            "class": "carried",
+            "verified": true
+          },
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437",
+            "class": "carried",
+            "verified": true
+          },
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1c09639464fe3b9ba8bb582ff2739dabc99f4598",
+            "class": "carried",
+            "verified": true
+          },
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5c809512f03e2df44cf780d031d5e0c312731d2c",
+            "class": "sibling",
+            "commitment": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+            "verified": true
+          },
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7f5a4f731e44f77e2c8c23cdb5357bb7dcea5136",
+            "class": "sibling",
+            "commitment": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+            "verified": true
+          },
+          {
+            "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f3f5170da8293e507ba8529bbb1f01549a245c85",
+            "class": "sibling",
+            "commitment": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+            "verified": true
+          }
+        ]
+      }
+    ],
+    "decisions": [
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5",
+        "sequence": 3785,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571",
+        "sequence": 3786,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7f5a4f731e44f77e2c8c23cdb5357bb7dcea5136",
+        "sequence": 3794,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8eb99e7320111cefff12e0918116ea8e86c0930b",
+        "sequence": 3795,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7",
+        "sequence": 3798,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:197595192e5ed45b1ee4041931d5ff48a2989b6f",
+        "sequence": 3801,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437",
+        "sequence": 3802,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950",
+        "sequence": 3806,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a535982067d341ade6e788b214ab69dc497c7bb4",
+        "sequence": 3808,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      }
+    ],
+    "acts": [],
+    "artifacts": [],
+    "actors": {
+      "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818": {
+        "name": "builder",
+        "kind": "agent",
+        "roles": [
+          "participant"
+        ],
+        "membership_event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:dce6df48c2b6f2cfe5c4667fb9e44b0a97459150",
+        "role_sources": {
+          "participant": [
+            "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:dce6df48c2b6f2cfe5c4667fb9e44b0a97459150"
+          ]
+        },
+        "dormant_role_sources": {},
+        "retired_role_sources": {}
+      },
+      "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f": {
+        "name": "checker",
+        "kind": "agent",
+        "roles": [
+          "participant"
+        ],
+        "membership_event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1a0eb953a9ddb014fcc825d13258c790fab485ef",
+        "role_sources": {
+          "participant": [
+            "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1a0eb953a9ddb014fcc825d13258c790fab485ef"
+          ]
+        },
+        "dormant_role_sources": {},
+        "retired_role_sources": {}
+      },
+      "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673": {
+        "name": "hugh",
+        "kind": "human",
+        "roles": [
+          "operator",
+          "participant",
+          "ratifier"
+        ],
+        "membership_event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a3ac79cd57148807d9b7e56416cfc2a11c2a4c66",
+        "role_sources": {
+          "operator": [
+            "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a3ac79cd57148807d9b7e56416cfc2a11c2a4c66"
+          ],
+          "participant": [
+            "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a3ac79cd57148807d9b7e56416cfc2a11c2a4c66"
+          ]
+        },
+        "dormant_role_sources": {},
+        "retired_role_sources": {}
+      }
+    },
+    "provenance": {
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1303f88fbb3463ef7cc579750cd33cd39f2a8437",
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:197595192e5ed45b1ee4041931d5ff48a2989b6f"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:197595192e5ed45b1ee4041931d5ff48a2989b6f": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7f5a4f731e44f77e2c8c23cdb5357bb7dcea5136": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8eb99e7320111cefff12e0918116ea8e86c0930b": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9f5158a0115281fabec88c351094f1e5f45c2571": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a535982067d341ade6e788b214ab69dc497c7bb4": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1373aeebf3991ed49a4200efe1855413ad20c950"
+      ],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b9d6cd89c01d28cc19236aa9208ca9a073bd0de5": [],
+      "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f4679b6bcd026a00a736335153e9df1dcf3d56b7": [
+        "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:8eb99e7320111cefff12e0918116ea8e86c0930b"
+      ]
+    }
+  }
+}

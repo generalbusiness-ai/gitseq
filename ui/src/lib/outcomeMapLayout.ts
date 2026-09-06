@@ -4,7 +4,7 @@ import type { OutcomeNode } from "./outcomeMap.ts";
 // drawing order cannot quietly change the graph's stable reading order. Cards
 // are placed in layer columns: bases to the left, their dependents to the
 // right. A layer may contain several independent roots.
-export const OUTCOME_CARD = { width: 248, height: 122, margin: 32, gapX: 88, gapY: 28 } as const;
+export const OUTCOME_CARD = { width: 248, height: 154, margin: 32, gapX: 88, gapY: 28 } as const;
 export const OUTCOME_SCALE = { min: Number.EPSILON, max: 2, step: 0.15, inset: 32 } as const;
 
 export interface OutcomePosition {
