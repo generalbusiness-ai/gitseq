@@ -31,7 +31,7 @@ must precede a separately assigned implementation.
 |---|---|
 | P1: stop causes arising after a receipt from staling its published successors | Conflicts with the implemented dated checkpoint. Ruling #11588, ratified by `25eab16d`, settles causes active at or before the receipt and propagates later causes. Its implementation was recut under #12104. These precede #14703; that later adoption proposed the opposite change, which remains undelivered. Keep the current rule while the conflict is explicitly decided separately. P2 changes no receipt edge or cause. |
 | P2: keep lifecycle beside staleness | Remaining. An unreported live promise can still become status `stale` and disappear from the performer's actionable lane. Preserve `open` or `promised` with the existing stale flag and cause evidence. The other four live lifecycle states already survive ordinary staleness. |
-| P3: admit stale bases and remove mandatory refiling | Admission is delivered by `3f75695c0fcd67d32cb2150bb9c416c22ae85ccd`, request #16262, receipt #16339. The boundary owns `stale_bases`; merely stale bases are admissible, while retired bases retain their explicit refusal/override rules. Preserve the earlier owned-stamp repair #15325: ordinary `stale`/`staleness` fields are admission-owned, with only the confined exception for a field owned by a ratified kind schema. Blanket removal of the start-authority check is incompatible with the later authority-chain clarification, request #16406 and delivery `c8e84040de7dc3356ee83725b80a864a55bbe97b`. Preserve that narrower contract below. |
+| P3: admit stale bases and remove mandatory refiling | Admission is delivered by `3f75695c0fcd67d32cb2150bb9c416c22ae85ccd`, request #16262, receipt #16339. The boundary owns `stale_bases`; merely stale bases are admissible, while retired bases retain their explicit refusal/override rules. Preserve the earlier owned-stamp repair #15325: ordinary `stale`/`staleness` fields are admission-owned, with only the confined exception for a field owned by a ratified kind schema. The general P3 text change—replace author refiling of ordinary stale assigned requests with answering them like fresh requests—remains undelivered and is deferred by this decision. Keep current intake and SKILL discipline 11 until separately decided. This is distinct from the later authority-chain start checks, request #16406 and delivery `c8e84040de7dc3356ee83725b80a864a55bbe97b`, which remain in force below. |
 | P4: drain existing orphans once | The eleven dispositions recorded in #14687 already occurred. Its design question is satisfied by report #16386 (`b2e0bbf2`), ratified by `e57a1fd2`. Later adopted landing design #17029 and delivered I1–I5 supply target-aware delivery and explicit unresolved-landing attention. Do not repeat the drain or revive ancestor-head closure or retirement at unchanged paths. |
 | P5: keep corrections on their original commitment | Delivered in `ce18ec8742ddd8665afa284a9cde1ce946213435`, under #18175 and Hugh's adopted proposal #17682. Existing outcome, conditions, performer, destination and authority must remain the same; publish a corrected artifact citing the finding and obtain fresh review. A separate outcome or changed authority still needs an assignment. Planner's five-round observation is separate; this note claims no completed trial or effort saving. |
 
@@ -105,6 +105,15 @@ A separately authorized operational request owns deployment and rollback.
 
 ## Authority and receipt limits
 
+General intake and decision-start authority are separate. Historical P3 proposed
+removing mandatory author refiling for ordinary stale assigned requests, even
+where no authority-bearing decision chain is involved. That text change is
+still undelivered and deferred here. Current intake and `SKILL.md:368` remain:
+answer the stale request, confirm unchanged conditions, availability and
+governing decision, and ask its author to refile on current bases. Keep an
+existing promise or report for ordinary staleness alone. P2 changes visibility,
+not that workflow; changing it requires a separate explicit decision.
+
 The current adoption rule (`SKILL.md:455`) remains in force. Before follow-on
 work starts, an authority-bearing request chain must prove the requester's
 adoption authority, explicit commissioning of the decision and following work,
@@ -155,5 +164,5 @@ Until that reconciliation is adopted, later causes continue to propagate.
 Obtain Hugh's ordinary adoption of this exact decision, then independent
 Architecture/Security/Simplification review and sealed note delivery. Assign P2
 separately on the then-current adopted decision and behavior bases. P1 and any
-change to P3 authority need their own explicit decisions; P4's completed drain
+change to P3 intake/refiling or authority need their own explicit decisions; P4's completed drain
 and P5's delivered instruction clarification are not implementation backlog.
