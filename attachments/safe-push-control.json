@@ -1,0 +1,6 @@
+{
+  "returncode": 0,
+  "stdout": "{\n  \"fixture\": \"/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-safe-push-tracking-repro-d6vbvv4_\",\n  \"pushed_head\": \"a30a59a54ce21bb695d2aec1cb1cc4dfbcb85633\",\n  \"advance_during_push\": \"48e84a4f13017b4abf78fa08ecd38b08d0ad6ac0\",\n  \"local_ref_after_successful_push\": \"48e84a4f13017b4abf78fa08ecd38b08d0ad6ac0\",\n  \"push_preserved_concurrent_local_advance\": true\n}\n",
+  "stderr": "",
+  "fixture_removed_after_evidence_saved": true
+}

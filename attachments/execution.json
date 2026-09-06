@@ -1,0 +1,63 @@
+[
+  {
+    "step": "preconditions_verified",
+    "time": 1788686661.73582,
+    "canonical": "cd0e24abe956993f1389a095fd80a7d99763f1f8",
+    "witness": {
+      "head": "b5c32b72aa86b510b05a73b9d065ca22ad2672d1",
+      "depth": 19193
+    },
+    "remote": "a9ade32ac1973cdb6eddd201e43a19e8a09aa26a",
+    "binary_sha256": "0b8aeeec3b31a3aefbd0714e7a1d96286f1cd94bf7746748c5f9e6ae7dc978b6",
+    "old_pid": 2339
+  },
+  {
+    "step": "old_resident_stopped",
+    "time": 1788686661.8522801
+  },
+  {
+    "step": "tracking_mapping_corrected",
+    "time": 1788686661.8944252,
+    "mappings": [
+      "remote.origin.fetch +refs/heads/*:refs/remotes/origin/*",
+      "remote.origin.fetch refs/seq/*:refs/remotes/origin/seq/*"
+    ]
+  },
+  {
+    "step": "canonical_ref_restored_by_exact_CAS",
+    "time": 1788686662.412228,
+    "canonical": "b5c32b72aa86b510b05a73b9d065ca22ad2672d1",
+    "witness": {
+      "head": "b5c32b72aa86b510b05a73b9d065ca22ad2672d1",
+      "depth": 19193
+    }
+  },
+  {
+    "step": "full_verify_passed_with_unchanged_frontier",
+    "time": 1788686665.994139
+  },
+  {
+    "step": "resident_started",
+    "time": 1788686665.995712,
+    "pid": 67473,
+    "binary": "/tmp/gitseq-fork-recovery-bin/gs-0b8aeeec3b31a3aefbd0714e7a1d96286f1cd94bf7746748c5f9e6ae7dc978b6"
+  },
+  {
+    "step": "aborted",
+    "time": 1788686666.228833,
+    "error": ""
+  },
+  {
+    "step": "readiness_verified_after_format_only_assertion",
+    "time": 1788686703.0447218,
+    "identity": {
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "pid": 67473
+    },
+    "witness": {
+      "head": "b5c32b72aa86b510b05a73b9d065ca22ad2672d1",
+      "depth": 19193
+    },
+    "explanation": "Original lsof omitted -nP and rendered names; numeric lsof confirms actual new PID67473 owns 127.0.0.1:7777. No process restart or ref change was needed."
+  }
+]
