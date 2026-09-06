@@ -26,6 +26,54 @@ func attachTestGit(t *testing.T, repo string, args ...string) string {
 	return strings.TrimSpace(string(output))
 }
 
+func TestFirstAttachLosingCASRetainsReadOnlyConfiguration(t *testing.T) {
+	ctx := context.Background()
+	source, seed, err := Init(ctx, testRepo(t), "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := source.View().Genesis
+	ref := kernel.Ref(genesis)
+	first := attachTestGit(t, source.Repo, "rev-parse", ref)
+	actRecord(t, ctx, source, "operator", Act{Verb: VerbState, Kind: workroom.KindAssert, Text: "other importer advances", RestsOn: []string{seed.ID}, IdempotencyKey: "advance"})
+	newer := attachTestGit(t, source.Repo, "rev-parse", ref)
+	repo := testRepo(t)
+	attachTestGit(t, repo, "fetch", source.Repo, ref+":refs/remotes/source/sequence")
+	_, commonDir, err := apphost.ResolveGitDirs(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	meta := apphost.MetaDir(commonDir)
+	configPath := filepath.Join(meta, apphost.ConfigFile)
+	if _, err := os.Stat(configPath); !os.IsNotExist(err) {
+		t.Fatalf("first-attach fixture already has configuration: %v", err)
+	}
+	store := gitstore.Store{Repo: commonDir}
+	oldGate := attachImportGate
+	t.Cleanup(func() { attachImportGate = oldGate })
+	gateRan := false
+	attachImportGate = func() {
+		gateRan = true
+		if err := store.UpdateRef(ctx, ref, newer, strings.Repeat("0", len(genesis))); err != nil {
+			t.Fatalf("inject first-import contender: %v", err)
+		}
+	}
+	if _, err := AttachSequence(ctx, repo, genesis, "sha1", first, ""); err == nil || !gateRan {
+		t.Fatalf("initial import did not lose the checked CAS: gate=%v err=%v", gateRan, err)
+	}
+	attachImportGate = oldGate
+	config, err := apphost.LoadConfig(meta)
+	if err != nil || !config.ReadOnly || config.Genesis != genesis || config.VerifiedFrontier != nil || config.SequencerKey != "" || len(config.Actors) != 0 {
+		t.Fatalf("failed first attach must retain only its read-only identity: %+v, %v", config, err)
+	}
+	if got := attachTestGit(t, repo, "rev-parse", ref); got != newer {
+		t.Fatalf("losing importer changed the winning ref: %s", got)
+	}
+	if _, err := AttachSequence(ctx, repo, genesis, "sha1", newer, newer); err != nil {
+		t.Fatalf("retry from actual winning head: %v", err)
+	}
+}
+
 func TestAttachCheckpointWriteFailurePreservesMemoryAndCanRetry(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("requires ordinary POSIX directory write permissions")

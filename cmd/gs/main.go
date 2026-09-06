@@ -3023,7 +3023,7 @@ func attachCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := fetchSequenceRefs(ctx, *repo, *remote); err != nil {
+	if err := fetchSequenceRefs(ctx, *repo, *remote, *genesis); err != nil {
 		return err
 	}
 	head, err := store.Head(ctx, "refs/remotes/"+*remote+"/seq/"+*genesis)
@@ -3047,7 +3047,7 @@ func sequenceTrackingRefspec(remote string) string {
 	return "+refs/seq/*:refs/remotes/" + remote + "/seq/*"
 }
 
-func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
+func fetchSequenceRefs(ctx context.Context, repo, remote, genesis string) error {
 	if err := validateConfiguredRemote(ctx, repo, remote); err != nil {
 		return err
 	}
@@ -3069,7 +3069,10 @@ func fetchSequenceRefs(ctx context.Context, repo, remote string) error {
 			return err
 		}
 	}
-	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, tracking); err != nil {
+	// An exact source refuses when the selected remote sequence was deleted.
+	// A wildcard fetch would silently retain its old local tracking value.
+	selected := "+refs/seq/" + genesis + ":refs/remotes/" + remote + "/seq/" + genesis
+	if _, err := git(ctx, repo, "fetch", "--atomic", "--no-tags", "--", remote, selected); err != nil {
 		return fmt.Errorf("fetch untrusted sequence tracking refs: %w", err)
 	}
 	return nil

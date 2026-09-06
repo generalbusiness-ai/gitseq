@@ -2,9 +2,9 @@
 title: gs attach
 summary: Fetch into separate tracking refs and import a verified sequence into a clone.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c4f0d4142bfa057005b09e59bc0a3462980842b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4cf1b905d011e1ae2a91723ddd93c453dbe0870
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc8a6371f65aee6c713e5ddfe4accbf28d7be6bb
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:865d9ef7fdfa7fd732f4f46ce1b389dc8dab17db
@@ -57,14 +57,16 @@ It prints the same verification summary as
 |---|---|
 | Adds `+refs/seq/*:refs/remotes/<name>/seq/*` to `remote.<name>.fetch` | Fetch and push may update remote observations without replacing the authoritative sequence. |
 | Removes both legacy `refs/seq/*:refs/seq/*` and `+refs/seq/*:refs/seq/*` rules | Either mapping can let a successful push overwrite a concurrent local append. Other configured mappings and values remain. |
-| Fetches tracking refs with `--atomic --no-tags` | The fetched tracking updates succeed together; they are still untrusted. |
+| Fetches the exact selected genesis into tracking with `--atomic --no-tags` | A deleted or missing remote sequence refuses instead of reusing a retained tracking value. |
 | Writes `.git/gitseq/config.json` | Genesis, object format, read-only mode, and the last verified frontier. |
 
 The tracking rule permits replacement because it records what the remote
 currently advertises, including a rewind or sibling. Ordinary `git fetch`
 updates only that observation. It does not import new workroom events.
 
-`attach` fully verifies the immutable fetched head before changing
+`attach` fetches the exact selected remote ref; if it is absent, the command
+refuses even when an older tracking value remains locally. It fully verifies
+the immutable fetched head before changing
 `refs/seq/<genesis>`. It checks continuation of both the authoritative ref
 observed before fetching and the saved verified frontier. A final Git
 compare-and-swap refuses if the authoritative ref changed meanwhile. A remote
@@ -84,6 +86,13 @@ data from a newer head. Reads at the unchanged head reuse it without rewriting
 the config. The clone may be read-only for workroom acts, but `.git/gitseq`
 must remain writable when the frontier advances. If it is not writable, the
 read or audit fails closed and leaves the previous marker in place.
+
+On a first attach, the read-only configuration is created exclusively before
+the ref comparison. If that comparison loses, the configuration can remain
+with its genesis and format but no verified frontier or signing custody. It is
+not deleted on failure: another operation may already use it. Retry against
+the actual local head. Concurrent creators keep the stored identity; a caller
+that loses creation to a different genesis refuses.
 
 Import and checkpoint persistence are two writes. If the ref comparison
 succeeds and the later checkpoint write fails, `attach` reports that partial

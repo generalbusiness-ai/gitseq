@@ -523,6 +523,24 @@ func TestAttachAdvancesButRejectsRemoteRewind(t *testing.T) {
 	if got := testGit(t, auditor, "rev-parse", ref); got != second {
 		t.Fatalf("ordinary fetch rewound local sequence head to %s, want %s", got, second)
 	}
+	configPath := filepath.Join(attached.MetaDir, apphost.ConfigFile)
+	before, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, remote, "update-ref", "-d", ref)
+	// A wildcard fetch keeps the old tracking value. Exact selected-ref
+	// transport must refuse instead of importing that retained observation.
+	if err := attachCommand(ctx, []string{"--repo", auditor, "--remote", "origin", "--genesis", workspace.View().Genesis}); err == nil {
+		t.Fatal("attach accepted a retained tracking ref after remote deletion")
+	}
+	if got := testGit(t, auditor, "rev-parse", ref); got != second {
+		t.Fatalf("remote deletion changed authoritative ref to %s", got)
+	}
+	after, err := os.ReadFile(configPath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("remote deletion changed the saved checkpoint: %v", err)
+	}
 }
 
 func TestAttachRejectsHostileRemoteBeforeConfigOrTransport(t *testing.T) {

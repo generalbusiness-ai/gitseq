@@ -92,7 +92,7 @@ func TestSequencePublicationPreservesConcurrentAppend(t *testing.T) {
 			testGit(t, sender, "push", "origin", ref+":"+ref)
 			if legacy {
 				testGit(t, sender, "config", "--add", "remote.origin.fetch", "refs/seq/*:refs/seq/*")
-			} else if err := fetchSequenceRefs(ctx, sender, "origin"); err != nil {
+			} else if err := fetchSequenceRefs(ctx, sender, "origin", workspace.View().Genesis); err != nil {
 				t.Fatal(err)
 			}
 			var heads []string
