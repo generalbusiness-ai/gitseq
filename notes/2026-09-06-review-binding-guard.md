@@ -32,8 +32,11 @@ or evidence-only. It returns a `Binding` whose kind is one of:
   implementation reports are discovered only inside the examined set. With
   selectors, each names exactly one commitment lifecycle by request, promise or
   report; its report must be live at the head and inside the examined set; the
-  first selected report must be the supplied primary; every implementation
-  must owe its landing to one target.
+  first selected report must be the supplied primary. A selector disambiguates
+  the lifecycle of the report it names and never narrows the delivery: every
+  other examined artifact that reports a commitment joins the resolved set with
+  its target and hold, exactly as it would with no selector. Every
+  implementation must owe its landing to one target.
 - `self-initiated`: no commitment reports any examined artifact, the primary
   and the named decision rest directly on each other in either direction (the
   work rests on the decision, or the decision adopts this artifact, as a
@@ -106,8 +109,9 @@ ratified decision the primary rests on, and refusing an assigned edge;
 combined implementations with every companion, selector order, uncited and
 duplicate selectors, unknown selectors and incompatible targets; a report
 signed by another actor; ambiguous lifecycles; mode conflicts; a candidate
-mismatch; and `ScopeFromVerdict` round-tripping a recorded binding and
-reclassifying a legacy verdict.
+mismatch; `ScopeFromVerdict` round-tripping a recorded binding and
+reclassifying a legacy verdict; and selectors that disambiguate one report's
+lifecycle while every examined companion keeps its request, hold and target.
 
 `internal/reviewguard/confirm_test.go` adds a binding that moves at the third
 read and the recorded body fields with admission re-resolution.
@@ -121,8 +125,26 @@ refuses the same way; a self-initiated review needs its ratified proposal and
 then lands; two implementations at one candidate keep both reports and close
 both on the sealed receipt, refusing a reordered primary and an uncited
 report; preparation names the required report for a wrong primary and appends
-nothing; and the authorization consumer refuses a non-assigned approval on its
-own.
+nothing; the authorization consumer refuses a non-assigned approval on its
+own; and, from review finding
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:12182bd2e41e0c644e586933ccedd33fcb9008b7`,
+selecting only the first of two examined implementations still records both
+requests and still refuses the held companion at `gs merge` and the
+differently targeted companion at `gs review`, appending nothing and moving
+no ref.
+
+## Correction round
+
+Planner's finding 12182bd2 on the first candidate `4258167d` reproduced with
+real commands that `--implementation` selecting one examined report let a
+held or differently targeted companion escape the combined guards, because
+`resolveAssigned` included only the selected commitments. The correction is
+in the resolver alone: after the selectors are resolved, every other examined
+artifact's reporting commitments join the set exactly as in the no-selector
+branch, so confirmation, admission, preparation, authorization, merge and the
+receipt all see one complete set. No consumer sweeps, no ancestry. The head
+was also rebased onto landed main `33f69956` (the I6 documentation
+reconciliation), which touched none of these paths.
 
 `cmd/gitseq-mcp/review_test.go` proves the tool records the same body fields,
 refuses the same relabel, and prepares without appending.
@@ -141,6 +163,7 @@ guard and running only the control that must catch it:
 | E | admission skips binding re-resolution | a verdict whose binding moved after confirmation seals | red |
 | F | self-initiated inferred from an empty lookup | wrong primary and broken assignment pass | red |
 | G | selectors may add an unexamined report | an uncited implementation report is closed | red |
+| H | selectors drop examined companions | a selector hides a held or differently targeted companion at review and merge | red |
 
 Each mutant was applied to a clean committed tree, the named control run
 alone, and the tree restored with `git checkout` before the next.

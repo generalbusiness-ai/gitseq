@@ -353,3 +353,106 @@ func TestMergeAuthorizationRefusesANonAssignedApprovalOnItsOwn(t *testing.T) {
 		t.Fatalf("authorization of an evidence-only approval: %v", err)
 	}
 }
+
+// combinedDelivery builds two assigned implementations delivered at one
+// candidate, with the second request carrying extra body fields. It returns
+// the requests, the candidate, both artifacts and the reviewer's base args.
+type combinedDelivery struct {
+	first, second, candidate string
+	artifacts                map[string]string
+	base                     []string
+}
+
+func buildCombinedDelivery(t *testing.T, f workflowFixture, secondExtra map[string]string) combinedDelivery {
+	t.Helper()
+	body := map[string]string{"target_repo": mergeplan.WorkroomRepo(f.workspace), "target_ref": "refs/heads/main", "target_head": testGit(t, f.repo, "rev-parse", "HEAD")}
+	secondBody := map[string]string{"to": f.fingerprint(t, "operator"), "conditions": "land it too", "target_repo": body["target_repo"], "target_ref": body["target_ref"], "target_head": body["target_head"]}
+	for key, value := range secondExtra {
+		secondBody[key] = value
+	}
+	first := f.stateV3(t, "reviewer", workroom.KindRequest, "implement first", map[string]string{"to": f.fingerprint(t, "operator"), "conditions": "land it", "target_repo": body["target_repo"], "target_ref": body["target_ref"], "target_head": body["target_head"]}, f.ground)
+	second := f.stateV3(t, "reviewer", workroom.KindRequest, "implement second", secondBody, f.ground)
+	promises := map[string]string{}
+	for name, request := range map[string]string{"first": first, "second": second} {
+		promise, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindPromise, Text: "implement " + name, RestsOn: []string{request}, IdempotencyKey: name + "-promise"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		promises[name] = promise.Record.ID
+	}
+	checkout := filepath.Join(filepath.Dir(f.repo), "combined")
+	testGit(t, f.repo, "worktree", "add", "-qb", "combined", checkout)
+	for _, name := range []string{"first", "second"} {
+		if err := os.WriteFile(filepath.Join(checkout, name+".txt"), []byte(name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testGit(t, checkout, "add", ".")
+	testGit(t, checkout, "commit", "-qm", "combined")
+	candidate := testGit(t, checkout, "rev-parse", "HEAD")
+	artifacts := map[string]string{}
+	for _, name := range []string{"first", "second"} {
+		artifact, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindArtifact, Text: name + " artifact", Body: map[string]string{"path": name + ".txt", "commit": candidate}, RestsOn: []string{promises[name]}, IdempotencyKey: name + "-artifact"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		artifacts[name] = artifact.Record.ID
+	}
+	reviewRequest, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review combined", Body: map[string]string{"to": f.fingerprint(t, "reviewer"), "conditions": "exact head", "no_git_artifact": "true"}, RestsOn: []string{artifacts["first"]}, IdempotencyKey: "combined-review-request"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reviewPromise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{Verb: app.VerbState, Kind: workroom.KindPromise, Text: "review combined", RestsOn: []string{reviewRequest.Record.ID}, IdempotencyKey: "combined-review-promise"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return combinedDelivery{first: first, second: second, candidate: candidate, artifacts: artifacts, base: []string{"--repo", f.repo, "--as", "reviewer", "--checkout", checkout, "--promise", reviewPromise.Record.ID}}
+}
+
+// Review finding 12182bd2: selecting only the first implementation must not
+// hide the examined held companion. The verdict records both requests and the
+// merge refuses the held landing exactly as it does with no selector.
+func TestSelectorCannotHideAnExaminedHeldCompanion(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := buildCombinedDelivery(t, f, map[string]string{"landing": "held"})
+	if err := reviewCommand(f.ctx, append(lane.base, "--artifact", lane.artifacts["first"], "--artifact", lane.artifacts["second"], "--implementation", lane.first, "--verdict", "approved", "--text", "APPROVED first only")); err != nil {
+		t.Fatal(err)
+	}
+	approval := f.lastEvent(t)
+	verdict, _ := mergeplan.StandingStatement(f.snapshot(t).Projection, approval, workroom.KindReport)
+	if verdict.Body[reviewguard.BodyImplementations] != `["`+lane.first+`","`+lane.second+`"]` {
+		t.Fatalf("recorded implementations = %s", verdict.Body[reviewguard.BodyImplementations])
+	}
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: approval, IdempotencyKey: "ratify-combined"}); err != nil {
+		t.Fatal(err)
+	}
+	before, head := f.snapshot(t).Depth, testGit(t, f.repo, "rev-parse", "HEAD")
+	err := mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo, "--candidate", lane.candidate, "--approval", approval, "--text", "land first without the held second's release"})
+	if err == nil || !strings.Contains(err.Error(), "is held") {
+		t.Fatalf("selector hid the held companion: %v", err)
+	}
+	if f.snapshot(t).Depth != before {
+		t.Fatal("refused merge appended to the workroom")
+	}
+	if testGit(t, f.repo, "rev-parse", "HEAD") != head {
+		t.Fatal("refused merge moved the target")
+	}
+}
+
+// Review finding 12182bd2: selecting only the first implementation must not
+// hide an examined companion owed to a different target. The review refuses
+// before signing, exactly as it does with no selector.
+func TestSelectorCannotHideAnExaminedCompanionOwedElsewhere(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := buildCombinedDelivery(t, f, map[string]string{"target_ref": "refs/heads/other"})
+	depth := f.snapshot(t).Depth
+	err := reviewCommand(f.ctx, append(lane.base, "--artifact", lane.artifacts["first"], "--artifact", lane.artifacts["second"], "--implementation", lane.first, "--verdict", "approved", "--text", "APPROVED first only"))
+	if err == nil || !strings.Contains(err.Error(), "different targets") {
+		t.Fatalf("selector hid the companion's target: %v", err)
+	}
+	if f.snapshot(t).Depth != depth {
+		t.Fatal("refused review appended to the workroom")
+	}
+}

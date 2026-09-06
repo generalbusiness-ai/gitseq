@@ -1670,7 +1670,8 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   classifies what the explicitly examined set of artifacts at an exact head
   is: assigned, when a projected commitment reports the primary by exact
   `Commitment.Report` equality and further implementation reports are found
-  only inside the examined set; self-initiated, when the reviewer names the
+  only inside the examined set, every one of them included whether or not a
+  selector disambiguated a report's lifecycle; self-initiated, when the reviewer names the
   adopted decision the primary rests on directly and no commitment claims it;
   or evidence-only, when the primary's author filed it against a request that
   owes no Git artifact. It reads one hop of the primary's own provenance and

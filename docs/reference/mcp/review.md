@@ -28,7 +28,7 @@ admission refuses it and names this tool.
 | `promise` | required | The reviewer's own promise to review. |
 | `verdict` | optional | `approved` or `changes-requested`. Required to file a verdict; omitted with `prepare`. |
 | `text` | optional | The review itself. Acknowledgment means seen; judgment lives here in words. Required to file a verdict; omitted with `prepare`. |
-| `implementations` | optional | Array of implementation requests, or their exact promise or report, that a combined candidate closes. Same rule as `--implementation` on the command line. |
+| `implementations` | optional | Array of implementation requests, or their exact promise or report, that disambiguate cited reports. Same rule as `--implementation` on the command line: a selector never drops another cited report from the resolved set. |
 | `self_initiated` | optional | The adopted decision a self-initiated primary rests on directly. |
 | `evidence_only` | optional | The primary is evidence against a request that owes no Git artifact; the verdict is valid and not mergeable. |
 | `prepare` | optional | Read-only: returns the resolved binding and its explanation with `recorded: false`; signs nothing. `verdict` and `text` are not needed. |

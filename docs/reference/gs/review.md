@@ -26,7 +26,7 @@ review of nothing in particular, because the branch can move afterwards.
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required)* | The review itself. |
-| `--implementation` | | An implementation request, or its exact promise or report, repeatable. Names the implementation lifecycles a combined candidate closes when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the first selected report must be the primary. |
+| `--implementation` | | An implementation request, or its exact promise or report, repeatable. Disambiguates the lifecycle of a cited report when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the first selected report must be the primary. A selector never narrows the delivery: every other cited artifact that reports a commitment still joins the resolved set, with its target and hold, exactly as it would with no selector. |
 | `--self-initiated` | | The adopted decision a self-initiated primary rests on directly: a ratified proposal, or a satisfied authority-bearing request. Without it, an artifact no commitment reports is refused, never assumed independent. |
 | `--evidence-only` | | The primary was filed by its performer straight against a request that owes no Git artifact. The verdict is valid and not mergeable. |
 | `--prepare` | | Read-only. Resolves the binding for the same scope inputs and prints its explanation; signs nothing, reserves nothing, and needs no `--verdict` or `--text`. Filing re-resolves everything whether or not this ran. |
@@ -85,7 +85,8 @@ by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
 
 - **assigned** — a projected commitment reports the primary by exact
   `Commitment.Report` equality; other implementation reports are found only
-  inside the cited set. The verdict records `binding=assigned` and
+  inside the cited set, and every one of them is included whether or not a
+  selector was given. The verdict records `binding=assigned` and
   `implementations` as the JSON array of requests a sealed receipt closes.
 - **self-initiated** — no commitment reports the primary, the primary and
   the named adopted decision rest directly on each other in either direction

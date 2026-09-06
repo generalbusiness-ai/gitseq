@@ -304,6 +304,26 @@ func resolveAssigned(projection workroom.Projection, reports map[string][]workro
 			}
 			return Binding{}, fmt.Errorf("supplied primary %s differs from the first selected implementation's report %s%s; name that report first", quoted(binding.Primary), quoted(selected[0].Report), path)
 		}
+		// A selector disambiguates the lifecycle of the examined report it
+		// names. It never narrows the delivery: every other examined artifact
+		// that reports a commitment joins the resolved set exactly as it would
+		// without selectors, so a held or differently targeted companion
+		// cannot be hidden by naming only its neighbour. Review finding
+		// 12182bd2 reproduced that omission with real commands.
+		disambiguated := make(map[string]bool, len(selected))
+		for _, commitment := range selected {
+			disambiguated[commitment.Report] = true
+		}
+		for _, event := range binding.Examined {
+			if disambiguated[event] {
+				continue
+			}
+			for _, commitment := range reports[event] {
+				if !containsRequest(selected, commitment.Request) {
+					selected = append(selected, commitment)
+				}
+			}
+		}
 	}
 	for _, commitment := range selected {
 		implementation, err := implementationOf(projection, commitment, commitment.Report)

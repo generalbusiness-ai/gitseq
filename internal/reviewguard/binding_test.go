@@ -230,3 +230,43 @@ func TestScopeFromVerdictRoundTripsAndReclassifiesLegacyApprovals(t *testing.T) 
 	_, err = Resolve(projection, scope)
 	mustRefuse(t, err, "reported by \"primary\"")
 }
+
+// A selector disambiguates the lifecycle of the report it names and nothing
+// more: every other examined reporting companion joins the resolved set with
+// its target and hold, so naming only one implementation cannot hide the
+// obligations of another (review finding 12182bd2).
+func TestResolveSelectorsDisambiguateButNeverNarrowTheExaminedSet(t *testing.T) {
+	statements := append(assignedStatements(),
+		workroom.Statement{Event: "assign2", Actor: "operator", Kind: workroom.KindRequest, Lifecycle: workroom.LifecycleRequest, Body: map[string]string{"to": "implementer", "conditions": "land it too", "target_ref": "refs/heads/main"}},
+		workroom.Statement{Event: "work2", Actor: "implementer", Kind: workroom.KindPromise, Lifecycle: workroom.LifecyclePromise},
+		workroom.Statement{Event: "second", Actor: "implementer", Kind: workroom.KindArtifact, Body: map[string]string{"path": "internal/second.go", "commit": head}},
+	)
+	provenance := assignedProvenance()
+	provenance["assign2"], provenance["work2"], provenance["second"] = nil, []string{"assign2"}, []string{"work2"}
+	second := assignedCommitment("second")
+	second.Request, second.Promise = "assign2", "work2"
+	projection := bindingWorld(t, []workroom.Commitment{assignedCommitment("primary"), second}, provenance, statements...)
+	// Selecting only the first keeps the examined second and its request.
+	binding, err := Resolve(projection, Scope{Candidate: head, Examined: []string{"primary", "second"}, Implementations: []string{"assign"}})
+	if err != nil || len(binding.Implementations) != 2 || binding.Implementations[0].Request != "assign" || binding.Implementations[1].Request != "assign2" {
+		t.Fatalf("selected-first binding = %+v %v", binding, err)
+	}
+	// The companion's hold survives the selector.
+	projection.Commitments[1].HoldOwner = "operator"
+	binding, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"primary", "second"}, Implementations: []string{"assign"}})
+	if err != nil || len(binding.Implementations) != 2 || binding.Implementations[1].HoldOwner != "operator" {
+		t.Fatalf("held companion binding = %+v %v", binding, err)
+	}
+	// The companion's different target refuses with or without a selector.
+	projection.Commitments[1].HoldOwner = ""
+	projection.Commitments[1].TargetRef = "refs/heads/release"
+	_, err = Resolve(projection, Scope{Candidate: head, Examined: []string{"primary", "second"}, Implementations: []string{"assign"}})
+	mustRefuse(t, err, "different targets")
+	// A selected report with two lifecycles is disambiguated, not swept.
+	twice := bindingWorld(t, []workroom.Commitment{assignedCommitment("primary"), assignedCommitment("primary")}, assignedProvenance(), assignedStatements()...)
+	twice.Commitments[1].Request = "assign-again"
+	binding, err = Resolve(twice, Scope{Candidate: head, Examined: []string{"primary", "companion"}, Implementations: []string{"assign"}})
+	if err != nil || len(binding.Implementations) != 1 || binding.Implementations[0].Request != "assign" {
+		t.Fatalf("disambiguated binding = %+v %v", binding, err)
+	}
+}
