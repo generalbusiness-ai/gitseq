@@ -25,8 +25,8 @@ export function landingDisplay(commitment?: Commitment, receipt?: Statement, app
     approval.head === commitment.candidate && approval.artifact &&
     receipt?.merge_left_live?.some((entry) => entry.artifact === approval.artifact && entry.verified && entry.class === "carried");
   return {
-    target: ref ? ref.replace(/^refs\/heads\//, "") : repo ? "Incomplete target" : "No Git artifact",
-    destination: ref ? `${repo || "Repository unavailable"} · ${ref}` : repo ? `${repo} · Target ref unavailable` : "This request owes no Git artifact",
+    target: ref ? ref.replace(/^refs\/heads\//, "") : repo ? "Incomplete target" : "No target recorded",
+    destination: ref ? `${repo || "Repository unavailable"} · ${ref}` : repo ? `${repo} · Target ref unavailable` : "The fold projects no Git destination for this commitment",
     legacy: commitment.legacy === true,
     delivery: commitment.terminal === "landed" ? "Source landed" : "",
     artifactAudit: commitment.approved_not_landed

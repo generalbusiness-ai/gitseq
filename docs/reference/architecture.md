@@ -1978,6 +1978,8 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   shortened only for display, with the full repository/ref available and a
   legacy badge when the fold says so. Opening either presentation preserves
   the selected promise or report within its existing thread.
+  An absent projected destination says "No target recorded"; it does not
+  claim that a historical request explicitly chose no Git artifact.
 
   The thread inspects that exact lifecycle through `/v0/inspect`. Only the
   fold's selected `landing_receipt` makes a sealed landing station; current

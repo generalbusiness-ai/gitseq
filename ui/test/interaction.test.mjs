@@ -14,6 +14,17 @@ import { age, sortAfterClick, sortRows, workRows } from "../src/lib/rows.ts";
 import { buildSpine, landingDisplay } from "../src/lib/spine.ts";
 import { interpretationNotice, isInterpretationGap, kindLabel } from "../src/lib/util.ts";
 
+test("a historical commitment without a projected destination does not claim an explicit no-artifact choice", () => {
+  // The real I5 request had opaque state@2 target fields before a reporting
+  // artifact gave its commitment a legacy destination. Read the projection.
+  const row = { request: "historical-i5", requester: "planner", performer: "codex", status: "promised" };
+  assert.equal(landingDisplay(row).target, "No target recorded");
+  assert.equal(landingDisplay(row).destination, "The fold projects no Git destination for this commitment");
+  const reported = { ...row, target_repo: "git:sha1:room", target_ref: "refs/heads/main", legacy: true };
+  assert.equal(landingDisplay(reported).target, "main");
+  assert.equal(landingDisplay(reported).legacy, true);
+});
+
 test("a retry keeps its key until the same payload succeeds", () => {
   let next = 0;
   const keys = new RetryKeys(() => `key-${++next}`);
