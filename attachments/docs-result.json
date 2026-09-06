@@ -1,0 +1,66 @@
+{
+  "root": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-i6-docs-nhmbvoat",
+  "base": "3490d6f97",
+  "overlay": null,
+  "steps": [
+    {
+      "command": [
+        "git",
+        "clone",
+        "--shared",
+        "--no-checkout",
+        "/Users/hughpyle/play/gitseq-worktrees/landing-obligation-i6",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-i6-docs-nhmbvoat/checkout"
+      ],
+      "exit": 0,
+      "seconds": 0.03
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-i6-docs-nhmbvoat/checkout",
+        "checkout",
+        "--detach",
+        "3490d6f97"
+      ],
+      "exit": 0,
+      "seconds": 0.08
+    },
+    {
+      "command": [
+        "/Users/hughpyle/play/gitseq-worktrees/landing-obligation-i6/bin/gs",
+        "attach",
+        "--repo",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-i6-docs-nhmbvoat/checkout",
+        "--genesis",
+        "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8"
+      ],
+      "exit": 0,
+      "seconds": 2.91
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-v",
+        "./internal/docset/..."
+      ],
+      "exit": 0,
+      "seconds": 59.83
+    }
+  ],
+  "custody": {
+    "read_only": true,
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "verified_frontier": {
+      "head": "5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+      "depth": 19659
+    },
+    "actor_count": 0,
+    "has_sequencer_key": false
+  },
+  "passed": true,
+  "head": "3490d6f97aa34d27826eb99067f977d7243b6154"
+}
