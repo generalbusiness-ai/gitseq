@@ -1,0 +1,35 @@
+{
+  "head": "0a2510b1911f4bf2490a5f370f49536e689ab663",
+  "previews": [
+    {
+      "path": "docs/reference/architecture.md",
+      "ready_exact_bytes_valid_line": true
+    },
+    {
+      "path": "go.mod",
+      "ready_exact_bytes_valid_line": true
+    },
+    {
+      "path": "internal/recordruntime/projection.go",
+      "ready_exact_bytes_valid_line": true
+    },
+    {
+      "path": "internal/recordruntime/testdata/dialect.txt",
+      "ready_exact_bytes_valid_line": true
+    },
+    {
+      "path": "internal/recordruntime/testdata/identity.txt",
+      "ready_exact_bytes_valid_line": true
+    },
+    {
+      "path": "README.md",
+      "ready_exact_bytes_valid_line": true
+    }
+  ],
+  "all8_readme_links_exist": true,
+  "shell_examples_unchanged": true,
+  "five_source_bases_live_fresh_same_bytes": true,
+  "old_readme_ancestor_count": 70,
+  "migration_target_count_in_evidence": 32,
+  "migration_targets_in_ancestry": []
+}
