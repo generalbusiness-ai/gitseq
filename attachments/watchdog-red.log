@@ -1,0 +1,5 @@
+--- FAIL: TestCancellationMutationProof (0.00s)
+    sandbox_test.go:158: caller watchdog satisfied the internal-deadline assertion
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/querysandbox	0.813s
+FAIL
