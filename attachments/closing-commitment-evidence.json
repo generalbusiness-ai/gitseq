@@ -1,0 +1,141 @@
+{
+  "measured_at": "2026-09-06T23:20:19.527023+00:00",
+  "frontier": {
+    "head": "6eda90c7e87ae192fcea2e0df60ebad4df7af11b",
+    "depth": 19991
+  },
+  "cases": [
+    {
+      "receipt": "39d66ff37d57ff1a1ade39374a4f7c0c2fffc50a",
+      "protecting_event_suffix": "78225bf6f50119fece08633f685e73afeba6e032",
+      "candidate": "1b9ff8944b0f0051351a36ccb0c06182037f3d4a",
+      "classified_count": 1,
+      "currently_live_count": 1,
+      "items": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5000448e1026de058cbc91c073557c65e85efc41"
+      ],
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:78225bf6f50119fece08633f685e73afeba6e032",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c59ea9868c4998424ec2fe67c84ecf9b80074a9",
+          "status": "satisfied",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:39d66ff37d57ff1a1ade39374a4f7c0c2fffc50a"
+        }
+      ]
+    },
+    {
+      "receipt": "2f0fdba195b48c567ce5db78d95afe539b02ee84",
+      "protecting_event_suffix": "468f2a146c06bcace7138c1000273e264037a6bb",
+      "candidate": "0cb40dfe69e77e095a05a78f05423fdd1d6430fd",
+      "classified_count": 57,
+      "currently_live_count": 57,
+      "items": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:027ef6c600a85c4e12c6d716e1c614f7e8d173db",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07ff49cbd68fbadb6354db662b4b5534af789737",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:188745a49b1d98b1df0ffa19d084e449f5417c81",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:199c07d28dbbcb6e05afda021b1bea0a82629f48",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20944d317369f1f2df4877e67852557af60a9386",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21701464a96d574847b95c6e2a30b33479e12480",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2c32ad81feeeb24e72e04d094084869da8b44b92",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2c51185973e233ed524ecc289e45f62282115582",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3088e19d6b73f3603197ca7b1dca3d383d4d8085",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30b272e1361105d6d0c9a0ae64e8ff89ff13eb7b",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:310ab01c8cc8d9a70a1c6cf512e0f64b0313024f",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:32a44f2e303c804ad803434f26f83600c253e045",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e8c2edf68567d1cca115727b6a71904fb5c84eb",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:468bd48f097f95d855e38df832a9d94678a78721",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4bfc0fbf0f5d07390ba04bea8300296be78475e2",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50a14cf029904c85832cf398fbe1b761166fa416",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:535e34b49390a6c632e7d0e943dbc34e459ad793",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54c99269c13488d1cac964af5529afa3771cb61b",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c5399fff6d5653ab8c485f989ddfc11bde2a9f4",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61bdfcaf2735ddb873bf7369b35e7877857a602c",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:628113ca8d34ff5c25515748737e186b6b4d5109",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67070456d3984f14121952d68c28add1683a0aa3",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67b9aa13e246e41bceb6db29769de4c6b3513a00",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68c1433c976235ef05c3be7b684d90530dfb4978",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6aefd84b60198cba83cac0f056bd178f25832955",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f23e1032b712c3a04db2e004aab376a2bb6f4aa",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:763d57fff8a316ef271e4136960156731eb44473",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:82479097705a33f48cb3427fefff61e28da2ad0a",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8de35b291a2b272fd03d1aa450fb8e4fd58bb22a",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9375df2ba4e6e5496bb0980ed46e64b5968a888b",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94c2989ff2eb2434b0d2271fa6838dbf29dc58c7",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9911e1aac12a0ac8862be6b30516764f30b46d6e",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0dec5a3fc7c79a5f5c37dd9d56449d84f913d93",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a135ce026c8f70119980d6c9c04e858cdf7d4b09",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1ac925abbc5c7b9428ca7824ac3c13eb20d03bf",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab9df245c15ac6bf98c32fffe1ad0f94c0dbf972",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b543bdbb737a2316ab451814528c56a467c4e531",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc0a939b6fff60978b7ef90f882de40ae675a867",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2d6efc282247e3dcd163e85078869b071843c91",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c43a643413d1d2e09c6727c11185c0cb05c9aff4",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c8633da586120afffde08f24ea61116472e09e3d",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:caf70e63b6ff255e15f65d26534e4633a6c05b84",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d71a9cc76501af1d22bb17c9af8af8259a454861",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d79a3f0a6fcccb4fd242f1a99686fc401ce15905",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de2ceb7a0a8694bdd3dacdbc1b1b1b0947430c7a",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dfe8fd3e45ac36226370f29e2b21f9db0800c862",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e05c1c573b624c0f206a90c26edd27e7d5e982bf",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e11c01d459aacfc73ad9aa3c99024183aa717237",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e1d04eba9e348bed8b892a834895b7164973db47",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e4c0718a15a2a52772c1e60a2f017c82e94fef84",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5491126ad17ffab713a46230333ae55a9f6c2e0",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ed08f34ea7d83d9ab064afbd81e6d86fc3508725",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ef38ad13f8b83fdc17ecbe58ea281b5dd1b569d2",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f18d24dfd4717929d8de771db9fe1e7d8544861c",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f267aa8b3f3dc109e3115a5b91845cb138001432",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f58c5a72d51372c659df126e997aee11f7157455",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb395f61454106d0e418387514d78155a6846076"
+      ],
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76390a8672d6b8781391883224e8d96fc5ed0e9a",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:468f2a146c06bcace7138c1000273e264037a6bb",
+          "status": "satisfied",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f0fdba195b48c567ce5db78d95afe539b02ee84"
+        }
+      ]
+    },
+    {
+      "receipt": "2242708d4264d2b4fbd4ff00c8dab19a89e5f2fd",
+      "protecting_event_suffix": "71aca46db8c8544e741d3e0708b7c3c1e55203bf",
+      "candidate": "3e3556e3dd26f8328f99828211115755033298b9",
+      "classified_count": 17,
+      "currently_live_count": 13,
+      "items": [
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:043644244b2580edd9e75c69b550e5b08b909ab2",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a469a1dffd42c41878612c817a4fc3febe2463d",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1268b27c432e0931a449c8d19dfa7a77ff9a781d",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:43032a08cbc90e82e1e00f971fdd96241341308e",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:624b67deffa7064b8e0a1cb2a69707a8f475ec48",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6db3605ad1869e61ff76ed17b66fdb075d29c55b",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:738108545cb953249fa3973ffaeddae230d41e00",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7449d486c2c47c7866f49a6150d3749045b44bd0",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7a89f091f165d51b6a89398e9593a00113b054bf",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:80d2341196939fdb5195da94c6ed0815fda85117",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:962a2a1be3be909633b0c6752fa3163e3922c476",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad907b6244c3706bf21e8aadab933f4a22411d42",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e67e2a4d042d3600eb7956a81a9e3730581e7518",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ed70c95f9abe6526012c1aa8383f77a8993c6b18",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f0718ce202b25f2ef909d54e63f0969a21a5458a",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f72d7fae9fbf9b7c54d2538a48f6d279c5caaf93",
+        "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb256a8d98f422363cfb3a84e1e203307fa59ec0"
+      ],
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:71aca46db8c8544e741d3e0708b7c3c1e55203bf",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b3c74a832cb59b578af88d5c86937814d255895a",
+          "status": "satisfied",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2242708d4264d2b4fbd4ff00c8dab19a89e5f2fd"
+        }
+      ]
+    }
+  ],
+  "source_head": "6f4864fdaf2069f9ab917286e537db05bea12f51",
+  "source_observation": "Classify uses protectionIndex(projection, covered) before candidate classification. protectionIndex considers current unsettled commitment statuses and records request/promise/report events. It has no set of exact lifecycles closing in this receipt.",
+  "limitations": "Current live count does not establish every candidate lacks other uses or landed destinations. No new classifier probe or production mutation; actual three receipts and current projected closure states inspected."
+}
