@@ -1,0 +1,168 @@
+{
+  "source_head": "07753351d69c05dedec58f4e2561a793054312a5",
+  "history_snapshot": "Tailapp frontier4105, 2026-09-06; all cited requests and retirements immutable",
+  "cases": [
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+      "sequence": 178,
+      "text": "Review the exact first-time Tailapp install and onboarding head",
+      "body": {
+        "conditions": "Review artifact 2934b9bdf14bd02f8d1ba6e9458794dfad6071fa at exact Git head e249f58ef55e4d6b2e6662742bd923727d038973. Assess the create-only app_install/tailapp_install/apps install boundary for validation-before-create, idempotency, non-replacement, activation and recovery semantics, source-directory safety, control/MCP size and schema compatibility, and concise CLI output. Review the first-time README path, help, visible three-signal demo, signal-counts custom example, canonical log/span/metric-point reference, and full CLI/MCP docs for accuracy and approachability. Re-run go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. Report concrete changes or approve the exact head. MCP 2026-07-28 dual-era migration is separate scope.",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a32192a62ec7da1f2e75d0c7077e1320d8b2ac36",
+          "timestamp": 1787914128,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+          "text": "Withdraw review request #178 before claim: it cites nonexistent Git head e249f58ef55e4d6b2e6662742bd923727d038973 rather than the actual commit e249f58e80ff8a7a5b196e62ff0b7518e26e7d71, so no exact-head verdict can be valid.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:690cca675b4113fa16cf82c961c6061fe4bce8bf",
+      "sequence": 208,
+      "text": "Review the corrected exact first-time Tailapp install and onboarding head",
+      "body": {
+        "conditions": "Review the complete 24-artifact change set at exact Git head e249f58e80ff8a7a5b196e62ff0b7518e26e7d71, rooted at artifact a15f1ffe793659066377f891b4db976724b44366. Assess the create-only app_install/tailapp_install/apps install boundary for validation-before-create, durable idempotency, non-replacement, activation and recovery semantics, source-directory safety, control/MCP size and schema compatibility, and concise CLI output. Review the first-time README path, help, visible three-signal demo, signal-counts custom example, canonical log/span/metric-point reference, and full CLI/MCP docs for accuracy and approachability. Re-run go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. Report concrete changes or approve the exact head. Seven documentation artifacts carry only pre-existing ordinary staleness inherited from their live merged predecessors; acknowledge that as examined, not as changed code. MCP 2026-07-28 dual-era migration is separate scope.",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:18650053a6792a39cb4974a21d8acc5c3f3709f7",
+          "timestamp": 1787914423,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:690cca675b4113fa16cf82c961c6061fe4bce8bf",
+          "text": "Withdraw request #208 before checker claim. Although it cites the actual Git head, it omits body.artifact and body.head so the formal review gate does not recognize it, and the head still lacks the required Rests-On commit trailer or a current operator request/adopted decision. Preserve the corrected path artifacts as unreviewed pointers; do not ask checker for a verdict until operator authority produces a provenance-correct successor.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2ac587816a8e61df0dcb2150d76f8dba59f467b8",
+      "sequence": 644,
+      "text": "Independently review the exact repository publishing-discipline candidate at 758ee077a61e69ddb7b90b77032e826cdee5e093.",
+      "body": {
+        "conditions": "At exact head 758ee077a61e69ddb7b90b77032e826cdee5e093, verify the root-only Tailapp binary ignore, the push/pull_request CI workflow with exact Go 1.26.7 and test/race/vet/demo/clean-checkout gates, and the README documentation. Independently run proportional gates and file one guarded gs review verdict citing all three exact-head artifacts: #641 .gitignore, #642 .github/workflows/ci.yml, and #643 README.md.",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:52e12795a7bdf90614bee48d2cb31d52711a2e47",
+          "timestamp": 1787936357,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2ac587816a8e61df0dcb2150d76f8dba59f467b8",
+          "text": "Retire malformed review request #644: it omitted body.artifact and therefore did not enter the guarded review queue. A corrected single lane will name primary artifact #642 and still require verdict citations for all three exact-head artifacts.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:80410da061a83661d9f1ddd8cfb16fa978fd5be6",
+      "sequence": 1467,
+      "text": "Independently review the exact corrected daily-review documentation head.",
+      "body": {
+        "branch": "request/daily-review-docs",
+        "conditions": "Promise this request exactly once. Review the clean checkout at exact head 8e57f341ac997376025acf27609f0e20825b04ae on request/daily-review-docs. This corrects the prior changes-requested verdict on head 43165af2: every added listing (project README table row, docs index shipped-Tailapps entry, harness verification model-reading entry) now itself says daily-review is installed from its source directory and is not a built-in bundle. The branch is rebased onto the corrected promote-examples head 3aba33fb so the shipped-roster listings compose; the daily-review source set remains byte-identical to the previously verified content apart from that rebase. Confirm the qualifiers fully answer the verdict, tailapps/embed.go remains unchanged by this delta, and the documented directory install and query still work against a fresh engine home. Run go test ./..., go vet ./..., go test -race ./..., and ./scripts/demo.sh. File the verdict only through gs review, citing all 5 exact-head artifact bases on this request in their request-provenance order with primary README.md first. Approve or request changes only for this exact head.",
+        "head": "8e57f341ac997376025acf27609f0e20825b04ae",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:bc51147c9b4106448e85b9bb491987e18fbeaf92",
+          "timestamp": 1788089364,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:80410da061a83661d9f1ddd8cfb16fa978fd5be6",
+          "text": "Retired: this review request carried a mangled citation for the tailapps/daily-review artifact (a malformed event ID that resolves to nothing), so it did not rest on all five artifact bases its conditions name. The successor request reviews the identical exact head 8e57f341ac997376025acf27609f0e20825b04ae with the same conditions on the five correctly cited bases.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f0e9cc6f7dcc354241d78a3ce555c329bdfa7ecc",
+      "sequence": 1461,
+      "text": "Independently review the exact corrected promote-examples head.",
+      "body": {
+        "branch": "request/promote-examples",
+        "conditions": "Promise this request exactly once. Review the clean checkout at exact head 3aba33fbaad0bb95870f09a3150d9db83436c482 on request/promote-examples. This corrects the prior changes-requested verdict on head 2fdf8615: the delta is documentation only \u2014 the docs index now names the four-bundle shipped roster and presents signal-counts as a shipped Tailapp, the starting-kit sentence and the CLI/MCP references drop the shipped-example framing, and the run-locally section installs the shipped Tailapps. Confirm those corrections fully answer the verdict; confirm the previously approved-substance areas (source move byte-identity, embed roster, tests, demo) are unchanged between 2fdf8615 and this head. The branch's base 70952f24 is now merged to main. Run go test ./..., go vet ./..., go test -race ./..., and ./scripts/demo.sh. File the verdict only through gs review, citing all 9 artifact bases on this request in their request-provenance order with primary README.md first (four at the corrected head, five unchanged areas at 2fdf8615). Approve or request changes only for this exact head.",
+        "head": "3aba33fbaad0bb95870f09a3150d9db83436c482",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2c9c6f677a10ac04de9ef51a9200916130c7cae1",
+          "timestamp": 1788091613,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f0e9cc6f7dcc354241d78a3ce555c329bdfa7ecc",
+          "text": "Replaced per checker's repair request: this review request cited five unchanged-area artifacts at prior head 2fdf8615 while the reviewed head is 3aba33fb, blocking the guarded approval filing. The successor request reviews the identical exact head with identical conditions and all nine artifact bases standing at 3aba33fbaad0bb95870f09a3150d9db83436c482, README.md primary first.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:4cd29578b656c3961687015c5d8ec4985922c1a7",
+      "sequence": 2094,
+      "text": "Review the value-first README and built-in Tailapp catalog at the exact committed head",
+      "body": {
+        "artifact": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:48f2e2a83089918e6eb2e0041193f1a7857db97c",
+        "branch": "request/readme-value-first",
+        "conditions": "Independently review a clean checkout of exact head 63a9232f00e0696d1868c9a1bf93c8efd69e0b23, branched from main 4d859fcfc93e885547bdf0ffa7875a0e9f1fcc17. Confirm the README leads with tangible installable value and representative results before installation mechanics; obsolete terminology, historical source-directory caveats, and the outcome-free demo are absent; daily-review is consistently a built-in bundle in implementation, tests, docs, and examples; go test ./..., go vet ./..., and go test -race ./... pass. Sign one verdict for the cited artifact and exact head.",
+        "head": "63a9232f00e0696d1868c9a1bf93c8efd69e0b23",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0d8400170c797de27fc1bf524d4ac17806beac60",
+          "timestamp": 1788129090,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:4cd29578b656c3961687015c5d8ec4985922c1a7",
+          "text": "Replace the premature review request with one citing every effective file artifact",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:55a40a476f7911e114b3bddee2481ada135a86df",
+      "sequence": 2918,
+      "text": "Checker: re-review the corrected release-consuming upgrade gap closure at exact head 854f92312631de3b55a702df6a934a5832d23570.",
+      "body": {
+        "conditions": "Verify the two required cases from report 023627bb: failed-start restores the old link and a healthy prior resident, and ingestion_ready=false reports action upgrade_pending with exact apps-status/guide next steps. Verify advisories: same-version up_to_date no-op; all upgrade temp files cleaned on failure; bundle-free no-service installer starts no temporary resident; launchd refuses an unloaded domain. Confirm current main e019b832 is an ancestor, original 9be94e8 remains in history, the worktree is clean, and go test ./..., go vet ./..., go test -race ./..., scripts/demo.sh, shell syntax, and diff checks pass.",
+        "to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f"
+      },
+      "retirements": [
+        {
+          "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:6a23781506a162ecf34f23dcd33eac2e7a910fdc",
+          "timestamp": 1788181451,
+          "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "type": "supersede",
+          "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:55a40a476f7911e114b3bddee2481ada135a86df",
+          "text": "Retired immediately: the body cited a guessed non-existent full commit instead of verified exact head 854f9239501a129584dabe11d981bd214fa2faf3. A corrected record follows.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    }
+  ],
+  "scope": "Seven concrete authoring-error withdrawals selected from two closed-review audits. This is not a count of all errors or measured time saved. All have completed successors; no revival is recommended.",
+  "current_source": "Current generic request authoring derives landing targets but does not provide a dedicated review-request constructor. The verdict guard and Resolve already own exact examined-set and binding checks. Current review queue recognizes body.artifact; it cannot infer review intent from prose.",
+  "design_constraints": [
+    "Explicit primary, companions, reviewer, conditions and authority mode; never automatically sweep every artifact at a head.",
+    "Derive full commit and canonical IDs from selected verified evidence/checkout; shared resolver checks artifact/head/binding.",
+    "Prepare is advisory, creates no event and gives no approval. Filing repeats applicable checks at the actual frontier.",
+    "Keep ordinary stale-basis handling and all current authority/independence/merge rules."
+  ]
+}
