@@ -1,0 +1,200 @@
+{
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+    "depth": 19659
+  },
+  "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+  "statement": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+    "sequence": 19659,
+    "timestamp": 1788703613,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "kind": "request",
+    "lifecycle": "request",
+    "satisfier": "none",
+    "text": "Codex: recover the unfinished staleness decision adopted in #14703, reconciling delivered parts and the remaining lifecycle/attention gap on current sources.",
+    "body": {
+      "branch": "request/staleness-plan-recovery",
+      "conditions": "Current-basis refiling requested by Codex in #19657. Planner confirms outcome, full conditions, governing decisions, main39c destination and Codex availability after I6 review handoff are unchanged. The old adoption14703 is historical material for reconciliation, not fresh implementation authority. Evidence attachments remain at original request19656/b8850cf6 and review19655/3c17bb5e. This design refresh requires its own ordinary adoption before independent review as stated below.\n\nQueue this separate design recovery after your current I6 documentation head is handed off for independent review, or while that lane waits. Confirm availability with a promise or concrete scheduling assertion. Hugh asked Planner to recover viable stale/dropped work; #14703 adopted P1-P5 but no directly governed assignment or delivered note was found through frontier19553. Its proposal2177aed9 remains ratified but ordinary stale and candidate051fcbf8 describes a superseded world. This request commissions current design reconciliation, not immediate implementation of that historical head.\n\nRead attached recovery review/evidence and historical note, inspect current decisions and later delivery chains, and account for each P1-P5 outcome with exact evidence. Preserve completed stale-basis admission3f75695c, repair-continuityce18ec874, actual drain dispositions and later landing behavior. Trace later governing decisions explicitly. Reproduce the claimed stale attention case19651/19653 against current code or a frozen verified fixture: promised lifecycle is overwritten by stale and work-query classifies it not_actionable even though waiting_on is Claude; unclaimed stale intake remains available. Distinguish current main from the running reader. Preserve staleness causes and historical evidence; do not interpret staleness as withdrawal or completion.\n\nDeliver a short current-source decision and bounded implementation handoff for the genuinely remaining work. Prioritize P2 lifecycle/attention continuity, cover all fold/model/schema/CLI/MCP/HTTP/UI filters and counts affected plus compatibility and profile/deployment order, and give meaningful positive/omission acceptance controls. Reconcile P3 instruction continuity against current adoption-authority rules explicitly; routine author-confirmed same-condition work is not permission to invent fresh authority. P1 receipt propagation conflicts with the current dated checkpoint contract: retain it as an explicit reconciled design question with evidence and safety conditions, not a silent side effect of the attention fix. Do not revive withdrawn ancestor-head autoclosure or unchanged-path retirement. Explain what remains decided, what later authority supersedes, and any material policy choice needing a new proposal. All original outcomes receive a disposition; no giant stale omnibus implementation and no repeated completed drain.\n\nUse a new current-main worktree/branch, each commit Rests-On this request. Record current exact behavior artifact provenance and disclose historical ordinary/world staleness honestly. Specific file references must be clickable exact path@full-commit links with usable previews. Publish one concise candidate artifact with evidence; obtain ordinary adoption of the revised decision from Hugh before requesting independent exact-head Architecture/Security/Simplification review, citing request, adopted proposal and artifact. Planner can coordinate this gate but cannot sign as Hugh in Gitseq. After independent approval and requester ratification, seal the approved note to main with effective exact-path succession, push source/sequence, check relevant CI and remove your owned worktree/local and remote branch. A later implementation requires separate assignments on the then-current adopted and delivered decision. No production code, current AGENTS/SKILL policy edits, service operation or deployment is authorized by this design request. Do not fold it into I6 or binding19651; coordinate shared documentation after their current deliveries.",
+      "target_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "target_ref": "refs/heads/main",
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    }
+  },
+  "decision": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+    "sequence": 19659,
+    "verdict": "effective",
+    "reason": "statement recorded"
+  },
+  "commitment": {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+    "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "addressed_to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "status": "open",
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main"
+  },
+  "landing": {
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "git": {
+      "measured_at": 1788703682,
+      "state": "no_receipt",
+      "target_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "ref_incorporated": null,
+      "remote": "origin",
+      "remote_ref": "refs/remotes/origin/main",
+      "remote_head": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "remote_contains": null
+    }
+  },
+  "provenance_bases": [
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:def0e173c2d2d7f72fe0653fc8d01ba086e770cd",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9cf632813f1d85d35fee7bdbb6c68cbb2b4d94f3",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb"
+  ],
+  "related_artifacts": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177",
+      "path": "internal/statusview/query.go",
+      "commit": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e5a7ef9365d3e399c23a9d01dfe4bb5a6194d21",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bb9fc8f081384e4000a53663d7f63c1c669ef9",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6efee64236b34931dbd5b9d9f6102a31d46ac61e",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bb9fc8f081384e4000a53663d7f63c1c669ef9",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015",
+      "path": "internal/workroom/fold.go",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48ba3eaf0151727f5f1df478c692b88f0f3f4e13",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:85c95d3c9eb3de5c4ce17ef10ab954dab35bcf0e",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b94af4afc0bacc56a5854cbd03b51eb64ee98e4",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb",
+      "path": "internal/statusview/actor.go",
+      "commit": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:241032e72974d47b8ea30539b29e13ddd47d1bfc",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bb9fc8f081384e4000a53663d7f63c1c669ef9",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6d5d23e643956c1b7cf017589cf32d0ce7ae077d",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bb9fc8f081384e4000a53663d7f63c1c669ef9",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9cf632813f1d85d35fee7bdbb6c68cbb2b4d94f3",
+      "path": "SKILL.md",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38adf414d1d81cbb27c5ab41c90f4a6dc2fc55ba",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:509a9f237e0abfd6a32c3b6200756a8cb8f7e8f6",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:792d69b6751cdb77d4f1eeb1fabe8e0a6ff054a9",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:796632e797841d0e0473c2ac06ac6e78da13fd90",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95360fa00eee76132bd77f6e5be612015ede1af3",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9b25be7577ede95c83ce242ed5f2ac937705ef11",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b6c54a78c1d8abb849c83a921eff515d3a281e98",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be4c2221a9b92563aaee10a4cdb446faf819090d",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4d40361aa43485c7a77293e38c6358562b96f05",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07a271e58f6d27a83451d004d6832617c618e511",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d804d985a97816c7a399c14a8b6331b6666790ed",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e94866c6e7250f158a1fb5788d45e252a04844fb",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa58df1d978b65772548a9b803e21278f9e9b615",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    }
+  ]
+}
