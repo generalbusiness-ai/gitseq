@@ -452,6 +452,16 @@ func ValidateApproval(projection workroom.Projection, candidate, approvalEvent s
 	}
 }
 
+func bindingDetail(binding reviewguard.Binding) string {
+	switch binding.Kind {
+	case reviewguard.BindingAssigned:
+		return " closing " + strings.Join(binding.Requests(), ", ")
+	case reviewguard.BindingSelfInitiated:
+		return " resting on adopted decision " + binding.Decision
+	}
+	return ""
+}
+
 // DecisionEffective reports whether the fold admitted an event. Merge and its
 // read-only planner share this lookup so their liveness decisions cannot drift.
 func DecisionEffective(projection workroom.Projection, event string) bool {
@@ -1435,6 +1445,21 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 	if err := RequireImplementer(snapshot.Projection, approvalEvent, merger); err != nil {
 		return fail("implementer", err)
 	}
+	// The same implementation binding review signed with, re-resolved from
+	// the approval's own citations: the plan explains a delivery that lands
+	// nothing before Git is touched, exactly as the merge refuses it.
+	scope, err := reviewguard.ScopeFromVerdict(snapshot.Projection, approved.Statement)
+	if err != nil {
+		return fail("binding", err)
+	}
+	binding, err := reviewguard.Resolve(snapshot.Projection, scope)
+	if err != nil {
+		return fail("binding", err)
+	}
+	if binding.Kind == reviewguard.BindingEvidenceOnly {
+		return fail("binding", fmt.Errorf("approval is an evidence-only review for request %s, which owes no Git artifact; it confers no landing", binding.Evidence))
+	}
+	result.Reasons = append(result.Reasons, Reason{Code: "binding_allowed", Check: "binding", Allowed: true, Reason: "approval is a " + binding.Kind + " review" + bindingDetail(binding)})
 	target, err := ResolveTarget(ctx, workspace, checkout)
 	if err != nil {
 		return fail("target", err)

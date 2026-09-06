@@ -141,3 +141,53 @@ func TestConfirmBoundsCallerSuppliedValuesInRefusals(t *testing.T) {
 		t.Fatalf("bounded message lost its useful diagnostic prefix: %s", message)
 	}
 }
+
+// A reporting link that moves between confirming reads refuses before
+// signing: the binding is part of what the three reads must agree on.
+func TestConfirmRefusesABindingThatMovesBetweenReads(t *testing.T) {
+	calls := 0
+	read := func() (Basis, []News, workroom.Projection, error) {
+		projection := reviewLane(head)
+		projection.Artifacts = []workroom.Artifact{{Event: "artifact", Path: "feature.txt", Commit: head}}
+		calls++
+		if calls == 3 {
+			// The commitment's report moved to another artifact after the
+			// second read: the primary now reports nothing.
+			projection.Commitments[0].Report = "elsewhere"
+		}
+		basis, news, err := ReviewBasis(Read{Projection: projection, ReviewerFingerprint: "reviewer", FrontierEvent: "frontier", NoCheckout: true}, "artifact", "promise")
+		return basis, news, projection, err
+	}
+	_, _, err := Confirm(read, []string{"artifact"}, nil, VerdictApproved, "must not be signed")
+	if err == nil || !strings.Contains(err.Error(), "implementation binding") {
+		t.Fatalf("moved binding error = %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("reads = %d, want the movement seen at the third read", calls)
+	}
+}
+
+// The recorded binding is what every consumer re-resolves, so the body a
+// confirmed read builds carries the kind and the request it closes.
+func TestConfirmRecordsTheResolvedBindingInTheBody(t *testing.T) {
+	read, _ := scriptedRead(nil, nil, nil)
+	body, _, err := Confirm(read, []string{"artifact"}, nil, VerdictApproved, "APPROVED exact head")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body[BodyBinding] != BindingAssigned || body[BodyImplementations] != `["work"]` || body[BodyDecision] != "" {
+		t.Fatalf("binding fields = %v", body)
+	}
+	// Admission re-resolves the same scope and refuses a body whose recorded
+	// binding no longer matches the world the verdict would join.
+	projection := reviewLane(head)
+	projection.Artifacts = []workroom.Artifact{{Event: "artifact", Path: "feature.txt", Commit: head}}
+	restsOn := []string{"promise", "request", "artifact"}
+	if err := EvaluateVerdict(projection, body, restsOn, "frontier"); err != nil {
+		t.Fatalf("admission refused the confirmed verdict: %v", err)
+	}
+	projection.Commitments[0].Report = "elsewhere"
+	if err := EvaluateVerdict(projection, body, restsOn, "frontier"); err == nil || !strings.Contains(err.Error(), "implementation binding at sequencing") {
+		t.Fatalf("admission accepted a moved binding: %v", err)
+	}
+}

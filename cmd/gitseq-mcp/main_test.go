@@ -664,6 +664,18 @@ func allowedMergePlanFixture(t *testing.T) (*app.Workspace, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Nobody assigned this feature: a ratified proposal adopting the artifact
+	// is the witness the self-initiated review names.
+	proposal, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPropose, Text: "adopt the feature",
+		RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-proposal",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Act(ctx, "human", app.Act{Verb: app.VerbRatify, Target: proposal.Record.ID, IdempotencyKey: "merge-plan-allowed-adopt"}); err != nil {
+		t.Fatal(err)
+	}
 	request, err := workspace.Act(ctx, "human", app.Act{
 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review feature",
 		Body: map[string]string{"to": "@reviewer", "conditions": "approve the exact feature head", "no_git_artifact": "true"}, RestsOn: []string{artifact.Record.ID}, IdempotencyKey: "merge-plan-allowed-request",
@@ -682,6 +694,7 @@ func allowedMergePlanFixture(t *testing.T) (*app.Workspace, string, string) {
 	_, _, err = reviewer.call(ctx, toolCall{Name: "review", Arguments: map[string]any{
 		"artifacts": []any{artifact.Record.ID}, "promise": promise.Record.ID, "verdict": "approved",
 		"text": "approved exact feature head", "idempotency_key": "merge-plan-allowed-review",
+		"self_initiated": proposal.Record.ID,
 	}})
 	if err != nil {
 		t.Fatal(err)

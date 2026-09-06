@@ -141,6 +141,8 @@ world is a projection this command cannot date, not a permission to land.
 | `target_pre_head` differs from the current target without `remeasure=disjoint-paths` | The authorization was measured against another target world. |
 | Disjoint-path remeasurement finds a path changed by both the candidate and current target since `target_pre_head` | The newer target may affect the authorized merge and needs a fresh authorization. |
 | The approved artifact is ineffective, retired, or already described a superseded world when the verdict was signed | Same, from the other side of the chain. A world that moved *after* the verdict is recorded, not refused; see below. |
+| The approval's implementation binding refuses: its primary reports no commitment and names no adopted decision, its selected implementations no longer resolve, or their reporting artifacts are retired | The merge re-resolves what the review was of from the verdict's own citations and selectors through the shared `internal/reviewguard` resolver. An approval filed before bindings were recorded is reclassified from its actual primary; nothing is grandfathered from an empty lookup. |
+| The approval is an evidence-only review | The primary was filed against a request that owes no Git artifact. Reviewing it was legitimate; landing it discharges nothing, so the merge refuses before Git or the workroom moves, with or without `--authorization`. |
 | The verdict is not `approved` | `changes-requested` is not a merge authorization. |
 | `--candidate` differs from the approved head | The reviewer looked at a different commit. |
 | The approval does not rest on the artifact it names | The chain from verdict to code is broken. |

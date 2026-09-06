@@ -726,8 +726,12 @@ func tools() []map[string]any {
 			"verdict":         enum("approved", "changes-requested"),
 			"text":            stringField,
 			"ack_head_news":   map[string]any{"type": "array", "items": stringField},
+			"implementations": map[string]any{"type": "array", "items": stringField, "description": "Implementation requests, or their exact promise or report, this delivery closes; for a combined candidate."},
+			"self_initiated":  map[string]any{"type": "string", "description": "Adopted decision (ratified proposal or satisfied request) the primary rests on directly."},
+			"evidence_only":   map[string]any{"type": "boolean", "description": "The primary is evidence against a request that owes no Git artifact; not mergeable."},
+			"prepare":         map[string]any{"type": "boolean", "description": "Explain the implementation binding without signing, reserving, or mutating anything."},
 			"idempotency_key": stringField,
-		}), "artifacts", "promise", "verdict", "text")},
+		}), "artifacts", "promise")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
 		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
 		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses. The replacement is a new request and states its own result in body: target_ref, target=inherit, or no_git_artifact=true.", "inputSchema": object(withSelection(map[string]any{
@@ -1527,10 +1531,17 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, id
 	promise := stringValue(call.Arguments["promise"])
 	verdict := stringValue(call.Arguments["verdict"])
 	text := stringValue(call.Arguments["text"])
-	if text == "" {
+	prepare, _ := call.Arguments["prepare"].(bool)
+	if text == "" && !prepare {
 		return nil, errors.New("review requires text")
 	}
 	headNews := stringSlice(call.Arguments["ack_head_news"])
+	evidenceOnly, _ := call.Arguments["evidence_only"].(bool)
+	selection := reviewguard.Selection{
+		Implementations: stringSlice(call.Arguments["implementations"]),
+		Decision:        stringValue(call.Arguments["self_initiated"]),
+		EvidenceOnly:    evidenceOnly,
+	}
 
 	// The tool holds no working tree, so every guarded read takes the
 	// reviewed head from the durable artifact row; Confirm runs the shared
@@ -1550,7 +1561,14 @@ func (s *mcpServer) review(ctx context.Context, current *room, call toolCall, id
 		}, cited[0], promise)
 		return basis, news, snapshot.Projection, err
 	}
-	body, restsOn, err := reviewguard.Confirm(read, cited, headNews, verdict, text)
+	if prepare {
+		binding, explanation, err := reviewguard.Prepare(read, selection, cited)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"binding": binding.Kind, "primary": binding.Primary, "examined": binding.Examined, "implementations": binding.Requests(), "decision": binding.Decision, "evidence": binding.Evidence, "explanation": explanation, "recorded": false}, nil
+	}
+	body, restsOn, err := reviewguard.ConfirmSelection(read, selection, cited, headNews, verdict, text)
 	if err != nil {
 		return nil, err
 	}
