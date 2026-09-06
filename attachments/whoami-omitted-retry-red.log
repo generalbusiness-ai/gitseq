@@ -1,0 +1,6 @@
+=== RUN   TestWhoamiRetriesOneConcurrentFrontierMove
+    main_test.go:2238: concurrent frontier was not retried coherently: calls=1 result=map[string]interface {}{"actor":map[string]string{"fingerprint":"f2e056efb27f287677e9340cc152b41ee1c6c3a99f0465172c5afea2dff1a99c", "name":"human"}, "degraded":true, "durable":statusview.ActorView{Name:"human", Fingerprint:"f2e056efb27f287677e9340cc152b41ee1c6c3a99f0465172c5afea2dff1a99c", Kind:"human", MembershipEvent:"git:sha1:48456d048171c45725030e002fab31e8140cc529#git:sha1:4cb8b877e14ad036d847f171656f24fbfb851171", Roles:[]string{"operator", "participant", "ratifier"}, RolesSkipped:0}, "frontier":statusview.Frontier{Genesis:"48456d048171c45725030e002fab31e8140cc529", Head:"8c6448ba10bdb332feeb8dd5258082cd1ea6b463", Depth:2}, "genesis":"48456d048171c45725030e002fab31e8140cc529", "protocol":"2026-07-28", "repo":"/private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestWhoamiRetriesOneConcurrentFrontierMove3503982845/001/repo/.git", "source":"verified_incremental_tail"}
+--- FAIL: TestWhoamiRetriesOneConcurrentFrontierMove (1.44s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	1.811s
+FAIL
