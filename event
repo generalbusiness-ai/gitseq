@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b5f04cb67b2a3b3cc6e1b78bf9fcf441590a7988","text":"Merge retired a covered predecessor; the successor is at docs/how-to/connect-github.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9ab6bb3cb458e425053942896e8c8c3877c29e9","text":"Merge retired a covered predecessor; the successor is at internal/app/reassign_if_unclaimed_test.go."}
