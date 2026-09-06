@@ -211,10 +211,13 @@ Run on the committed head with `rbg-gates.sh` and its follow-up:
   three reviews were given their adopted-decision witness (that change is in
   this head).
 
-The correction round reran mutants A through H and every gate above on the
-committed corrected tree `7435a0d7`, rebased onto main `33f69956` and differing from the reviewed head only by this note: all eight mutants red
-(H against both the command controls and the resolver unit test under one
-mutation), every gate green.
+The first correction round reran mutants A through H and every gate above on
+the committed corrected tree `7435a0d7`, rebased onto main `33f69956`: all
+eight mutants red (H against both the command controls and the resolver unit
+test under one mutation), every gate green. The second correction round reran
+mutants A through I and every gate on the committed tree `934b11f1`, which
+differs from the reviewed head only by this note: all nine mutants red, every
+gate green, the full 35-package suite without a flake.
 
 Existing tests that reviewed artifacts with no request or promise edge were
 given the ratified adoption they lacked: the nested cross-author fixtures in
