@@ -1,0 +1,5 @@
+COMMAND ['go', 'test', '-race', '-count=1', './cmd/gs', './cmd/gitseq-mcp', './internal/app', './internal/service', '-run', 'Test.*(Author|Request|Reassign|Batch|Profile)']
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	200.602s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	23.710s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	22.745s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	22.053s
