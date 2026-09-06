@@ -1,9 +1,0 @@
-=== RUN   TestPlannerReusedReplacementKeyDoesNotBypassPreflight
-git:sha1:31355dacb8ce435dff26610fee6e0e2c6cc64069#git:sha1:7743a5327bfc7ae288d1b53dd359e3de7d691ef5
-git:sha1:31355dacb8ce435dff26610fee6e0e2c6cc64069#git:sha1:6f38e01b41c322abb48986130d6257980bd35fd3
-    planner_reused_replacement_key_test.go:21: refused: guarded retirement git:sha1:31355dacb8ce435dff26610fee6e0e2c6cc64069#git:sha1:055e5fc47dcd0fbb0d3e3e08fec99bfa45d3647b landed or replayed, but its replacement was refused: request body.target_ref: refs/heads/absent does not resolve in /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestPlannerReusedReplacementKeyDoesNotBypassPreflight2767843545/001/repo; re-read the old request before retrying; original status=withdrawn, retired=true
-    planner_reused_replacement_key_test.go:22: replacement-key collision bypassed preflight and dropped original: frontier 6f38e01b41c322abb48986130d6257980bd35fd3 -> 055e5fc47dcd0fbb0d3e3e08fec99bfa45d3647b, retired=true
---- FAIL: TestPlannerReusedReplacementKeyDoesNotBypassPreflight (4.21s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	4.658s
-FAIL
