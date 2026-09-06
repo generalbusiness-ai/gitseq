@@ -58,12 +58,16 @@ func reviewLane(commit string, after ...workroom.Statement) workroom.Projection 
 		{Event: "promise", Actor: "reviewer", Kind: workroom.KindPromise, Lifecycle: workroom.LifecyclePromise},
 		{Event: "artifact", Actor: "implementer", Kind: workroom.KindArtifact, Body: map[string]string{"path": "feature.txt", "commit": commit}},
 	}
-	return lane(map[string][]string{
+	projection := lane(map[string][]string{
 		"ground":   nil,
 		"request":  {"ground"},
 		"promise":  {"request"},
 		"artifact": {"promise", "request"},
 	}, append(statements, after...)...)
+	// The reviewed artifact reports one assigned implementation lifecycle, as
+	// the fold binds it when an artifact rests on its performer's promise.
+	projection.Commitments = []workroom.Commitment{{Request: "assign", Requester: "operator", AddressedTo: "implementer", Performer: "implementer", Promise: "work", Report: "artifact", Status: "reported", TargetRepo: "repo", TargetRef: "refs/heads/main"}}
+	return projection
 }
 
 func quietTarget(head string) Target {

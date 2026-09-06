@@ -26,6 +26,10 @@ review of nothing in particular, because the branch can move afterwards.
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required)* | The review itself. |
+| `--implementation` | | An implementation request, or its exact promise or report, repeatable. Disambiguates the lifecycle of a cited report when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the first selected report must be the primary. A selector never narrows the delivery: every other cited artifact that reports a commitment still joins the resolved set, with its target and hold, exactly as it would with no selector. |
+| `--self-initiated` | | The adopted decision a self-initiated primary rests on directly: a ratified proposal, or a satisfied authority-bearing request. Without it, an artifact no commitment reports is refused, never assumed independent. |
+| `--evidence-only` | | The primary was filed by its performer straight against a request that owes no Git artifact. The verdict is valid and not mergeable. |
+| `--prepare` | | Read-only. Resolves the binding for the same scope inputs and prints its explanation; signs nothing, reserves nothing, and needs no `--verdict` or `--text`. Filing re-resolves everything whether or not this ran. |
 | `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane are head news: the command refuses until you acknowledge exactly that set, once each. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. News the verdict already cites counts once and needs no separate flag. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
@@ -71,6 +75,41 @@ gs review --repo "$REPO" --as carol --checkout "$REPO" \
   --artifact "$ARTIFACT" --promise "$REVIEW_PROMISE" \
   --verdict approved --text 'APPROVED; the changelog exists at this head'
 ```
+
+## What the review is of
+
+Every verdict carries an implementation binding, resolved by
+`internal/reviewguard` from the cited artifacts and the selectors above, and
+resolved again at every one of the three confirming reads, at sequencing, and
+by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
+
+- **assigned** — a projected commitment reports the primary by exact
+  `Commitment.Report` equality; other implementation reports are found only
+  inside the cited set, and every one of them is included whether or not a
+  selector was given. The verdict records `binding=assigned` and
+  `implementations` as the JSON array of exact lifecycle witnesses, one per
+  implementation in examined order: the selected promise, or the report when
+  the lane made no promise. A request can carry a withdrawn promise and a
+  renewed one, so the witness, not the request, is what every consumer
+  re-resolves; it names the requests a sealed receipt closes. A verdict filed
+  before this field carried witnesses recorded requests and still re-resolves
+  while each request has one lifecycle.
+- **self-initiated** — no commitment reports the primary, the primary and
+  the named adopted decision rest directly on each other in either direction
+  (the work rests on the decision, or the decision adopts this artifact), and
+  no cited artifact reports a commitment. The verdict records `binding=self-initiated` and `decision`.
+- **evidence-only** — the primary's author filed it against a request owing
+  no Git artifact. The verdict records `binding=evidence-only`; a merge on it
+  refuses before Git or the workroom moves.
+
+The resolver reads one hop of the primary's own provenance and nothing else:
+no request ancestry, no prose, no sweep of other artifacts at the head.
+Absence of a report is never independence. A supplied primary that reports
+nothing while its request is reported by another artifact refuses and names
+that artifact and its path; keep the wrong one as a companion if you examined
+it. Ambiguous lifecycles, a selector whose report is absent or uncited,
+implementations owed to different targets, and a direct assignment relabelled
+as self-initiated or evidence all refuse with the missing witness named.
 
 ## What it checks before signing
 
@@ -119,8 +158,9 @@ reviewer signed anyway.
 ## What it produces
 
 A `report` resting on the promise, the request, and the artifact, with
-`body.verdict`, `body.head` and `body.artifact`, plus `body.stale` and
-`body.staleness` when something underneath had moved. Naming the
+`body.verdict`, `body.head` and `body.artifact`, the binding fields
+`body.binding` and, as resolved, `body.implementations` or `body.decision`,
+plus `body.stale` and `body.staleness` when something underneath had moved. Naming the
 artifact is what lets the projection say who implemented the head, so an
 approval written any other way can leave independence unresolved and
 unmergeable. The review requester ratifies it; then, for an approval,

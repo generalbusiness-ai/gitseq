@@ -323,6 +323,15 @@ func SplitVerdictBases(projection workroom.Projection, restsOn []string) (promis
 // the body array alone. The whole reference list must stay within
 // intent.MaxCausalReferences; overflow refuses rather than truncating.
 func Build(basis Basis, verdict, text string, artifacts []string, news []News) (map[string]string, []string, error) {
+	return BuildBound(basis, verdict, text, artifacts, news, Binding{})
+}
+
+// BuildBound is Build carrying the resolved implementation binding in the
+// body: the kind, the implementation requests a delivery closes, and the
+// adopted decision a self-initiated primary rests on. An empty binding
+// records nothing, which is the shape of verdicts signed before bindings
+// were recorded; consumers reclassify those from their actual primary.
+func BuildBound(basis Basis, verdict, text string, artifacts []string, news []News, binding Binding) (map[string]string, []string, error) {
 	if !IsVerdictWord(verdict) {
 		return nil, nil, fmt.Errorf("review --verdict must be %s or %s", VerdictApproved, VerdictChangesRequested)
 	}
@@ -344,6 +353,14 @@ func Build(basis Basis, verdict, text string, artifacts []string, news []News) (
 	if basis.Staleness != "" {
 		body["stale"] = "true"
 		body["staleness"] = basis.Staleness
+	}
+	if binding.Kind != "" {
+		if binding.Primary != artifacts[0] {
+			return nil, nil, fmt.Errorf("binding primary %s is not the verdict's named artifact %s", quoted(binding.Primary), quoted(artifacts[0]))
+		}
+		for field, value := range binding.BodyFields() {
+			body[field] = value
+		}
 	}
 	citations := append([]string{basis.Promise, basis.Request}, artifacts...)
 	restsOn := append(citations, RequiredAcknowledgments(citedNews(news), citations)...)
@@ -410,6 +427,23 @@ func EvaluateVerdict(projection workroom.Projection, body map[string]string, res
 	}
 	if body["review_frontier"] != frontierEvent {
 		return fmt.Errorf("body.review_frontier %s is not the frontier this event would extend (%s); the world moved after the verdict was confirmed", quoted(body["review_frontier"]), quoted(frontierEvent))
+	}
+	// A verdict that records its binding is re-resolved against the world it
+	// would join, from the same explicit citations and selectors, so a
+	// reporting link, target or decision that moved after confirmation
+	// refuses here instead of being sealed into the log.
+	if body[BodyBinding] != "" {
+		scope, err := scopeFromBody(projection, body, restsOn)
+		if err != nil {
+			return err
+		}
+		binding, err := Resolve(projection, scope)
+		if err != nil {
+			return fmt.Errorf("implementation binding at sequencing: %w", err)
+		}
+		if recorded := binding.BodyFields(); recorded[BodyBinding] != body[BodyBinding] || recorded[BodyImplementations] != body[BodyImplementations] || recorded[BodyDecision] != body[BodyDecision] {
+			return fmt.Errorf("implementation binding moved after the verdict was confirmed: resolved %s %s %s, recorded %s %s %s", recorded[BodyBinding], recorded[BodyImplementations], recorded[BodyDecision], body[BodyBinding], body[BodyImplementations], body[BodyDecision])
+		}
 	}
 	return nil
 }

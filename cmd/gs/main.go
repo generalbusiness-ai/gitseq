@@ -562,6 +562,11 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	message := set.String("text", "", "review report")
 	var headNews repeatedFlag
 	set.Var(&headNews, "ack-head-news", "durable statement sequenced after the review request that names this head or lane; repeat per event")
+	var implementations repeatedFlag
+	set.Var(&implementations, "implementation", "implementation request, or its exact promise or report, this delivery closes; repeat for a combined candidate")
+	decision := set.String("self-initiated", "", "adopted decision (ratified proposal or satisfied request) the primary rests on directly")
+	evidenceOnly := set.Bool("evidence-only", false, "the primary is evidence against a request that owes no Git artifact; not mergeable")
+	prepare := set.Bool("prepare", false, "explain the implementation binding without signing, reserving, or mutating anything")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	if err := set.Parse(arguments); err != nil {
@@ -570,9 +575,10 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if set.NArg() != 0 {
 		return errors.New("review takes no positional arguments")
 	}
-	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" || *message == "" {
+	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" || (!*prepare && *message == "") {
 		return errors.New("review requires --checkout, --artifact, --promise, and --text")
 	}
+	selection := reviewguard.Selection{Implementations: implementations, Decision: *decision, EvidenceOnly: *evidenceOnly}
 	// The first citation is the primary the verdict names; every citation is a
 	// basis of the report. What a receipt may later retire is read from those
 	// bases and nowhere else, so this list is the reviewer signing a set rather
@@ -603,7 +609,18 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if inject != nil {
 		read = inject
 	}
-	body, restsOn, err := reviewguard.Confirm(read, cited, headNews, *verdict, *message)
+	if *prepare {
+		// Read-only: the same scope inputs and the same resolver, no verdict,
+		// no reservation, no new lifecycle. Filing re-resolves regardless.
+		_, explanation, err := reviewguard.Prepare(read, selection, cited)
+		if err != nil {
+			return err
+		}
+		fmt.Println(explanation)
+		fmt.Println("No verdict recorded.")
+		return nil
+	}
+	body, restsOn, err := reviewguard.ConfirmSelection(read, selection, cited, headNews, *verdict, *message)
 	if err != nil {
 		return err
 	}
@@ -1228,35 +1245,31 @@ func validateMerge(ctx context.Context, workspace *app.Workspace, checkout, cand
 // those resolved facts and compares them with the checkout in front of it.
 func validateLanding(projection workroom.Projection, target mergeplan.Target, candidate, approvalEvent, authorizationEvent string) (landing landingDecision, err error) {
 	landing.Authorization = authorizationEvent
-	approval, err := mergeplan.StandingStatement(projection, approvalEvent, workroom.KindReport)
+	binding, err := approvalBinding(projection, approvalEvent)
 	if err != nil {
-		return landingDecision{}, fmt.Errorf("approval: %w", err)
+		return landingDecision{}, err
 	}
-	var lanes []workroom.Commitment
-	for _, commitment := range projection.Commitments {
-		if commitment.Report == approval.Body["artifact"] {
-			lanes = append(lanes, commitment)
+	switch binding.Kind {
+	case reviewguard.BindingEvidenceOnly:
+		// The primary is evidence against a request that owes no Git
+		// artifact. Reviewing it was legitimate; landing it discharges nothing
+		// and the receipt would say it did. This is the I2 escape, closed.
+		return landingDecision{}, fmt.Errorf("approval %s is an evidence-only review of %s for request %s, which owes no Git artifact; it confers no landing", approvalEvent, binding.Primary, binding.Evidence)
+	case reviewguard.BindingSelfInitiated:
+		// Adopted self-initiated work: the reviewer named the decision the
+		// primary rests on, and no commitment states where it is owed, so
+		// there is no destination to compare the checkout against and no
+		// commitment to close. Zero report matches alone never reach here.
+		return landing, nil
+	}
+	if len(binding.Implementations) > 1 {
+		for _, implementation := range binding.Implementations[1:] {
+			if implementation.HoldOwner != "" {
+				return landingDecision{}, fmt.Errorf("combined implementation %s is held; a held landing must be delivered on its own", implementation.Request)
+			}
 		}
 	}
-	switch len(lanes) {
-	case 0:
-		// No commitment lane reports this artifact, so no request states where
-		// it is owed and this guard has nothing to compare the checkout
-		// against. That covers independently reviewed self-initiated work,
-		// where requester and performer are the same actor and no commitment
-		// row exists at all. It also covers an artifact published against a
-		// request that stated no_git_artifact=true: the fold never makes such
-		// an artifact that commitment's report, so the lane lookup finds
-		// nothing and the merge receives no destination check either. This
-		// does not fail closed. Closing it needs the lane found through the
-		// artifact's own promise rather than through the commitment's report,
-		// and that is deferred to its own request.
-		return landing, nil
-	case 1:
-	default:
-		return landingDecision{}, fmt.Errorf("approval artifact belongs to %d commitment lanes, want at most one", len(lanes))
-	}
-	implementation := lanes[0]
+	implementation := binding.Implementations[0]
 	if target.Ref != implementation.TargetRef {
 		return landingDecision{}, fmt.Errorf("checkout is on %s, but implementation request %s owes its landing to %s",
 			target.Ref, implementation.Request, implementation.TargetRef)
@@ -1425,12 +1438,39 @@ func eventSequence(projection workroom.Projection, event string) int {
 	return 0
 }
 
-func approvalImplementationCommitment(projection workroom.Projection, approvalEvent string) (workroom.Commitment, error) {
+// approvalBinding re-resolves what an approval is of, from the verdict's own
+// citations and selectors, through the one resolver review signed with. A
+// verdict filed before bindings were recorded is reclassified from its actual
+// primary; nothing is grandfathered from an empty lookup.
+func approvalBinding(projection workroom.Projection, approvalEvent string) (reviewguard.Binding, error) {
 	approval, err := mergeplan.StandingStatement(projection, approvalEvent, workroom.KindReport)
 	if err != nil {
-		return workroom.Commitment{}, fmt.Errorf("approval: %w", err)
+		return reviewguard.Binding{}, fmt.Errorf("approval: %w", err)
 	}
-	return exactCommitmentByReport(projection, approval.Body["artifact"], "approval artifact")
+	scope, err := reviewguard.ScopeFromVerdict(projection, approval)
+	if err != nil {
+		return reviewguard.Binding{}, fmt.Errorf("approval: %w", err)
+	}
+	binding, err := reviewguard.Resolve(projection, scope)
+	if err != nil {
+		return reviewguard.Binding{}, fmt.Errorf("approval implementation binding: %w", err)
+	}
+	return binding, nil
+}
+
+func approvalImplementationCommitment(projection workroom.Projection, approvalEvent string) (workroom.Commitment, error) {
+	binding, err := approvalBinding(projection, approvalEvent)
+	if err != nil {
+		return workroom.Commitment{}, err
+	}
+	if binding.Kind != reviewguard.BindingAssigned {
+		return workroom.Commitment{}, fmt.Errorf("approval is a %s review; an authorization needs an assigned implementation lane", binding.Kind)
+	}
+	commitment, err := exactCommitmentByReport(projection, binding.Implementations[0].Report, "approval artifact")
+	if err != nil {
+		return workroom.Commitment{}, err
+	}
+	return commitment, nil
 }
 
 func exactCommitmentByReport(projection workroom.Projection, report, label string) (workroom.Commitment, error) {

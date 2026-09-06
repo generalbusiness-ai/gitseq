@@ -36,12 +36,35 @@ func reviewFixture(t *testing.T) (*app.Workspace, string, string) {
 	fingerprint := func(name string) string {
 		return workspace.View().Actors[name].Fingerprint
 	}
+	// The artifact reports an assigned implementation: a request to the
+	// implementer stating its result, the implementer's promise, and the
+	// artifact resting on that promise, which is the shape the fold binds.
+	ref, err := exec.Command("git", "-C", repo, "symbolic-ref", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	implementation, err := workspace.Act(ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement feature",
+		Body:           map[string]string{"to": fingerprint("human"), "conditions": "land it", "target_ref": strings.TrimSpace(string(ref))},
+		RestsOn:        []string{"git:sha1:" + genesis},
+		IdempotencyKey: "mcp-implementation-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	work, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "implement feature",
+		RestsOn: []string{implementation.Record.ID}, IdempotencyKey: "mcp-implementation-promise",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	artifact, err := workspace.Act(ctx, "human", app.Act{
 		Verb:           app.VerbState,
 		Kind:           workroom.KindArtifact,
 		Text:           "feature artifact",
 		Body:           map[string]string{"path": "feature.txt", "commit": candidate},
-		RestsOn:        []string{"git:sha1:" + genesis},
+		RestsOn:        []string{work.Record.ID, "git:sha1:" + genesis},
 		IdempotencyKey: "mcp-review-artifact",
 	})
 	if err != nil {
@@ -383,4 +406,56 @@ func headOfRepository(t *testing.T, repo string) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSpace(string(head))
+}
+
+// The tool and the command line resolve one binding from one resolver: the
+// recorded kind and implementation array are the same fields, an evidence
+// artifact refuses as an assigned delivery and signs as evidence, and
+// preparation explains without appending.
+func TestReviewToolRecordsTheBindingAndPreparesWithoutSigning(t *testing.T) {
+	parallelTest(t)
+	workspace, artifact, promise := reviewFixture(t)
+	server, _ := attachedServer(t, workspace, "reviewer", "", nil)
+	ctx := context.Background()
+	before, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, _, err := server.call(ctx, toolCall{Name: "review", Arguments: map[string]any{"artifacts": []any{artifact}, "promise": promise, "prepare": true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepared := value.(map[string]any)
+	if prepared["binding"] != "assigned" || prepared["recorded"] != false || !strings.Contains(prepared["explanation"].(string), "Closes on a sealed receipt") {
+		t.Fatalf("prepare = %#v", prepared)
+	}
+	after, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Depth != before.Depth {
+		t.Fatal("preparation appended to the workroom")
+	}
+	_, _, err = server.call(ctx, toolCall{Name: "review", Arguments: map[string]any{"artifacts": []any{artifact}, "promise": promise, "verdict": "approved", "text": "APPROVED", "evidence_only": true}})
+	if err == nil || !strings.Contains(err.Error(), "cannot be reviewed as evidence-only") {
+		t.Fatalf("assigned delivery relabelled as evidence: %v", err)
+	}
+	value, _, err = server.call(ctx, toolCall{Name: "review", Arguments: map[string]any{"artifacts": []any{artifact}, "promise": promise, "verdict": "approved", "text": "APPROVED exact head"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := value.(map[string]any)["record"].(workroom.Record)
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Event == record.ID {
+			if statement.Body["binding"] != "assigned" || !strings.HasPrefix(statement.Body["implementations"], `["`) {
+				t.Fatalf("verdict binding fields = %#v", statement.Body)
+			}
+			return
+		}
+	}
+	t.Fatalf("verdict %s did not project", record.ID)
 }
