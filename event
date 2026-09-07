@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0653eb18aee29076aaf55cdab8ed3721508d775","text":"Merge retired a covered predecessor; the successor is at performance/head-wait-before.json."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/rebuild.ts."}
