@@ -1,0 +1,54 @@
+== head 64e7193e50930e8dcf7ff299c66fda8ffaa9f8c7 2026-09-07T13:53:23Z
+== go build
+rc=0
+== go vet
+rc=0
+== gofmt
+rc=0
+== go test -count=1 ./...
+ok  	github.com/generalbusiness-ai/gitseq	0.276s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	36.530s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	138.003s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.623s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	416.822s
+ok  	github.com/generalbusiness-ai/gitseq/host	33.249s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	25.318s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	3.195s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	132.628s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	2.364s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	2.097s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.026s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	1.665s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	4.664s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	101.457s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.118s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	20.473s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	4.318s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	86.080s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	16.741s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.424s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.279s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	11.922s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.386s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.198s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	77.128s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.168s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.830s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.627s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	2.597s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	12.054s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	2.045s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.627s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.971s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	1.032s
+rc=0
+== go test -race ./internal/workroom/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	9.068s
+rc=0
+== go test ./internal/docset/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	57.368s
+rc=0
+== git diff --check
+rc=0
+== DONE 2026-09-07T14:01:28Z

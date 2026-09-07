@@ -1,0 +1,30 @@
+=== mutant: mutant-5-typed-read-replaced-by-string-conversion
+diff --git a/internal/workroom/fold.go b/internal/workroom/fold.go
+index 34e815862..dd6189fc6 100644
+--- a/internal/workroom/fold.go
++++ b/internal/workroom/fold.go
+@@ -1829,13 +1829,13 @@ func (f *foldState) declaredDeletions(receipt *parsedRecord) map[string]bool {
+ 	if !ok {
+ 		return nil
+ 	}
+-	var plan map[string]json.RawMessage
++	var plan map[string]string
+ 	if err := json.Unmarshal([]byte(state.Body["merge_retirements"]), &plan); err != nil {
+ 		return nil
+ 	}
+ 	deletions := make(map[string]bool, len(plan))
+ 	for artifact, successor := range plan {
+-		if string(successor) == `""` {
++		if successor == "" {
+ 			deletions[artifact] = true
+ 		}
+ 	}
+=== go test -count=1 ./internal/workroom/ -run TestMergeAccounting|TestDeclaredDeletions|TestMergeLeftLive|TestReceiptWithout
+--- FAIL: TestMergeAccountingNullDeclaredSuccessorStaysVisible (0.00s)
+    receipt_deletion_test.go:183: a null successor was read as the deletion shape: []
+--- FAIL: TestDeclaredDeletionsReadOnlyTheEmptyStringSuccessor (0.00s)
+    receipt_deletion_test.go:211: declared deletions = map[], want map[empty:true second-empty:true]
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.282s
+FAIL
+GOTEST_EXIT=1
