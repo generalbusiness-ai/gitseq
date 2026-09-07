@@ -1,5 +1,0 @@
---- FAIL: TestTheCommandResolvesTheRouteBeforeReadingTheKey (0.83s)
-    routing_test.go:294: error = addresses no known actor "github-connector" after a fresh re-read of the configuration, want the advertisement refusal before any key or charter check
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	11.022s
-FAIL

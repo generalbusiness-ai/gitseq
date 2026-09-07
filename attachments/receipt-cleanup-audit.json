@@ -1,0 +1,604 @@
+{
+  "frontier": {
+    "frontier": [
+      {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "9e7cca3fae1a3b93cfea95bff0fda8be8ec1f973",
+        "depth": 20531
+      }
+    ],
+    "live": {
+      "generation": "generation:41a1c8972b99a0184a8003173693b788",
+      "position": 1392
+    }
+  },
+  "receipts": [
+    {
+      "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5dedc140c9062c863a3550d7a441113cd977e86f",
+      "classes": {
+        "abandoned": 16,
+        "sibling": 34,
+        "carried": 4
+      },
+      "entries": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:008924fbc74a4da18faa3c23d72818fd025a5b2c",
+          "classification": "abandoned",
+          "path": "internal/app/admission_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:028b10eeedeee0a6b49fa77fd1eda0082a3b08a9",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0472320061de7e560693fdc30a5304cde9e06212",
+          "classification": "sibling",
+          "path": "internal/app/admission_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:048be4d6feee61460a623c3b0ecb498d1df979a1",
+          "classification": "sibling",
+          "path": "internal/statusview/view.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1474b8ea38d68fadc4b18ae9e28979f5415dd05c",
+          "classification": "sibling",
+          "path": "docs/reference/architecture.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:15d7b4408bd47a6e57a133a4b6ad90bd9484acf1",
+          "classification": "abandoned",
+          "path": "internal/app/admission.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17539e28bbf961085bf5cb0d67b486a50e0b529b",
+          "classification": "abandoned",
+          "path": "internal/app/admission_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c8e59b68e8ffb59d4bbb87a21f044bf8d9c8b85",
+          "classification": "abandoned",
+          "path": "internal/app/admission.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cfc6b17e2047f9e8f1976fbdfb5436cc2b173d9",
+          "classification": "sibling",
+          "path": "internal/statusview/view.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2360cd8b52f50e734f7e9aa30333182040b3c680",
+          "classification": "abandoned",
+          "path": "internal/app/admission_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2500bf57e0dfc5c9de6482788d51d6c7e7e233f8",
+          "classification": "sibling",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+          "classification": "sibling",
+          "path": "internal/workroom/dead_bases.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2db2a38799053e8a0e42acf6638652b036ddea72",
+          "classification": "sibling",
+          "path": "internal/workroom/testdata/render_status.golden.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38b80d693c58ca8274293108e4538461ce64109a",
+          "classification": "sibling",
+          "path": "internal/statusview/view.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3933414f4c070d412656c30378df31753c302f6f",
+          "classification": "sibling",
+          "path": "docs/reference/gs/state.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4688f8e3d011afb45ad04477f5f83b51f7c54763",
+          "classification": "sibling",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4711f569309639824e8b6209be4bc2555f6745db",
+          "classification": "sibling",
+          "path": "internal/workroom/dead_bases.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d3ced020c9007d40afb8ff6ec43e654af41934b",
+          "classification": "sibling",
+          "path": "internal/workroom/dead_bases_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5145da1a84c995a374a0fa4c16bb694c9f3b239a",
+          "classification": "sibling",
+          "path": "docs/reference/gs/status.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+          "classification": "sibling",
+          "path": "docs/reference/architecture.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58fbbb254eea3914c0b198d1e449c0536ae40329",
+          "classification": "sibling",
+          "path": "internal/workroom/render.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67b9aa13e246e41bceb6db29769de4c6b3513a00",
+          "classification": "abandoned",
+          "path": "docs/reference/architecture.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6aa633d3505b5447034ff98af44bc5ecf4de07c4",
+          "classification": "sibling",
+          "path": "internal/workroom/fold.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084",
+          "classification": "sibling",
+          "path": "internal/app/admission.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:72be53360f6c14020b92dc0c6a1b94a301b654cf",
+          "classification": "sibling",
+          "path": "internal/workroom/render.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7aa021041592ec9ff18a6849ccadc00716508e6b",
+          "classification": "sibling",
+          "path": "internal/workroom/truthfulness_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ca1bc7b33b5466f3254e6960a20fde3b058f033",
+          "classification": "sibling",
+          "path": "docs/reference/gs/state.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d58483e7d685b9d941cc1af2e059bc9130c5939",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+          "classification": "carried",
+          "path": "internal/app",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e62115190c4b2d48fa68a953e27a3b09914f351",
+          "classification": "sibling",
+          "path": "internal/app/admission_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbbacc91ea5d3df388e72f3373b8523f96e74c2",
+          "classification": "carried",
+          "path": "internal/app",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88a4844bd479455628ee4d33090a5de72c77a629",
+          "classification": "abandoned",
+          "path": "internal/workroom/render.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ede330191d49f89f76af39c68e737fae259fdb8",
+          "classification": "sibling",
+          "path": "docs/reference/gs/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90b7a15d02edda4f764c781e975f7861dffa8f77",
+          "classification": "sibling",
+          "path": "internal/workroom/render.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:91afa806cde137c9f86155dbd67afcecdc072a5f",
+          "classification": "abandoned",
+          "path": "internal/app/admission.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9c2a1630a2d0f0fcf5c32f547dee33c181964162",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e977ab94bd5444bb676d816fba8c3f472854d13",
+          "classification": "abandoned",
+          "path": "docs/concepts/staleness.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f6a54ccdca07bc3376721d1667ae5524bb588b7",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ac5121e1166ce1ca58622c30f06f6ac95c4570dc",
+          "classification": "sibling",
+          "path": "docs/reference/gs/status.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad20c6cadc7aa2539d5b7c7f6c5370905ac61995",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad903b40292c987442ca3589cd9e8092c8eff757",
+          "classification": "sibling",
+          "path": "internal/workroom/testdata/render_status.golden.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae0a2ee313353cb48a67675aa67b5da20d685751",
+          "classification": "sibling",
+          "path": "docs/concepts/staleness.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2c6b2a03e3c03af9a20985a40f85e09f31ee417",
+          "classification": "carried",
+          "path": "internal/statusview",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf9374f52f788241b8c09ec63135a131a8c2964f",
+          "classification": "sibling",
+          "path": "docs/concepts/staleness.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfc37fa1ad9b57138ab610b68b748e3fdcc5444c",
+          "classification": "sibling",
+          "path": "internal/workroom/dead_bases_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c494a16a8e8c17b2ceecbafcf3017add34c2e25a",
+          "classification": "abandoned",
+          "path": "docs/concepts/staleness.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5e17a82c0aa82362b03133f11e220e2f27079f2",
+          "classification": "sibling",
+          "path": "docs/reference/gs/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6196aa971a83a10c146a9c941b89c7b780b9cc3",
+          "classification": "sibling",
+          "path": "internal/app/admission.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e0ffb053668e086b2121921df6c4a5820ff26bbb",
+          "classification": "carried",
+          "path": "internal/workroom",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e781aa71563faa3387a71dd7cec27c0f1365d799",
+          "classification": "sibling",
+          "path": "internal/workroom/fold.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:edbc4f0bf7f819181c6c1a9abf5720ed069e5b33",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/state.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35",
+          "classification": "sibling",
+          "path": "internal/workroom/render.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8ea36d90d4cfe6e5363d5d26c81e29c11df6399",
+          "classification": "sibling",
+          "path": "internal/safetext/safetext.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f98215dc3bed915a2b4290b55e8147b795ffa010",
+          "classification": "sibling",
+          "path": "internal/workroom/truthfulness_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        }
+      ]
+    },
+    {
+      "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3",
+      "classes": {
+        "abandoned": 9,
+        "sibling": 13,
+        "carried": 5
+      },
+      "entries": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04fe2a1d37b1b47b96be69f1f13c3a2d530d5023",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/wait.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17126d80518faa9688fc3da8e9fa6f85038f1f28",
+          "classification": "abandoned",
+          "path": "ui/src/components/TopBar.tsx",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31d90c6502ea26fa7449d2b4ede821cef50c1a78",
+          "classification": "abandoned",
+          "path": "docs/reference/gs/serve.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:452563b58ed6c7ef5058071b93b0cb14d870f559",
+          "classification": "sibling",
+          "path": "docs/reference/gs/serve.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a1314a33d7a710db189614fe08b04c49578121",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/wait.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f4da61e08c74dc403d7e2fc4ea9b541f3f258e4",
+          "classification": "sibling",
+          "path": "internal/service/headwatch_evidence_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b",
+          "classification": "carried",
+          "path": "ui",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+          "classification": "abandoned",
+          "path": "docs/reference/architecture.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56c0e84d7115c2695fb92a8715268d42aedba8f7",
+          "classification": "carried",
+          "path": "performance",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68a9cfaaa985840699f9f76b577c3ae7760ab270",
+          "classification": "sibling",
+          "path": "internal/app/app.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d",
+          "classification": "sibling",
+          "path": "docs/reference/mcp/wait.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:746f1498455e6c3397aa3c780966e9a52bf5fc36",
+          "classification": "sibling",
+          "path": "performance/head-wait-after.json",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+          "classification": "carried",
+          "path": "internal/app",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbbacc91ea5d3df388e72f3373b8523f96e74c2",
+          "classification": "carried",
+          "path": "internal/app",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83d8fe385341169695ed52f4f82d6c8145364f57",
+          "classification": "abandoned",
+          "path": "docs/reference/mcp/wait.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f533029945dcd37f625d79e47918b0922cc6d85",
+          "classification": "sibling",
+          "path": "internal/service/server.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8",
+          "classification": "sibling",
+          "path": "performance/HEAD-WAIT.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab6bd5931d8560a6080b6d3fae886bd2d103138b",
+          "classification": "sibling",
+          "path": "internal/app/app.go",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abbd2653b74ce3ce6d9150b8e2ac1b28878c4830",
+          "classification": "abandoned",
+          "path": "docs/reference/gs/serve.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+          "classification": "carried",
+          "path": "ui",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf9a085d565d6b8dfb566a294080643f5a6dc2d",
+          "classification": "abandoned",
+          "path": "docs/reference/gs/serve.md",
+          "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "retired": true
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4a42b90d3a5294a6525e09e11b283671836b172",
+          "classification": "sibling",
+          "path": "performance/README.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8",
+          "classification": "sibling",
+          "path": "internal/service/headwatch.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e25211b52bd255257388c3fd976129937e3db50f",
+          "classification": "sibling",
+          "path": "internal/service/headwatch_test.go",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8c30c14164bb469dd8e7e1a4ab097fd785bedf8",
+          "classification": "sibling",
+          "path": "docs/reference/performance.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa253ffb264fff7e6c25949e1759538409fbb2e3",
+          "classification": "sibling",
+          "path": "performance/head-wait-before.json",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        },
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb39a99691adf135d58a7a108747dfe06a5d79b4",
+          "classification": "abandoned",
+          "path": "docs/reference/performance.md",
+          "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "retired": false
+        }
+      ]
+    }
+  ]
+}
