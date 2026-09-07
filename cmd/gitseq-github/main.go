@@ -77,14 +77,6 @@ func run(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	// Where a durable observation goes is decided here, before the connector
-	// key is read or any request is built, by the same rule `gs` uses: an
-	// explicit loopback URL, the local sentinel, or the resident this
-	// repository advertises; a record that cannot be trusted refuses now.
-	serverURL, err := residentclient.ResolveServerURL(workspace, *server)
-	if err != nil {
-		return err
-	}
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
@@ -110,6 +102,16 @@ func run(ctx context.Context, arguments []string) error {
 		})
 	}
 
+	// Where a durable observation goes is decided here, on the observation
+	// path only (a proposal publishes to the forge and submits nothing to a
+	// resident), before the connector key is read or any request is built,
+	// by the same rule `gs` uses: an explicit loopback URL, the local
+	// sentinel, or the resident this repository advertises; a record that
+	// cannot be trusted refuses now.
+	serverURL, err := residentclient.ResolveServerURL(workspace, *server)
+	if err != nil {
+		return err
+	}
 	connector, err := loadObservationIdentity(workspace, actorName)
 	if err != nil {
 		return err
@@ -536,10 +538,13 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 
 // submit sends the signed request, locally or through the resident the route
 // resolved to. The core never holds the connector's key: the request is fully
-// signed here and the service only sequences it. A resident that does not
-// answer, or refuses, means nothing was appended; the connector never falls
-// back to the local fold on its own, because the address is usually the
-// repository's advertisement and the operator would have no way to tell.
+// signed here and the service only sequences it. On any failure the connector
+// refuses and never falls back to the local fold on its own, because the
+// address is usually the repository's advertisement and the operator would
+// have no way to tell. Only a refused dial is definite enough to say nothing
+// was appended, and RefusedDial says so; a reply lost after the resident took
+// the request is reported as it came, and the idempotency key makes the
+// retry safe.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
 	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
 	if err != nil {
