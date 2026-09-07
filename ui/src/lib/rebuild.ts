@@ -28,31 +28,34 @@ export function rebuildQualifier(status: Status | undefined, rebuild: Rebuild | 
 // that arrives after the wait returned (or after the page was torn down) is
 // dropped rather than qualifying a newer status. At most one request is in
 // flight; a tick that finds one outstanding does nothing, so a slow endpoint
-// never accumulates overlapping requests. The timer is unreferenced where the
-// runtime allows, so a probe whose wait never returns cannot keep a process
-// alive by itself.
+// never accumulates overlapping requests, and stopping aborts the request in
+// flight, so successive waits cannot leave a trail of unanswered ones. The
+// timer is unreferenced where the runtime allows, so a probe whose wait never
+// returns cannot keep a process alive by itself.
 export function probeRebuild(
-  fetchRebuild: () => Promise<Rebuild>,
+  fetchRebuild: (signal: AbortSignal) => Promise<Rebuild>,
   report: (rebuild: Rebuild | undefined) => void,
   intervalMs = 1000,
 ): () => void {
   let stopped = false;
-  let inFlight = false;
+  let inFlight: AbortController | undefined;
   const timer = setInterval(() => {
     if (inFlight) return;
-    inFlight = true;
-    fetchRebuild()
+    const request = new AbortController();
+    inFlight = request;
+    fetchRebuild(request.signal)
       .then((next) => {
         if (!stopped) report(next.running ? next : undefined);
       })
       .catch(() => undefined)
       .finally(() => {
-        inFlight = false;
+        if (inFlight === request) inFlight = undefined;
       });
   }, intervalMs);
   (timer as unknown as { unref?: () => void }).unref?.();
   return () => {
     stopped = true;
     clearInterval(timer);
+    inFlight?.abort();
   };
 }

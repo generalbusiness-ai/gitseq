@@ -24,9 +24,13 @@ const tick = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 // returned must not qualify whatever status the page shows next.
 test("a probe keeps one request in flight and drops answers that arrive after it stopped", async () => {
   const pending = [];
+  const signals = [];
   const reported = [];
   const stop = probeRebuild(
-    () => new Promise((resolve) => pending.push(resolve)),
+    (signal) => {
+      signals.push(signal);
+      return new Promise((resolve) => pending.push(resolve));
+    },
     (rebuild) => reported.push(rebuild),
     5,
   );
@@ -46,6 +50,8 @@ test("a probe keeps one request in flight and drops answers that arrive after it
   }
   const before = reported.length;
   const started = pending.length;
+  assert.equal(signals.filter((s) => s.aborted).length, 1, "stop aborts exactly the request in flight");
+  assert.ok(signals.at(-1).aborted, "the request in flight at stop is the aborted one");
   for (const resolve of pending) resolve({ running: true, verified: 9, total: 9 });
   await tick(30);
   assert.equal(reported.length, before, "an answer after stop must not be reported");

@@ -408,6 +408,60 @@ func TestRetiredClockReadNeverOverlapsARestartedClock(t *testing.T) {
 	}
 }
 
+// Across three lifetimes. If the first clock's read outlives the second
+// clock entirely (a Git process slow to die), the second clock's exit must
+// not free the third clock to read: done means every earlier read has
+// returned, not merely that this clock gave up waiting.
+func TestThirdClockWaitsForTheFirstClocksRead(t *testing.T) {
+	first := make(chan struct{})
+	unblock := make(chan struct{})
+	var calls atomic.Int64
+	read := newSlowRead()
+	stubborn := func(ctx context.Context) (string, error) {
+		if calls.Add(1) == 1 {
+			// The first read ignores cancellation until released.
+			read.mu.Lock()
+			read.inFlight++
+			read.mu.Unlock()
+			close(first)
+			<-unblock
+			read.mu.Lock()
+			read.inFlight--
+			read.mu.Unlock()
+			return "head", nil
+		}
+		return read.read(ctx)
+	}
+	watch := newHeadWatch(stubborn)
+	releaseA := watch.acquire()
+	<-first
+	releaseA()
+	releaseB := watch.acquire()
+	watch.mu.Lock()
+	b := watch.clock
+	watch.mu.Unlock()
+	releaseB()
+	select {
+	case <-b.done:
+		t.Fatal("the second clock exited while the first clock's read was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	releaseC := watch.acquire()
+	defer releaseC()
+	select {
+	case <-read.started:
+		t.Fatal("the third clock began a read while the first clock's read was still running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(unblock)
+	select {
+	case <-read.started:
+	case <-time.After(time.Second):
+		t.Fatal("the third clock never read after the first clock's read returned")
+	}
+	close(read.release)
+}
+
 // At the service boundary: a waiter cancelled while another waiter's slow
 // read is in flight returns promptly with its own cancellation, and the
 // remaining waiter is served normally afterwards.

@@ -105,13 +105,15 @@ func (h *headWatch) current() (uint64, <-chan struct{}, string) {
 func (h *headWatch) run(ctx context.Context, clock *headClock, previous *headClock) {
 	defer close(clock.done)
 	if previous != nil {
-		// A retired clock may still be inside a read. Its context is
-		// cancelled, so this is short, but the reads must not overlap.
-		select {
-		case <-previous.done:
-		case <-ctx.Done():
-			return
-		}
+		// A retired clock may still be inside a read, and may itself be
+		// waiting on the clock before it. Wait for it even when this clock
+		// is already cancelled: a clock's done must mean every read before
+		// it has returned, or a third clock could start a read while the
+		// first one's is still running.
+		<-previous.done
+	}
+	if ctx.Err() != nil {
+		return
 	}
 	// The baseline: the first read compares against nothing and advances
 	// nothing. A waiter that snapshotted before it lands compares its own
