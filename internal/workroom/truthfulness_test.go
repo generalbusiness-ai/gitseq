@@ -269,7 +269,20 @@ func TestDissentTargetsShowTheirVerdictNotJustTheirLifecycle(t *testing.T) {
 		event(t, lid("old"), operator, SchemaState, State{Kind: KindAssert, Text: "old"}),
 		event(t, lid("object-old"), agent, SchemaState, State{Kind: KindDissent, Text: "against retired"}, lid("old")),
 		event(t, lid("retire-old"), operator, SchemaSupersede, Supersede{Target: lid("old"), Text: "withdrawn"}, lid("old")),
+		// malformed: a payload the fold cannot read into any row. Its decision
+		// is the only trace it leaves, and a dissent can still name it.
+		Record{ID: lid("garbled"), Actor: operator, Schema: SchemaState, Payload: []byte(`{"kind":`)},
+		event(t, lid("object-garbled"), agent, SchemaState, State{Kind: KindDissent, Text: "against garbled"}, lid("garbled")),
 	))
+	garbled, ok := p.Decision(lid("garbled"))
+	if !ok || garbled.Verdict == Effective {
+		t.Fatalf("invalid world: garbled = %+v", garbled)
+	}
+	for _, statement := range p.Statements {
+		if statement.Event == lid("garbled") {
+			t.Fatal("invalid world: the garbled payload produced a statement row")
+		}
+	}
 	for event, verdict := range map[string]Verdict{lid("plan"): Effective, lid("middle"): Ineffective, lid("ghost"): UndefinedKind, lid("leaf"): Effective, lid("old"): Effective} {
 		if decision, ok := p.Decision(event); !ok || decision.Verdict != verdict {
 			t.Fatalf("invalid world: %s = %+v, want %s", event, decision, verdict)
@@ -281,14 +294,27 @@ func TestDissentTargetsShowTheirVerdictNotJustTheirLifecycle(t *testing.T) {
 	rendered := string(RenderStatus(p))
 	sequences := p.sequences()
 	for target, want := range map[string]string{
-		lid("plan"):   "current",
-		lid("middle"): "ineffective",
-		lid("ghost"):  "undefined-kind",
-		lid("leaf"):   "stale",
-		lid("old"):    "retired",
+		lid("plan"):    "current",
+		lid("middle"):  "ineffective",
+		lid("ghost"):   "undefined-kind",
+		lid("leaf"):    "stale",
+		lid("old"):     "retired",
+		lid("garbled"): string(garbled.Verdict),
 	} {
 		if line := " against " + name(target, sequences) + " (" + want + ")"; !strings.Contains(rendered, line) {
 			t.Errorf("dissent target state missing %q:\n%s", line, rendered)
 		}
+	}
+	if strings.Contains(rendered, "(unknown)") {
+		t.Errorf("a target this log holds was labelled unknown:\n%s", rendered)
+	}
+	// Unknown is for a target the log does not hold at all.
+	absent := Projection{
+		Statements: []Statement{{Event: "e#object", Kind: KindDissent, Actor: agent, Text: "against nothing"}},
+		Decisions:  []Decision{{Event: "e#object", Sequence: 1, Verdict: Effective}},
+		Provenance: map[string][]string{"e#object": {"e#missing"}},
+	}
+	if got := string(RenderStatus(absent)); !strings.Contains(got, " against e#missing (unknown)") {
+		t.Errorf("a dissent against an absent target is not labelled unknown:\n%s", got)
 	}
 }

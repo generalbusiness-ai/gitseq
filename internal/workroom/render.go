@@ -266,19 +266,27 @@ func (p Projection) verdicts() map[string]Verdict {
 	return index
 }
 
-// recordStates says, for every statement and act, the one word a reader needs
-// beside a record another record points at. A record the fold refused is
-// named by its verdict — ineffective, undefined-kind, uninterpretable — not
-// by its lifecycle: it is neither stale nor retired only because nothing
+// recordStates says, for every record the fold decided, the one word a reader
+// needs beside a record another record points at. A record the fold refused
+// is named by its verdict — ineffective, undefined-kind, uninterpretable —
+// not by its lifecycle: it is neither stale nor retired only because nothing
 // refused ever takes force, and calling it current would say the opposite of
-// what happened. Effective records read current, stale or retired.
+// what happened. Decisions are the source, one per record, so a payload the
+// fold could not even read into a statement row is still named. Effective
+// statements read current, stale or retired; effective acts read by type.
+// Unknown is reserved for a target this log does not hold at all.
 func (p Projection) recordStates() map[string]string {
-	verdicts := p.verdicts()
-	states := make(map[string]string, len(p.Statements)+len(p.Acts))
+	states := make(map[string]string, len(p.Decisions))
+	for _, decision := range p.Decisions {
+		if decision.Verdict != Effective {
+			states[decision.Event] = string(decision.Verdict)
+		}
+	}
 	for _, statement := range p.Statements {
+		if _, refused := states[statement.Event]; refused {
+			continue
+		}
 		switch {
-		case verdicts[statement.Event] != "" && verdicts[statement.Event] != Effective:
-			states[statement.Event] = string(verdicts[statement.Event])
 		case statement.Retired:
 			states[statement.Event] = "retired"
 		case statement.Stale:
@@ -288,11 +296,11 @@ func (p Projection) recordStates() map[string]string {
 		}
 	}
 	for _, act := range p.Acts {
-		state := act.Type + " act"
-		if act.Verdict != Effective {
-			state = string(act.Verdict) + " " + state
+		if _, refused := states[act.Event]; refused {
+			states[act.Event] += " " + act.Type + " act"
+			continue
 		}
-		states[act.Event] = state
+		states[act.Event] = act.Type + " act"
 	}
 	return states
 }

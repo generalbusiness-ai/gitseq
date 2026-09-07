@@ -225,8 +225,11 @@ for what that does and does not mean.
 
 **Standing dissent** lists each effective, unretired dissent with the
 record it stands against and that record's state now: `current`, `stale`
-or `retired`. A dissent never rewrites its target, so the target reads as
-it always did; this section is where a reader learns it is opposed.
+or `retired` for a record that took force, the fold's verdict
+(`ineffective`, `undefined-kind`, `uninterpretable`) for one it refused,
+and `unknown` only for a target this log does not hold. A dissent never
+rewrites its target, so the target reads as it always did; this section is
+where a reader learns it is opposed.
 
 **Ratified statements** lists every statement whose ratification stands,
 with the ratifying act. This is the fold's own reading of authority: a
