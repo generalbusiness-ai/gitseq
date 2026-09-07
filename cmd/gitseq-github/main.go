@@ -45,7 +45,7 @@ func run(ctx context.Context, arguments []string) error {
 	charter := set.String("charter", "", "the ratified charter event this connector acts under")
 	owner := set.String("owner", "", "GitHub owner")
 	name := set.String("repo-name", "", "GitHub repository name")
-	server := set.String("server", "", "submit through a resident sequencer instead of writing locally")
+	server := set.String("server", "", "resident sequencer URL; empty takes the repository's advertisement, \"-\" forces the local fold")
 	dry := set.Bool("dry-run", false, "report what would be observed without appending")
 	propose := set.Int("propose", 0, "open a pull request fixing this observed issue number")
 	branch := set.String("branch", "", "the branch carrying the work, for --propose")
@@ -74,6 +74,14 @@ func run(ctx context.Context, arguments []string) error {
 	token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))
 
 	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	// Where a durable observation goes is decided here, before the connector
+	// key is read or any request is built, by the same rule `gs` uses: an
+	// explicit loopback URL, the local sentinel, or the resident this
+	// repository advertises; a record that cannot be trusted refuses now.
+	serverURL, err := residentclient.ResolveServerURL(workspace, *server)
 	if err != nil {
 		return err
 	}
@@ -158,7 +166,7 @@ func run(ctx context.Context, arguments []string) error {
 			fmt.Printf("would observe %s (admitted by %s)\n", observation.ExternalID, observation.AdmittedBy)
 			continue
 		}
-		event, err := appendObservation(ctx, workspace, connector, *server, *charter, observation)
+		event, err := appendObservation(ctx, workspace, connector, serverURL, *charter, observation)
 		if err != nil {
 			return fmt.Errorf("observing %s: %w", observation.ExternalID, err)
 		}
@@ -521,13 +529,16 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 	return submission, nil
 }
 
-// submit sends the signed request, locally or through a resident sequencer.
-// The core never holds the connector's key: the request is fully signed here
-// and the service only sequences it.
+// submit sends the signed request, locally or through the resident the route
+// resolved to. The core never holds the connector's key: the request is fully
+// signed here and the service only sequences it. A resident that does not
+// answer, or refuses, means nothing was appended; the connector never falls
+// back to the local fold on its own, because the address is usually the
+// repository's advertisement and the operator would have no way to tell.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
 	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
 	if err != nil {
-		return "", err
+		return "", residentclient.RefusedDial(server, err)
 	}
 	return submission.Record.ID, nil
 }

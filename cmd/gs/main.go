@@ -2203,10 +2203,10 @@ func noteDeadRestsOn(projection workroom.Projection, restsOn []string) {
 // out; any other refusal is reported as it came.
 func submitRequest(ctx context.Context, workspace *app.Workspace, serverURL string, request kernel.Request) (app.Submission, error) {
 	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, serverURL, request)
-	if errors.Is(err, syscall.ECONNREFUSED) {
-		return app.Submission{}, fmt.Errorf("no resident is listening at %s, so nothing was appended: start one with `gs serve`, or pass --server %s to fold this act locally: %w", serverURL, localFold, err)
+	if err != nil {
+		return app.Submission{}, residentclient.RefusedDial(serverURL, err)
 	}
-	return submission, err
+	return submission, nil
 }
 
 func statusCommand(ctx context.Context, arguments []string) error {
@@ -2278,43 +2278,16 @@ const (
 	fullResponseLimit    = 64 << 20
 )
 
-// localFold is the --server value that forces the local verified fold. It is
-// not a URL, so no advertisement can ever collide with it.
-const localFold = "-"
+// localFold is the --server value that forces the local verified fold; the
+// rule itself lives in residentclient.ResolveServerURL, shared with the
+// GitHub connector so both writing surfaces route one way.
+const localFold = residentclient.LocalRoute
 
-// resolveServerURL decides where one command acts. An explicit --server URL
-// is honoured after loopback validation; the value "-" forces the local
-// verified fold even when a resident is advertised; and an empty flag takes
-// the address the repository itself publishes, so the resident a checkout
-// already runs answers by default and a repository without one acts locally
-// exactly as before.
-//
-// Only a genuinely missing record is absence. A record that is present and
-// cannot be trusted — unreadable, oversized, not a record, addressless, or
-// naming another workroom — is refused rather than ignored: it is an ordinary
-// file any local process can write, and quietly folding a durable act locally
-// because it was corrupt would hide both the tampering and the minutes it
-// costs. The refusal names the way out, and it happens here, before any
-// command reads a signing key or appends anything.
+// resolveServerURL decides where one command acts: see
+// residentclient.ResolveServerURL for the six cases and why an untrusted
+// advertisement refuses before any command reads a signing key.
 func resolveServerURL(workspace *app.Workspace, explicit string) (string, error) {
-	if explicit == localFold {
-		return "", nil
-	}
-	if explicit != "" {
-		return residentclient.ValidateURL(explicit)
-	}
-	advertisement := workspace.ResidentAdvertisement()
-	if advertisement.State == app.NoAdvertisement {
-		return "", nil
-	}
-	if advertisement.State == app.AdvertisementUnusable {
-		return "", fmt.Errorf("%w; pass --server %s to act locally instead", residentclient.UntrustedAdvertisement(advertisement.Reason), localFold)
-	}
-	validated, err := residentclient.ValidateURL(advertisement.URL)
-	if err != nil {
-		return "", fmt.Errorf("%w; pass --server %s to act locally instead", residentclient.UnusableAdvertisedURL(advertisement.URL, err), localFold)
-	}
-	return validated, nil
+	return residentclient.ResolveServerURL(workspace, explicit)
 }
 
 // requireLocalAuthorityWrite keeps the authority and custody commands on the
