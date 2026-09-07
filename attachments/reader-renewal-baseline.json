@@ -1,0 +1,56 @@
+{
+  "checked_utc": "2026-09-07 05:27 UTC",
+  "target_source": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+  "rooms": [
+    {
+      "repo": "/Users/hughpyle/play/gitseq",
+      "port": 7777,
+      "observed_pid": 87519,
+      "ps_exit": 0,
+      "process": "87519 Sun Sep  6 15:22:08 2026     /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-reader-39c7-cfk01_w4/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777",
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 87519
+      }
+    },
+    {
+      "repo": "/Users/hughpyle/play/tailapp",
+      "port": 7778,
+      "observed_pid": 88310,
+      "ps_exit": 0,
+      "process": "88310 Sun Sep  6 15:22:42 2026     /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-reader-39c7-cfk01_w4/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778",
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 88310
+      }
+    },
+    {
+      "repo": "/Users/hughpyle/play/gitseq-chess",
+      "port": 7779,
+      "observed_pid": 88651,
+      "ps_exit": 0,
+      "process": "88651 Sun Sep  6 15:22:53 2026     /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-reader-39c7-cfk01_w4/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779",
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 88651
+      }
+    },
+    {
+      "repo": "/Users/hughpyle/play/gitseq-inventory",
+      "port": 7780,
+      "observed_pid": 88873,
+      "ps_exit": 0,
+      "process": "88873 Sun Sep  6 15:22:59 2026     /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-reader-39c7-cfk01_w4/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780",
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 88873
+      }
+    }
+  ],
+  "excluded_telemetry": {
+    "pid": 66700,
+    "ps_exit": 0,
+    "process": "66700 Mon Aug 31 19:37:03 2026     /Users/hughpyle/.local/bin/tailapp serve --otlp-http 127.0.0.1:4318"
+  },
+  "limits": "Read-only baseline. Revalidate exact ownership, listener, start time, executable, genesis and custody immediately before any approved transition. This baseline authorizes no key reading or changes."
+}
