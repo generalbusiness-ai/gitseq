@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44f6a36a23275bfd3f3b12fad9e063758d8f14ba","text":"Merge retired a covered predecessor; the successor is at ui/src/components/Preview.tsx."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c3394fc66539868567512092c0f21eecfa6aa15","text":"Merge retired a covered predecessor; the successor is at internal/service/preview_test.go."}
