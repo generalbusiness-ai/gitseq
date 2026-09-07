@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/rebuild.ts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af753db443de0c8d1f64436f5f27f6f55ac00f8e","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
