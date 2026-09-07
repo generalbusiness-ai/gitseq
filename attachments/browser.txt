@@ -1,0 +1,124 @@
+Browser proof — inline evidence links
+=====================================
+
+Driver
+------
+A real browser was driven. No Playwright or Puppeteer is installed
+(`npx playwright --version` refuses to install; no `chromium`,
+`chromedriver` or `google-chrome` on PATH; no ~/.cache/ms-playwright),
+but Google Chrome is installed at
+/Applications/Google Chrome.app/Contents/MacOS/Google Chrome.
+It was launched headless (--headless=new, --remote-debugging-port=0, a
+throwaway --user-data-dir) and driven over the Chrome DevTools Protocol
+from Node 26 using its built-in WebSocket: Page.navigate, Runtime.evaluate.
+The driver is cdp.mjs; the runs are drive.mjs (run1.txt), drive2.mjs
+(run2.txt) and before.mjs (run-before.txt) beside this file.
+
+What was served
+---------------
+`make ui` then `make build`, so the resident served the committed embed
+under internal/service/uidist, not ui/src.
+
+A scratch workroom at ./room on a free loopback port (63871), built by
+setup.sh: git init, `gs init --operator alice`, `gs actor-add bot`, and
+four records filed with `gs state --evidence <name>=<file>`:
+
+  #4 assert  attachment rollout-baseline.json; text
+             "... came from [current reader baseline](rollout-baseline.json)
+              and the code path is docs/x.md:5."
+  #5 assert  attachment notes.md, and a repository file also named
+             notes.md; body path=notes.md, commit=<head>; text names
+             notes.md, notes.md:12 and notes.md@<head>
+  #6 assert  attachment large-evidence.md, 901 lines
+  #7 request attachment rollout-baseline.json, same prose link
+
+The live resident on :7777 and its repository were not touched; both
+scratch residents were stopped afterwards, and :7777 still answers.
+
+BEFORE the change (gs-before, built from the unmodified ui/src)
+--------------------------------------------------------------
+Record #4, detail expanded, the prose link "current reader baseline":
+
+  href  ...&file=rollout-baseline.json        <- source lane
+  click dialog: "rollout-baseline.json · Repository: ./room ·
+                 This record cites no exact source revision."
+
+while the evidence row on the same panel carried
+`&evidence=rollout-baseline.json` and opened the attachment. That is the
+reported defect, reproduced in a browser.
+
+Record #5, before: every prose form of notes.md went to `file=notes.md`,
+including the bare name.
+
+AFTER the change
+----------------
+Reached from the Table board: clicked the request row, expanded the
+record detail, clicked "current reader baseline".
+
+  href  ...&evidence=rollout-baseline.json
+  hash  #/thread/git:sha1:9536...#git:sha1:f523...?preview_event=...&evidence=rollout-baseline.json
+  dialog: rollout-baseline.json | Record: git:sha1:9536...#git:sha1:f523... |
+          Repository: .../room | Exact revision: f523a514... |
+          1 lines, whole file | 1 {"reader":"baseline","opens":420}
+
+The evidence row beside it opened the same attachment under the same
+name, from the same single listing.
+
+Reached from the Graph view: clicked the node once to select, again to
+open the thread (#/thread/...1a4d481a...), expanded the detail, clicked
+the prose link — the same attachment dialog with the JSON content.
+
+Reached from Notes: the Notes view listed the three asserts; opened
+"Rollout measured...", expanded, and the detail's links were
+
+  current reader baseline -> ...&evidence=rollout-baseline.json  (attachment)
+  docs/x.md:5             -> ...&file=docs%2Fx.md&line=5         (source)
+  rollout-baseline.json   -> ...&evidence=rollout-baseline.json  (evidence row)
+
+Clicking the first opened the attachment content; clicking docs/x.md:5
+went to the source lane and the resident answered "This record cites no
+exact source revision" — correct, that assert cites no head. The source
+lane with a real head is shown next.
+
+Same name, both an attachment and a repository file (record #5):
+
+  "the attached note"        -> &evidence=notes.md
+     dialog: 3 lines, whole file, "ATTACHMENT notes.md / This is the
+     signed evidence attachment, not the repository file."
+  "the file at line twelve"  -> &file=notes.md&line=12
+     dialog: Exact revision cd49bfa4..., 15 lines, whole file, source with
+     line numbers, "# notes in the repository / This is the SOURCE
+     notes.md, not the attachment.", line 12 highlighted.
+  "the file as filed"        -> &file=notes.md&at=cd49bfa4...
+  artifact path row (notes.md) -> &file=notes.md&at=cd49bfa4...  (source)
+  evidence row (notes.md)      -> &evidence=notes.md             (attachment)
+
+Both lanes are reachable under one name, and each opened different
+content in the dialog.
+
+Back / Forward / reload
+-----------------------
+Reload of the preview URL: the dialog came back on the attachment with
+the same content. Within one page load: history.back() left the preview
+(hash back to #/thread/...; no dialog), history.forward() reopened it
+with the same attachment content. Escape closed the dialog and returned
+to the record.
+
+A large attachment
+------------------
+Record #6, prose link "the large evidence" (901 lines):
+
+  Lines 1–400 of 901 · partial view of this file · Next lines
+  first rows: 1 "# large evidence", 2 "attachment line 1 of the large
+  evidence file", ...
+  clicked "Next lines" ->
+  Lines 401–800 of 901 · partial view of this file · Previous lines · Next lines
+  hash: ...&evidence=large-evidence.md&from=401
+
+The window rides in the address, as before.
+
+Not done
+--------
+No visual/pixel inspection: the browser was headless and driven through
+the DevTools protocol, so what is recorded above is the DOM text, the
+hrefs and the addresses, not a screenshot.
