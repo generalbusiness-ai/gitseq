@@ -24,6 +24,13 @@ const headWatchInterval = 250 * time.Millisecond
 // It is a notice, not a verifier and not a cache. It holds the head string
 // only to compare against the next read; every answer a waiter returns still
 // comes from the workspace snapshot, verified as before.
+//
+// No Git process ever runs under the mutex. Joining and leaving are bookkeeping
+// only, so a waiter that is cancelled while another waiter's read is slow
+// leaves at once and gives its long-poll slot back. Each clock owns the
+// context its reads run under and cancels it when the last wait releases;
+// the next clock starts only after the previous one has fully exited, so two
+// reads for one log never overlap.
 type headWatch struct {
 	read     func(context.Context) (string, error)
 	interval time.Duration
@@ -35,10 +42,19 @@ type headWatch struct {
 	// changed is closed and replaced each time the generation advances, so a
 	// waiter blocked on it wakes at once instead of on its own next tick.
 	changed chan struct{}
-	stop    chan struct{}
-	// stopped is closed by the clock goroutine on exit, so a test can wait
-	// for the last release to actually retire the clock.
-	stopped chan struct{}
+	// clock is the running clock, nil while no wait is open. retiring is the
+	// clock most recently cancelled, whose goroutine may still be finishing a
+	// read; a new clock waits for it before reading.
+	clock    *headClock
+	retiring *headClock
+}
+
+// headClock is one lifetime of the clock goroutine: the context its reads
+// run under and the channel closed when the goroutine has exited, which is
+// after any in-flight read has returned.
+type headClock struct {
+	cancel context.CancelFunc
+	done   chan struct{}
 }
 
 func newHeadWatch(read func(context.Context) (string, error)) *headWatch {
@@ -46,20 +62,18 @@ func newHeadWatch(read func(context.Context) (string, error)) *headWatch {
 }
 
 // acquire registers one open wait and returns the release that unregisters
-// it. The first acquisition reads the head once, synchronously, so the clock
-// compares against a baseline taken before the caller's own first snapshot
-// rather than reporting the first tick as a change. A failed baseline read is
-// not an error here: the waiter's own snapshot will report it, and the clock
-// simply starts from an empty head.
-func (h *headWatch) acquire(ctx context.Context) (release func()) {
+// it. It never blocks on I/O: the first acquisition starts the clock, whose
+// goroutine takes the baseline read on its own. Release is idempotent; the
+// last release cancels the clock's context, which ends a read in progress.
+func (h *headWatch) acquire() (release func()) {
 	h.mu.Lock()
 	h.waiters++
 	if h.waiters == 1 {
-		head, _ := h.read(ctx)
-		h.head = head
-		h.stop = make(chan struct{})
-		h.stopped = make(chan struct{})
-		go h.run(h.stop, h.stopped)
+		ctx, cancel := context.WithCancel(context.Background())
+		clock := &headClock{cancel: cancel, done: make(chan struct{})}
+		previous := h.retiring
+		h.clock = clock
+		go h.run(ctx, clock, previous)
 	}
 	h.mu.Unlock()
 	var once sync.Once
@@ -67,41 +81,72 @@ func (h *headWatch) acquire(ctx context.Context) (release func()) {
 		once.Do(func() {
 			h.mu.Lock()
 			h.waiters--
-			if h.waiters == 0 {
-				close(h.stop)
-				h.stop = nil
+			if h.waiters == 0 && h.clock != nil {
+				h.clock.cancel()
+				h.retiring, h.clock = h.clock, nil
 			}
 			h.mu.Unlock()
 		})
 	}
 }
 
-// current is the generation a waiter compares against and the channel that
-// closes when it next advances. Read it before the snapshot it guards, so a
-// change landing between the two is seen on the next pass instead of lost.
-func (h *headWatch) current() (uint64, <-chan struct{}) {
+// current is what a waiter compares against: the generation, the channel
+// that closes when it next advances, and the head the clock last read (empty
+// until the baseline read lands). Read it before the snapshot it guards, so a
+// change landing between the two is seen on the next pass instead of lost;
+// and compare the head too, so a move that lands between a waiter's snapshot
+// and the clock's baseline read is seen as well.
+func (h *headWatch) current() (uint64, <-chan struct{}, string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return h.generation, h.changed
+	return h.generation, h.changed, h.head
 }
 
-func (h *headWatch) run(stop, stopped chan struct{}) {
-	defer close(stopped)
+func (h *headWatch) run(ctx context.Context, clock *headClock, previous *headClock) {
+	defer close(clock.done)
+	if previous != nil {
+		// A retired clock may still be inside a read. Its context is
+		// cancelled, so this is short, but the reads must not overlap.
+		select {
+		case <-previous.done:
+		case <-ctx.Done():
+			return
+		}
+	}
+	// The baseline: the first read compares against nothing and advances
+	// nothing. A waiter that snapshotted before it lands compares its own
+	// head against this one on its next pass.
+	head, err := h.read(ctx)
+	if ctx.Err() != nil {
+		return
+	}
+	h.mu.Lock()
+	h.head = head
+	if err != nil {
+		h.head = ""
+	}
+	h.mu.Unlock()
 	ticker := time.NewTicker(h.interval)
 	defer ticker.Stop()
 	for {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			return
 		case <-ticker.C:
 		}
-		head, err := h.read(context.Background())
+		head, err := h.read(ctx)
+		if ctx.Err() != nil {
+			return
+		}
 		h.mu.Lock()
 		if err != nil || head != h.head {
 			// A failed read bumps every tick it persists. Waiters then ask
 			// the snapshot each tick, exactly as they did before this clock
 			// existed, and the snapshot says what is wrong.
 			h.head = head
+			if err != nil {
+				h.head = ""
+			}
 			h.generation++
 			close(h.changed)
 			h.changed = make(chan struct{})

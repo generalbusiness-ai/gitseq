@@ -1,5 +1,5 @@
 {
-  "measured_at": "2026-09-07T00:34:22Z",
+  "measured_at": "2026-09-07T01:37:46Z",
   "head": "working tree of the commit that introduces this file; parent 1fba3d550091f720e48521bb89f222bd4c218af8",
   "go_version": "go1.27.0",
   "platform": "darwin/arm64",
@@ -15,7 +15,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1110.265
+      "mean_wait_ms": 1102.06
     },
     {
       "depth": 1,
@@ -25,7 +25,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1119.913
+      "mean_wait_ms": 1101.525
     },
     {
       "depth": 1,
@@ -35,7 +35,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1114.783
+      "mean_wait_ms": 1102.041
     },
     {
       "depth": 1,
@@ -45,7 +45,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1128.539375
+      "mean_wait_ms": 1100.393125
     },
     {
       "depth": 1,
@@ -55,7 +55,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1116.77875
+      "mean_wait_ms": 1101.08025
     },
     {
       "depth": 1,
@@ -65,7 +65,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1116.711625
+      "mean_wait_ms": 1100.080875
     },
     {
       "depth": 1,
@@ -73,29 +73,29 @@
       "waiters": 8,
       "stagger_ms": 23,
       "repeat": 1,
-      "ref_processes": 12,
-      "git_processes": 12,
-      "mean_wait_ms": 1103.712625
-    },
-    {
-      "depth": 1,
-      "scenario": "timeout/eight-staggered",
-      "waiters": 8,
-      "stagger_ms": 23,
-      "repeat": 2,
-      "ref_processes": 12,
-      "git_processes": 12,
-      "mean_wait_ms": 1103.78675
-    },
-    {
-      "depth": 1,
-      "scenario": "timeout/eight-staggered",
-      "waiters": 8,
-      "stagger_ms": 23,
-      "repeat": 3,
       "ref_processes": 13,
       "git_processes": 13,
-      "mean_wait_ms": 1102.452375
+      "mean_wait_ms": 1100.875875
+    },
+    {
+      "depth": 1,
+      "scenario": "timeout/eight-staggered",
+      "waiters": 8,
+      "stagger_ms": 23,
+      "repeat": 2,
+      "ref_processes": 14,
+      "git_processes": 14,
+      "mean_wait_ms": 1101.389625
+    },
+    {
+      "depth": 1,
+      "scenario": "timeout/eight-staggered",
+      "waiters": 8,
+      "stagger_ms": 23,
+      "repeat": 3,
+      "ref_processes": 14,
+      "git_processes": 14,
+      "mean_wait_ms": 1101.282
     },
     {
       "depth": 1,
@@ -105,7 +105,7 @@
       "repeat": 1,
       "ref_processes": 41,
       "git_processes": 41,
-      "mean_wait_ms": 1101.41928125
+      "mean_wait_ms": 1101.06459375
     },
     {
       "depth": 1,
@@ -113,9 +113,9 @@
       "waiters": 32,
       "stagger_ms": 23,
       "repeat": 2,
-      "ref_processes": 39,
-      "git_processes": 39,
-      "mean_wait_ms": 1101.359625
+      "ref_processes": 40,
+      "git_processes": 40,
+      "mean_wait_ms": 1101.10884375
     },
     {
       "depth": 1,
@@ -125,7 +125,7 @@
       "repeat": 3,
       "ref_processes": 40,
       "git_processes": 40,
-      "mean_wait_ms": 1101.47075
+      "mean_wait_ms": 1100.91840625
     },
     {
       "depth": 1,
@@ -133,9 +133,9 @@
       "waiters": 8,
       "stagger_ms": 23,
       "repeat": 1,
-      "ref_processes": 28,
-      "git_processes": 28,
-      "mean_wait_ms": 5003.394375
+      "ref_processes": 29,
+      "git_processes": 29,
+      "mean_wait_ms": 5001.738625
     },
     {
       "depth": 1,
@@ -145,8 +145,8 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 395.72025,
-      "wake_ms": 395.715
+      "mean_wait_ms": 391.7155,
+      "wake_ms": 391.709
     },
     {
       "depth": 1,
@@ -156,8 +156,8 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 391.87175,
-      "wake_ms": 391.867
+      "mean_wait_ms": 396.419875,
+      "wake_ms": 396.412
     },
     {
       "depth": 1,
@@ -167,8 +167,8 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 396.41075,
-      "wake_ms": 396.404
+      "mean_wait_ms": 406.354875,
+      "wake_ms": 406.348
     },
     {
       "depth": 1,
@@ -176,10 +176,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 78.6635,
-      "wake_ms": 78.657
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 64.055125,
+      "wake_ms": 64.042
     },
     {
       "depth": 1,
@@ -187,10 +187,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 78.2505,
-      "wake_ms": 78.244
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 64.052125,
+      "wake_ms": 64.043
     },
     {
       "depth": 1,
@@ -198,10 +198,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 74.586875,
-      "wake_ms": 74.58
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 63.267375,
+      "wake_ms": 63.243
     },
     {
       "depth": 1,
@@ -209,11 +209,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 283.450125,
-      "wake_ms": 283.454,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 7,
+      "git_processes": 21,
+      "mean_wait_ms": 269.325875,
+      "wake_ms": 269.331,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 1,
@@ -221,11 +221,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 131.558625,
-      "wake_ms": 131.564,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 136.262375,
+      "wake_ms": 136.265,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 1,
@@ -233,11 +233,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 129.90125,
-      "wake_ms": 129.904,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 132.528125,
+      "wake_ms": 132.529,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 31,
@@ -247,7 +247,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1111.945
+      "mean_wait_ms": 1102.056
     },
     {
       "depth": 31,
@@ -257,7 +257,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1128.294
+      "mean_wait_ms": 1102.148
     },
     {
       "depth": 31,
@@ -267,7 +267,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1118.04
+      "mean_wait_ms": 1102.113
     },
     {
       "depth": 31,
@@ -277,7 +277,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1127.392125
+      "mean_wait_ms": 1100.517125
     },
     {
       "depth": 31,
@@ -287,7 +287,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1117.639625
+      "mean_wait_ms": 1102.04975
     },
     {
       "depth": 31,
@@ -297,7 +297,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1126.065
+      "mean_wait_ms": 1102.1025
     },
     {
       "depth": 31,
@@ -305,9 +305,9 @@
       "waiters": 8,
       "stagger_ms": 23,
       "repeat": 1,
-      "ref_processes": 12,
-      "git_processes": 12,
-      "mean_wait_ms": 1103.447125
+      "ref_processes": 13,
+      "git_processes": 13,
+      "mean_wait_ms": 1101.477125
     },
     {
       "depth": 31,
@@ -317,7 +317,7 @@
       "repeat": 2,
       "ref_processes": 12,
       "git_processes": 12,
-      "mean_wait_ms": 1104.04375
+      "mean_wait_ms": 1101.36125
     },
     {
       "depth": 31,
@@ -325,9 +325,9 @@
       "waiters": 8,
       "stagger_ms": 23,
       "repeat": 3,
-      "ref_processes": 12,
-      "git_processes": 12,
-      "mean_wait_ms": 1103.172
+      "ref_processes": 13,
+      "git_processes": 13,
+      "mean_wait_ms": 1101.194125
     },
     {
       "depth": 31,
@@ -335,19 +335,19 @@
       "waiters": 32,
       "stagger_ms": 23,
       "repeat": 1,
+      "ref_processes": 41,
+      "git_processes": 41,
+      "mean_wait_ms": 1101.12703125
+    },
+    {
+      "depth": 31,
+      "scenario": "timeout/thirty-two-staggered",
+      "waiters": 32,
+      "stagger_ms": 23,
+      "repeat": 2,
       "ref_processes": 40,
       "git_processes": 40,
-      "mean_wait_ms": 1101.480875
-    },
-    {
-      "depth": 31,
-      "scenario": "timeout/thirty-two-staggered",
-      "waiters": 32,
-      "stagger_ms": 23,
-      "repeat": 2,
-      "ref_processes": 39,
-      "git_processes": 39,
-      "mean_wait_ms": 1101.4436875
+      "mean_wait_ms": 1101.10284375
     },
     {
       "depth": 31,
@@ -357,7 +357,7 @@
       "repeat": 3,
       "ref_processes": 40,
       "git_processes": 40,
-      "mean_wait_ms": 1100.894625
+      "mean_wait_ms": 1100.71865625
     },
     {
       "depth": 31,
@@ -367,7 +367,7 @@
       "repeat": 1,
       "ref_processes": 29,
       "git_processes": 29,
-      "mean_wait_ms": 5003.300875
+      "mean_wait_ms": 5001.806375
     },
     {
       "depth": 31,
@@ -377,8 +377,8 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 395.4265,
-      "wake_ms": 395.42
+      "mean_wait_ms": 397.138125,
+      "wake_ms": 397.131
     },
     {
       "depth": 31,
@@ -388,8 +388,8 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 394.98225,
-      "wake_ms": 394.977
+      "mean_wait_ms": 408.93125,
+      "wake_ms": 408.924
     },
     {
       "depth": 31,
@@ -399,8 +399,8 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 393.2135,
-      "wake_ms": 393.202
+      "mean_wait_ms": 396.915875,
+      "wake_ms": 396.909
     },
     {
       "depth": 31,
@@ -408,10 +408,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 71.521,
-      "wake_ms": 71.514
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 72.540875,
+      "wake_ms": 72.523
     },
     {
       "depth": 31,
@@ -419,10 +419,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 71.077125,
-      "wake_ms": 71.068
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 81.610375,
+      "wake_ms": 81.595
     },
     {
       "depth": 31,
@@ -430,10 +430,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 70.010625,
-      "wake_ms": 69.999
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 71.72675,
+      "wake_ms": 71.711
     },
     {
       "depth": 31,
@@ -441,11 +441,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 280.813625,
-      "wake_ms": 280.819,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 7,
+      "git_processes": 21,
+      "mean_wait_ms": 281.968,
+      "wake_ms": 281.971,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 31,
@@ -453,11 +453,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 143.04275,
-      "wake_ms": 143.047,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 138.124125,
+      "wake_ms": 138.127,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 31,
@@ -465,11 +465,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 146,
-      "wake_ms": 146.002,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 138.2435,
+      "wake_ms": 138.248,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 300,
@@ -479,7 +479,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1112.603
+      "mean_wait_ms": 1102.061
     },
     {
       "depth": 300,
@@ -489,7 +489,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1120.085
+      "mean_wait_ms": 1102.034
     },
     {
       "depth": 300,
@@ -499,7 +499,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1112.92
+      "mean_wait_ms": 1102.064
     },
     {
       "depth": 300,
@@ -509,7 +509,7 @@
       "repeat": 1,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1123.33025
+      "mean_wait_ms": 1102.131875
     },
     {
       "depth": 300,
@@ -519,7 +519,7 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1117.623875
+      "mean_wait_ms": 1102.08875
     },
     {
       "depth": 300,
@@ -529,7 +529,7 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 6,
-      "mean_wait_ms": 1112.780125
+      "mean_wait_ms": 1102.111875
     },
     {
       "depth": 300,
@@ -539,7 +539,7 @@
       "repeat": 1,
       "ref_processes": 13,
       "git_processes": 13,
-      "mean_wait_ms": 1102.674
+      "mean_wait_ms": 1101.41125
     },
     {
       "depth": 300,
@@ -549,7 +549,7 @@
       "repeat": 2,
       "ref_processes": 13,
       "git_processes": 13,
-      "mean_wait_ms": 1102.825875
+      "mean_wait_ms": 1101.233375
     },
     {
       "depth": 300,
@@ -557,9 +557,9 @@
       "waiters": 8,
       "stagger_ms": 23,
       "repeat": 3,
-      "ref_processes": 12,
-      "git_processes": 12,
-      "mean_wait_ms": 1103.643625
+      "ref_processes": 13,
+      "git_processes": 13,
+      "mean_wait_ms": 1101.293
     },
     {
       "depth": 300,
@@ -569,7 +569,7 @@
       "repeat": 1,
       "ref_processes": 39,
       "git_processes": 39,
-      "mean_wait_ms": 1101.56934375
+      "mean_wait_ms": 1101.16740625
     },
     {
       "depth": 300,
@@ -579,7 +579,7 @@
       "repeat": 2,
       "ref_processes": 40,
       "git_processes": 40,
-      "mean_wait_ms": 1101.54465625
+      "mean_wait_ms": 1101.0564375
     },
     {
       "depth": 300,
@@ -587,9 +587,9 @@
       "waiters": 32,
       "stagger_ms": 23,
       "repeat": 3,
-      "ref_processes": 39,
-      "git_processes": 39,
-      "mean_wait_ms": 1101.7390625
+      "ref_processes": 40,
+      "git_processes": 40,
+      "mean_wait_ms": 1101.23603125
     },
     {
       "depth": 300,
@@ -599,7 +599,7 @@
       "repeat": 1,
       "ref_processes": 29,
       "git_processes": 29,
-      "mean_wait_ms": 5002.68725
+      "mean_wait_ms": 5001.681375
     },
     {
       "depth": 300,
@@ -609,8 +609,8 @@
       "repeat": 1,
       "ref_processes": 7,
       "git_processes": 11,
-      "mean_wait_ms": 653.575125,
-      "wake_ms": 653.568
+      "mean_wait_ms": 653.984125,
+      "wake_ms": 653.976
     },
     {
       "depth": 300,
@@ -620,8 +620,8 @@
       "repeat": 2,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 402.886125,
-      "wake_ms": 402.872
+      "mean_wait_ms": 399.959375,
+      "wake_ms": 399.949
     },
     {
       "depth": 300,
@@ -631,8 +631,8 @@
       "repeat": 3,
       "ref_processes": 6,
       "git_processes": 10,
-      "mean_wait_ms": 397.710875,
-      "wake_ms": 397.704
+      "mean_wait_ms": 405.58275,
+      "wake_ms": 405.578
     },
     {
       "depth": 300,
@@ -640,10 +640,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 74.1705,
-      "wake_ms": 74.162
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 62.436375,
+      "wake_ms": 62.418
     },
     {
       "depth": 300,
@@ -651,10 +651,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 79.879625,
-      "wake_ms": 79.87
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 61.40425,
+      "wake_ms": 61.385
     },
     {
       "depth": 300,
@@ -662,10 +662,10 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 4,
-      "git_processes": 4,
-      "mean_wait_ms": 79.98525,
-      "wake_ms": 79.976
+      "ref_processes": 3,
+      "git_processes": 3,
+      "mean_wait_ms": 65.610125,
+      "wake_ms": 65.588
     },
     {
       "depth": 300,
@@ -673,11 +673,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 1,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 306.322625,
-      "wake_ms": 306.327,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 7,
+      "git_processes": 21,
+      "mean_wait_ms": 317.935375,
+      "wake_ms": 317.941,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 300,
@@ -685,11 +685,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 2,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 165.42825,
-      "wake_ms": 165.43,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 169.838,
+      "wake_ms": 169.841,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     },
     {
       "depth": 300,
@@ -697,11 +697,11 @@
       "waiters": 8,
       "stagger_ms": 0,
       "repeat": 3,
-      "ref_processes": 0,
-      "git_processes": 0,
-      "mean_wait_ms": 163.9555,
-      "wake_ms": 163.96,
-      "note": "wake_ms here is the slowest reader"
+      "ref_processes": 4,
+      "git_processes": 10,
+      "mean_wait_ms": 167.773,
+      "wake_ms": 167.776,
+      "note": "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window"
     }
   ],
   "explanations": {

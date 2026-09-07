@@ -416,7 +416,7 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 // between the two is seen by the next tick rather than lost, and a snapshot
 // that already saw the newer head simply gets asked once more.
 func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nexus.Observation, bool, error) {
-	release := s.heads.acquire(ctx)
+	release := s.heads.acquire()
 	defer release()
 	includeInbox := input.Session != ""
 	var response WaitResponse
@@ -430,10 +430,15 @@ func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nex
 			return false, err
 		}
 		var generation uint64
-		generation, advance = s.heads.current()
+		var clockHead string
+		generation, advance, clockHead = s.heads.current()
 		pending := includeInbox && len(observation.Inbox.Frames) > 0
 		liveMoved := observation.Reset || len(observation.Changes) > 0 || pending
-		if !primed || generation != seen || liveMoved {
+		// The clock's head disagreeing with the last verified answer covers
+		// the one window the generation cannot: a move that lands after this
+		// waiter's snapshot and before the clock's baseline read.
+		headMoved := primed && clockHead != "" && clockHead != response.Status.Durable.Head
+		if !primed || generation != seen || liveMoved || headMoved {
 			status, err := s.statusFromLive(ctx, observation, includeInbox)
 			if err != nil {
 				return false, err

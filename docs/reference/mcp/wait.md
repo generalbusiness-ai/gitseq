@@ -90,9 +90,14 @@ waiter. While any long poll is open it reads the log's head ref every 250 ms
 and advances a generation when the answer changes, fails, or rewinds. An
 open wait reads its live cursor on every tick, in memory, and asks the
 verified durable snapshot again only on its first pass, when that generation
-advances, or when the live cursor moved. So an idle wait costs one Git
-process at entry and the clock costs four a second however many waits are
-open; with no wait open the clock does not run.
+advances, when the clock's head differs from the frontier it last answered
+with, or when the live cursor moved. Before the clock, each wait asked the
+snapshot on every tick of its own, and waits whose ticks did not coincide
+each paid a Git process per tick; waits that ticked together already shared
+one read through the snapshot's single flight. Now an idle wait costs one
+Git process at entry and the clock costs four a second however many waits
+are open; with no wait open the clock does not run, and a wait that is
+cancelled while the clock's read is slow leaves at once.
 
 The clock is a notice, not a verifier or a second cache. Every answer still
 comes from the workspace snapshot, verified as before, and a head that

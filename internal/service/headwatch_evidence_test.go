@@ -228,6 +228,10 @@ func TestHeadWaitEvidence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// The fresh workspace gets its own observer, so the Git processes
+			// of the cold window are measured rather than assumed.
+			cold := &refCounter{}
+			fresh.SetObserver(cold)
 			var wg sync.WaitGroup
 			elapsed := make([]time.Duration, 8)
 			started := make(chan struct{})
@@ -254,8 +258,9 @@ func TestHeadWaitEvidence(t *testing.T) {
 			}
 			evidence.Samples = append(evidence.Samples, headWaitSample{
 				Depth: depth, Scenario: "cold-read/eight-readers", Waiters: 8, Repeat: repeat,
+				RefProcesses: cold.refs.Load(), GitProcesses: cold.all.Load(),
 				MeanWaitMS: float64(total.Microseconds()) / 8 / 1000, WakeMS: float64(slowest.Microseconds()) / 1000,
-				Note: "wake_ms here is the slowest reader",
+				Note: "wake_ms here is the slowest reader; processes are the fresh workspace's own, measured in the window",
 			})
 		}
 		_ = workspace
