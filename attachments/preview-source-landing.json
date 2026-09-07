@@ -1,0 +1,260 @@
+{
+  "checked_utc": "2026-09-07T10:12:49.913621+00:00",
+  "head": "ad4656dd8d96e27e614880943222018b5fd840c9",
+  "parents": [
+    "414533873740ca330c424a037b3e0ed796bfc1cd",
+    "1493505caa751a09227932ac195c40b202207181"
+  ],
+  "tree_equals_approved_candidate": true,
+  "trailers": {
+    "Gitseq-Approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d92b57bfcf36a6d9908c3a431d8bab1f8ace1a6f",
+    "Gitseq-Candidate": "1493505caa751a09227932ac195c40b202207181",
+    "Gitseq-Target-Pre-Head": "414533873740ca330c424a037b3e0ed796bfc1cd",
+    "Gitseq-Retirements": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0438e5f5a6b2167feceb5a0c8646280a4227794c\":\"internal/service/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0ae1673458a00e5570980f069515bd45f84f7322\":\"\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0fb84e8879617faf83e014c2d58ed6534d9c42c1\":\"ui/test/addressing.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1089d1aff38bd4db510e3dadef3f38f24e7cc259\":\"ui/src/components/Preview.tsx\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:109d5eb915643120959d224369327a034f6a5d43\":\"internal/service/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:132b62fc8d5955fe5c1cb500a831b4d2d6ea44f6\":\"ui/src/lib/address.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1af784b3ab411bc17eceb696b7e00e188841f833\":\"internal/gitstore/preview_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:23f6c70d531519f799657b48cd81da4283e2ef86\":\"docs/reference/reading-view.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d777dc0fee9ea88065b452b3242ded141d97c56\":\"internal/service/preview_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44f6a36a23275bfd3f3b12fad9e063758d8f14ba\":\"ui/src/components/Preview.tsx\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c3394fc66539868567512092c0f21eecfa6aa15\":\"internal/service/preview_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599960fd61ab6d3288f3977f60ea80a0ae0ca5ea\":\"ui/src/lib/address.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5f652e03110d688a76ba9f38a58a02ccd273bfce\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:603d95b66459e605b97c4f69dfe01cf97ab1aaa2\":\"internal/gitstore/preview_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:660b223089a9b3ae8bfded3dd871541227dc7a22\":\"docs/reference/reading-view.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad63b6708cc04d777ac9af2b45a1477e2866a35\":\"internal/gitstore/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cb46390f7cc0630f8f7518d79c3031c4b226605\":\"internal/gitstore/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7c4c65d1f7550cb17283c463e699a87fdb09fc2d\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e978d26c3ac2bdb6f6440607c8c75fed312966b\":\"ui/src/lib/api.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84249541d693a0f3adfec5d2a2d4dfdf4ef07f5e\":\"internal/service/previewwindow.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84441fcf6b73c58bf84021ed623d99323b177d2e\":\"ui/src/lib/api.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87165f1520bdf1a58e390a53b939b310fcd12df9\":\"ui/src/components/Preview.tsx\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f377c10c8943091801c29e3d79c7381d29015ea\":\"ui/test/addressing.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a6a1c66a303b2a1ebc631a44bb64195d80644a52\":\"ui/test/preview-window.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf0ba6d9f10e060287a0419f0cb941c286ed9ece\":\"ui/test/preview.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c499cdcb115d2b728111bb6578e2a8382710a922\":\"internal/service/uidist/assets/index-Ch2xM566.js\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5c39227df93afa7e2cbcdd62310632f10dc3c9f\":\"internal/gitstore/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e217b92828ba278d863c4356a5ec846b6b6e1088\":\"internal/service/preview.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5c235e336c05e6364021508c76a3e62efc860a2\":\"ui/src/lib/address.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5e98203330d2828affc39c17b61bdcb32e514a5\":\"internal/service\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e6d63f223b5097e6634b3ce5e6b45e3a62944eaf\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f327835f8351e38c7d9fa907a18f37085176cbad\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc6ceadda712aa1456be01dcde3e4501a0f8c86a\":\"ui/test/preview.test.mjs\"}",
+    "Gitseq-Successors": "[\"docs/reference/architecture.md\",\"docs/reference/reading-view.md\",\"internal/gitstore/preview.go\",\"internal/gitstore/preview_test.go\",\"internal/service\",\"internal/service/preview.go\",\"internal/service/preview_test.go\",\"internal/service/previewwindow.go\",\"internal/service/uidist/assets/index-Ch2xM566.js\",\"internal/service/uidist/index.html\",\"ui/src/components/Preview.tsx\",\"ui/src/lib/address.ts\",\"ui/src/lib/api.ts\",\"ui/test/addressing.test.mjs\",\"ui/test/preview-window.test.mjs\",\"ui/test/preview.test.mjs\"]",
+    "Gitseq-Target-Repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "Gitseq-Target-Ref": "refs/heads/main",
+    "Gitseq-Left-Live": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ef0bb48f6842c8f43f9aaacb6bed75584a77e48\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d\":{\"class\":\"carried\"}}",
+    "Gitseq-Changed-Paths": "[\"docs/reference/architecture.md\",\"docs/reference/reading-view.md\",\"internal/gitstore/preview.go\",\"internal/gitstore/preview_test.go\",\"internal/service/preview.go\",\"internal/service/preview_test.go\",\"internal/service/previewwindow.go\",\"internal/service/uidist/assets/index-CKAsUnWP.js\",\"internal/service/uidist/assets/index-Ch2xM566.js\",\"internal/service/uidist/index.html\",\"ui/src/components/Preview.tsx\",\"ui/src/lib/address.ts\",\"ui/src/lib/api.ts\",\"ui/test/addressing.test.mjs\",\"ui/test/preview-window.test.mjs\",\"ui/test/preview.test.mjs\"]",
+    "Gitseq-Staleness": "approval, artifact stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0289268d00f17d2f7a127faead22bc78ee18dd4c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02ce62ac39d438188a2ab6ac783b4edf22d7bd5e, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03270b167c8f14b55a31919b2489715ee513b20f and 142 more"
+  },
+  "phase": "Source sealed/published/pushed/ownedcleanup independentlyverified; CI pending; retained readers d630.",
+  "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494f5aeeff9eff49c051d158f033b51ff0bfb49e",
+  "receipt_sequence": 20830,
+  "trailer_equal": {
+    "merge_approval": true,
+    "merge_candidate": true,
+    "merge_head": true,
+    "merge_target_pre_head": true,
+    "merge_target_repo": true,
+    "merge_target_ref": true,
+    "merge_retirements": true,
+    "merge_successors": true,
+    "merge_changed_paths": true,
+    "merge_left_live": true
+  },
+  "publications": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e708dd117f0cb18dcfc04cdaad42a506d035e297",
+      "path": "docs/reference/architecture.md",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c07d340292f4c1770bc64d5ce0571802d31303d3",
+      "path": "docs/reference/reading-view.md",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:39947608e6186d98da6f719397d5abb516a5b38c",
+      "path": "internal/gitstore/preview.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a8d119262efc4f2977a883eb43f6167b9b915423",
+      "path": "internal/gitstore/preview_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eb4f629a9e31f23ed4a12f76ce2a7edd99ae850d",
+      "path": "internal/service",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+      "path": "internal/service/preview.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fa39e7a00cd4ea2180eb620252ea7a7d2e1dcc4",
+      "path": "internal/service/preview_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:10a6fe28eb277f89326220c88cfb07ad07f8ed0c",
+      "path": "internal/service/previewwindow.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de586bcbfa6bd2bd30d162196ab605cca6eb3751",
+      "path": "internal/service/uidist/assets/index-Ch2xM566.js",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b65d98016e7336241e3622dec49f5fc27281a33",
+      "path": "internal/service/uidist/index.html",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a2e1cad18c29df2e827293210ac07cd41cb40b6",
+      "path": "ui/src/components/Preview.tsx",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9863c13c7b4a79e0a1a33057bf4d941afaa2945e",
+      "path": "ui/src/lib/address.ts",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1613cf033d3b3794f9600110f2389be7c7fe0ec7",
+      "path": "ui/src/lib/api.ts",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae99db283eb3da46fc41bd5da8828e3f0e162820",
+      "path": "ui/test/addressing.test.mjs",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75a90227e2f09464af8d4b4e8a14d3c08c3d5caf",
+      "path": "ui/test/preview-window.test.mjs",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9008decdd5c656a6c7da5327b1760a599f9facd6",
+      "path": "ui/test/preview.test.mjs",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "retired": null
+    }
+  ],
+  "retirement_count": 33,
+  "effective_retirements": 33,
+  "every_target_retired": true,
+  "published_paths_equal": true,
+  "remaining_carried_live": true,
+  "actual_remote_main": "ad4656dd8d96e27e614880943222018b5fd840c9",
+  "request": {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cb654fcee01c38a1f47996d82a2146de26e9e56",
+    "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2cd413d69d8a7111038fc086ee9f595d86a2662f",
+    "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e217b92828ba278d863c4356a5ec846b6b6e1088",
+    "status": "satisfied",
+    "stale": true,
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d92b57bfcf36a6d9908c3a431d8bab1f8ace1a6f",
+    "candidate": "1493505caa751a09227932ac195c40b202207181",
+    "terminal": "landed",
+    "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494f5aeeff9eff49c051d158f033b51ff0bfb49e"
+  },
+  "feature_path_absent": true,
+  "feature_branch_absent": true,
+  "previews": [
+    {
+      "path": "docs/reference/architecture.md",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "docs/reference/reading-view.md",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/gitstore/preview.go",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/gitstore/preview_test.go",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/service",
+      "status": "directory",
+      "type": "tree",
+      "listing_present": true
+    },
+    {
+      "path": "internal/service/preview.go",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/service/preview_test.go",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/service/previewwindow.go",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/service/uidist/assets/index-Ch2xM566.js",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "internal/service/uidist/index.html",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/src/components/Preview.tsx",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/src/lib/address.ts",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/src/lib/api.ts",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/test/addressing.test.mjs",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/test/preview-window.test.mjs",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    },
+    {
+      "path": "ui/test/preview.test.mjs",
+      "status": "ready",
+      "type": "blob",
+      "byte_equal": true
+    }
+  ],
+  "remote_seq_head": "b65c72842d8dcaa2a441de049775f6c0531c85fe",
+  "receipt_and_last_retirement_on_remote_seq": true,
+  "previews_valid": true,
+  "remote_receipt_ref": "refs/gitseq/merge-receipts/2aa60e9374ada195c8066a6665484ebf7a14428f07b5bf0162f724f53a595214",
+  "remote_receipt_ref_head": "ad4656dd8d96e27e614880943222018b5fd840c9"
+}
