@@ -142,12 +142,24 @@ Running the command again does not duplicate an issue already observed by
 this connector. It also does not record later edits, label changes, closure,
 or reopening.
 
-If several processes may append concurrently, send observations through the
-resident by adding its explicit loopback URL:
+Where the observation is appended follows the same rule as `gs`. With no
+`--server` flag the connector uses the resident this repository advertises
+(the one `gs serve` published), so concurrent appenders are sequenced by
+default; with no advertisement it appends locally, exactly as before. An
+explicit loopback URL selects that resident:
 
 ```text
   --server http://127.0.0.1:7777
 ```
+
+and `--server -` deliberately appends locally even when a resident is
+advertised. The route is decided before the connector's key is read. An
+advertisement that cannot be trusted (unreadable, not a record, addressless,
+or naming another workroom) or cannot be used (not an `http` loopback
+address) refuses the run, as does an advertised resident that is not
+listening or that refuses the submission; the connector never falls back to
+a local append on its own, so nothing is recorded that the operator did not
+route. `--dry-run` makes no durable change on any route.
 
 ## 5. Turn an observation into work
 

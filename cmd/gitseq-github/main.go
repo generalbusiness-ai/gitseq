@@ -45,7 +45,7 @@ func run(ctx context.Context, arguments []string) error {
 	charter := set.String("charter", "", "the ratified charter event this connector acts under")
 	owner := set.String("owner", "", "GitHub owner")
 	name := set.String("repo-name", "", "GitHub repository name")
-	server := set.String("server", "", "submit through a resident sequencer instead of writing locally")
+	server := set.String("server", "", "resident sequencer URL; empty takes the repository's advertisement, \"-\" forces the local fold")
 	dry := set.Bool("dry-run", false, "report what would be observed without appending")
 	propose := set.Int("propose", 0, "open a pull request fixing this observed issue number")
 	branch := set.String("branch", "", "the branch carrying the work, for --propose")
@@ -96,12 +96,22 @@ func run(ctx context.Context, arguments []string) error {
 		if err := proposalIsCoherent(snapshot.Projection, *governing, *artifact, *commit); err != nil {
 			return err
 		}
-		return proposePullRequest(ctx, github.NewClient(token), *owner, *name, *dry, proposalFlags{
+		return proposePullRequest(ctx, newGitHubClient(token), *owner, *name, *dry, proposalFlags{
 			issue: *propose, branch: *branch, base: *base, commit: *commit,
 			request: *governing, artifact: *artifact, title: *title,
 		})
 	}
 
+	// Where a durable observation goes is decided here, on the observation
+	// path only (a proposal publishes to the forge and submits nothing to a
+	// resident), before the connector key is read or any request is built,
+	// by the same rule `gs` uses: an explicit loopback URL, the local
+	// sentinel, or the resident this repository advertises; a record that
+	// cannot be trusted refuses now.
+	serverURL, err := residentclient.ResolveServerURL(workspace, *server)
+	if err != nil {
+		return err
+	}
 	connector, err := loadObservationIdentity(workspace, actorName)
 	if err != nil {
 		return err
@@ -137,7 +147,7 @@ func run(ctx context.Context, arguments []string) error {
 	// The clauses decide the read. Nothing here enumerates the tracker, so a
 	// repository costs what its clauses ask for rather than what strangers have
 	// filed in it.
-	client := github.NewClient(token)
+	client := newGitHubClient(token)
 	admitted, missing, err := github.Fetch(ctx, client, *owner, *name, clauses)
 	if err != nil {
 		return err
@@ -158,7 +168,7 @@ func run(ctx context.Context, arguments []string) error {
 			fmt.Printf("would observe %s (admitted by %s)\n", observation.ExternalID, observation.AdmittedBy)
 			continue
 		}
-		event, err := appendObservation(ctx, workspace, connector, *server, *charter, observation)
+		event, err := appendObservation(ctx, workspace, connector, serverURL, *charter, observation)
 		if err != nil {
 			return fmt.Errorf("observing %s: %w", observation.ExternalID, err)
 		}
@@ -166,6 +176,11 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	return nil
 }
+
+// newGitHubClient builds the reader and writer for the forge. Tests point it
+// at a stub so the whole command, from flags to a sequenced observation, can
+// run against a controlled tracker and a real resident.
+var newGitHubClient = github.NewClient
 
 type observationIdentity struct {
 	Name        string
@@ -521,13 +536,19 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 	return submission, nil
 }
 
-// submit sends the signed request, locally or through a resident sequencer.
-// The core never holds the connector's key: the request is fully signed here
-// and the service only sequences it.
+// submit sends the signed request, locally or through the resident the route
+// resolved to. The core never holds the connector's key: the request is fully
+// signed here and the service only sequences it. On any failure the connector
+// refuses and never falls back to the local fold on its own, because the
+// address is usually the repository's advertisement and the operator would
+// have no way to tell. Only a refused dial is definite enough to say nothing
+// was appended, and RefusedDial says so; a reply lost after the resident took
+// the request is reported as it came, and the idempotency key makes the
+// retry safe.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
 	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
 	if err != nil {
-		return "", err
+		return "", residentclient.RefusedDial(server, err)
 	}
 	return submission.Record.ID, nil
 }

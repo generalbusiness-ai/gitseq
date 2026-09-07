@@ -387,12 +387,14 @@ and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
 larger than the 8 KiB bound, not a record, carrying no address, or naming
 another workroom are all the third answer, and it carries the reason.
 
-`internal/app` owns that read, and `internal/residentclient` owns the clause
-naming which of the six failures it is — not each surface's complete sentence,
-whose remainder is the way out that surface offers. That is what keeps the two
-from drifting into separate accounts of the same record. `cmd/gs` turns the
-third answer into a refusal of the whole command before it reads a signing key
-or appends anything, and names `--server -` as the way out. `cmd/gitseq-mcp`
+`internal/app` owns that read, and `internal/residentclient` owns the routing
+rule built on it (`ResolveServerURL`): an explicit loopback URL, `-` for the
+local fold, or the advertisement by default, with the third answer turned into
+a refusal that names `--server -` as the way out, and `RefusedDial` wording a
+resident that is not listening. `cmd/gs` and `cmd/gitseq-github` both call
+that one rule before they read a signing key or build a request, so a durable
+`gs` act and a connector observation route the same way and refuse in the same
+words; the connector never falls back to a local append on its own. `cmd/gitseq-mcp`
 refuses the durable call for the same reason and before the same work, while
 leaving the attachment and the session intact, and still lets a read answer
 from the verified local fold. It judges the record on every durable act rather
