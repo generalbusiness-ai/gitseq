@@ -1,0 +1,128 @@
+{
+  "frontier": {
+    "head": "f6aff6d2f99e104be579b500889092841b5dbf9d",
+    "depth": 20679
+  },
+  "main": "414533873740ca330c424a037b3e0ed796bfc1cd",
+  "receipt": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:765acd87720dcaaf2bab6bd5c74e1e90b858f604",
+    "sequence": 20665,
+    "timestamp": 1788765882,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "assert",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "approved candidate merged",
+    "body": {
+      "merge_approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:768223bebeac4e80ec326d3740c4c666dfbda54f",
+      "merge_candidate": "5d20311bee2ebf10d12737fc6f3e35cf18452728",
+      "merge_changed_paths": "[\"internal/service/uidist/assets/index-CKAsUnWP.js\",\"internal/service/uidist/assets/index-DUUWuxG-.css\",\"internal/service/uidist/assets/index-YCjmo0iN.css\",\"internal/service/uidist/assets/index-hIXoPEGS.js\",\"internal/service/uidist/index.html\",\"ui/src/index.css\"]",
+      "merge_head": "414533873740ca330c424a037b3e0ed796bfc1cd",
+      "merge_left_live": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9c0e90ff41d29d69080a58dc261a2eea72adf9e\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cb654fcee01c38a1f47996d82a2146de26e9e56\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d\":{\"class\":\"carried\"}}",
+      "merge_retirements": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0289268d00f17d2f7a127faead22bc78ee18dd4c\":\"internal/service/uidist/assets/index-CKAsUnWP.js\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bf101993e5f0d168b6ebf4ce2252298f7382453\":\"internal/service/uidist/assets/index-DUUWuxG-.css\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3df321df862b95125c9d1784af6bf21c171ef9b5\":\"\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5e793603a1f715ae1c68bab278f0fb6efc7c16f9\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c375e34bbd20985d0d7f349684aac3a8cd6ca55\":\"internal/service\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b41058c9edb1c38b7dc4b67b239670474f645a64\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c489025302f8e14708e84beb681c55e726c74a83\":\"ui/src/index.css\"}",
+      "merge_successors": "[\"internal/service\",\"internal/service/uidist/assets/index-CKAsUnWP.js\",\"internal/service/uidist/assets/index-DUUWuxG-.css\",\"internal/service/uidist/index.html\",\"ui/src/index.css\"]",
+      "merge_target_pre_head": "50850a358d01666fe19c85007aed98f3ceaff591",
+      "merge_target_ref": "refs/heads/main",
+      "merge_target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "stale": "true",
+      "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:768223bebeac4e80ec326d3740c4c666dfbda54f stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03270b167c8f14b55a31919b2489715ee513b20f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b8a9ff517318daec88e265b848e08ea877e98fa and 59 more",
+      "staleness": "approval, artifact stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03270b167c8f14b55a31919b2489715ee513b20f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b8a9ff517318daec88e265b848e08ea877e98fa and 59 more"
+    },
+    "stale": true,
+    "merge_left_live": [
+      {
+        "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b",
+        "class": "carried",
+        "verified": true
+      },
+      {
+        "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9c0e90ff41d29d69080a58dc261a2eea72adf9e",
+        "class": "sibling",
+        "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cb654fcee01c38a1f47996d82a2146de26e9e56",
+        "verified": true
+      },
+      {
+        "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+        "class": "carried",
+        "verified": true
+      },
+      {
+        "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3df321df862b95125c9d1784af6bf21c171ef9b5",
+        "class": "",
+        "verified": false,
+        "reason": "not classified by receipt"
+      }
+    ],
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bf101993e5f0d168b6ebf4ce2252298f7382453",
+    "stale_because_path": "internal/service/uidist/assets/index-DUUWuxG-.css"
+  },
+  "deleted_artifact": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3df321df862b95125c9d1784af6bf21c171ef9b5",
+    "sequence": 20456,
+    "timestamp": 1788756905,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "artifact",
+    "lifecycle": "none",
+    "satisfier": "none",
+    "text": "Merge published the current artifact at internal/service/uidist/assets/index-hIXoPEGS.js",
+    "body": {
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+      "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3 stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:008a3a35d1921865e11a269e51d9346bdf789d91, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00925ae6c09fb0b8e2a72e84c22ca3488bc9534d, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:012451209d3000492d2e523089e5973beec05f61 and 305 more"
+    },
+    "retired": true,
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+    "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+  },
+  "effective_retirement": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7dbf840979bc32d4b460ad3a4bddac630bccbd3b",
+    "timestamp": 1788765891,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "type": "supersede",
+    "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3df321df862b95125c9d1784af6bf21c171ef9b5",
+    "text": "Merge retired a covered predecessor with no successor at its old path.",
+    "verdict": "effective",
+    "reason": "authorized supersession"
+  },
+  "current_artifact": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3df321df862b95125c9d1784af6bf21c171ef9b5",
+    "path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+    "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+    "retired": true,
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+    "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+  },
+  "approval": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:768223bebeac4e80ec326d3740c4c666dfbda54f",
+    "sequence": 20659,
+    "timestamp": 1788764633,
+    "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "kind": "report",
+    "lifecycle": "report",
+    "satisfier": "originating-requester",
+    "text": "Approved exact 5d20311bee2ebf10d12737fc6f3e35cf18452728 under review #20608/promise2420e268 and governing #20258. Reporting artifact c4890253 is first, with the three exact-path embed companions. The change limits Tailwind automatic detection to ui/src through source(\"./\"), preserves the existing plugin and exact-output check, and changes no framework version or test prose. Official Tailwind documentation confirms explicit source base paths: https://tailwindcss.com/docs/detecting-classes-in-source-files#setting-your-base-path. Current ui/index.html has no utility classes or external shared markup to retain.\n\nIndependent clean locked build reproduces the complete committed embed. Appending z-[987654] only to ui/test/components.test.mjs leaves CSS byte-identical at d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8. The same comment in ui/src/App.tsx emits z-index:987654; restoring each arm restores all embedded files. Parsing both stylesheets finds exactly six removed selectors (.collapse, .basis-0, .basis-1, .p-39, .p-499 and bare .ring), no added selector, and retained .ring-1. Source searches confirm no application class use of the removed selectors; the collapse function and border-collapse class are distinct. The JavaScript files are byte-identical across their rename. All four exact artifact previews are ready and byte-identical to Git.\n\nArchitecture: layer 7, CLI/MCP/skills/connectors/UI in docs/reference/architecture.md, with generated assets served through the existing service embed. This is a build-input boundary correction; no layer contract changes or architecture-page amendment is required. Security: narrows build-time text inputs, adds no runtime input or authority, and leaves signatures, custody, bounded read paths and inert rendering untouched. No new secret or callback surface, and no unresolved security defect. Simplification: one explicit source base plus its short explanation and necessary regenerated assets is sufficient; existing build machinery provides the reproducibility check without additional product UI or redundant test framework.\n\nIndependent gates at this exact head pass: tsc -b and make ui-check, all217 UI tests, go vet ./..., and fresh go test -count=1 ./... (including cmd/gs479.844s, app160.948s and docset114.501s). No live deployment was performed. Ordinary inherited staleness is acknowledged; all selected candidates are unretired and none describes_superseded_world. Main's intervening50850 guide change is disjoint.\n\nLanding clarification: the companion/request prose calls the new hashed files successors of deleted old paths. Under SKILL.md discipline10 those old exact paths retire with no successor there; new filenames receive first artifacts. Do not encode cross-path succession. Seal the actual plan, preserve wider carried pointers and protected siblings, and request author cleanup only for receipt-abandoned candidates. I will handle my two named old-style candidates if that receipt classifies them abandoned; review approval does not itself retire them. Ratify this exact approval, seal/push the source and workroom/receipt refs, verify main CI and remove the owned feature worktree/branch.",
+    "body": {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c489025302f8e14708e84beb681c55e726c74a83",
+      "binding": "assigned",
+      "head": "5d20311bee2ebf10d12737fc6f3e35cf18452728",
+      "head_news_acknowledged": "[\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2420e268ea79bf2201ace675c602c1acdb974aa5\"]",
+      "implementations": "[\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7740575563acf43bb23775d36f5284872f5a6e53\"]",
+      "review_frontier": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58f9ae8523c0d9617448d7a9446da1bc9558c570",
+      "review_path": "reviewguard@1",
+      "stale": "true",
+      "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0289268d00f17d2f7a127faead22bc78ee18dd4c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bf101993e5f0d168b6ebf4ce2252298f7382453, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2420e268ea79bf2201ace675c602c1acdb974aa5, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b41058c9edb1c38b7dc4b67b239670474f645a64, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9f8f3bf324fb52edf3fef5249068122d7296a36, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c489025302f8e14708e84beb681c55e726c74a83 stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03270b167c8f14b55a31919b2489715ee513b20f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b8a9ff517318daec88e265b848e08ea877e98fa and 59 more",
+      "staleness": "artifact, promise, request stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03270b167c8f14b55a31919b2489715ee513b20f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b8a9ff517318daec88e265b848e08ea877e98fa and 59 more",
+      "verdict": "approved"
+    },
+    "ratified": true,
+    "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8dc80039e5210ee16aecffddc01d63da0400f27b",
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1bf101993e5f0d168b6ebf4ce2252298f7382453",
+    "stale_because_path": "internal/service/uidist/assets/index-DUUWuxG-.css"
+  },
+  "independent_inspect": "/tmp/planner-current-mcp-result-2199.json",
+  "finding": "The sealed receipt explicitly lists the old JavaScript artifact with an empty successor in merge_retirements. The same receipt projects that exact artifact as not classified by receipt. Author retirement is effective and the artifact is retired. validateMergeReceiptNow narrows mergePlan to reviewed paths for cross-author authority; missingLeftLiveAtReceipt reuses that narrowed map when checking whether a plan mentioned an artifact. This conflates authority with non-authoritative accounting. No further retirement is owed.",
+  "qualification": "Source and actual durable projection reproduction; no new synthetic fixture or mutant has been run by planner. Existing TestMergeAccountingDeletionOmissionStaysVisibleOnReceipt pins a genuinely omitted deletion and must remain valid."
+}
