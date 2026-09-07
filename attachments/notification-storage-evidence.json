@@ -1,0 +1,70 @@
+{
+  "checked_utc": "2026-09-07T22:44:01.507004+00:00",
+  "main": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "scope": "Focused notification suite only: five existing tests pass under each separate omission, while new mounted storage probe fails. Full UI/Go suite not run by planner. Vite executed each mutation; TypeScript tsc not rerun. Current production behavior passes the added probe.",
+  "bases": [
+    {
+      "path": "ui/src/components/TopBar.tsx",
+      "head": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "event": "2b37ee0d6ca43aca851fa186221aa23e5475a842",
+      "byte_equal_main": true,
+      "main_ancestor": true
+    },
+    {
+      "path": "ui/src/lib/memory.ts",
+      "head": "0da3b399faf37f3e0d845e3a0da2d1fa3987025b",
+      "event": "bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+      "byte_equal_main": true,
+      "main_ancestor": true
+    },
+    {
+      "path": "ui/test/notifications.test.mjs",
+      "head": "0da3b399faf37f3e0d845e3a0da2d1fa3987025b",
+      "event": "bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+      "byte_equal_main": true,
+      "main_ancestor": true
+    }
+  ],
+  "baseline": {
+    "command": "node --test test/notifications.test.mjs (five original tests plus one appended independent mounted test)",
+    "exit": 0,
+    "tests": 6,
+    "passed": 6
+  },
+  "mutants": [
+    {
+      "name": "skip-load",
+      "exit": 1,
+      "existing_notification_tests_passed": 5,
+      "new_probe_failed": true
+    },
+    {
+      "name": "skip-save",
+      "exit": 1,
+      "existing_notification_tests_passed": 5,
+      "new_probe_failed": true
+    },
+    {
+      "name": "omit-actor",
+      "exit": 1,
+      "existing_notification_tests_passed": 5,
+      "new_probe_failed": true
+    },
+    {
+      "name": "omit-room",
+      "exit": 1,
+      "existing_notification_tests_passed": 5,
+      "new_probe_failed": true
+    }
+  ],
+  "fixture_correction": "Made third actor-addressed request authored by the other actor; forYouItems correctly excludes self-authored items. Initial probe failure was fixture error, not product defect.",
+  "historical_disposition": "Original1312 storage feature and test were replaced by adopted UI simplification6730/c26a7f57 (Hugh25981e55), removing WorkDrawer/follows/read-watermarks. Do not restore that obsolete feature. This request covers the current notification read-position wiring, which remains separately scoped by room and actor.",
+  "original_retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:543777c71fdc0ff10e55f7f68912d517e9758c51",
+  "normal_log": "\u2714 the for-you count opens a list of what is addressed to you, newest first (161.293542ms)\n\u2714 opening one row jumps to that thread and leaves the others unread (54.848208ms)\n\u2714 mark all read empties the list and the bell goes quiet (50.806208ms)\n\u2714 with nothing addressed to you the list says so plainly (52.669ms)\n\u2714 the panel closes on Escape and on a click outside it (59.672666ms)\n\u2714 saved notification positions survive a remount and stay separate by room and actor (59.824542ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 6\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 767.692375\n",
+  "mutation_logs": {
+    "skip-load": "\u2714 the for-you count opens a list of what is addressed to you, newest first (155.122584ms)\n\u2714 opening one row jumps to that thread and leaves the others unread (55.31975ms)\n\u2714 mark all read empties the list and the bell goes quiet (47.891125ms)\n\u2714 with nothing addressed to you the list says so plainly (55.365875ms)\n\u2714 the panel closes on Escape and on a click outside it (62.82425ms)\n\u2716 saved notification positions survive a remount and stay separate by room and actor (56.36375ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 765.791917\n\n\u2716 failing tests:\n\ntest at test/notifications.test.mjs:188:1\n\u2716 saved notification positions survive a remount and stay separate by room and actor (56.36375ms)\n  AssertionError [ERR_ASSERTION]: mount did not load the independently seeded saved position\n      at TestContext.<anonymous> (file:///private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-notification-storage-probe-tptynl9f/ui/test/notifications.test.mjs:209:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 'codex \u2014 2 for you',\n    expected: /1 for you/,\n    operator: 'match',\n    diff: 'simple'\n  }\n",
+    "skip-save": "\u2714 the for-you count opens a list of what is addressed to you, newest first (166.543583ms)\n\u2714 opening one row jumps to that thread and leaves the others unread (51.067458ms)\n\u2714 mark all read empties the list and the bell goes quiet (52.943167ms)\n\u2714 with nothing addressed to you the list says so plainly (57.023709ms)\n\u2714 the panel closes on Escape and on a click outside it (68.844208ms)\n\u2716 saved notification positions survive a remount and stay separate by room and actor (52.541459ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 800.796417\n\n\u2716 failing tests:\n\ntest at test/notifications.test.mjs:188:1\n\u2716 saved notification positions survive a remount and stay separate by room and actor (52.541459ms)\n  AssertionError [ERR_ASSERTION]: mark read did not persist through the component storage path\n  + actual - expected\n  \n    {\n      read: [],\n  +   watermark: 1\n  -   watermark: 2\n    }\n  \n      at TestContext.<anonymous> (file:///private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-notification-storage-probe-tptynl9f/ui/test/notifications.test.mjs:214:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: { watermark: 1, read: [] },\n    expected: { watermark: 2, read: [] },\n    operator: 'deepStrictEqual',\n    diff: 'simple'\n  }\n",
+    "omit-actor": "\u2714 the for-you count opens a list of what is addressed to you, newest first (165.4665ms)\n\u2714 opening one row jumps to that thread and leaves the others unread (53.307542ms)\n\u2714 mark all read empties the list and the bell goes quiet (50.769042ms)\n\u2714 with nothing addressed to you the list says so plainly (57.103167ms)\n\u2714 the panel closes on Escape and on a click outside it (59.593709ms)\n\u2716 saved notification positions survive a remount and stay separate by room and actor (51.821833ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 771.60325\n\n\u2716 failing tests:\n\ntest at test/notifications.test.mjs:188:1\n\u2716 saved notification positions survive a remount and stay separate by room and actor (51.821833ms)\n  AssertionError [ERR_ASSERTION]: mount did not load the independently seeded saved position\n      at TestContext.<anonymous> (file:///private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-notification-storage-probe-tptynl9f/ui/test/notifications.test.mjs:209:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 'codex \u2014 2 for you',\n    expected: /1 for you/,\n    operator: 'match',\n    diff: 'simple'\n  }\n",
+    "omit-room": "\u2714 the for-you count opens a list of what is addressed to you, newest first (167.244875ms)\n\u2714 opening one row jumps to that thread and leaves the others unread (56.292666ms)\n\u2714 mark all read empties the list and the bell goes quiet (53.893541ms)\n\u2714 with nothing addressed to you the list says so plainly (61.063958ms)\n\u2714 the panel closes on Escape and on a click outside it (60.087584ms)\n\u2716 saved notification positions survive a remount and stay separate by room and actor (55.355333ms)\n\u2139 tests 6\n\u2139 suites 0\n\u2139 pass 5\n\u2139 fail 1\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 793.720125\n\n\u2716 failing tests:\n\ntest at test/notifications.test.mjs:188:1\n\u2716 saved notification positions survive a remount and stay separate by room and actor (55.355333ms)\n  AssertionError [ERR_ASSERTION]: mount did not load the independently seeded saved position\n      at TestContext.<anonymous> (file:///private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-notification-storage-probe-tptynl9f/ui/test/notifications.test.mjs:209:12)\n      at async Test.run (node:internal/test_runner/test:1409:7)\n      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {\n    generatedMessage: false,\n    code: 'ERR_ASSERTION',\n    actual: 'codex \u2014 2 for you',\n    expected: /1 for you/,\n    operator: 'match',\n    diff: 'simple'\n  }\n"
+  }
+}
