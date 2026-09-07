@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2dc7bada64ee5ecbf53f82a5158f4514ee1ee24b","text":"Merge retired a covered predecessor; the successor is at docs/reference/reading-view.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a2e1cad18c29df2e827293210ac07cd41cb40b6","text":"Merge retired a covered predecessor; the successor is at ui/src/components/Preview.tsx."}
