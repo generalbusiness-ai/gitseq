@@ -1,5 +1,0 @@
-=== RUN   TestCodexUnavailableInterpreterReportsEmptyProfile
-    codex_unavailable_profile_probe_test.go:17: actual reopened workspace: previous profile="gitseq-host-test@gitseq-host-test-fold@0" current profile="" running=false same verified head=7e8b3e3e479c9ea30ac4f0be6c6586ba843a233e
---- PASS: TestCodexUnavailableInterpreterReportsEmptyProfile (1.87s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/app	2.287s
