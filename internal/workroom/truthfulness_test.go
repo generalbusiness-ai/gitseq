@@ -178,6 +178,9 @@ func TestRenderStatusShowsDissentRatifiedAndUninterpretable(t *testing.T) {
 // The complete page is compared byte for byte against a small representative
 // fixture, so a change to any row format, section order or wording is a
 // deliberate edit of testdata/render_status.golden.md and not a drift.
+// The two Work lines under the header are the most recent such edit: the
+// complete page prints the same named populations the bounded page prints,
+// from the same derivation.
 func TestRenderStatusBytesArePinned(t *testing.T) {
 	p := truthfulnessWorld(t,
 		event(t, lid("base"), operator, SchemaState, State{Kind: KindArtifact, Text: "base", Body: map[string]string{"path": "base.go", "commit": approvedHead}}),

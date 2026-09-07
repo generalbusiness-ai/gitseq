@@ -1,0 +1,742 @@
+{
+  "note": [
+    "A frozen /v0/status answer, trimmed to what counting needs, shared by two languages.",
+    "internal/wireparity/work_populations_test.go folds `work` out of `durable.projection` with the Go owner;",
+    "ui/test/work-populations.test.mjs counts the same populations with the browser's own row selector.",
+    "Both compare against the `work` block below, so a grouping that moves on one surface and not the other fails.",
+    "It carries every lifecycle the fold emits, two requests with a second historical commitment,",
+    "ordinary staleness on an open and on a completed row, a landing audit on a live and on a closed row,",
+    "and one proposal awaiting ratification, which is a different duty and enters no count here."
+  ],
+  "work": {
+    "scope": "workroom",
+    "commitments": 15,
+    "open": 8,
+    "open_lifecycles": {
+      "open": 1,
+      "promised": 2,
+      "reported": 1,
+      "awaiting-review": 2,
+      "awaiting-authorization": 1,
+      "awaiting-landing": 1
+    },
+    "completed": 1,
+    "closed_not_completed": 5,
+    "stale": 1,
+    "reasoning_moved": 2,
+    "artifact_landing_audit": 2
+  },
+  "durable": {
+    "genesis": "0000000000000000000000000000000000000000",
+    "head": "ffffffffffffffffffffffffffffffffffffffff",
+    "depth": 29,
+    "projection": {
+      "decisions": [
+        {
+          "event": "rq-open",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 1
+        },
+        {
+          "event": "rq-promised",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 2
+        },
+        {
+          "event": "p-promised",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 3
+        },
+        {
+          "event": "p-promised-again",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 4
+        },
+        {
+          "event": "rq-reported",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 5
+        },
+        {
+          "event": "p-reported",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 6
+        },
+        {
+          "event": "r-reported",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 7
+        },
+        {
+          "event": "rq-review",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 8
+        },
+        {
+          "event": "p-review",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 9
+        },
+        {
+          "event": "a-review",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 10
+        },
+        {
+          "event": "p-review-again",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 11
+        },
+        {
+          "event": "a-review-again",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 12
+        },
+        {
+          "event": "rq-authorization",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 13
+        },
+        {
+          "event": "p-authorization",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 14
+        },
+        {
+          "event": "rq-landing",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 15
+        },
+        {
+          "event": "p-landing",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 16
+        },
+        {
+          "event": "rq-satisfied",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 17
+        },
+        {
+          "event": "p-satisfied",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 18
+        },
+        {
+          "event": "r-satisfied",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 19
+        },
+        {
+          "event": "rq-superseded",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 20
+        },
+        {
+          "event": "rq-cancelled",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 21
+        },
+        {
+          "event": "p-cancelled",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 22
+        },
+        {
+          "event": "rq-reneged",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 23
+        },
+        {
+          "event": "p-reneged",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 24
+        },
+        {
+          "event": "rq-withdrawn",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 25
+        },
+        {
+          "event": "rq-abandoned",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 26
+        },
+        {
+          "event": "p-abandoned",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 27
+        },
+        {
+          "event": "rq-stale",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 28
+        },
+        {
+          "event": "proposal",
+          "verdict": "effective",
+          "reason": "recorded",
+          "sequence": 29
+        }
+      ],
+      "acts": [],
+      "statements": [
+        {
+          "event": "rq-open",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Run the tests",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "rq-promised",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Draft the migration note",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-promised",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "I will draft it",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "p-promised-again",
+          "actor": "fp-carol",
+          "kind": "promise",
+          "text": "Second claim on the same request",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-reported",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Summarise the audit",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-reported",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Taking the audit",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "r-reported",
+          "actor": "fp-bob",
+          "kind": "report",
+          "text": "Audit summarised",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-review",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Implement the counter",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-review",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Implementing",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "a-review",
+          "actor": "fp-bob",
+          "kind": "artifact",
+          "text": "Counter at the exact head",
+          "timestamp": 1700000000,
+          "body": {
+            "path": "count.go",
+            "commit": "0000000000000000000000000000000000000000"
+          }
+        },
+        {
+          "event": "p-review-again",
+          "actor": "fp-carol",
+          "kind": "promise",
+          "text": "Second round on the same request",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "a-review-again",
+          "actor": "fp-carol",
+          "kind": "artifact",
+          "text": "Counter, second head",
+          "timestamp": 1700000000,
+          "body": {
+            "path": "count.go",
+            "commit": "1111111111111111111111111111111111111111"
+          }
+        },
+        {
+          "event": "rq-authorization",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Land the held change",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-authorization",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Held on the hold owner",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-landing",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Merge the approved head",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-landing",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Approved, merging",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-satisfied",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Fix the typo",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-satisfied",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Fixed",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "r-satisfied",
+          "actor": "fp-bob",
+          "kind": "report",
+          "text": "Typo fixed",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-superseded",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Old plan",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "rq-cancelled",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Withdrawn while claimed",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-cancelled",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Started",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-reneged",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Claim then let go",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-reneged",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Cannot finish",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-withdrawn",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Never claimed, then withdrawn",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "rq-abandoned",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Approved head deliberately dropped",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "p-abandoned",
+          "actor": "fp-bob",
+          "kind": "promise",
+          "text": "Approved and then dropped",
+          "timestamp": 1700000000
+        },
+        {
+          "event": "rq-stale",
+          "actor": "fp-alice",
+          "kind": "request",
+          "text": "Never reported, reasoning moved",
+          "timestamp": 1700000000,
+          "body": {
+            "to": "fp-bob"
+          },
+          "satisfier": "originating-requester"
+        },
+        {
+          "event": "proposal",
+          "actor": "fp-bob",
+          "kind": "propose",
+          "text": "Adopt the shared Work count",
+          "timestamp": 1700000000,
+          "satisfier": "role:ratifier"
+        }
+      ],
+      "commitments": [
+        {
+          "request": "rq-open",
+          "requester": "fp-alice",
+          "addressed_to": "fp-bob",
+          "status": "open"
+        },
+        {
+          "request": "rq-promised",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-promised",
+          "status": "promised",
+          "waiting_on": "fp-bob"
+        },
+        {
+          "request": "rq-promised",
+          "requester": "fp-alice",
+          "performer": "fp-carol",
+          "promise": "p-promised-again",
+          "status": "promised",
+          "waiting_on": "fp-carol",
+          "stale": true
+        },
+        {
+          "request": "rq-reported",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-reported",
+          "report": "r-reported",
+          "status": "reported",
+          "waiting_on": "fp-alice"
+        },
+        {
+          "request": "rq-review",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-review",
+          "report": "a-review",
+          "status": "awaiting-review",
+          "waiting_on": "fp-bob"
+        },
+        {
+          "request": "rq-review",
+          "requester": "fp-alice",
+          "performer": "fp-carol",
+          "promise": "p-review-again",
+          "report": "a-review-again",
+          "status": "awaiting-review",
+          "waiting_on": "fp-carol",
+          "stale": true
+        },
+        {
+          "request": "rq-authorization",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-authorization",
+          "status": "awaiting-authorization",
+          "waiting_on": "fp-alice",
+          "hold_owner": "fp-alice"
+        },
+        {
+          "request": "rq-landing",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-landing",
+          "status": "awaiting-landing",
+          "waiting_on": "fp-bob",
+          "approved_not_landed": true,
+          "target_ref": "refs/heads/main"
+        },
+        {
+          "request": "rq-satisfied",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-satisfied",
+          "report": "r-satisfied",
+          "status": "satisfied",
+          "stale": true
+        },
+        {
+          "request": "rq-superseded",
+          "requester": "fp-alice",
+          "status": "superseded",
+          "successor_request": "rq-cancelled"
+        },
+        {
+          "request": "rq-cancelled",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-cancelled",
+          "status": "cancelled"
+        },
+        {
+          "request": "rq-reneged",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-reneged",
+          "status": "reneged"
+        },
+        {
+          "request": "rq-withdrawn",
+          "requester": "fp-alice",
+          "status": "withdrawn"
+        },
+        {
+          "request": "rq-abandoned",
+          "requester": "fp-alice",
+          "performer": "fp-bob",
+          "promise": "p-abandoned",
+          "status": "abandoned",
+          "approved_not_landed": true,
+          "target_ref": "refs/heads/main"
+        },
+        {
+          "request": "rq-stale",
+          "requester": "fp-alice",
+          "addressed_to": "fp-bob",
+          "status": "stale",
+          "stale": true
+        }
+      ],
+      "reviews": [],
+      "artifacts": [],
+      "actors": {
+        "fp-alice": {
+          "name": "alice",
+          "kind": "human",
+          "roles": [
+            "operator",
+            "participant",
+            "ratifier"
+          ],
+          "role_sources": {},
+          "dormant_role_sources": {},
+          "retired_role_sources": {}
+        },
+        "fp-bob": {
+          "name": "bob",
+          "kind": "agent",
+          "roles": [
+            "participant"
+          ],
+          "role_sources": {},
+          "dormant_role_sources": {},
+          "retired_role_sources": {}
+        },
+        "fp-carol": {
+          "name": "carol",
+          "kind": "agent",
+          "roles": [
+            "participant"
+          ],
+          "role_sources": {},
+          "dormant_role_sources": {},
+          "retired_role_sources": {}
+        }
+      },
+      "provenance": {
+        "rq-open": [],
+        "rq-promised": [],
+        "p-promised": [],
+        "p-promised-again": [],
+        "rq-reported": [],
+        "p-reported": [],
+        "r-reported": [],
+        "rq-review": [],
+        "p-review": [],
+        "a-review": [],
+        "p-review-again": [],
+        "a-review-again": [],
+        "rq-authorization": [],
+        "p-authorization": [],
+        "rq-landing": [],
+        "p-landing": [],
+        "rq-satisfied": [],
+        "p-satisfied": [],
+        "r-satisfied": [],
+        "rq-superseded": [],
+        "rq-cancelled": [],
+        "p-cancelled": [],
+        "rq-reneged": [],
+        "p-reneged": [],
+        "rq-withdrawn": [],
+        "rq-abandoned": [],
+        "p-abandoned": [],
+        "rq-stale": [],
+        "proposal": []
+      }
+    },
+    "vocabulary": {
+      "definitions": [
+        {
+          "name": "propose",
+          "fields": [],
+          "basis": [],
+          "satisfier": "role:ratifier",
+          "render": "proposal",
+          "staleness": "propagates",
+          "lifecycle": "none",
+          "guidance": "",
+          "source": "seed"
+        },
+        {
+          "name": "request",
+          "fields": [],
+          "basis": [],
+          "satisfier": "none",
+          "render": "commitment",
+          "staleness": "propagates",
+          "lifecycle": "request",
+          "guidance": "",
+          "source": "seed"
+        },
+        {
+          "name": "promise",
+          "fields": [],
+          "basis": [],
+          "satisfier": "none",
+          "render": "commitment",
+          "staleness": "propagates",
+          "lifecycle": "promise",
+          "guidance": "",
+          "source": "seed"
+        },
+        {
+          "name": "report",
+          "fields": [],
+          "basis": [],
+          "satisfier": "originating-requester",
+          "render": "result",
+          "staleness": "propagates",
+          "lifecycle": "report",
+          "guidance": "",
+          "source": "seed"
+        },
+        {
+          "name": "artifact",
+          "fields": [],
+          "basis": [],
+          "satisfier": "none",
+          "render": "artifact",
+          "staleness": "propagates",
+          "lifecycle": "report",
+          "guidance": "",
+          "source": "seed"
+        },
+        {
+          "name": "assert",
+          "fields": [],
+          "basis": [],
+          "satisfier": "role:ratifier",
+          "render": "note",
+          "staleness": "propagates",
+          "lifecycle": "none",
+          "guidance": "",
+          "source": "seed"
+        }
+      ],
+      "binding": {
+        "status": "bound",
+        "transitions": []
+      }
+    }
+  }
+}

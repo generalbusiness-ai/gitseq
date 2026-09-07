@@ -31,6 +31,11 @@ import (
 // happens before shaping, and the output is exact. The golden is verified to
 // contain no control byte and to carry the escapes as visible text. I4 adds
 // only the explicit zero approved_not_landed total to this fixture.
+//
+// The shared Work summary added `totals.work` and nothing else: the named
+// populations derived by the one owner every surface now reads. Selection is
+// untouched — the counts come from the same commitments in the same order — so
+// the recapture is additive and every other byte is unchanged.
 func TestBoundedSelectionKeepsExactlyTheOldBytes(t *testing.T) {
 	want, err := os.ReadFile("testdata/bounded-summary-golden.json")
 	if err != nil {

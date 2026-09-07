@@ -54,7 +54,7 @@ everything up to now with `reset` set.
 | `current_available_to_you` | The complete bounded current lane of unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
-| `totals` | The same counts `status` reports. |
+| `totals` | The same counts `status` reports, including `totals.work`: the workroom-wide named populations described in [the Work summary](../gs/status.md#the-work-summary). |
 
 Every list is capped at 20 with its own skipped count.
 

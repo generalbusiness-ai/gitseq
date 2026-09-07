@@ -1507,6 +1507,21 @@ pages, exact-path artifact pages, exact-item inspection, the whole-log review
 gate, the bounded staleness-wave summary, and the bounded join of a caller's
 live priority inbox.
 
+The named commitment populations a reader counts work in — open, completed,
+closed-not-completed, stale, with the open lifecycle breakdown and the
+commitment total — have exactly one owner, `workroom.WorkOf`. It sits beside
+the lifecycle words it groups, and it is derived on demand from the projected
+commitments rather than projected as a field: the snapshot shape, the fold
+profile and the cached projection contract are unchanged by it. Every surface
+reads that one result and none re-derives it: the bounded status page and
+summary totals, the complete status page and its JSON, the resident's complete
+status, and the MCP status and wait totals, which state `scope` because they
+are workroom-wide beside lanes that are not. The lifecycle counts stay beside
+the populations, because the lifecycle word `open` and the population named
+`open` are different numbers and a reader needs both. `approved_not_landed` is
+that owner's landing-audit count, read from it rather than totalled a second
+time.
+
 The resident and MCP artifact contract remains the live exact-path page. A
 separate CLI selection asks the same page-building core for one of four
 lifecycle states — live, retired, succeeded, all — or for artifacts whose
@@ -2123,6 +2138,21 @@ Three consequences follow, and all of them are visible in `ui/`:
   Because a withdrawal names the record it retires rather than a basis, it
   takes no operator citation at all.
 
+Counting is the case where reading and combining is not enough on its own. The
+browser's populations are a lawful layer 7 combination of projected lifecycle
+fields, and for as long as they were only that, the board and the command line
+printed different numbers for one frontier and neither was wrong. The relation
+is now named at layer 5 by `workroom.WorkOf` and published on the status
+answers. The browser still selects its own rows, because a tab count must be
+exactly the rows that tab renders under the current search, which is a
+presentation question layer 5 cannot answer. What it may not do is disagree:
+`internal/wireparity/work_populations_test.go` and
+`ui/test/work-populations.test.mjs` count one frozen projection with the Go
+owner and with the browser's own selector and require the same answer, with
+controls that drop a member and regroup one surface and watch the comparison
+fail. A scoped count says it is scoped rather than being compared with a
+workroom-wide one.
+
 An affordance is also bounded by authority. The browser offers a ratification
 only when the fold's own published rule says this actor may make it: the
 satisfier **projected on the target statement**, which is the one admitted with
@@ -2191,7 +2221,7 @@ It introduces no replacement Gitseq command or automatic binding migration.
 | `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its pre-append admission callback receives envelope facts, not payload meaning; its scheduled post-dedup application admission hook is handed the payload bytes and attachments uninterpreted so the application can judge the submission that would extend the log, and still assigns no meaning to them. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
 | `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
-| `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
+| `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness, and the one derivation of the named commitment populations every surface counts work with. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log, and the one advisory-lock primitive that serializes a read-modify-write on a named file in that directory. It imports no application profile and has no application ontology. |
 | `host` | Durable application host, public surface | Exports binding at init, configured and attached-clone opening against a declared application, local-custody append, prepare/submit for externally actor-signed acts, and the verified record stream — and no projection, because the outside application owns its fold. It delegates canonical signing-byte construction to `internal/intent`, so no public host API names the kernel's domain tag. Attached opening receives a genesis and sequencer-key path through public fields, verifies before interpreting, and never initializes or exposes `internal/apphost.Config`. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. Endorsement has two entry points over one validation and encoding site: `Endorse` signs with a held actor key, and `PrepareEndorsement` fills the genesis, validates the anchor, BIP-340-verifies any carried Nostr proof, and returns a `host.PreparedAct` for an actor to sign outside the process, taking and retaining no actor private key and writing nothing. |

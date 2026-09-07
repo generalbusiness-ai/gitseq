@@ -202,6 +202,23 @@ export interface Act {
   reason: string;
 }
 
+// The workroom-wide named commitment populations, counted in Go by
+// workroom.WorkOf and carried on the complete status. The board keeps its own
+// row selector for tab counts, and ui/test/work-populations.test.mjs holds the
+// two to the same answer.
+export interface WorkSummary {
+  scope: string;
+  commitments: number;
+  open: number;
+  open_lifecycles: Record<string, number>;
+  completed: number;
+  closed_not_completed: number;
+  stale: number;
+  other?: number;
+  reasoning_moved: number;
+  artifact_landing_audit: number;
+}
+
 export interface Projection {
   decisions: Decision[];
   acts: Act[];
@@ -328,6 +345,9 @@ export interface Rebuild {
 export interface Status {
   durable: DurableSnapshot;
   live: LiveSnapshot;
+  // Absent from a resident that predates the shared count; the board derives
+  // its own populations either way.
+  work?: WorkSummary;
   cursor: Cursor;
   trust_boundary: string;
   // The fold profile this status was produced under: an opaque identifier

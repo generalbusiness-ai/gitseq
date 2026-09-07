@@ -118,6 +118,11 @@ export function RequestList({
   // the operator cannot tell, from a filtered screen, what they are not
   // seeing, and hiding 17 stalled claims to rescue a phrase would be that
   // mistake in miniature. The count still opens to exactly the rows it counts.
+  // Every number on this screen counts the rows the search left, so the
+  // headline says when it is scoped, and names the workroom-wide total it came
+  // from.
+  const searching = query.trim().length > 0;
+  const inWorkroom = populations[population].length;
   const headline = {
     live: `${rows.length} open ${rows.length === 1 ? "request" : "requests"}`,
     moved: `${rows.length} resting on reasoning that has moved`,
@@ -126,7 +131,7 @@ export function RequestList({
     done: `${rows.length} completed`,
     closed: `${rows.length} closed, not completed`,
     ratification: `${rows.length} ${rows.length === 1 ? "act awaits" : "acts await"} ratification`,
-  }[population];
+  }[population] + (searching ? `, matching your search — ${inWorkroom} in the workroom` : "");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
