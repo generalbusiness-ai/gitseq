@@ -1,0 +1,223 @@
+{
+  "checked_utc": "2026-09-07T01:16:33.769313+00:00",
+  "frontier": "2500bf57e0dfc5c9de6482788d51d6c7e7e233f8",
+  "main": "1fba3d550091f720e48521bb89f222bd4c218af8",
+  "requests": [
+    {
+      "sequence": 5795,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a56bea442dfd4ccd04df4090ec822ea02a1f6d58",
+      "text": "Reduce per-record cold audit cost, or let gs verify use a verified checkpoint.",
+      "conditions": "Measured at main 316d5aeb (docs/reference/performance.md): a cold full audit costs 55.4 ms and exactly 2.00 git subprocesses per record, linear to within 0.5% across depths 100/257/500, and 242.3 s with 11,581 git subprocesses for this repository's 5,787 records. That misses the PREVIEW cold-verify target of 5 min at 50,000 records (extrapolates to ~46 min, 9.2x over) and the FIRST-PRODUCTION target of 60 min at 500,000 records (~7.7 h, 7.7x over). Suspected bounding component: two git subprocess spawns per record on the audit path. Satisfied when a cold audit of 50,000 records completes within 5 min on comparable hardware without weakening any verification invariant, with the subprocess-per-record ratio reported.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a56bea442dfd4ccd04df4090ec822ea02a1f6d58",
+          "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3cde09b9b1e3b15ed06c832f1ed4f29e3a75efbe",
+          "status": "cancelled"
+        }
+      ],
+      "targeting_acts": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54aa39abb1b0a31f5186d3bed43efb654dac080a",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a56bea442dfd4ccd04df4090ec822ea02a1f6d58",
+          "text": "Withdraw: the cold-audit optimization merged as 06594a3b satisfies this. A cold audit of this repository now takes 3.79 s and 6 git subprocesses, a constant rather than two per record, against 242.3 s and 11,581 when the request was filed. Both envelopes pass.",
+          "verdict": "effective"
+        }
+      ]
+    },
+    {
+      "sequence": 5802,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a7b2fd34784a39f546fc719f103272ca0e92414",
+      "text": "Bound or compact the serialized checkpoint so a checkpoint can still exist at FIRST-PRODUCTION depth.",
+      "conditions": "Measured at main 316d5aeb (docs/reference/performance.md): the checkpoint blob grows about 2,169 B per record on this repository's payload mix (12,552,365 B at 5,786 records) and about 8,526 B per record on the synthetic fixture mix. The 256 MiB ceiling enforced in docs/reference/limits.md is therefore reached near 123,700 records at best and near 31,500 at worst. FIRST-PRODUCTION at 500,000 records needs about 1.06 GiB, 4.2x over the ceiling, so no checkpoint can be written there at all and every restart degrades to the full cold audit (~7.7 h). Suspected bounding component: checkpoint payload is O(depth) with no compaction or truncation. Satisfied when a workroom at 500,000 records can write and load a checkpoint within the 256 MiB ceiling, or the ceiling is deliberately revised with stated reasoning, without weakening what the checkpoint authenticates.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a7b2fd34784a39f546fc719f103272ca0e92414",
+          "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0bd37c718d5bb4307452303155c5b833149015a4",
+          "status": "cancelled"
+        }
+      ],
+      "targeting_acts": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f6ff03c05885bad8eb1a438f53558128cb5c9911",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a7b2fd34784a39f546fc719f103272ca0e92414",
+          "text": "Withdraw: the compact checkpoint format merged as d62e5e17 satisfies this. The v2 container holds this repository at 291 B per record against 2,169 B under v1, which puts 500,000 records at about 145 MB, inside the 256 MiB ceiling.",
+          "verdict": "effective"
+        }
+      ]
+    },
+    {
+      "sequence": 5805,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17516cf4c96b1a9ceaff787d2415713a0439a6fe",
+      "text": "Bound resident memory growth with sequence depth.",
+      "conditions": "Measured at main 316d5aeb (docs/reference/performance.md): resident RSS grows about 31 KB per record across harness depths 100 to 1,000, and the live resident holds 347 MiB at 5,786 records. That extrapolates to about 1.55 GB at PREVIEW's 50,000 records against a 1 GiB target, and about 15.5 GB at FIRST-PRODUCTION's 500,000 against 4 GiB; both miss. Suspected bounding component: the projection retains all application events in memory. Satisfied when a resident serving 50,000 records stays under 1 GiB peak RSS, with the per-record slope re-measured and reported.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17516cf4c96b1a9ceaff787d2415713a0439a6fe",
+          "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "addressed_to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "status": "withdrawn",
+          "stale": true
+        }
+      ],
+      "targeting_acts": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c164dde2f935d2ee940f8b934241541b50377a0",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17516cf4c96b1a9ceaff787d2415713a0439a6fe",
+          "text": "Superseded by the corrected resident-memory request, which replaces the unsupported 31 KB per record slope and PREVIEW miss with a measured 37 to 64 KB per record range that misses both envelopes throughout.",
+          "verdict": "effective"
+        }
+      ]
+    },
+    {
+      "sequence": 5943,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6dd1fbcf33de3579804c097ed39cb6b3b3a85944",
+      "text": "Bound resident memory growth with sequence depth (corrected replacement for 17516cf4).",
+      "conditions": "Replaces request 17516cf4, which asserted a 31 KB per record slope and a PREVIEW miss that the measurements did not support. Corrected evidence at main 529758ca (docs/reference/performance.md): resident RSS grows with depth because the linear-history projection retains every application event, but the slope is not pinned down. The one clean same-scenario pair, harness depths 100 and 257 at 29 MB and 39 MB, gives 63.7 KB per record over a short baseline; comparing depth 100 to depth 2,000 across scenarios gives 36.8 KB. PREVIEW therefore lands between 1.8 and 3.2 GB against a 1 GiB target and FIRST-PRODUCTION between 18 and 32 GB against 4 GiB, so both miss at every point in the range even though the slope is unsettled. Memory figures are the load-invariant ones on that page: two harness runs at load 3 and load 20 returned timings differing threefold and peak-memory figures identical to within one percent. Suspected bounding component: full retention of application events in the projection. Satisfied when the per-record slope is established by measurement across at least a decade of depth, and a resident serving 50,000 records stays under 1 GiB peak RSS.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6dd1fbcf33de3579804c097ed39cb6b3b3a85944",
+          "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:01fbeab5b7e667671c865da5a2a89faa6268b52a",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a4682cb259bb9cecab490fdc712887ded7aae3f",
+          "status": "satisfied",
+          "stale": true,
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main",
+          "legacy": true,
+          "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:157506a3e2633375dabfbbc9db4fc1b5ade181c0",
+          "candidate": "676de561be82e2a0106d2ee4fbee39bcb5d96fcb",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7201e2a835fe8ab10a7af093a2ae5505559b1ffe"
+        }
+      ],
+      "targeting_acts": []
+    },
+    {
+      "sequence": 6212,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f7e2f01622276e52c7b701679fb5579447febbdb",
+      "text": "Bound resident memory so a 500,000-record workroom fits the FIRST-PRODUCTION envelope.",
+      "conditions": "Measured at main adda28c8 (docs/reference/performance.md): warm resident peak RSS is 135 MB at depth 5,000, 937 MB at 50,000 and 9,183 MB at 500,000, a slope of about 17.8 KB per record. The memory work merged as 5fc9929c roughly halved the previous slope and brought PREVIEW inside its 1 GiB target at 937 MB, about 12 percent of headroom, so PREVIEW passes. FIRST-PRODUCTION still needs 9.18 GB against a 4 GiB target and is a direct measurement, not a projection: the 500,000-record figure was observed on a fixture, not extrapolated. Suspected bounding component: the linear-history projection retains every application event in memory, so residency is linear in depth with no eviction or paging. Satisfied when a resident serving 500,000 records stays under 4 GiB peak RSS, with the per-record slope re-measured and reported at 5,000, 50,000 and 500,000, and without weakening what the projection can answer.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f7e2f01622276e52c7b701679fb5579447febbdb",
+          "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:903820f362358b987e462223f1e459dfe6b37b8b",
+          "status": "cancelled"
+        }
+      ],
+      "targeting_acts": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f7203938d4dfe2cf747cb789846789e54a439294",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f7e2f01622276e52c7b701679fb5579447febbdb",
+          "text": "Withdrawn as a duplicate: planner's later corrected request a9047812191e5dea35f0fd6201f1f3aba4e9942a governs the same 500,000-record / under-4-GiB resident memory outcome on the live internal/kernel basis, and is the sole surviving implementation authority. Codex's stranded promise 903820f3 on this chain was already withdrawn by effective act 1cf3b21f. No work is lost; the old exploratory worktree remains as salvage only.",
+          "verdict": "effective"
+        }
+      ]
+    },
+    {
+      "sequence": 6288,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48b5c77f004f74cc277992f036db931bdacf6538",
+      "text": "Codex: bounded 500k resident-memory-lane child (full-rebuild stream to bound memory at depth 500k), measurement/bounding only, all signing/fold/CAS/verification/atomicity contracts preserved, on the current perf framework. Distinct from the fan-out proposal e5b88d52 (not gated on it). Claude reviews. Scope in body.conditions.",
+      "conditions": "Bounded child of the P2 scale-evidence work: the 500k resident-memory lane. Measure resident memory at depth 500,000 using a BOUNDED FULL-REBUILD STREAM \u2014 stream the rebuild so resident memory stays bounded rather than holding the full event set in memory \u2014 and record the evidence. Measurement-and-bounding only: preserve ALL contracts (actor signing, sequencer admission, verified-ref compare-and-swap, signature and bound verification, complete fold semantics, trusted-versus-projected digest equality, atomic publication); a leaner path that weakens any of them does not count. Use the current perfscenario / gitseq.performance framework on CURRENT main (the prior perf artifacts 6747209a and 68a90fdf are retired; build on the current perf head, not those). Retain and report fixture digest, head, environment, correctness digests, and the ranges so a nonlinear jump cannot disappear. Publish an exact artifact at the affected perf package path(s), and update docs/reference/performance.md if it records this lane. Obtain INDEPENDENT review by CLAUDE. Report ready-for-review against your promise with the exact head and artifact. This is a distinct scale-evidence dimension (resident memory) and is NOT gated on the fan-out metric proposal e5b88d52. Do not fold onto stale or out-of-main bases.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48b5c77f004f74cc277992f036db931bdacf6538",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "addressed_to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "status": "withdrawn"
+        }
+      ],
+      "targeting_acts": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f6808c598c551836d489c998e98615936b14951",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48b5c77f004f74cc277992f036db931bdacf6538",
+          "text": "Retired per codex: reissuing the 500k resident-memory-lane child on the correct live basis ad5dd1bf (internal/kernel), not b15de2f8. Unclaimed, no implementation began.",
+          "verdict": "effective"
+        }
+      ]
+    },
+    {
+      "sequence": 6307,
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9047812191e5dea35f0fd6201f1f3aba4e9942a",
+      "text": "Codex: corrected 500k resident-memory-lane child on the live internal/kernel artifact ad5dd1bf (replaces withdrawn 48b5c77f which used b15de2f8). Full-rebuild stream to bound memory at depth 500k; measurement/bounding only, all contracts preserved; claude reviews. Scope in body.conditions.",
+      "conditions": "Bounded child of the P2 scale-evidence work: the 500k resident-memory lane, reissued on the correct live basis ad5dd1bf (internal/kernel) per codex (replaces the withdrawn 48b5c77f which named b15de2f8). Measure resident memory at depth 500,000 using a BOUNDED FULL-REBUILD STREAM \u2014 stream the rebuild so resident memory stays bounded rather than holding the full event set in memory \u2014 and record the evidence. Measurement-and-bounding only: preserve ALL contracts (actor signing, sequencer admission, verified-ref compare-and-swap, signature and bound verification, complete fold semantics, trusted-versus-projected digest equality, atomic publication); a leaner path that weakens any of them does not count. Use the current perfscenario / gitseq.performance framework on current main. Retain and report fixture digest, head, environment, correctness digests and the ranges so a nonlinear jump cannot disappear. Publish an exact artifact at the affected package path(s) and update docs/reference/performance.md if it records this lane. Obtain INDEPENDENT review by CLAUDE. Report ready-for-review against your promise with the exact head and artifact. Distinct scale-evidence dimension (resident memory); not gated on the fan-out proposal e5b88d52. Do not fold onto stale or out-of-main bases.",
+      "current_lifecycles": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9047812191e5dea35f0fd6201f1f3aba4e9942a",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0277f3a38582179b75b4e1e60d73bff140d5c9d7",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:09e43f70a71f593b75d7f727a31b24f19d213303",
+          "status": "satisfied",
+          "stale": true,
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main",
+          "legacy": true,
+          "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d2ebb14a44317f73818d82edcc5f26d4db99ca86",
+          "candidate": "052db91d7170a8e969959bbd548fe1b160513094",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4cec683f48428f8add50f2fa8ecd51d1af8aa9a8"
+        }
+      ],
+      "targeting_acts": []
+    }
+  ],
+  "source_ancestry": [
+    {
+      "head": "06594a3b1940d8b91f437eeacd646c815da11555",
+      "ancestor_current_main": true
+    },
+    {
+      "head": "d62e5e1745241b9bc1bb0a811fe2802528b89076",
+      "ancestor_current_main": true
+    },
+    {
+      "head": "08b7c72c7cf32ade5288093b0a9acb3833cf7bb0",
+      "ancestor_current_main": true
+    },
+    {
+      "head": "052db91d7170a8e969959bbd548fe1b160513094",
+      "ancestor_current_main": true
+    },
+    {
+      "head": "d6843b483f3c079bad6e4e70b821d210571d35f6",
+      "ancestor_current_main": true
+    },
+    {
+      "head": "12d8ab5df6e405a5a4c8a79faf00cec563aa277f",
+      "ancestor_current_main": true
+    }
+  ],
+  "retained_memory": {
+    "path": "performance/retained/resident-memory-20260820-08b7c72c/",
+    "hashes": {
+      "evidence.json": "e074957c17a2a29ad95f9514e23316bedb9a269d990aadacea6a75d298a59f52",
+      "samples.jsonl": "c50f5e585696acdcd4879e4a11a892d9eec7d6af0d41fefb4e984b83322aac65",
+      "candidate.bench": "cdd3a75eac1984c79a0b323c1723f8ce1978da275bcfc1090604e4ef6721ec57"
+    },
+    "primary_count": 10,
+    "diagnostic_count": 5,
+    "all_matching_digests": true,
+    "primary_500k_peak_bytes": [
+      2684436480,
+      2709110784
+    ]
+  },
+  "disposition": "Do not revive completed resident-memory outcome: 5805 -> corrected5943 -> delivered preview and later6212 -> corrected6307 satisfied/landed4cec, reviewed052d merged d684. Old6288 was unclaimed wrong-basis predecessor. Cold audit5795/compact5802 source mergers are ancestors and compact was already separately audited, but this pass does not independently rerun original50k cold-audit or500k compact benchmarks. Broader missing envelope documentation/remaining five dimensions named7454 are a distinct unassigned-outcome investigation, not a failure of these landed implementations.",
+  "limits": [
+    "Historical memory evidence at exact08b, one linear one-actor cold_status fixture; not a current-profile/production-resource guarantee.",
+    "Retained file hashes and values verified, no newfulltier runtime run.",
+    "Current6307commitment independently inspected1775 effective satisfied/terminal-landed."
+  ]
+}
