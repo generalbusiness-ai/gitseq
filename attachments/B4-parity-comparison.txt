@@ -1,5 +1,0 @@
-$ python3 - (compares B1 Go owner output with B3 browser selector output, field by field)
-frontier c77283aa7f9d223cee5ada5357ac2530ae0b66af depth 20920
-Go owner   : {"artifact_landing_audit": 78, "closed_not_completed": 959, "commitments": 2515, "completed": 1539, "open": 5, "open_lifecycles": {"awaiting-authorization": 0, "awaiting-landing": 0, "awaiting-review": 3, "open": 1, "promised": 1, "reported": 0}, "reasoning_moved": 3, "scope": "workroom", "stale": 12}
-rows.ts    : {"artifact_landing_audit": 78, "closed_not_completed": 959, "commitments": 2515, "completed": 1539, "open": 5, "open_lifecycles": {"awaiting-authorization": 0, "awaiting-landing": 0, "awaiting-review": 3, "open": 1, "promised": 1, "reported": 0}, "reasoning_moved": 3, "scope": "workroom", "stale": 12}
-identical  : True

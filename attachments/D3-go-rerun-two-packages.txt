@@ -1,2 +1,0 @@
-$ go test -count=1 -timeout 30m ./internal/service/ ./cmd/gs/   (2026-09-07T12:03:36Z, re-run of the two packages that failed under machine load; system load average was ~20-35 during D2)
-ok  	github.com/generalbusiness-ai/gitseq/internal/service	35.885s

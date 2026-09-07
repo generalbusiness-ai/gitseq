@@ -1,6 +1,0 @@
-$ curl -s http://127.0.0.1:7777/v0/status  (fetched 2026-09-07T11:27:00Z)
-frontier head c77283aa7f9d223cee5ada5357ac2530ae0b66af
-depth 20920
-commitments 2515
-top-level keys ['cursor', 'durable', 'live', 'profile', 'trust_boundary']
-has top-level work field: False
