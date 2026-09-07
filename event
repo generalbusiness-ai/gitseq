@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0fcde3789f49dd8e9c21ccb1adcb34376681e215","text":"Merge retired a covered predecessor; the successor is at internal/statusview/testdata/bounded-summary-golden.json."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1613cf033d3b3794f9600110f2389be7c7fe0ec7","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/api.ts."}
