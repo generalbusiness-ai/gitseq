@@ -1,0 +1,287 @@
+{
+  "checked_utc": "2026-09-07T09:11:43.169536+00:00",
+  "scope": "Read-only exact ancestry inventory; not a cleanup authorization or semantic equivalence audit of rebased branches. No worktrees changed.",
+  "rows": [
+    {
+      "path": "/Users/hughpyle/play/gitseq-ui-notif",
+      "head": "dc61ffb0cf366a0a182190fda64bc72f090e04aa",
+      "branch": "refs/heads/request/ui-notification-dropdown",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/append-batching-design",
+      "head": "b8e6bbe4b5cd9ba0d8cdf50fc65959993516baf2",
+      "branch": "refs/heads/request/append-batching-design",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/canonical-authority-eventids",
+      "head": "02558e8d62781fa217ec9d96ee4a1983eecda7ab",
+      "branch": "refs/heads/request/canonical-authority-eventids",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [
+        " M SKILL.md",
+        " M cmd/gitseq-mcp/digest.go",
+        " M cmd/gitseq-mcp/digest_test.go",
+        " M cmd/gitseq-mcp/main_test.go",
+        " M cmd/gs/main.go",
+        " M cmd/gs/main_test.go",
+        " M docs/reference/architecture.md",
+        " M docs/reference/event-identifiers.md",
+        " M docs/reference/gs/merge.md",
+        " M docs/reference/gs/ratify.md",
+        " M docs/reference/gs/supersede.md",
+        " M docs/reference/mcp/ratify.md",
+        " M docs/reference/mcp/state.md",
+        " M docs/reference/mcp/supersede.md",
+        " M internal/app/app.go",
+        " M internal/app/app_test.go"
+      ],
+      "clean": false,
+      "commit_message": "Merge guarded unclaimed reassignment. New atomic CLI and MCP operations refuse stale, claimed, completed, or raced requests while preserving the generic kernel boundary.\n\nGitseq-Approval: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76d2a39db6397d58a27be73631cb66ddee506a88\nGitseq-Candidate: 4784ab98c92abe09e60ce0c65b384d13dd802f5b\nGitseq-Target-Pre-Head: bb24b5c12e65efa1fe70b63929731bf2304fd215\nGitseq-Retirements: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:008283768a4cd7139db4d46f4e0b928f959612f1\":\"internal/kernel\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1abb8bf7d1981634682cbba38a130a0fcbce41ab\":\"docs/README.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30ec805183086e2814fae0de82947995d868781f\":\"internal/app\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34a6da18b4d98f0390702cad9ccacc6b867772b2\":\"internal/kernel\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:60268bf5d8599867f3efe8ba6e1a1e8191128ea9\":\"docs/reference/gs/batch.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67d352d576cfcf4cdd552ff567a0df10ee13ad11\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70bc7fbef6788d76a34be77fe614beed7967629c\":\"docs/reference/gs/reassign-if-unclaimed.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ca4b615d2b0ebceeff06f92e4af81305e1cea4b\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:961ba196bc840ed29d7db656bfbb5f1050ba2f61\":\"SKILL.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:976b3200e52ae4849dac5c66bb2f3a9edf2ea071\":\"cmd/gs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a27668b9112717eafde2516d16387d8d50858e87\":\"internal/workroom\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a4dfedf5c87d0e916e7dc60049740185ea2233c9\":\"docs/reference/gs/supersede.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a4ea380fb225a9f4fd0faecf3ffe2ab783425b66\":\"docs/README.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a85c1cda95ced8caac1561f3e4a39bcce4472c63\":\"docs/concepts/work-loop.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a8b7650955fac1eff8b139b94c4df1b15d363977\":\"docs/reference/mcp/reassign_if_unclaimed.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b0389e27705813ddb41ee2352d8685ee6b8dc801\":\"cmd/gs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b26dfa10269466174d55be1980d7e922c12a48a7\":\"docs/reference/mcp/supersede.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c025077dc0e76eb434e3783ec8d3e220fcc735e2\":\"cmd/gitseq-mcp\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d51b87dd09bbfe2e63c3e2a4c2a263e9b53ec4d3\":\"cmd/gs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dcf8b2410cd9ad8bca7e9650bfbcceda2659c5f8\":\"cmd/gitseq-mcp\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e0cffc024422f62e32998878bcee7f99c3c586ef\":\"internal/workroom\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eefc6eede7ca226c61ad79e11867179c623ef3f0\":\"SKILL.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffaad8114b6de033d2634b5d603eccb2b5780267\":\"internal/app\"}\nGitseq-Successors: [\"SKILL.md\",\"cmd/gitseq-mcp\",\"cmd/gs\",\"docs/README.md\",\"docs/concepts/work-loop.md\",\"docs/reference/architecture.md\",\"docs/reference/gs/batch.md\",\"docs/reference/gs/reassign-if-unclaimed.md\",\"docs/reference/gs/supersede.md\",\"docs/reference/mcp/reassign_if_unclaimed.md\",\"docs/reference/mcp/supersede.md\",\"internal/app\",\"internal/kernel\",\"internal/workroom\"]\nGitseq-Left-Live: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:222d19f67f2d7d45ef7ecba6522c6ac04557d8be\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:352f2b9694890cf2024eae96b6b6224f7025aace\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1abf201be605a2765b39aa1b956dc18430e78bf8\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4ddcdc94cfced60c10f0093a5c49c3e3f4821a3d\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53131ac4d5e67070e43e9c335342aeaf8c411d64\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1abf201be605a2765b39aa1b956dc18430e78bf8\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5d42f1604e6906a08a048b1c74803e44babb0e8f\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:741129c509bd0e1d2016bf887c31b2299e31b5f6\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d222f944b87bac8ba81a5994cb39b78a5ac3810\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90f43d2bbbb8bdd1b88a4fac1a412bf1f06a3790\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d14e96fb65a69c43fcfeeb59ab320cebafe72492\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ce73d30548bc4949fb81b1b236e57e12c37026b\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3614d7e05be774a9b64ee4612882dd66991c73fc\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9f176c2feb9fbbd367190abfdb96e08f33481c4b\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3614d7e05be774a9b64ee4612882dd66991c73fc\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a38ff9369d4c564fd962fb00ca6eb0081f426f21\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3614d7e05be774a9b64ee4612882dd66991c73fc\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be7408a0b9a784e9f3625d8ae221eed6c85360b5\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2246b8002dd383ec627147eb670fc74b1c0d746\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1abf201be605a2765b39aa1b956dc18430e78bf8\"}}\nGitseq-Changed-Paths: [\"SKILL.md\",\"cmd/gitseq-mcp/main.go\",\"cmd/gitseq-mcp/main_test.go\",\"cmd/gitseq-mcp/reassign_if_unclaimed_test.go\",\"cmd/gs/main.go\",\"cmd/gs/main_test.go\",\"docs/README.md\",\"docs/concepts/work-loop.md\",\"docs/reference/architecture.md\",\"docs/reference/gs/batch.md\",\"docs/reference/gs/reassign-if-unclaimed.md\",\"docs/reference/gs/supersede.md\",\"docs/reference/mcp/reassign_if_unclaimed.md\",\"docs/reference/mcp/supersede.md\",\"internal/app/admission.go\",\"internal/app/app.go\",\"internal/app/app_test.go\",\"internal/app/reassign_if_unclaimed_test.go\",\"internal/kernel/kernel.go\",\"internal/kernel/kernel_test.go\",\"internal/workroom/fold.go\",\"internal/workroom/reassign_if_unclaimed_test.go\",\"internal/workroom/schema.go\"]\n\n"
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/citation-reanchor-v2",
+      "head": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "branch": "refs/heads/request/citation-reanchor-v2",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/current-tip-merges",
+      "head": "5c9291c0ff4058e3aec85cd25ab66c544034077e",
+      "branch": "refs/heads/merge/current-tip-releases",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [],
+      "clean": true,
+      "commit_message": "Speed up the MCP adapter test suite by reusing copied signed-workroom templates and running safe tests with controlled parallelism. The package now completes about 2.25 times faster while preserving timing-sensitive tests, isolation, race safety, and production behavior.\n\nGitseq-Approval: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2b48180c6196cb897177486166c3d8105b3d0d89\nGitseq-Candidate: 44f03f99809777f51da4797f12bc631601c26410\nGitseq-Target-Pre-Head: b265e44e089641594ccc090c0722e14ce4761862\nGitseq-Retirements: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:28b8da4fd8a21c5b8683e3dbdb620d7c7849d10d\":\"cmd/gitseq-mcp\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50c5708c284acf0e2ce27fbc15a9cddb0ea8f506\":\"cmd/gitseq-mcp\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a7d5a10175671908aa891f00b8273d048a850e9\":\"cmd/gitseq-mcp\"}\nGitseq-Successors: [\"cmd/gitseq-mcp\"]\nGitseq-Left-Live: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:217bd11278758f87634f8e6089742a49c704e803\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d68c07f3f82b70338b2e1faebe500d0d4c04ff5\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:339a73975861f05692f8c823459a5a61d89ea7e2\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d94c727233d9647f1fbd612034e48b19cd9f5ecb\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:39375465ba06b4e65413afd1556aa6989e57bdef\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41499424a6c3710bba39240862cd160e58f00e30\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d4db6a1f6c852096298aacd528ddab797b975da\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7f90d03f1bc101ede1d45a65d23ed86909548f55\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f5d5eb384b9331896476036bb4c8671505ac767\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:066c23828311c98520ea30bb367f7a2c9081297b\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bad13c73efae382b8d8290f10471c16de7452962\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea33697add9d56ca792a9062a0deac9ca6179efd\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3c1f60f385a31bd64fd454026c78d37e0f1dd7c0\"}}\nGitseq-Changed-Paths: [\"cmd/gitseq-mcp/ambient_git_test.go\",\"cmd/gitseq-mcp/custody_error_test.go\",\"cmd/gitseq-mcp/digest_test.go\",\"cmd/gitseq-mcp/late_actor_test.go\",\"cmd/gitseq-mcp/main_test.go\",\"cmd/gitseq-mcp/reassign_if_unclaimed_test.go\",\"cmd/gitseq-mcp/review_test.go\",\"cmd/gitseq-mcp/untrusted_advertisement_test.go\",\"cmd/gitseq-mcp/workspace_fixture_test.go\"]\n\n",
+      "ignored_inventory_exit": 0,
+      "ignored_status_lines": []
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/custody-reconcile",
+      "head": "2bb3616608465da06a22a1a562ed60252bec53e9",
+      "branch": "refs/heads/request/custody-lost-update-main",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [
+        "UU internal/app/app.go",
+        "A  internal/app/custody_lost_update_test.go",
+        "UU internal/apphost/config.go",
+        "A  internal/apphost/config_lock_other.go",
+        "A  internal/apphost/config_lock_unix.go",
+        "A  internal/apphost/config_update_test.go"
+      ],
+      "clean": false,
+      "commit_message": "Add a how-to page for keeping decision records, and index it. Teams that keep decision records as Markdown files have no record of who accepted one, who reviewed which text, or what replaced it. The page takes a reader from nothing through an adopted, reviewed, merged decision, then a revision and a replacement, and says plainly what colleagues who do not use gitseq still see: the files, the branches, and merge messages that read as the decision log. It is written for someone deciding whether the ceremony is worth it, and assumes no prior reading of the skill or the design note. Every command on the page was run before the page was written, in a throwaway workroom walked end to end, and the docset gate executes all twelve shell blocks on every test run. It documents only what exists today, states that an artifact cannot be ratified and that only the review requester ratifies a verdict, and says ordinary staleness is recorded rather than refused. docs/README.md gains a row for it.\n\nGitseq-Approval: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1996a13c60b2b964d6a8d64a2011227025714791\nGitseq-Candidate: 57fb98efc0f99b42616415f2307f244751a50117\nGitseq-Target-Pre-Head: b1b913cd7e0f5c7e3a84b9aca381b1553f0616ca\nGitseq-Retirements: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03700eddd12e91f90b8af98034777a44fc8dfc98\":\"docs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:243e91fb66c47f47f7648a6e7dbd305f11bbd02c\":\"docs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81bb86e90e261ea6e4d034e3a49aa25866c1e318\":\"docs\"}\nGitseq-Successors: [\"docs\"]\n\n"
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/docset-speedup",
+      "head": "4d5d62b6f2f23d7d3540f3c2ba07abcbea8d6067",
+      "branch": "refs/heads/request/docset-speedup",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [
+        " M internal/docset/model_test.go"
+      ],
+      "clean": false,
+      "commit_message": "Every MCP tool now declares the shape of the structuredContent it already returned.\n\nThe adapter has always returned structuredContent while saying nothing about its shape, so a client that decides whether to read it by looking for a declaration had nothing to look at. Each of the fourteen tools now carries an object-typed outputSchema, attached by one loop over the definitions so a tool added later cannot quietly miss it.\n\nThe declaration is deliberately permissive: additionalProperties stays true, because no key is present on every return path \u2014 each resident-backed tool has a degraded local-fold fallback of a different shape. A wrong schema would be worse than none, since a conformant client validates against it and rejects what does not match. Object is claimed because every success path encodes as an object and object stays readable to older protocol revisions; failures carry no structuredContent at all.\n\nThis is conformance and self-description, not the repair of an observed client. The report that prompted the work turned out to involve a client with no structuredContent support whatever, so nothing here claims to have fixed it.\n\nTwo tests hold the declaration honest: the schema's type and its permissiveness are each compared against the one admissible value, so any other value fails and names the tool, and real non-empty responses from five tools are validated against their own declared schema.\n\nGitseq-Approval: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bbd959d0e2da5498ddf9dc5234e1bf34c3a9a1\nGitseq-Candidate: a1aedca1ba6749053c0fd2d5aac1d326ebc4c9b8\nGitseq-Target-Pre-Head: 7811b4740ae473b7674867bd588fcbf002cdfd19\nGitseq-Retirements: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4e934059eab294cabd07b40da9c96114baa9dcee\":\"cmd/gitseq-mcp\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87672c8a14dbc28330292ec6ff87b2621f31d477\":\"cmd/gitseq-mcp\"}\nGitseq-Successors: [\"cmd/gitseq-mcp\"]\nGitseq-Left-Live: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:339a73975861f05692f8c823459a5a61d89ea7e2\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f3310a836ef3b36d64fbd994bd82c80281d7196\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:39375465ba06b4e65413afd1556aa6989e57bdef\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41499424a6c3710bba39240862cd160e58f00e30\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5b22ae0cf87ec8004cf367f1f234d846fd0b17d\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:467ad4832fb29f7462f19789e4b083654b300728\"}}\nGitseq-Changed-Paths: [\"cmd/gitseq-mcp/main.go\",\"cmd/gitseq-mcp/main_test.go\"]\n\n"
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/four-authorization-refusal-proofs",
+      "head": "8a3d127dd12eaf18af0657953c950794f6831fc5",
+      "branch": "refs/heads/request/four-authorization-refusal-proofs",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/lane-identity",
+      "head": "6131249c6a6f86cbd8893bf30f2d582f88bbb274",
+      "branch": "refs/heads/request/lane-identity-design",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/mcp-call-selectors",
+      "head": "6779fd7c62949adbc1397dddd6ef4609f5525620",
+      "branch": "refs/heads/request/mcp-call-selectors",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-authorization-boundary",
+      "head": "af2d512226e0a060c9857ff7ce090ca6ff599ef6",
+      "branch": "refs/heads/request/machine-merge-authorization",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-authorization-proofs-merge-recut",
+      "head": "f3e156ca5e56cd319340fb46ce62f1d1429101a0",
+      "branch": "refs/heads/request/merge-authorization-proofs-merge-recut",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [],
+      "clean": true,
+      "commit_message": "Add merge authorization refusal proofs\n\nPreserve the four mutation-sensitive refusal proofs for sealed witness mismatch, lane cardinality, ineffective ratification, and non-ancestor remeasurement on the final authorized base.\n\nRests-On: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53bb4fcc32388cd90d2e948dc161f95f5d41d088\n\n",
+      "ignored_inventory_exit": 0,
+      "ignored_status_lines": []
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-plan",
+      "head": "94efd037b210e896870c50953e5802e9575e433c",
+      "branch": "refs/heads/request/merge-plan",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-current",
+      "head": "1714a1055f7c6fdc7206f42394989173cc369271",
+      "branch": "refs/heads/request/merge-plan-current",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-current-repair",
+      "head": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796",
+      "branch": "refs/heads/request/merge-plan-current-repair",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-recut",
+      "head": "1567f850e9c1e57ed7efa04510026a435d112769",
+      "branch": "refs/heads/request/merge-plan-recut",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merge-plan-review-repair-2",
+      "head": "ac2b28dc2300249568714547e3d8061ca8667913",
+      "branch": "refs/heads/request/merge-plan-review-repair-2",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/merged-head-drain-design",
+      "head": "30768e3f5aabaee53074e26723f8e3644ef0d1f9",
+      "branch": "refs/heads/request/merged-head-drain-design",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/novice-cli-recut",
+      "head": "72b2e5e3ff2379a5a052c582f59c905fe0520bd4",
+      "branch": "refs/heads/request/novice-cli-recut",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [],
+      "clean": true,
+      "commit_message": "Merge the approved composed Performance evidence repair. Manual dispatch now resolves validated candidate references deterministically, and the performance worker uses resident-minted credentials; the scheduled comparison and read-only workflow permissions remain unchanged.\n\nGitseq-Approval: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0073d8581d825f57ddddebcee42b802d7800308c\nGitseq-Candidate: 825ce1a384928ae273ab5bf635cf1b3eba32a90e\nGitseq-Target-Pre-Head: 6831b6ba8af5fee3991a29dacd2b59d4e20b8756\nGitseq-Retirements: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1ac32bcf1d8a1954e09dd3c4b364e22b4d0b0129\":\"public_surface_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7ac26e187dc467d8385f1b4ae220fd0e21dea86c\":\"public_surface_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4ab9f055e95e5e27f106ad6d07a3082fe0996e2\":\".github/workflows/performance.yml\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb3d410a7ccb0c447b9ed0c95874c3eac1d421be\":\"internal/perfscenario\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f21ec11bff3fc4e7f050594c46e6c10b7edcb435\":\"internal/perfscenario\"}\nGitseq-Successors: [\".github/workflows/performance.yml\",\"internal/perfscenario\",\"public_surface_test.go\"]\nGitseq-Left-Live: {\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d17db57144f70310446d9b7247228c998852941\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d01ad588cad5c21d5ae7133c35e19731e9b5583\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e088c6df49336e6df8c2e045c0bc3c0a3448af5\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51d93563040ce1db13b52676e200f7cd7c6b24b0\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f64d4f280d017ea9a21ee3c6843627a6863da684\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d01ad588cad5c21d5ae7133c35e19731e9b5583\"}}\nGitseq-Changed-Paths: [\".github/workflows/performance.yml\",\"internal/perfscenario/run.go\",\"internal/perfscenario/run_test.go\",\"public_surface_test.go\"]\nGitseq-Staleness: approval stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07094e4dcf05ecc5c8b22596c78f811b374b3d68, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a0d24965507c881d63d6e35924ac9db11de1c21, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d6ebe678b1c6a15cc9037c5b2f12d6d0dab27a2, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:712ac26be04a1f0d64b3c714907769990977f0aa and 7 more\n\n",
+      "ignored_inventory_exit": 0,
+      "ignored_status_lines": []
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/novice-cli-usability",
+      "head": "e034ddcd3c84643447b34608238e1eef7b530c91",
+      "branch": "refs/heads/request/novice-cli-usability",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/performance-evidence-composed",
+      "head": "825ce1a384928ae273ab5bf635cf1b3eba32a90e",
+      "branch": "refs/heads/request/performance-evidence-composed",
+      "ancestor_of_main": true,
+      "status_exit": 0,
+      "status_lines": [],
+      "clean": true,
+      "commit_message": "Compose approved performance evidence repairs\n\nApply the independently approved manual dispatch ref resolution on top of the approved resident-minted credential repair. The combined branch now preserves both fixes for exact-head validation and workflow smoke testing.\n\nRests-On: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8566be88df728e570738c9fe546ea833e1705681\n\n",
+      "ignored_inventory_exit": 0,
+      "ignored_status_lines": [
+        "!! bin/",
+        "!! ui/node_modules/",
+        "!! ui/tsconfig.tsbuildinfo"
+      ]
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/previous-frontier-readers",
+      "head": "6c86293453817f0eeea2a195dfc1392e112b5556",
+      "branch": "refs/heads/request/previous-frontier-readers",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/readme-positioning",
+      "head": "1f80d38427495199e6ed5c471f5b341bea912ed8",
+      "branch": "refs/heads/request/readme-positioning",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/resident-authority-writer-boundary",
+      "head": "d3e133c47347e1e2cb4aea687f09df942c605d3f",
+      "branch": "refs/heads/request/resident-authority-writer-boundary",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/resident-claim-lifecycle",
+      "head": "36d91a708be16d72e01da62396bf628273a4318b",
+      "branch": "refs/heads/request/resident-claim-lifecycle",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/resident-claim-lifecycle-review-repair",
+      "head": "4856eaf27a94f50b111f21730fcab6ba55273802",
+      "branch": "refs/heads/request/resident-claim-lifecycle-review-repair",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/security-gates",
+      "head": "9edeec9f184bb367efbce1835258c820031b464c",
+      "branch": "refs/heads/request/repo-security-gates",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/source-preview-windows",
+      "head": "1493505caa751a09227932ac195c40b202207181",
+      "branch": "refs/heads/request/source-preview-windows",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession",
+      "head": "64bfbde9e2514ce41714f5eec1cc747d94d75eb1",
+      "branch": "refs/heads/request/specific-path-succession",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession-carried",
+      "head": "a3088b1736365c75f37360843139ad5bc7cc2662",
+      "branch": "refs/heads/request/specific-path-succession-carried",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/specific-path-succession-current",
+      "head": "44d8d59f368082ec19fec003497fc3d39306570d",
+      "branch": "refs/heads/request/specific-path-succession-current",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/staleness-plan-recovery",
+      "head": "ee7bf5e36f822cab482306f043af4cea900ef527",
+      "branch": "refs/heads/request/staleness-plan-recovery",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/toolbar-departed-courtesy",
+      "head": "9972d165452ade596ba7bfbed1fcd0e8e82ed391",
+      "branch": "refs/heads/request/toolbar-live-participant-current",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/toolbar-ratification-provenance",
+      "head": "64a78663edada38121bf5d20e222020e4fc358be",
+      "branch": "refs/heads/request/toolbar-ratification-provenance",
+      "ancestor_of_main": false
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-worktrees/toolbar-ratification-review-repair",
+      "head": "27e43714685992e2d09441e255f3048a7f58dc1b",
+      "branch": "refs/heads/request/toolbar-ratification-review-repair",
+      "ancestor_of_main": false
+    }
+  ],
+  "observed_cwd_users": {
+    "lsof_exit": 0,
+    "matches": [],
+    "limit": "Current cwd observation only; absence is not proof against future use or open files."
+  }
+}
