@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8aacbc62e22ea5d26644cbf0496ca5faf3871980","text":"Merge retired a covered predecessor; the successor is at ui/test/fixtures/work-populations.json."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90b3bb04aa4da477776f732fe6c820730303c1d1","text":"Merge retired a covered predecessor; the successor is at internal/workroom/render.go."}
