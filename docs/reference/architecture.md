@@ -1641,7 +1641,12 @@ head; absence never falls back to main or the worktree. Layer 1 supplies bounded
 hash-verified immutable commit/tree/blob reads, without Git replacements,
 filters, symbolic links or submodules. The endpoint admits only records in the
 resident's verified projection, applies same-origin JSON checks and bounded
-input, concurrency, time, metadata, text and listing limits. React renders
+input, concurrency, time, metadata, text and listing limits. Text is answered
+in windows: the layer-1 read budget (4 MiB of one verified blob) is separate
+from what one answer carries (at most 400 lines and 64 KiB, lines cut at
+4 KiB); windows are a fixed partition of the file, the window is the one
+holding the cited line or an explicit start, and a partial answer says so
+with its real line range and neighbours. React renders
 Markdown and source as inert text with safe links. These additions change no
 kernel, fold, custody, signing or completion authority. [Reading notes, source
 files, and evidence](reading-view.md) specifies the read limits and navigation.

@@ -406,14 +406,21 @@ async function json<T>(response: Response): Promise<T> {
   return value as T;
 }
 
+export interface PreviewWindow {
+  start: number; end: number; total: number; partial: boolean;
+  previous?: number; next?: number; truncated?: number[];
+}
 export interface PreviewResponse {
   repo: string; event: string; commit?: string; path?: string;
   status: string; message?: string; content?: string;
   entries?: string[]; attachments?: string[]; omitted?: number; heads?: string[]; limit: number;
+  // size is the verified file's length; window says which of its lines
+  // content carries, and is partial unless it is the whole file.
+  size?: number; window?: PreviewWindow;
 }
 
 export const api = {
-  preview: (input: { event: string; path?: string; commit?: string; attachment?: string }, signal?: AbortSignal) =>
+  preview: (input: { event: string; path?: string; commit?: string; attachment?: string; line?: number; start?: number }, signal?: AbortSignal) =>
     fetch("/v0/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal })
       .then((r) => json<PreviewResponse>(r)),
   status: () => fetch("/v0/status", { cache: "no-store" }).then((r) => json<Status>(r)),

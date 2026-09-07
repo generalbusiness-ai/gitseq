@@ -29,16 +29,33 @@ func TestPreviewImmutableObjectsAndBounds(t *testing.T) {
 			}
 			blob := run([]byte("exact source\n"), "hash-object", "-w", "--stdin")
 			large := run(bytes.Repeat([]byte("x"), PreviewContentLimit+1), "hash-object", "-w", "--stdin")
-			tree := run([]byte(fmt.Sprintf("100644 blob %s\tsource.go\n100644 blob %s\tlarge.txt\n120000 blob %s\tlink\n", blob, large, blob)), "mktree")
+			// The read budget is a fixed 4 MiB contract, so the boundary
+			// fixtures are literal sizes rather than derived from the
+			// constant: a raised constant must fail here, not move the test.
+			atBudget := run(bytes.Repeat([]byte("x"), 4194304), "hash-object", "-w", "--stdin")
+			huge := run(bytes.Repeat([]byte("x"), 4194305), "hash-object", "-w", "--stdin")
+			tree := run([]byte(fmt.Sprintf("100644 blob %s\tsource.go\n100644 blob %s\tlarge.txt\n100644 blob %s\tatbudget.txt\n100644 blob %s\thuge.txt\n120000 blob %s\tlink\n", blob, large, atBudget, huge, blob)), "mktree")
 			commit := run([]byte("tree "+tree+"\nauthor Test <test@example.invalid> 1 +0000\ncommitter Test <test@example.invalid> 1 +0000\n\nsource\n"), "hash-object", "-t", "commit", "-w", "--stdin")
 			got, err := store.Preview(ctx, format, commit, "source.go")
 			if err != nil || string(got.Content) != "exact source\n" {
 				t.Fatalf("source: %+v %v", got, err)
 			}
+			// A file above the old whole-file ceiling is read and verified in
+			// full within the read budget; one above the budget is refused
+			// before any content is returned.
+			if got, err := store.Preview(ctx, format, commit, "large.txt"); err != nil || len(got.Content) != PreviewContentLimit+1 {
+				t.Fatalf("large within budget: %d %v", len(got.Content), err)
+			}
+			if PreviewReadBudget != 4194304 {
+				t.Fatalf("read budget is %d, not the documented 4 MiB", PreviewReadBudget)
+			}
+			if got, err := store.Preview(ctx, format, commit, "atbudget.txt"); err != nil || len(got.Content) != 4194304 {
+				t.Fatalf("exactly 4 MiB must read: %d %v", len(got.Content), err)
+			}
 			for _, tc := range []struct {
 				path string
 				want error
-			}{{"absent.go", ErrPreviewMissing}, {"link", ErrPreviewType}, {"large.txt", ErrPreviewLimit}} {
+			}{{"absent.go", ErrPreviewMissing}, {"link", ErrPreviewType}, {"huge.txt", ErrPreviewLimit}} {
 				_, err := store.Preview(ctx, format, commit, tc.path)
 				if !errors.Is(err, tc.want) {
 					t.Errorf("%s: %v", tc.path, err)

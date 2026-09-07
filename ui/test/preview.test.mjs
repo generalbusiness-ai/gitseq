@@ -34,7 +34,14 @@ test("encoded event/focus and preview links round-trip; malformed encoding prese
  const damaged=parseAddress(`#/thread/${encodeURIComponent(event)}/%E0%A4%A`);
  assert.equal(damaged.event,event);assert.match(damaged.error,/malformed/);
  const address={kind:"notes",preview:{event,path:"docs/a b.md",commit:head,line:12}};
- assert.deepEqual(parseAddress(formatAddress(address)),{...address,preview:{...address.preview,attachment:undefined}});
+ assert.deepEqual(parseAddress(formatAddress(address)),{...address,preview:{...address.preview,attachment:undefined,start:undefined}});
+ // A window start rides in the address so reload, Back and Forward return
+ // to the same window; a malformed one is dropped, not guessed.
+ const windowed={kind:"notes",preview:{event,path:"cmd/gs/main_test.go",commit:head,line:726,start:401}};
+ assert.match(formatAddress(windowed),/from=401/);
+ assert.deepEqual(parseAddress(formatAddress(windowed)),{...windowed,preview:{...windowed.preview,attachment:undefined}});
+ assert.equal(parseAddress(`#/notes?preview_event=${encodeURIComponent(event)}&file=a.go&from=0`).preview.start,undefined);
+ assert.equal(parseAddress(`#/notes?preview_event=${encodeURIComponent(event)}&file=a.go&from=12345678`).preview.start,undefined);
  const broken=parseAddress(`#/thread/${event}?preview_event=%XX`);
  assert.equal(broken.event,event);assert.match(broken.error,/malformed/);assert.equal(broken.preview,undefined);
 }));
