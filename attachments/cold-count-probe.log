@@ -1,5 +1,0 @@
-=== RUN   TestCodexColdSnapshotsSpendGitProcesses
-    codex_headwatch_probe_test.go:21: actual cold snapshot processes: refs=7 all=21
---- PASS: TestCodexColdSnapshotsSpendGitProcesses (0.94s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/service	1.298s
