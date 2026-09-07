@@ -1,0 +1,114 @@
+[
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:267a45b992009b16e0476d087c7970338bc396b5",
+    "path": "internal/service/headwatch.go",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:198831671598ddcba694eed99c5c21746c8f2d8f",
+    "path": "internal/service/headwatch_test.go",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dda5f78b5d50bb5440d221638116a8ac961f0d64",
+    "path": "internal/service/headwatch_evidence_test.go",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4dfbcc74d0ab1639758ac36f0a06c8216fb609f9",
+    "path": "performance/head-wait-before.json",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a5581af839f281009b5c426f189dc2c9389dd54",
+    "path": "performance/head-wait-after.json",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:12b7ec3225e1677858c1e9285b24a833f21ced30",
+    "path": "ui/src/lib/rebuild.ts",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a4b91a52d49a43054c3ad988d976f444e54754e",
+    "path": "ui/src/lib/store.ts",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4031b1af5aaea51cef0f62991448d6f422c6385d",
+    "path": "ui/src/components/TopBar.tsx",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:22c9ee7b9fbc2ffc080c0fb01e81e96931829437",
+    "path": "ui/test/rebuild.test.mjs",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:29a7d0e0b318538898a851e0d5e82043f9083e01",
+    "path": "internal/service/uidist/index.html",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14106e89a4cffa3b07c7460f40c73f2dd7029367",
+    "path": "internal/service/uidist/assets/index-CYGLj0Sf.js",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b5e522348845f5ffd08d6a15b2e6cab4f49af377",
+    "path": "internal/service/server.go",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eaaad48c5fb1572e7ddccf4d7c989a97975a3dad",
+    "path": "performance/HEAD-WAIT.md",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a28e2f7aeafc1a3cf954988bc54143e9c81eb931",
+    "path": "performance/README.md",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:514ed45f4bf1f7c795ae87dc3f49ec566fdc9c93",
+    "path": "docs/reference/performance.md",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dfe52636ff56a35019f2eab74ae524122967a981",
+    "path": "docs/reference/mcp/wait.md",
+    "status": "ready",
+    "head": "740672718b71bef8da5db651dfbcdc9dfd3d50af",
+    "byte_equal": true
+  }
+]

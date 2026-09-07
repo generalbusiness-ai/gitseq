@@ -1,0 +1,22 @@
+[
+  {
+    "mutation": "clock-update",
+    "caught": true,
+    "log": "/tmp/git144-740672-mutant-clock-update.log"
+  },
+  {
+    "mutation": "shared-wait",
+    "caught": true,
+    "log": "/tmp/git144-740672-mutant-shared-wait.log"
+  },
+  {
+    "mutation": "last-release-cancel",
+    "caught": true,
+    "log": "/tmp/git144-740672-mutant-last-release-cancel.log"
+  },
+  {
+    "mutation": "retirement-barrier",
+    "caught": true,
+    "log": "/tmp/git144-740672-mutant-retirement-barrier.log"
+  }
+]

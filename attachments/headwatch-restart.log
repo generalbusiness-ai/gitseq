@@ -1,0 +1,9 @@
+--- FAIL: TestCodexHeadWatchRapidRetirementChainDoesNotOverlap (0.00s)
+    codex_headwatch_restart_probe_test.go:28: third clock began a read while the first retired read was still active
+--- FAIL: TestCodexHeadWatchRapidRetirementChainDoesNotOverlap (0.00s)
+    codex_headwatch_restart_probe_test.go:28: third clock began a read while the first retired read was still active
+--- FAIL: TestCodexHeadWatchRapidRetirementChainDoesNotOverlap (0.00s)
+    codex_headwatch_restart_probe_test.go:28: third clock began a read while the first retired read was still active
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/service	0.316s
+FAIL
