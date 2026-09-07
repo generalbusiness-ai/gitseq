@@ -1,0 +1,34 @@
+[
+  {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8566be88df728e570738c9fe546ea833e1705681",
+    "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f922f904dd1131ac164ceb4ace99a4eaed56f5d",
+    "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4ab9f055e95e5e27f106ad6d07a3082fe0996e2",
+    "status": "satisfied",
+    "stale": true,
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "legacy": true,
+    "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0073d8581d825f57ddddebcee42b802d7800308c",
+    "candidate": "825ce1a384928ae273ab5bf635cf1b3eba32a90e",
+    "terminal": "landed",
+    "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eda06dc653c402799eb1e43c5eeccb026a129350"
+  },
+  {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53bb4fcc32388cd90d2e948dc161f95f5d41d088",
+    "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:22880b4af9df82b14079193a6f2cf4fa89bcf2b0",
+    "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e04c301339cbb5f4825ae054991fa9ba65d70507",
+    "status": "satisfied",
+    "stale": true,
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "legacy": true,
+    "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e510172a366076d5e1672dceb02f06178d5a600e",
+    "candidate": "f3e156ca5e56cd319340fb46ce62f1d1429101a0",
+    "terminal": "landed",
+    "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:15dea01d5e6f80b80522f0b21730cf8cad3893b3"
+  }
+]
