@@ -2366,6 +2366,20 @@ func (w *Workspace) EventID(commit string) string {
 //
 // Running is false when no audit is in flight, which is the ordinary warm case
 // — callers should stay quiet then rather than render a finished progress bar.
+// Profile names the fold this process interprets with: the application and
+// its fold version, fixed for the life of the binary. A reader that kept a
+// status from an earlier process compares the two; a different profile means
+// the retained projection was produced under a contract this binary no longer
+// implements, and must not be shown. The value is an opaque identifier, not
+// a version to parse.
+func (w *Workspace) Profile() string {
+	selected, err := w.interpreter()
+	if err != nil {
+		return ""
+	}
+	return selected.application + "@" + selected.foldVersion
+}
+
 func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
 	flight := w.flight.Load()
 	if flight == nil {

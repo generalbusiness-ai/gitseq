@@ -43,7 +43,7 @@ test("a probe keeps one request in flight and drops answers that arrive after it
     assert.equal(pending.length, 2, "the next tick after an answer starts the next request");
     pending[1]({ running: false });
     await tick(15);
-    assert.deepEqual(reported.at(-1), undefined, "a resident no longer rebuilding clears the qualification");
+    assert.deepEqual(reported.at(-1), { running: false }, "a resident no longer rebuilding is still reported, so its profile can be compared");
     assert.ok(pending.length >= 3, "a request is outstanding when the wait returns");
   } finally {
     stop();

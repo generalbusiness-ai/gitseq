@@ -41,8 +41,10 @@ export function useWorkroom(): Workroom {
     let cursor: Cursor | undefined;
     let stopProbe: () => void = () => {};
 
+    let retainedProfile: string | undefined;
     const apply = (next: Status) => {
       if (stopped) return;
+      retainedProfile = next.profile;
       setStatus(next);
       setOffline(false);
       cursor = next.cursor;
@@ -70,7 +72,22 @@ export function useWorkroom(): Workroom {
             // the probe before the status is applied is what keeps a late
             // answer from qualifying the newer status; the cleanup below
             // stops it too.
-            stopProbe = probeRebuild(api.rebuild, (next) => !stopped && setRebuilding(next));
+            stopProbe = probeRebuild(api.rebuild, (next) => {
+              if (stopped) return;
+              setRebuilding(next.running ? next : undefined);
+              // A resident answering under a different fold profile is a
+              // binary whose contract the retained status does not meet,
+              // whether it is auditing from cold or re-interpreting a signed
+              // checkpoint with nothing "running". Drop the status: the page
+              // then shows the rebuild notice, as a new reader would, until
+              // the wait answers with one this process produced. Only a
+              // report that names a profile can say this; an older resident
+              // that names none changes nothing.
+              if (next.profile && retainedProfile && next.profile !== retainedProfile) {
+                retainedProfile = undefined;
+                setStatus(undefined);
+              }
+            });
             try {
               const wait = await api.wait(cursor);
               stopProbe();

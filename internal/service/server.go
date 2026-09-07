@@ -53,6 +53,11 @@ type Status struct {
 	Cursor        Cursor         `json:"cursor"`
 	Inbox         *nexus.Inbox   `json:"inbox,omitempty"`
 	TrustBoundary string         `json:"trust_boundary"`
+	// Profile is the fold profile this answer was produced under. A reader
+	// holding this status across a rebuild compares it with the rebuild
+	// report's profile: a different one means the retained projection is
+	// no longer interpretable by the process now running.
+	Profile string `json:"profile"`
 }
 
 // SummaryStatus is the bounded resident response used by the default CLI.
@@ -205,7 +210,7 @@ func (s *Server) statusFromLive(ctx context.Context, observation nexus.Observati
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture}
+	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture, Profile: s.workspace.Profile()}
 	if includeInbox {
 		inbox := observation.Inbox
 		status.Inbox = &inbox
@@ -542,6 +547,9 @@ type rebuildReport struct {
 	Running  bool `json:"running"`
 	Verified int  `json:"verified,omitempty"`
 	Total    int  `json:"total,omitempty"`
+	// Profile is the fold profile of the process doing the rebuild, the same
+	// identifier a status carries, so a retained status can be compared.
+	Profile string `json:"profile"`
 }
 
 // handleRebuild answers while the rebuild it reports on is still running, which
@@ -556,7 +564,7 @@ type rebuildReport struct {
 // would not be.
 func (s *Server) handleRebuild(writer http.ResponseWriter, _ *http.Request) {
 	progress, running := s.workspace.RebuildProgress()
-	write(writer, rebuildReport{Running: running, Verified: progress.Verified, Total: progress.Total}, nil)
+	write(writer, rebuildReport{Running: running, Verified: progress.Verified, Total: progress.Total, Profile: s.workspace.Profile()}, nil)
 }
 
 type presenceRequest struct {

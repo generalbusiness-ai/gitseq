@@ -24,10 +24,12 @@ const { act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { createServer } = await import("vite");
 
-const status = (head, depth) => ({
+const status = (head, depth, profile = "app@fold-1") => ({
   durable: { genesis: "genesis", head, depth, projection: { decisions: [], acts: [], statements: [], commitments: [], artifacts: [], actors: {}, provenance: {} } },
   live: { cursor: { generation: "g", position: depth }, presence: {}, activity: {}, conversations: [] },
   cursor: { frontier: [{ genesis: "genesis", head, depth }], live: { generation: "g", position: depth } },
+  trust_boundary: "trusted-process",
+  profile,
 });
 const reply = (value) => ({ ok: true, json: async () => value });
 
@@ -76,6 +78,7 @@ async function withHook(body) {
   };
   function View() {
     latest = useWorkroom();
+    if (!latest.status) return React.createElement("div", {}, "no status");
     return React.createElement("div", {}, rebuildQualifier(latest.status, latest.rebuilding) ?? "current");
   }
   const root = createRoot(document.getElementById("root"));
@@ -127,5 +130,50 @@ test("a completed wait aborts the rebuild request it left in flight", async () =
       assert.equal(waits.length, i + 2, "the wait loop advances");
     }
     assert.equal(unanswered.size, 0, "no completed wait leaves a rebuild request unanswered and unaborted");
+  });
+});
+
+// Case B against case E. A rebuild under the same fold profile is a re-audit:
+// the retained status was produced under the contract this process still
+// implements, so it stays, qualified. A rebuild under another profile means a
+// different binary replaced the resident; what the page holds was produced
+// under a contract that binary does not implement, so it is dropped and the
+// page shows what a new reader sees.
+test("a rebuild under the same profile keeps the retained status, another profile drops it", async () => {
+  await withHook(async ({ tick, rebuilds, latest }) => {
+    await tick();
+    await act(async () => rebuilds[0](reply({ running: true, verified: 3, total: 9, profile: "app@fold-1" })));
+    assert.equal(latest().status.durable.head, "old00000", "same profile: the status is retained");
+    assert.match(document.body.textContent, /Showing frontier old00000/);
+    await tick();
+    await act(async () => rebuilds[1](reply({ running: true, verified: 4, total: 9, profile: "app@fold-2" })));
+    assert.equal(latest().status, undefined, "another profile: the retained status is dropped");
+    assert.equal(document.body.textContent, "no status");
+  });
+});
+
+test("a rebuild report without a profile cannot drop a retained status", async () => {
+  await withHook(async ({ tick, rebuilds, latest }) => {
+    await tick();
+    await act(async () => rebuilds[0](reply({ running: true })));
+    assert.equal(latest().status.durable.head, "old00000");
+  });
+});
+
+// The case with nothing running. A new binary that reuses the signed kernel
+// checkpoint re-interprets the projection without a cold audit, so the
+// rebuild report says running:false while the wait is still pending. The
+// profile on that report is what tells the page the retained status came
+// from another contract.
+test("a checkpoint-backed re-interpretation under another profile drops the retained status without a cold audit", async () => {
+  await withHook(async ({ tick, rebuilds, latest }) => {
+    await tick();
+    await act(async () => rebuilds[0](reply({ running: false, profile: "app@fold-1" })));
+    assert.equal(latest().status.durable.head, "old00000", "same profile, nothing running: retained, unqualified");
+    assert.equal(document.body.textContent, "current");
+    await tick();
+    await act(async () => rebuilds[1](reply({ running: false, profile: "app@fold-2" })));
+    assert.equal(latest().status, undefined, "another profile with nothing running still drops the retained status");
+    assert.equal(document.body.textContent, "no status");
   });
 });

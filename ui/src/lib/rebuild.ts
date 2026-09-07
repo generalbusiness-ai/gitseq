@@ -29,12 +29,16 @@ export function rebuildQualifier(status: Status | undefined, rebuild: Rebuild | 
 // dropped rather than qualifying a newer status. At most one request is in
 // flight; a tick that finds one outstanding does nothing, so a slow endpoint
 // never accumulates overlapping requests, and stopping aborts the request in
-// flight, so successive waits cannot leave a trail of unanswered ones. The
-// timer is unreferenced where the runtime allows, so a probe whose wait never
-// returns cannot keep a process alive by itself.
+// flight, so successive waits cannot leave a trail of unanswered ones. Every
+// answer is reported, running or not: a report that says no cold audit is
+// running still names the resident's fold profile, and a checkpoint-backed
+// re-interpretation under a new profile is exactly the case where nothing is
+// "running" and the retained status must still be dropped. The timer is
+// unreferenced where the runtime allows, so a probe whose wait never returns
+// cannot keep a process alive by itself.
 export function probeRebuild(
   fetchRebuild: (signal: AbortSignal) => Promise<Rebuild>,
-  report: (rebuild: Rebuild | undefined) => void,
+  report: (rebuild: Rebuild) => void,
   intervalMs = 1000,
 ): () => void {
   let stopped = false;
@@ -45,7 +49,7 @@ export function probeRebuild(
     inFlight = request;
     fetchRebuild(request.signal)
       .then((next) => {
-        if (!stopped) report(next.running ? next : undefined);
+        if (!stopped) report(next);
       })
       .catch(() => undefined)
       .finally(() => {

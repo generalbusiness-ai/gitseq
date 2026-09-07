@@ -345,6 +345,18 @@ func TestStatusPresenceAndResettableLiveLayer(t *testing.T) {
 	if status.TrustBoundary != TrustedProcessPosture {
 		t.Fatalf("status trust boundary = %q", status.TrustBoundary)
 	}
+	// The profile is what lets a retained status be compared with a later
+	// rebuild report; both name the same identifier.
+	if status.Profile == "" {
+		t.Fatal("status carries no fold profile")
+	}
+	var rebuild rebuildReport
+	if err := getJSON(httpServer.URL+"/v0/rebuild", &rebuild); err != nil {
+		t.Fatal(err)
+	}
+	if rebuild.Profile != status.Profile {
+		t.Fatalf("rebuild profile %q != status profile %q", rebuild.Profile, status.Profile)
+	}
 	if len(status.Durable.Vocabulary.Definitions) != 12 || status.Durable.Vocabulary.Binding.Status != "unbound" {
 		t.Fatalf("status did not serve the room vocabulary and binding state: %+v", status.Durable.Vocabulary)
 	}
@@ -1428,8 +1440,10 @@ func TestColdAuditProgressIsSingleFlightAndPublishesAtomically(t *testing.T) {
 	if err := getJSON(httpServer.URL+"/v0/rebuild", &bounded); err != nil {
 		t.Fatal(err)
 	}
+	// The profile is a fixed identifier for the life of the process, not
+	// work data; it is the only field beyond the three counters.
 	for key := range bounded {
-		if key != "running" && key != "verified" && key != "total" {
+		if key != "running" && key != "verified" && key != "total" && key != "profile" {
 			t.Fatalf("rebuild endpoint exposed unbounded field %q", key)
 		}
 	}

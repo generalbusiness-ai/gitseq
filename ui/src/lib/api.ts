@@ -321,6 +321,8 @@ export interface Rebuild {
   running: boolean;
   verified?: number;
   total?: number;
+  // The fold profile of the process rebuilding; compare with Status.profile.
+  profile?: string;
 }
 
 export interface Status {
@@ -328,6 +330,9 @@ export interface Status {
   live: LiveSnapshot;
   cursor: Cursor;
   trust_boundary: string;
+  // The fold profile this status was produced under: an opaque identifier
+  // fixed for the life of the resident process.
+  profile?: string;
 }
 
 export interface GraphCommit {
