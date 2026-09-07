@@ -1,0 +1,340 @@
+{
+  "artifacts": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65621a4d4210c7feb6c5276fb37069b2f3ac3fca",
+      "path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+      "commit": "6849c84547b75a3781cccafd333e12a674c0d052",
+      "retired": true,
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a",
+      "path": "internal/service",
+      "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "retired": true,
+      "succeeded": true,
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd901001594b8edcf6faa884cfdf8713cdab8fa2",
+      "stale_because_path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+      "live_predecessors": 2,
+      "succession_unrecorded": true,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c6be71908d21cb91924c408d495f14b28da6c64b",
+          "class": "",
+          "verified": false,
+          "reason": "not classified by receipt"
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:025f2bca15c52c8c95a023e08c79969fdad58eeb",
+          "class": "",
+          "verified": false,
+          "reason": "not classified by receipt"
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d033715e2359972196070a1c7d51b8cf716c4f1b",
+      "path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+      "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "retired": true,
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd901001594b8edcf6faa884cfdf8713cdab8fa2",
+      "stale_because_path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65621a4d4210c7feb6c5276fb37069b2f3ac3fca",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:850d4a62078d2abea0e0699cb94e89d31fb28407",
+          "verified": true
+        }
+      ]
+    }
+  ],
+  "statements": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65621a4d4210c7feb6c5276fb37069b2f3ac3fca",
+      "sequence": 19511,
+      "timestamp": 1788697579,
+      "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "kind": "artifact",
+      "lifecycle": "none",
+      "satisfier": "none",
+      "text": "I5 candidate internal/service/uidist/assets/index-DVoOmhXh.js at exact 6849c84547b75a3781cccafd333e12a674c0d052. Table, Graph and thread consume projected destination, hold/release, approval and sealed landing; current Git observations remain separate. Explicit request-result authoring uses the delivered filing boundary. Historical absent destinations remain neutral. 207 UI tests, embedded build, resident request race tests and final docs gate pass; native small/large acceptance retained. Independent review and sealed delivery remain owed.",
+      "body": {
+        "branch": "request/landing-obligation-i5",
+        "commit": "6849c84547b75a3781cccafd333e12a674c0d052",
+        "path": "internal/service/uidist/assets/index-DVoOmhXh.js"
+      },
+      "retired": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a",
+      "sequence": 19562,
+      "timestamp": 1788699661,
+      "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "kind": "artifact",
+      "lifecycle": "none",
+      "satisfier": "none",
+      "text": "Merge published the current artifact at internal/service",
+      "body": {
+        "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+        "path": "internal/service",
+        "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4e8a8d511687921f2386a611571773ff1e51e8b stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:014bd65048e9664e860cf7d98df8c63f820cd076, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06542907068280abb3fcdd5bc86c1d49921c390f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07e8e48166ea90a1d864c829f36902817926f6e7 and 198 more"
+      },
+      "retired": true,
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd901001594b8edcf6faa884cfdf8713cdab8fa2",
+      "stale_because_path": "internal/service/uidist/assets/index-DVoOmhXh.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d033715e2359972196070a1c7d51b8cf716c4f1b",
+      "sequence": 19563,
+      "timestamp": 1788699662,
+      "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "kind": "artifact",
+      "lifecycle": "none",
+      "satisfier": "none",
+      "text": "Merge published the current artifact at internal/service/uidist/assets/index-DVoOmhXh.js",
+      "body": {
+        "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+        "path": "internal/service/uidist/assets/index-DVoOmhXh.js",
+        "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b4e8a8d511687921f2386a611571773ff1e51e8b stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:014bd65048e9664e860cf7d98df8c63f820cd076, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06542907068280abb3fcdd5bc86c1d49921c390f, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07e8e48166ea90a1d864c829f36902817926f6e7 and 198 more"
+      },
+      "retired": true,
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fd901001594b8edcf6faa884cfdf8713cdab8fa2",
+      "stale_because_path": "internal/service/uidist/assets/index-DVoOmhXh.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3",
+      "sequence": 20443,
+      "timestamp": 1788756886,
+      "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "kind": "assert",
+      "lifecycle": "none",
+      "satisfier": "role:ratifier",
+      "text": "approved candidate merged",
+      "body": {
+        "merge_approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982cae2132c166c8956091cd51bb1899723edc7c",
+        "merge_candidate": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+        "merge_changed_paths": "[\"docs/reference/architecture.md\",\"docs/reference/gs/serve.md\",\"docs/reference/mcp/wait.md\",\"docs/reference/performance.md\",\"internal/app/app.go\",\"internal/app/profile_test.go\",\"internal/service/headwatch.go\",\"internal/service/headwatch_evidence_test.go\",\"internal/service/headwatch_test.go\",\"internal/service/server.go\",\"internal/service/server_test.go\",\"internal/service/uidist/assets/index-DVoOmhXh.js\",\"internal/service/uidist/assets/index-hIXoPEGS.js\",\"internal/service/uidist/index.html\",\"performance/HEAD-WAIT.md\",\"performance/README.md\",\"performance/head-wait-after.json\",\"performance/head-wait-before.json\",\"ui/src/components/TopBar.tsx\",\"ui/src/lib/api.ts\",\"ui/src/lib/rebuild.ts\",\"ui/src/lib/store.ts\",\"ui/test/components.test.mjs\",\"ui/test/rebuild.test.mjs\",\"ui/test/store.test.mjs\"]",
+        "merge_head": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+        "merge_left_live": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04fe2a1d37b1b47b96be69f1f13c3a2d530d5023\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17126d80518faa9688fc3da8e9fa6f85038f1f28\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31d90c6502ea26fa7449d2b4ede821cef50c1a78\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:452563b58ed6c7ef5058071b93b0cb14d870f559\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f87d58d3f854c80a53b6684ec47eb2515ae6abfe\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a1314a33d7a710db189614fe08b04c49578121\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f4da61e08c74dc403d7e2fc4ea9b541f3f258e4\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56c0e84d7115c2695fb92a8715268d42aedba8f7\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68a9cfaaa985840699f9f76b577c3ae7760ab270\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:746f1498455e6c3397aa3c780966e9a52bf5fc36\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbbacc91ea5d3df388e72f3373b8523f96e74c2\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83d8fe385341169695ed52f4f82d6c8145364f57\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f533029945dcd37f625d79e47918b0922cc6d85\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab6bd5931d8560a6080b6d3fae886bd2d103138b\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abbd2653b74ce3ce6d9150b8e2ac1b28878c4830\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d\":{\"class\":\"carried\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf9a085d565d6b8dfb566a294080643f5a6dc2d\":{\"class\":\"abandoned\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4a42b90d3a5294a6525e09e11b283671836b172\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e25211b52bd255257388c3fd976129937e3db50f\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8c30c14164bb469dd8e7e1a4ab097fd785bedf8\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa253ffb264fff7e6c25949e1759538409fbb2e3\":{\"class\":\"sibling\",\"commitment\":\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356\"},\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb39a99691adf135d58a7a108747dfe06a5d79b4\":{\"class\":\"abandoned\"}}",
+        "merge_retirements": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a\":\"internal/service\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1474b8ea38d68fadc4b18ae9e28979f5415dd05c\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17759fcb2645f1e884ca0f8ba67ce8be22ac79c2\":\"internal/service/server_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:183729d555dc38ddb65806bdcf39052f572405e3\":\"internal/app/app.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1db255ea3ffa63ec309ceb037ae1211057593b09\":\"ui/src/components/TopBar.tsx\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ae9967b90652f1eee1b7d721c15dab99596e88f\":\"internal/service/server_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bdcffc27b34ac75bd85910fe4c6acd20fc862ac\":\"performance/head-wait-after.json\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7ef45ac738cedc99aac0c20df4e2e22b2a2e64\":\"docs/reference/performance.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3cae181a70d1b293bfced27581817efda1e81c7e\":\"docs/reference/performance.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41540cb03a78c47e10648a996d64750270bcbcc9\":\"docs/reference/gs/serve.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47124b6fbe975475b475f0cfbd047d7af6156215\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494ee033096e8120d62db5f33e853b3b99f82386\":\"internal/app/app.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b18dcde46b2e4b9ec2401256f5ab340264cea6c\":\"internal/app/profile_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849\":\"internal/service\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52e888b22e73602a551cdb1abdb58f1b19b7ce00\":\"ui/test/components.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:553cbe879bdb8ce088f3030e9768389d0a78da48\":\"performance/HEAD-WAIT.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:564e3e0cb3457dcc7a7a92273028bbe51a89a892\":\"docs/reference/mcp/wait.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599ca5decc44a6299f5e7b25ca24b8a0bc058844\":\"ui/test/store.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5da989c97ba046259dab9e3b9d7cfa74b381ad7a\":\"internal/app/app.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61477a481fa829f83acf83566ce9bac263039f5c\":\"ui/test/components.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6756634f9d8d5a08ffb74b5acca3cb92bed2cf5b\":\"internal/service/headwatch_evidence_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df\":\"internal/service/uidist/assets/index-hIXoPEGS.js\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ee77a372345af6aad6ef081d36cbd05b9fbb1e0\":\"ui/test/components.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70193521f1a8f3822f823f32e30fb66992080ad7\":\"internal/service/server.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73370c72bdcc7f0d3bd086a23d314f543daa70fd\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7557a52ebb389fd86bf3180a94069a44a8fdde45\":\"internal/service/uidist/index.html\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7daa2e0fa57fe56419c4061a0102cfd2e3a556f3\":\"docs/reference/gs/serve.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902f72487d4d198f3c83e806955a718a2512be8b\":\"ui/src/lib/store.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325\":\"internal/service/server.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9202e7faa5ba77d7dce1cd31f514d94d3ec6cd35\":\"ui/src/lib/api.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:93b391cd17b98ecf8dad6e4e31dd3de0dcf68acf\":\"ui/src/components/TopBar.tsx\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e874b11125b5502e32408bf995e65b03cba6f70\":\"internal/service/headwatch.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0653eb18aee29076aaf55cdab8ed3721508d775\":\"performance/head-wait-before.json\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6\":\"ui/src/lib/rebuild.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af753db443de0c8d1f64436f5f27f6f55ac00f8e\":\"docs/reference/architecture.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b06a958c053f761b21d808d588943621fc5375f4\":\"docs/reference/mcp/wait.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1f32c5635a72285fecc5be28c04dc2c0f2a7a73\":\"ui/src/lib/api.ts\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9f22941e200798ed862b8f067341b04e4851d6e\":\"internal/service/headwatch_test.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d10eb5bb3a7191e62503691d49f31587543808ae\":\"performance/README.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e064e588dbaf36905bf508457880ba18f0c0e528\":\"docs/reference/mcp/wait.md\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9687f45b299b7728a92bed7ca81de42033166ca\":\"internal/app/app.go\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fbd1bc248144e2f7f6f07b955928960fa68380ad\":\"ui/test/rebuild.test.mjs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff1719057a1988bfea91b1dfc538a82e5de5e4ce\":\"internal/app/app.go\"}",
+        "merge_successors": "[\"docs/reference/architecture.md\",\"docs/reference/gs/serve.md\",\"docs/reference/mcp/wait.md\",\"docs/reference/performance.md\",\"internal/app/app.go\",\"internal/app/profile_test.go\",\"internal/service\",\"internal/service/headwatch.go\",\"internal/service/headwatch_evidence_test.go\",\"internal/service/headwatch_test.go\",\"internal/service/server.go\",\"internal/service/server_test.go\",\"internal/service/uidist/assets/index-hIXoPEGS.js\",\"internal/service/uidist/index.html\",\"performance/HEAD-WAIT.md\",\"performance/README.md\",\"performance/head-wait-after.json\",\"performance/head-wait-before.json\",\"ui/src/components/TopBar.tsx\",\"ui/src/lib/api.ts\",\"ui/src/lib/rebuild.ts\",\"ui/src/lib/store.ts\",\"ui/test/components.test.mjs\",\"ui/test/rebuild.test.mjs\",\"ui/test/store.test.mjs\"]",
+        "merge_target_pre_head": "dfbf4089e6826810083848e56e9deff6c0faec29",
+        "merge_target_ref": "refs/heads/main",
+        "merge_target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "stale": "true",
+        "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982cae2132c166c8956091cd51bb1899723edc7c stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:008a3a35d1921865e11a269e51d9346bdf789d91, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00925ae6c09fb0b8e2a72e84c22ca3488bc9534d, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:012451209d3000492d2e523089e5973beec05f61 and 305 more",
+        "staleness": "approval, artifact stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:001b2e3b06105d22946682cb90201bc66c1c6a26, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:008a3a35d1921865e11a269e51d9346bdf789d91, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:00925ae6c09fb0b8e2a72e84c22ca3488bc9534d, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:012451209d3000492d2e523089e5973beec05f61 and 305 more"
+      },
+      "stale": true,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04fe2a1d37b1b47b96be69f1f13c3a2d530d5023",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17126d80518faa9688fc3da8e9fa6f85038f1f28",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31d90c6502ea26fa7449d2b4ede821cef50c1a78",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:452563b58ed6c7ef5058071b93b0cb14d870f559",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f87d58d3f854c80a53b6684ec47eb2515ae6abfe",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a1314a33d7a710db189614fe08b04c49578121",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f4da61e08c74dc403d7e2fc4ea9b541f3f258e4",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b",
+          "class": "carried",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56c0e84d7115c2695fb92a8715268d42aedba8f7",
+          "class": "carried",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68a9cfaaa985840699f9f76b577c3ae7760ab270",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:746f1498455e6c3397aa3c780966e9a52bf5fc36",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+          "class": "carried",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbbacc91ea5d3df388e72f3373b8523f96e74c2",
+          "class": "carried",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83d8fe385341169695ed52f4f82d6c8145364f57",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f533029945dcd37f625d79e47918b0922cc6d85",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab6bd5931d8560a6080b6d3fae886bd2d103138b",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abbd2653b74ce3ce6d9150b8e2ac1b28878c4830",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+          "class": "carried",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf9a085d565d6b8dfb566a294080643f5a6dc2d",
+          "class": "abandoned",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4a42b90d3a5294a6525e09e11b283671836b172",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e25211b52bd255257388c3fd976129937e3db50f",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8c30c14164bb469dd8e7e1a4ab097fd785bedf8",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa253ffb264fff7e6c25949e1759538409fbb2e3",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb39a99691adf135d58a7a108747dfe06a5d79b4",
+          "class": "abandoned",
+          "verified": true
+        }
+      ],
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17759fcb2645f1e884ca0f8ba67ce8be22ac79c2",
+      "stale_because_path": "internal/service/server_test.go"
+    }
+  ],
+  "decisions": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65621a4d4210c7feb6c5276fb37069b2f3ac3fca",
+      "sequence": 19511,
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a",
+      "sequence": 19562,
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d033715e2359972196070a1c7d51b8cf716c4f1b",
+      "sequence": 19563,
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e749cd7097ba4759162d68f0938ccd7669c86ae1",
+      "sequence": 20431,
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:36e08c023e61ba05c0f7785c2b842fdd757db932",
+      "sequence": 20432,
+      "verdict": "effective",
+      "reason": "authorized supersession"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3",
+      "sequence": 20443,
+      "verdict": "effective",
+      "reason": "statement recorded"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:12d07a1eac91e54f8614be53d77ae459b9eb5fff",
+      "sequence": 20470,
+      "verdict": "effective",
+      "reason": "merge approval authorized artifact succession"
+    }
+  ],
+  "directory_successors": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c375e34bbd20985d0d7f349684aac3a8cd6ca55",
+      "path": "internal/service",
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "stale": false
+    }
+  ]
+}
