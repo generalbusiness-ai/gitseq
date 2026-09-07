@@ -1,5 +1,8 @@
-// Package wireparity holds one gate: the TypeScript mirror in ui/src/lib/api.ts
-// must name exactly the JSON fields the Go wire types emit.
+// Package wireparity holds two gates that cross the language boundary. The
+// first is here: the TypeScript mirror in ui/src/lib/api.ts must name exactly
+// the JSON fields the Go wire types emit. The second is in
+// work_populations_test.go, where Go and the browser count one frozen
+// projection and must reach the same named populations.
 //
 // api.ts hand-copies interfaces mirroring Go structs across four packages, and
 // nothing checked them against each other. The file's own comment admitted the
@@ -37,6 +40,12 @@ var mirrored = map[string]any{
 	"Review":     workroom.Review{},
 	"Artifact":   workroom.Artifact{},
 	"Act":        workroom.Act{},
+	// The named Work populations cross the wire in three places — the complete
+	// status, the bounded summary totals and the MCP actor totals — and the
+	// browser counts the same populations from the commitments beside them. A
+	// renamed field here would leave the board silently comparing its own
+	// arithmetic with nothing.
+	"WorkSummary": workroom.WorkSummary{},
 }
 
 func TestTypeScriptMirrorNamesTheFieldsGoEmits(t *testing.T) {

@@ -29,6 +29,9 @@ func RenderStatus(projection Projection) []byte {
 	if summary := projection.Summary(); summary != "" {
 		fmt.Fprintf(&output, "%s\n\n", summary)
 	}
+	// The named populations, in the same words and the same order the bounded
+	// page uses.
+	fmt.Fprintf(&output, "%s\n", RenderWork(WorkOf(projection)))
 	output.WriteString("## Requests and commitments\n\n")
 	if len(projection.Commitments) == 0 {
 		output.WriteString("No commitments.\n")

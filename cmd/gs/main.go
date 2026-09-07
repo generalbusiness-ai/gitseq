@@ -2234,7 +2234,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 			if remoteErr == nil {
 				if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err == nil {
 					if *jsonOutput {
-						return printJSON(status.Durable)
+						return printJSON(completeStatus(status.Durable))
 					}
 					_, err = os.Stdout.Write(workroom.RenderStatus(status.Durable.Projection))
 					return err
@@ -2257,7 +2257,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if *jsonOutput {
-		return printJSON(snapshot)
+		return printJSON(completeStatus(snapshot))
 	}
 	if *all {
 		_, err = os.Stdout.Write(workroom.RenderStatus(snapshot.Projection))
@@ -2271,6 +2271,18 @@ func statusCommand(ctx context.Context, arguments []string) error {
 	workspace.MeasureLandingDetails(ctx, summary.LandingRows())
 	_, err = os.Stdout.Write(statusview.Render(summary, source))
 	return err
+}
+
+// completeJSON is the complete snapshot exactly as it always was, plus the
+// named Work populations from their one owner, workroom.WorkOf, so no reader
+// has to derive them privately.
+type completeJSON struct {
+	app.Snapshot
+	Work workroom.WorkSummary `json:"work"`
+}
+
+func completeStatus(snapshot app.Snapshot) completeJSON {
+	return completeJSON{Snapshot: snapshot, Work: workroom.WorkOf(snapshot.Projection)}
 }
 
 const (

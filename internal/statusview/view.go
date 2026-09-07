@@ -22,8 +22,12 @@ const (
 )
 
 type Totals struct {
-	ApprovedNotLanded int            `json:"approved_not_landed"`
-	Commitments       map[string]int `json:"commitments"`
+	ApprovedNotLanded int `json:"approved_not_landed"`
+	// Work is the named commitment populations from their one owner,
+	// workroom.WorkOf. Commitments below stays beside it and counts the fold's
+	// lifecycle words, which is a different question a reader also needs.
+	Work        workroom.WorkSummary `json:"work"`
+	Commitments map[string]int       `json:"commitments"`
 	// StaleCommitments counts, per status, how many of those commitments carry
 	// the stale qualifier. Staleness qualifies a status instead of replacing
 	// it, so one count cannot say both things; a reader who only had
@@ -323,9 +327,14 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		sequences[decision.Event] = decision.Sequence
 	}
 	summary := Summary{Genesis: genesis, Head: head, Depth: depth, Totals: Totals{
+		Work:        workroom.WorkOf(projection),
 		Commitments: make(map[string]int), StaleCommitments: make(map[string]int),
 		Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
 	}}
+	// The landing audit is one count with one owner. It was totalled here as
+	// well until the Work summary existed; two loops counting one thing is how
+	// two surfaces come to disagree about it.
+	summary.Totals.ApprovedNotLanded = summary.Totals.Work.ArtifactLandingAudit
 	// Two passes, and the split is the point. The first walks everything,
 	// because the totals and the omitted counts are facts about the whole
 	// projection and would be wrong if computed from a sample. It keeps only
@@ -346,9 +355,6 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 	var actionableSource, attentionSource []workroom.Commitment
 	for _, commitment := range projection.Commitments {
 		summary.Totals.Commitments[commitment.Status]++
-		if commitment.ApprovedNotLanded {
-			summary.Totals.ApprovedNotLanded++
-		}
 		if commitment.Stale {
 			summary.Totals.StaleCommitments[commitment.Status]++
 		}
@@ -478,6 +484,15 @@ func Render(summary Summary, source string) []byte {
 		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts,
 		summary.Totals.StaleArtifacts-summary.Totals.RetiredArtifacts, summary.Totals.RetiredArtifacts,
 		summary.Totals.WorldStaleArtifacts, summary.Totals.IneffectiveActs, summary.Totals.DisputedActs)
+	// A bounded summary carries no projection, so these counts are whatever
+	// the answering resident computed. One that predates them sends none, and
+	// printing zeros there would be a lie told confidently — the empty scope
+	// is the only way this page can tell the difference.
+	if summary.Totals.Work.Scope == "" {
+		output.WriteString("Work populations: not reported by this resident; ask a newer one, or read the verified local fold with --server -.\n")
+	} else {
+		output.WriteString(workroom.RenderWork(summary.Totals.Work))
+	}
 	fmt.Fprintf(&output, "Approved but not landed at their target: %d.\n", summary.Totals.ApprovedNotLanded)
 	for _, target := range summary.LandingTargets {
 		fmt.Fprintf(&output, "%s\n", LandingText(target))

@@ -570,7 +570,8 @@ test("search filters every tab count before the selected population", async () =
     assert.deepEqual(titlesOnScreen(), ["Needle open"]);
 
     await click(tabs()[4]);
-    assert.equal(document.querySelector("h2").textContent, "1 completed");
+    // A searched count names its scope and the workroom-wide total it came from.
+    assert.equal(document.querySelector("h2").textContent, "1 completed, matching your search — 2 in the workroom");
     assert.deepEqual(titlesOnScreen(), ["Needle completed"]);
 
     await enterText(search, "");
@@ -717,7 +718,7 @@ test("Graph uses the table population and search, selects a component, and opens
     assert.equal(document.querySelectorAll("[data-outcome-card]").length, 4, "Graph did not start from all three table rows plus direct context");
 
     await enterText(document.querySelector('input[aria-label="Search requests"]'), "Alpha");
-    assert.equal(document.querySelector("h2").textContent, "1 open request");
+    assert.equal(document.querySelector("h2").textContent, "1 open request, matching your search — 3 in the workroom");
     assert.deepEqual(
       [...document.querySelectorAll("[data-outcome-card]")].map((card) => card.dataset.outcomeCard),
       ["basis", "e2"],

@@ -1,5 +1,8 @@
 # Workroom status
 
+Work, workroom: 0 open, 0 completed, 0 closed and not completed, 0 stale and not in flight, of 0 commitments.
+Open by lifecycle: open 0, promised 0, reported 0, awaiting-review 0, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 0 open resting on reasoning that moved, 0 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+
 ## Requests and commitments
 
 No commitments.

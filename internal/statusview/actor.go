@@ -87,9 +87,12 @@ type RatificationView struct {
 }
 
 type ActorTotals struct {
-	ApprovedNotLanded int            `json:"approved_not_landed"`
-	Depth             int            `json:"depth"`
-	Commitments       map[string]int `json:"commitments,omitempty"`
+	ApprovedNotLanded int `json:"approved_not_landed"`
+	Depth             int `json:"depth"`
+	// Work is workroom-wide, not your lane: the lists in this answer are
+	// yours, these counts are the whole board's, and Scope says so on the wire.
+	Work        workroom.WorkSummary `json:"work"`
+	Commitments map[string]int       `json:"commitments,omitempty"`
 	// StaleCommitments counts, per status, how many carry the stale qualifier.
 	// This is where ordinary staleness on closed commitments is reported: the
 	// lanes above hold work still owed, and superseded, satisfied or withdrawn rows are
@@ -252,12 +255,9 @@ func fillCommitmentDetails(projection workroom.Projection, groups ...[]Commitmen
 
 func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 	counts, staleCounts := make(map[string]int), make(map[string]int)
-	approvedNotLanded := 0
+	work := workroom.WorkOf(projection)
 	for _, commitment := range projection.Commitments {
 		counts[commitment.Status]++
-		if commitment.ApprovedNotLanded {
-			approvedNotLanded++
-		}
 		if commitment.Stale {
 			staleCounts[commitment.Status]++
 		}
@@ -282,7 +282,7 @@ func actorTotals(projection workroom.Projection, depth int) ActorTotals {
 			disputed++
 		}
 	}
-	return ActorTotals{ApprovedNotLanded: approvedNotLanded, Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
+	return ActorTotals{ApprovedNotLanded: work.ArtifactLandingAudit, Work: work, Depth: depth, Commitments: counts, StaleCommitments: staleCounts, Artifacts: len(projection.Artifacts), StaleArtifacts: stale,
 		RetiredArtifacts: retired, WorldStaleArtifacts: world,
 		IneffectiveActs: ineffective, DisputedActs: disputed, Statements: len(projection.Statements),
 		FullProjectionAt: "GET /v0/status, gs status --all, gs status --json, or work with stale=include"}

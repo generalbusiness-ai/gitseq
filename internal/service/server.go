@@ -23,6 +23,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 type Frontier = statusview.Frontier
@@ -48,11 +49,15 @@ const (
 )
 
 type Status struct {
-	Durable       app.Snapshot   `json:"durable"`
-	Live          nexus.Snapshot `json:"live"`
-	Cursor        Cursor         `json:"cursor"`
-	Inbox         *nexus.Inbox   `json:"inbox,omitempty"`
-	TrustBoundary string         `json:"trust_boundary"`
+	Durable app.Snapshot   `json:"durable"`
+	Live    nexus.Snapshot `json:"live"`
+	// Work is the named commitment populations for this whole frontier,
+	// derived from the projection below by their one owner, workroom.WorkOf,
+	// so no client has to count them itself.
+	Work          workroom.WorkSummary `json:"work"`
+	Cursor        Cursor               `json:"cursor"`
+	Inbox         *nexus.Inbox         `json:"inbox,omitempty"`
+	TrustBoundary string               `json:"trust_boundary"`
 	// Profile is the fold profile this answer was produced under. A reader
 	// holding this status across a rebuild compares it with the rebuild
 	// report's profile: a different one means the retained projection is
@@ -210,7 +215,7 @@ func (s *Server) statusFromLive(ctx context.Context, observation nexus.Observati
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture, Profile: s.workspace.Profile()}
+	status := Status{Durable: durable, Work: workroom.WorkOf(durable.Projection), Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture, Profile: s.workspace.Profile()}
 	if includeInbox {
 		inbox := observation.Inbox
 		status.Inbox = &inbox
