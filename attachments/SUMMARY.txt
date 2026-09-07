@@ -1,0 +1,163 @@
+Evidence for request #20622 at exact head 1fdf9e6b18e4ea96a1b505821ff93f68711c87d0
+(branch request/shared-work-population-counts, rebased onto main ad4656dd8).
+
+Everything in this directory was produced at 1fdf9e6b on 2026-09-07 between
+11:26Z and 13:1xZ. Nothing is carried over from 9be714c0; the earlier directory
+../evidence/ is that older head's traces and is left untouched. The commands
+below are reproduced verbatim at the top of each file, with the frontier each
+observation actually saw.
+
+Binaries
+  ./bin/gs and ./bin/gitseq-mcp were rebuilt from this worktree; `go version -m`
+  stamps both vcs.revision=1fdf9e6b18e4ea96a1b505821ff93f68711c87d0 and
+  vcs.modified=false.
+  ./bin/evidence (used only for B1) is a throwaway main compiled against the
+  same tree; it stamps the same revision with vcs.modified=true because that
+  throwaway main.go was present while it built. Its source was deleted
+  immediately after the build and `git status` is clean; it calls only
+  statusview.Build/Render, workroom.RenderStatus/WorkOf and
+  statusview.BuildActorStatus/BuildWait.
+  Nothing in the reviewed worktree was modified: no commit, no gs write, and no
+  file added under the worktree that outlived its build.
+
+A. The real workroom through the live resident on 127.0.0.1:7777 (read only;
+   that resident runs main ad4656dd8, which predates this change).
+   Every A observation saw frontier
+   c77283aa7f9d223cee5ada5357ac2530ae0b66af at depth 20920, 2515 commitments.
+
+   A1-cli-bounded-localfold.txt
+     $ ./bin/gs status --repo /Users/hughpyle/play/gitseq --server -
+     Verified local fold, no resident. Frontier c77283aa… depth 20920.
+     Work, workroom: 5 open, 1539 completed, 959 closed and not completed,
+     12 stale and not in flight, of 2515 commitments.
+     Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 3,
+     awaiting-authorization 0, awaiting-landing 0. Overlapping: 3 moved,
+     78 landing audit. Approved but not landed: 78.
+
+   A2-cli-complete-all.txt
+     $ ./bin/gs status --repo … --server http://127.0.0.1:7777 --all
+     Bracketed by two reads of the resident frontier, both
+     c77283aa… depth 20920, so the page is pinned to that frontier.
+     Same two Work lines, same numbers.
+
+   A3-cli-json-work.txt (extract) and A3-cli-json-full.json (the raw 51 MB payload)
+     $ ./bin/gs status --repo … --server http://127.0.0.1:7777 --json
+     head c77283aa… depth 20920; top-level keys include `work`;
+     work = {scope workroom, commitments 2515, open 5,
+     open_lifecycles {open 1, promised 1, reported 0, awaiting-review 3,
+     awaiting-authorization 0, awaiting-landing 0}, completed 1539,
+     closed_not_completed 959, stale 12, reasoning_moved 3,
+     artifact_landing_audit 78}.
+
+   A4-cli-bounded-live-resident.txt
+     $ ./bin/gs status --repo … --server http://127.0.0.1:7777
+     The bounded page reading the OLD resident at c77283aa… depth 20920. It
+     prints "Work populations: not reported by this resident; ask a newer one,
+     or read the verified local fold with --server -." — the disclosure, not
+     zeros. Its lifecycle totals line and approved_not_landed 78 are unchanged.
+
+   A5-http-status-summary-live-resident.txt
+     $ curl -s http://127.0.0.1:7777/v0/status-summary
+     Same frontier. durable.totals has no `work` key: this is the resident
+     that predates the field, and A4 is what the new client does about it.
+
+B. One frozen /v0/status answer counted independently by Go and by the browser.
+   Frontier c77283aa7f9d223cee5ada5357ac2530ae0b66af depth 20920,
+   2515 commitments — the same frontier as every A observation.
+
+   B0-frozen-fetch.txt / status-full.json (45 MB)
+     $ curl -s http://127.0.0.1:7777/v0/status -o status-full.json
+     Fetched 11:27:00Z. Records the frontier and that this old resident's
+     complete answer carries no top-level `work`.
+
+   B1-go-owner-frozen.txt
+     $ ./bin/evidence status-full.json
+     All four Go surfaces over that one file:
+       1 bounded rendering (what `gs status` prints)
+       2 complete rendering (what `gs status --all` prints)
+       3 workroom.WorkOf (what `--json` .work and GET /v0/status .work carry)
+       4 statusview.Build totals (GET /v0/status-summary .durable.totals.work),
+         with approved_not_landed 78 read from the owner and the lifecycle
+         count commitments["open"] = 1 kept distinct from the population
+       5 MCP status and wait totals.work, reported identical to each other
+     All read open 5 / completed 1539 / closed_not_completed 959 / stale 12 /
+     reasoning_moved 3 / artifact_landing_audit 78 of 2515 commitments.
+
+   B2-browser-selector.mjs (the script) and B3-browser-selector-frozen.txt (its output)
+     $ node B2-browser-selector.mjs <worktree>/ui status-full.json
+     Loads ui/src/lib/rows.ts from the worktree at 1fdf9e6b through vite SSR and
+     calls the real workRows once per population. vite is imported by absolute
+     path so nothing was written into the reviewed worktree.
+     Same frontier, same numbers.
+
+   B4-parity-comparison.txt
+     Field-by-field comparison of B1 section 3 with B3: identical = True.
+
+C. A scratch workroom served by the 1fdf9e6b binary on 127.0.0.1:7996, so the
+   new wire fields are observed over real HTTP and real MCP rather than
+   inferred. Two requests and one promise; frontier
+   1fb0d186ab7bae9dddab037977f1f41f059f2bb8 depth 6 for every C observation.
+   The resident was stopped and the repository deleted afterwards; the live
+   residents on 7777/7778/7779 were never touched beyond the reads above.
+
+   C1-http-status-summary-scratch.txt
+     $ curl -s http://127.0.0.1:7996/v0/status-summary
+     durable.totals.work = {scope workroom, commitments 2, open 2,
+     open_lifecycles {open 1, promised 1, rest 0}, completed 0,
+     closed_not_completed 0, stale 0, reasoning_moved 0,
+     artifact_landing_audit 0}; approved_not_landed 0;
+     lifecycle commitments {open 1, promised 1}.
+
+   C2-http-status-complete-scratch.txt
+     $ curl -s http://127.0.0.1:7996/v0/status
+     Top-level keys include `work`; same counts, same frontier.
+
+   C3-cli-bounded-and-all-scratch.txt
+     $ ./bin/gs status --repo <scratch> --server http://127.0.0.1:7996
+     $ ./bin/gs status --repo <scratch> --server http://127.0.0.1:7996 --all
+     The bounded page against a resident that does carry the counts prints the
+     two Work lines (2 open of 2 commitments, lifecycle open 1, promised 1);
+     the complete page prints the identical two lines.
+
+   C4-mcp-status-scratch.txt
+     $ printf '{… "name":"status" …}' | ./bin/gitseq-mcp --repo <scratch> --actor alice
+     frontier 1fb0d186… depth 6; totals.work as above; approved_not_landed 0.
+
+   C5-mcp-wait-scratch.txt
+     $ printf '{… "name":"wait","arguments":{"timeout_ms":1000} …}' | ./bin/gitseq-mcp …
+     Same frontier, byte-identical totals.work.
+
+D. Gates at this head.
+
+   D1-ui-tests.txt
+     $ cd ui && node --test test/*.test.mjs
+     229 tests, 229 pass, 0 fail. The five work-population tests are named in
+     the file: the selector parity, the two negative controls (dropping an
+     awaiting-review member; regrouping awaiting-review out of open), the
+     ratification separation, and the JSDOM search-scope render.
+
+   D2-go-gates.txt
+     $ go build ./... && go vet ./... && gofmt -l .   → exit 0
+     $ go test -count=1 ./...                          → exit 1
+     Two failures, both under heavy machine contention (system load average
+     20-35 throughout; package times roughly doubled — docset 238s against 109s
+     on an idle machine, kernel 198s against 92s):
+       cmd/gs hit the default 10-minute package timeout at 603s while
+         TestPublishRefusesMoreThanTheBatchCeilingBeforeQueueing waited on the
+         advisory meta lock; no assertion failed.
+       internal/service TestExternalHeadChangeWakesAnOpenWait — "the wait woke
+         after 3.7190745s" — a wake-latency assertion.
+     Neither touches the counting change. internal/docset, internal/workroom,
+     internal/statusview and internal/wireparity were green in this same run.
+
+   D3-go-rerun-two-packages.txt
+     $ go test -count=1 -timeout 30m ./internal/service/ ./cmd/gs/
+     Both pass at this same head: internal/service ok 35.885s (against 181s in
+     D2) and cmd/gs ok 344.444s (against the 603s timeout in D2), exit 0. The
+     machine was still loaded (average 24 at finish), so the two D2 failures
+     are contention, not a defect: no assertion changed, only the clock.
+     Everything else in D2 was already green, so the whole suite is accounted
+     for at 1fdf9e6b — 33 packages ok in D2 plus these two here.
+
+MANIFEST.txt lists every file in this directory with its size and SHA-256, so a
+reader can bind an attachment to the trace named above.
