@@ -117,6 +117,62 @@ an optional hardening with real costs (tooling divergence, a second
 ref form in the wild) and this note does not adopt it; it records that
 the option exists and that declining it costs availability only.
 
+**What a ruleset can be pointed at, and how coarse a bypass is.** The
+sentences above turn on two facts about GitHub that the note has to
+state precisely, because several passages below rest on them. Both were
+re-derived from the current official documentation on 2026-09-07.
+
+- **Target.** The REST endpoint that creates a repository ruleset takes
+  a `target` of `branch`, `tag` or `push`
+  ([REST API endpoints for rules](https://docs.github.com/en/rest/repos/rules?apiVersion=2022-11-28)),
+  and the repository guide describes rulesets over branches, tags and
+  pushes and describes no other target
+  ([Creating rulesets for a repository](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)).
+  No target names an arbitrary ref namespace, so nothing in this note
+  may say a ruleset protects `refs/seq/*`, or any other custom
+  namespace. A ref this design wants a ruleset over has to live under
+  `refs/heads/`, which is why the inbox, the claim, the ledger and, from
+  this revision, the mirror are all branches.
+- **Bypass actors.** The same REST reference gives
+  `bypass_actors[].actor_type` as one of `Integration`,
+  `OrganizationAdmin`, `RepositoryRole`, `Team`, `DeployKey` or `User`,
+  and says of `actor_id` that "If actor_type is DeployKey, this should
+  be null". A deploy key is therefore a nameable bypass actor in the
+  documented schema, and an earlier revision's blanket claim that deploy
+  keys cannot bypass a ruleset is withdrawn. The repository guide's own
+  bypass-eligibility list is shorter: repository admins, organization
+  owners and enterprise owners; the maintain or write role and custom
+  roles based on write; teams other than secret teams; GitHub Apps; and
+  Dependabot. It does not mention deploy keys. The note records both
+  lists as they stand rather than reconciling them, and it does **not**
+  infer from the guide's omission that a GitHub App is the only workable
+  credential.
+- **Bypass mode.** `bypass_mode` is `always`, `pull_request` or
+  `exempt`, default `always`. The reference states that `pull_request`
+  is not applicable to the `DeployKey` actor type and applies only to
+  branch rulesets, and that under `exempt` the rules are not run for
+  that actor and no bypass audit entry is created.
+- **Granularity.** A bypass entry names an actor for a whole ruleset,
+  not for one rule inside it. So "writable only by this principal, and
+  fast-forward-only" is not one setting: it is a ruleset that forbids
+  the operations, plus a bypass entry for whoever must still perform
+  some of them, and that entry carries the actor past every rule in that
+  ruleset. Where the drain must create or delete a ref that a ruleset
+  also protects from force-update, the same bypass gives it the
+  force-update. That is the residue the ledger section states below,
+  named here at its cause rather than only where it bites.
+
+**Researched is not run.** All of the above is what the documentation
+says a ruleset can express. It is not evidence that any of it is
+configured, that a bypass entry grants the drain exactly the authority
+this design wants and no more, that a deploy key bypass behaves in a
+live installation as the schema suggests, or that the credential the
+drain ends up holding can write a custom namespace at all. Which
+credential the drain holds, and whether it is a deploy key or a GitHub
+App, stays an **open proposal** and is not decided here. Spike case 7 is
+where the configuration becomes evidence, and no case in this note has
+been executed.
+
 ## The tier ladder
 
 | tier | sequencer key lives | transport auth borrowed | liveness |
@@ -163,9 +219,18 @@ isolation is structural rather than procedural:
 - The workflow and the sequencer secret live in a **separate
   repository** to which no submitter has write access. It reaches the
   inbox repository as a reader.
-- Submitters have write access to the **submission repository only**,
-  and a ruleset there restricts them to creating refs under
-  `refs/heads/inbox/**` — no workflow files, no other refs.
+- Submitters have write access to the **submission repository only**.
+  A branch ruleset there confines the branches they may create, update
+  or delete to `refs/heads/inbox/**`, and a push ruleset can refuse
+  workflow files; those are the documented controls, per the posture
+  section above. What no documented control confines is a custom ref
+  namespace: a submitter with write access can push `refs/seq/*` or a
+  notes ref in this repository, exactly as the posture section says,
+  and the design does not pretend otherwise. The sequence's integrity
+  rests on signatures, non-forcing fetches and the control-repository
+  mirror, not on keeping submitters away from that ref. Whether any
+  configuration can confine custom refs is unresolved until spike case
+  7 records what actually happens.
 - The drain runs on a **schedule**, never on a `push` trigger in the
   repository submitters can write to. An earlier draft also allowed
   `repository_dispatch`, which does not survive the isolation it was
@@ -773,9 +838,14 @@ support the drain must **verify the capability and refuse** rather than
 fall back — a silent fallback to per-ref semantics is this same data
 loss wearing a success exit code.
 
-Claims live under a ruleset that permits only the drain principal to
-create or delete them. A submitter who could delete a claim could erase
-the only record that a batch was in flight.
+Claims are branches, so a ruleset reaches them: one that permits only
+the drain principal to create or delete them. A submitter who could
+delete a claim could erase the only record that a batch was in flight.
+What that arrangement cannot also do is keep the drain principal itself
+from deleting one, since the bypass it needs in order to release a claim
+is per ruleset and not per rule, per the posture section above, and the
+protocol below is written so the ledger catches a lost claim rather than
+resting on a ruleset to prevent one.
 
 **Then publish, mirror, and only then release.** Push `refs/seq` to
 `E`; fast-forward the control mirror to `E`; verify both refs read `E`
@@ -1897,10 +1967,16 @@ projected to a results file):
    survivor drains every candidate including the evicted run's. The
    two-run version was this list's second cannot-fail case, and it was
    introduced by the previous repair rather than inherited.
-3. **Token authority** — the workflow's `GITHUB_TOKEN` (contents:
-   write) can create and fast-forward `refs/seq/<genesis>`; if a
-   forge policy forbids it, the deploy-key fallback is documented as
-   the spike's finding, not discovered by a user.
+3. **Token authority** — whether the workflow's `GITHUB_TOKEN`
+   (contents: write) can create and fast-forward `refs/seq/<genesis>`,
+   which is a custom namespace and not a branch: no ruleset can be
+   pointed at it, the documentation does not say whether that
+   permission reaches such a namespace, and this note claims nothing
+   either way. If a forge policy forbids it, the fallback credential is
+   documented as the spike's finding, not discovered by a user. Which
+   fallback, a deploy key or a GitHub App, is the open proposal named in
+   the posture section and is settled by this case rather than assumed
+   ahead of it.
 4. **Refusal** — a malformed intent and an oversized payload each
    yield a refusal recorded in the drain's ledger entry with the right
    reason and no sequence append; the entry is still readable long
@@ -2188,9 +2264,32 @@ projected to a results file):
    deleted. The posture section's availability claim was resting on a
    recovery step that does not exist.
    So the sequence's survival is made explicit rather than assumed.
-   The control repository holds a **`refs/seq-mirror/<genesis>`
-   replica**, ruleset-protected against force-update and writable only
-   by the drain's principal, fast-forward-only.
+   The control repository holds a replica of the sequence on the branch
+   **`refs/heads/gitseq/mirror/<genesis-hex>`**, advanced
+   fast-forward-only.
+
+   **It is a branch because the protection it needs only exists for
+   branches.** An earlier draft put the replica at
+   `refs/seq-mirror/<genesis>` and called it ruleset-protected, which
+   contradicts this note's own posture section: rulesets target
+   branches, tags and pushes, so nothing could have been pointed at that
+   namespace. Under `refs/heads/` it sits beside the ledger branch and
+   the claim refs and takes the same mechanism they take, at the cost of
+   a second ref form in the control repository, which is a cost the
+   ledger branch already pays.
+
+   **What keeps a submitter out of it is the repository boundary, not
+   the ruleset.** The mirror lives in the control repository, to which
+   no submitter has write access at all, so its protection against the
+   parties this tier distrusts is the same isolation the whole tier
+   rests on. A branch ruleset adds force-update protection against the
+   drain's own principal, and how much it adds is an **unresolved
+   prerequisite** rather than a claim: the drain must fast-forward this
+   branch, so it needs standing on the ruleset, and a bypass entry is
+   per ruleset and not per rule. Whether the drain's authority can be
+   narrowed to fast-forward alone is a question about a configuration
+   nobody has built, and it belongs to case 7 with the rest of them. As
+   of 2026-09-07 no such configuration exists and none has been tested.
 
    Introducing a second durable copy is not free, and the previous
    draft stopped at naming it — acquiring a trusted component to fix a
@@ -2244,13 +2343,25 @@ projected to a results file):
    and it must be run before tier 1 is offered to anyone. A submitter
    holding only inbox write access attempts, and must fail at, each
    of: pushing an inbox branch carrying `.github/workflows/`; pushing
-   any ref outside `refs/heads/inbox/**`; **deleting or force-updating
-   a `refs/heads/claimed/*` ref**; **deleting or force-updating the
-   ledger branch `refs/heads/gitseq/batches/*`**; causing any workflow
-   run whose file it authored; and reading the sequencer secret from a
-   run it triggered. The two deletion attempts are called out rather
-   than left to "any ref outside inbox", because they are the ones
-   that destroy evidence.
+   a branch or tag outside `refs/heads/inbox/**`; **deleting or
+   force-updating a `refs/heads/claimed/*` ref**; **deleting or
+   force-updating the ledger branch `refs/heads/gitseq/batches/*`**;
+   causing any workflow run whose file it authored; and reading the
+   sequencer secret from a run it triggered. Every one of those six is
+   a branch, tag, content or workflow control the documentation covers,
+   which is why refusal is the assertion. The two deletion attempts are
+   called out rather than left to "any branch outside inbox", because
+   they are the ones that destroy evidence.
+
+   A seventh attempt is run last and is **recorded, not asserted**:
+   pushing a custom ref such as `refs/seq/<genesis>` or a notes ref.
+   No documented ruleset target covers it, so the note cannot claim it
+   is refused. If it succeeds, that is the unsupported condition the
+   posture section already accepts, and the sequence still stands on
+   its signatures, the non-forcing fetch and the mirror; the case
+   records the outcome so the posture's wording can be checked against
+   evidence rather than assumed. As of 2026-09-07 no such attempt has
+   been made.
 
    **A positive control comes first, and without it the case proves
    nothing.** Six refusals all pass trivially against a dead token, an
@@ -2260,11 +2371,14 @@ projected to a results file):
    ordinary allowed inbox ref, then **snapshot every durable ref**,
    then run the six forbidden operations with that same unchanged
    credential, then verify every durable ref is byte-identical to
-   *that snapshot*. The baseline is deliberately the post-control
-   state, not the pre-case state: the positive control necessarily
-   created a ref, so comparing against the pre-case state would report
-   a difference the case itself caused. A pass is one success,
-   followed by six refusals, with nothing moved after the snapshot.
+   *that snapshot*, and only then run the recorded custom-ref attempt
+   against a second snapshot so its outcome is attributable to it
+   alone. The baseline is deliberately the post-control state, not the
+   pre-case state: the positive control necessarily created a ref, so
+   comparing against the pre-case state would report a difference the
+   case itself caused. A pass is one success, followed by six refusals
+   with nothing moved after the first snapshot, followed by one
+   recorded outcome.
 8. **Crash at each commit point** — and it must assert mirror
    convergence before claim release, or it passes while exercising
    the obsolete release-after-publish behaviour. A run is killed at
