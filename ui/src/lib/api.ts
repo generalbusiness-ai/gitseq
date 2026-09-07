@@ -52,6 +52,9 @@ export interface Statement {
   stale_because?: string;
   stale_because_path?: string;
   stale_because_truncated?: boolean;
+  // Direct bases the fold refused: staleness stops at them, so the citation
+  // is disclosed here instead of propagated. Direct citations only.
+  ineffective_bases?: string[];
 }
 
 export interface LeftLiveAccounting {
@@ -153,6 +156,9 @@ export interface Artifact {
   stale_because?: string;
   stale_because_path?: string;
   stale_because_truncated?: boolean;
+  // Direct bases the fold refused: staleness stops at them, so the citation
+  // is disclosed here instead of propagated. Direct citations only.
+  ineffective_bases?: string[];
   // No basis under this artifact can ever be retired, so no supersession can
   // make it stale. Its silence is not evidence that it is current.
   unable_to_flare?: boolean;
