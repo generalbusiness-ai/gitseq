@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type Actor, type Cursor, type Projection, type Status } from "./api";
+import { api, type Actor, type Cursor, type Projection, type Rebuild, type Status } from "./api";
 import { projectName } from "./title";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
@@ -11,6 +11,11 @@ export interface Workroom {
   repoRemote?: string; // that repository's remote, when one is safe to link
   actors: Actor[];
   offline: boolean;
+  // rebuilding is the resident's own report that it is verifying durable
+  // history while this page's wait is outstanding. It is set only while a
+  // wait has been open long enough for the probe to fire, so a retained
+  // status can be qualified on screen instead of read as current.
+  rebuilding?: Rebuild;
 }
 
 // One wait-loop drives the whole page: the composite cursor is the only
@@ -28,10 +33,16 @@ export function useWorkroom(): Workroom {
   const [repoRemote, setRepoRemote] = useState<string>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
+  const [rebuilding, setRebuilding] = useState<Rebuild>();
 
   useEffect(() => {
     let stopped = false;
     let cursor: Cursor | undefined;
+    let probe: ReturnType<typeof setInterval> | undefined;
+    const stopProbe = () => {
+      if (probe !== undefined) clearInterval(probe);
+      probe = undefined;
+    };
 
     const apply = (next: Status) => {
       if (stopped) return;
@@ -56,8 +67,23 @@ export function useWorkroom(): Workroom {
           if (!cursor) {
             apply(await api.status());
           } else {
-            const wait = await api.wait(cursor);
-            apply(wait.status);
+            // While the wait is outstanding, ask the non-blocking rebuild
+            // endpoint whether the resident is verifying from cold. A wait
+            // that returns within the second never fires the probe. The
+            // timer is unreferenced where the runtime allows, so a page torn
+            // down mid-wait (or a test whose wait never returns) does not
+            // keep the process alive; the cleanup below clears it too.
+            probe = setInterval(() => {
+              api.rebuild().then((next) => !stopped && setRebuilding(next.running ? next : undefined)).catch(() => undefined);
+            }, 1000);
+            (probe as unknown as { unref?: () => void }).unref?.();
+            try {
+              const wait = await api.wait(cursor);
+              apply(wait.status);
+            } finally {
+              stopProbe();
+              if (!stopped) setRebuilding(undefined);
+            }
           }
         } catch {
           if (!stopped) setOffline(true);
@@ -68,10 +94,11 @@ export function useWorkroom(): Workroom {
     void loop();
     return () => {
       stopped = true;
+      stopProbe();
     };
   }, []);
 
-  return { status, repo, project, repoRemote, actors, offline };
+  return { status, repo, project, repoRemote, actors, offline, rebuilding };
 }
 
 // Ticket numbers: every durable event's 1-based position in log order.
