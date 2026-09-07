@@ -1,0 +1,44 @@
+=== RUN   TestCodexReviewHostileNewRows
+--- PASS: TestCodexReviewHostileNewRows (0.00s)
+=== RUN   TestCodexReviewRefusedDissentTarget
+--- PASS: TestCodexReviewRefusedDissentTarget (0.00s)
+=== RUN   TestCodexReviewUnreadableDissentTarget
+    codex_review_test.go:22: known unreadable target loses verdict; want " against #10 git:sha1:1111111111111111111111111111111111111111#unreadable (ineffective)":
+        # Workroom status
+        
+        ## Requests and commitments
+        
+        No commitments.
+        
+        ## Reviews
+        
+        No reviews.
+        
+        ## Artifacts
+        
+        No artifacts.
+        
+        ## Standing dissent
+        
+        - #11 git:sha1:1111111111111111111111111111111111111111#against-unreadable by actor:agent against #10 git:sha1:1111111111111111111111111111111111111111#unreadable (unknown): challenge unreadable target
+        
+        ## Ratified statements
+        
+        | kind | statement | ratified by | state |
+        |---|---|---|---|
+        | roster | #2 git:sha1:1111111111111111111111111111111111111111#w1 | #3 git:sha1:1111111111111111111111111111111111111111#w1r | current |
+        | roster | #4 git:sha1:1111111111111111111111111111111111111111#w2 | #5 git:sha1:1111111111111111111111111111111111111111#w2r | current |
+        | roster | #6 git:sha1:1111111111111111111111111111111111111111#w3 | #7 git:sha1:1111111111111111111111111111111111111111#w3r | current |
+        | roster | #8 git:sha1:1111111111111111111111111111111111111111#w4 | #9 git:sha1:1111111111111111111111111111111111111111#w4r | current |
+        
+        ## Uninterpretable records
+        
+        None.
+        
+        ## Attempts
+        
+        - `#10 git:sha1:1111111111111111111111111111111111111111#unreadable` — **ineffective**: unexpected end of JSON input
+--- FAIL: TestCodexReviewUnreadableDissentTarget (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.292s
+FAIL

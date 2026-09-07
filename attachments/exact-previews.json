@@ -1,0 +1,107 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8ea36d90d4cfe6e5363d5d26c81e29c11df6399",
+    "path": "internal/safetext/safetext.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cfc6b17e2047f9e8f1976fbdfb5436cc2b173d9",
+    "path": "internal/statusview/view.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4711f569309639824e8b6209be4bc2555f6745db",
+    "path": "internal/workroom/dead_bases.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90b7a15d02edda4f764c781e975f7861dffa8f77",
+    "path": "internal/workroom/render.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6196aa971a83a10c146a9c941b89c7b780b9cc3",
+    "path": "internal/app/admission.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bfc37fa1ad9b57138ab610b68b748e3fdcc5444c",
+    "path": "internal/workroom/dead_bases_test.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e62115190c4b2d48fa68a953e27a3b09914f351",
+    "path": "internal/app/admission_test.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2db2a38799053e8a0e42acf6638652b036ddea72",
+    "path": "internal/workroom/testdata/render_status.golden.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7aa021041592ec9ff18a6849ccadc00716508e6b",
+    "path": "internal/workroom/truthfulness_test.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e781aa71563faa3387a71dd7cec27c0f1365d799",
+    "path": "internal/workroom/fold.go",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf9374f52f788241b8c09ec63135a131a8c2964f",
+    "path": "docs/concepts/staleness.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5145da1a84c995a374a0fa4c16bb694c9f3b239a",
+    "path": "docs/reference/gs/status.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ede330191d49f89f76af39c68e737fae259fdb8",
+    "path": "docs/reference/gs/state.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2500bf57e0dfc5c9de6482788d51d6c7e7e233f8",
+    "path": "docs/reference/mcp/state.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1474b8ea38d68fadc4b18ae9e28979f5415dd05c",
+    "path": "docs/reference/architecture.md",
+    "status": "ready",
+    "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+    "exact": true
+  }
+]

@@ -1,0 +1,44 @@
+[
+  {
+    "name": "disclosure",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  },
+  {
+    "name": "dissent",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  },
+  {
+    "name": "admission",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  },
+  {
+    "name": "classification",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  },
+  {
+    "name": "encoding",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  },
+  {
+    "name": "target_verdict",
+    "exit_code": 1,
+    "actual_test_failure": true,
+    "compile_failure": false,
+    "no_tests": false
+  }
+]
