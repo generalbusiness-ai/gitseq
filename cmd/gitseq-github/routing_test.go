@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -294,4 +297,77 @@ func TestTheCommandResolvesTheRouteBeforeReadingTheKey(t *testing.T) {
 		t.Fatalf("error = %v, want the advertisement refusal before any key or charter check", err)
 	}
 	mustNotAppend(t, workspace, before)
+}
+
+// The command itself, end to end: a chartered clause, a stubbed tracker
+// returning one issue, and a real advertised resident. The observation must
+// cross the resident's socket and become the new head. This is the control
+// for the production call site that hands the resolved route to the
+// observation: routing straight from the flag there passes every other test
+// and fails this one.
+func TestTheCommandRoutesObservationsToTheAdvertisedResident(t *testing.T) {
+	ctx := context.Background()
+	repo := newObservationRepo(t)
+	state := func(act app.Act) workroom.Record {
+		t.Helper()
+		submission, err := repo.workspace.Act(ctx, "connector", act)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return submission.Record
+	}
+	charter := state(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPropose, Text: "connector charter",
+		Body:    map[string]string{"connector": "github", "owner": "o", "repo": "r", "actor": "connector", "operations": "observe"},
+		RestsOn: []string{repo.charter.ID}, IdempotencyKey: "charter",
+	})
+	state(app.Act{Verb: app.VerbRatify, Target: charter.ID, IdempotencyKey: "ratify-charter"})
+	state(app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "observe issue 7",
+		Body:    map[string]string{"connector": "github", "issues": "7"},
+		RestsOn: []string{charter.ID}, IdempotencyKey: "clause",
+	})
+
+	tracker := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/repos/o/r/issues/7" {
+			http.NotFound(writer, request)
+			return
+		}
+		json.NewEncoder(writer).Encode(map[string]any{
+			"number": 7, "title": "Seven", "body": "", "html_url": "https://example.invalid/o/r/issues/7",
+			"state": "open", "user": map[string]string{"login": "someone"},
+		})
+	}))
+	t.Cleanup(tracker.Close)
+	previous := newGitHubClient
+	newGitHubClient = func(token string) *github.Client {
+		return &github.Client{BaseURL: tracker.URL, HTTP: tracker.Client(), Token: token, Logger: log.New(io.Discard, "", 0)}
+	}
+	t.Cleanup(func() { newGitHubClient = previous })
+
+	url, hits := serveResident(t, repo.workspace)
+	advertise(t, repo.workspace, url)
+	before := snapshotOf(t, repo.workspace)
+	err := run(ctx, []string{"--repo", repo.path, "--as", "connector", "--charter", charter.ID, "--owner", "o", "--repo-name", "r"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() == 0 {
+		t.Fatal("the command appended its observation without dialling the advertised resident")
+	}
+	after := snapshotOf(t, repo.workspace)
+	if after.Depth != before.Depth+1 {
+		t.Fatalf("depth %d after the run, want %d", after.Depth, before.Depth+1)
+	}
+
+	// The sentinel through the same command: the resident is still advertised
+	// and still not dialled.
+	hits.Store(0)
+	err = run(ctx, []string{"--repo", repo.path, "--as", "connector", "--charter", charter.ID, "--owner", "o", "--repo-name", "r", "--server", residentclient.LocalRoute})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() != 0 {
+		t.Fatalf("--server - dialled the advertised resident %d times", hits.Load())
+	}
 }

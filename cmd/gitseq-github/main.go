@@ -104,7 +104,7 @@ func run(ctx context.Context, arguments []string) error {
 		if err := proposalIsCoherent(snapshot.Projection, *governing, *artifact, *commit); err != nil {
 			return err
 		}
-		return proposePullRequest(ctx, github.NewClient(token), *owner, *name, *dry, proposalFlags{
+		return proposePullRequest(ctx, newGitHubClient(token), *owner, *name, *dry, proposalFlags{
 			issue: *propose, branch: *branch, base: *base, commit: *commit,
 			request: *governing, artifact: *artifact, title: *title,
 		})
@@ -145,7 +145,7 @@ func run(ctx context.Context, arguments []string) error {
 	// The clauses decide the read. Nothing here enumerates the tracker, so a
 	// repository costs what its clauses ask for rather than what strangers have
 	// filed in it.
-	client := github.NewClient(token)
+	client := newGitHubClient(token)
 	admitted, missing, err := github.Fetch(ctx, client, *owner, *name, clauses)
 	if err != nil {
 		return err
@@ -174,6 +174,11 @@ func run(ctx context.Context, arguments []string) error {
 	}
 	return nil
 }
+
+// newGitHubClient builds the reader and writer for the forge. Tests point it
+// at a stub so the whole command, from flags to a sequenced observation, can
+// run against a controlled tracker and a real resident.
+var newGitHubClient = github.NewClient
 
 type observationIdentity struct {
 	Name        string
