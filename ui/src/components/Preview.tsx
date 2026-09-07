@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type PreviewResponse } from "../lib/api";
 import { formatAddress, type Address, type PreviewAddress } from "../lib/address";
-import { FILE_TOKEN, fileReference, safeExternalLink, inlineTokens } from "../lib/fileReferences";
+import { FILE_TOKEN, referenceTarget, safeExternalLink, inlineTokens } from "../lib/fileReferences";
 import { useModalFocus } from "../lib/modalFocus";
 
 export const PreviewContext = createContext<{ address: Address; open: (target: PreviewAddress) => void } | undefined>(undefined);
@@ -13,12 +13,10 @@ export function PreviewLink({ target, children }: { target: PreviewAddress; chil
 }
 
 function Reference({ value, event, children, commit, basePath, attachments }: { value: string; event: string; children: ReactNode; commit?: string; basePath?: string; attachments?: string[] }) {
-  if (attachments?.includes(value)) return <PreviewLink target={{ event, attachment: value }}>{children}</PreviewLink>;
-  if (safeExternalLink(value)) return <a href={value} target="_blank" rel="noopener noreferrer" className="text-accent underline">{children}</a>;
-  const reference = fileReference(value, event);
-  if (!reference) return <span>{children} <span className="text-muted">(link unavailable)</span></span>;
-  if (basePath && !reference.path?.includes("/")) reference.path = basePath.slice(0, Math.max(0, basePath.lastIndexOf("/") + 1)) + reference.path;
-  return <PreviewLink target={{ ...reference, commit: reference.commit ?? commit }}>{children}</PreviewLink>;
+  const target = referenceTarget(value, event, { commit, basePath, attachments });
+  if (!target && safeExternalLink(value)) return <a href={value} target="_blank" rel="noopener noreferrer" className="text-accent underline">{children}</a>;
+  if (!target) return <span>{children} <span className="text-muted">(link unavailable)</span></span>;
+  return <PreviewLink target={target}>{children}</PreviewLink>;
 }
 
 // React creates all text nodes. HTML, image fetching and executable Markdown
@@ -30,11 +28,11 @@ export function ReferenceText({ text, event, commit, basePath, attachments }: { 
     for (const match of value.matchAll(/\S+/g)) {
       const token = match[0].replace(/^[(["']+/, "").replace(/[),.;!?"']+$/, "");
       if (token.length > 2048 || !new RegExp(`^(?:${FILE_TOKEN.source})$`).test(token)) continue;
-      const target = fileReference(token, event);
+      const target = referenceTarget(token, event, { commit, attachments });
       if (!target) continue;
       const position = match.index! + match[0].indexOf(token);
       output.push(value.slice(offset, position));
-      output.push(<PreviewLink key={`${start}:${position}`} target={attachments?.includes(target.path ?? "") ? { event, attachment: target.path, line: target.line } : { ...target, commit: target.commit ?? commit }}>{token}</PreviewLink>);
+      output.push(<PreviewLink key={`${start}:${position}`} target={target}>{token}</PreviewLink>);
       offset = position + token.length;
     }
     output.push(value.slice(offset));
@@ -44,8 +42,8 @@ export function ReferenceText({ text, event, commit, basePath, attachments }: { 
     prose(text.slice(offset, token.start), offset);
     if (token.code !== undefined) {
       const value = token.code;
-      const target = value.length <= 2048 && new RegExp(`^(?:${FILE_TOKEN.source})$`).test(value) ? fileReference(value, event) : undefined;
-      output.push(<code key={token.start} className="rounded bg-elevated px-1 font-mono">{target ? <PreviewLink target={attachments?.includes(target.path ?? "") ? { event, attachment: target.path, line: target.line } : { ...target, commit: target.commit ?? commit }}>{value}</PreviewLink> : value}</code>);
+      const target = value.length <= 2048 && new RegExp(`^(?:${FILE_TOKEN.source})$`).test(value) ? referenceTarget(value, event, { commit, attachments }) : undefined;
+      output.push(<code key={token.start} className="rounded bg-elevated px-1 font-mono">{target ? <PreviewLink target={target}>{value}</PreviewLink> : value}</code>);
     } else {
       output.push(token.image ? <span key={token.start}>[Image: {token.label || "unnamed"}; not loaded]</span>
         : <Reference key={token.start} value={token.url!} event={event} commit={commit} basePath={basePath} attachments={attachments}>{token.label || token.url}</Reference>);
@@ -77,14 +75,39 @@ export function MarkdownPreview({ text, event, commit, path, attachments }: { te
   return <div className="text-sm">{blocks}</div>;
 }
 
-export function EvidenceLinks({ event }: { event: string }) {
-  const [result, setResult] = useState<PreviewResponse>();
-  const [error, setError] = useState(false);
+// One record's own attachment listing: the evidence row and every reference
+// in that record's text read this one answer, so a name means the same thing
+// in both places.
+export interface EvidenceListing { key: string; result?: PreviewResponse; error?: boolean }
+
+// The listing is bounded per record: one `api.preview({ event })` call, never
+// one per token and never a walk of history. Answers are keyed by the exact
+// event, as Preview keys by its request, so a listing that arrives after the
+// reader has moved to another record binds to nothing and its references stay
+// as they were.
+export function useEvidenceListing(event?: string): EvidenceListing {
+  const [loaded, setLoaded] = useState<EvidenceListing>();
   useEffect(() => {
-    const abort = new AbortController(); setResult(undefined); setError(false);
-    api.preview({ event }, abort.signal).then((answer) => { if (!abort.signal.aborted) setResult(answer); }).catch(() => { if (!abort.signal.aborted) setError(true); });
+    if (!event) return;
+    const abort = new AbortController(); setLoaded(undefined);
+    api.preview({ event }, abort.signal)
+      .then((result) => { if (!abort.signal.aborted) setLoaded({ key: event, result }); })
+      .catch(() => { if (!abort.signal.aborted) setLoaded({ key: event, error: true }); });
     return () => abort.abort();
   }, [event]);
+  return event && loaded && loaded.key === event ? loaded : { key: event ?? "" };
+}
+
+// The names a record's own text may resolve to an attachment: none until the
+// listing is ready, and none when it failed or the resident refused, so prose
+// falls back to source rather than flashing to a wrong target.
+export function listedAttachments(listing: EvidenceListing): string[] | undefined {
+  return listing.result?.status === "ready" ? listing.result.attachments : undefined;
+}
+
+export function EvidenceLinks({ event, listing }: { event: string; listing: EvidenceListing }) {
+  // A listing keyed to another record says nothing about this one.
+  const { result, error } = listing.key === event ? listing : { result: undefined, error: undefined };
   if (error) return <span>Evidence could not be checked. <PreviewLink target={{ event }}>Try opening evidence</PreviewLink></span>;
   if (!result) return <span>Checking evidence…</span>;
   if (result.status !== "ready") return <span>{result.message}</span>;
@@ -142,7 +165,7 @@ export function Preview({ target, onClose }: { target: PreviewAddress; onClose: 
         {result?.message && <p role="status">{result.message}</p>}
         {result?.status === "ambiguous" && <ul>{result.heads?.map((commit) => <li key={commit}><PreviewLink target={{ ...target, commit }}>{commit}</PreviewLink></li>)}</ul>}
         {result?.status === "directory" && <ul>{result.entries?.map((name) => <li key={name}><PreviewLink target={{ event: target.event, commit: result.commit, path: `${target.path}/${name}` }}>{name}</PreviewLink></li>)}{!!result.omitted && <li>{result.omitted} more entries exceed the listing limit.</li>}</ul>}
-        {result?.status === "ready" && !target.path && !target.attachment && <EvidenceLinks event={target.event} />}
+        {result?.status === "ready" && !target.path && !target.attachment && <EvidenceLinks event={target.event} listing={{ key: target.event, result }} />}
         {result?.status === "ready" && (target.path || target.attachment) && <>
           {markdown && whole && <button type="button" className="mb-3 text-sm text-accent underline" onClick={() => setSource(!source)}>{source ? "Read Markdown" : "Show source and line numbers"}</button>}
           {!!window?.truncated?.length && <p role="status">{window.truncated.length === 1 ? `Line ${window.truncated[0]} is` : `Lines ${window.truncated.join(", ")} are`} longer than 4 KiB and shown cut.</p>}

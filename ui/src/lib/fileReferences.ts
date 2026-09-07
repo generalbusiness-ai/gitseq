@@ -12,6 +12,38 @@ export function fileReference(value: string, event: string): PreviewAddress | un
   return { event, path, commit: match[2], line: Number(match[3] || match[4]) || undefined };
 }
 
+// One place decides whether a reference a record makes in its own text opens
+// that record's signed evidence attachment or a repository source file, so the
+// prose, the body rows and the evidence row all agree.
+//
+// A token whose whole text equals the name of an attachment of this record
+// opens that attachment: that is the name the record itself published, and the
+// evidence row opens the same content under the same name. A token that says
+// more than that bare name opens the source file, so a source path sharing an
+// attachment's name stays reachable — an explicit revision (`notes.md@<full
+// object ID>`), an explicit line (`notes.md:12`, `notes.md#L12`), or any other
+// text that makes it differ from every attachment name, such as a directory
+// component no attachment carries. Attachment names are compared as exact
+// whole strings; nothing is normalised, stripped or matched by suffix.
+//
+// Two links never come through here and never change: the artifact `path` row
+// always opens source, and the evidence list always opens the attachment.
+// Nothing here guesses another record, another revision or a file outside the
+// repository. With no attachment list — none fetched yet, or the listing
+// failed — every token resolves exactly as it did before attachments existed.
+export function referenceTarget(
+  value: string,
+  event: string,
+  options?: { commit?: string; basePath?: string; attachments?: string[] },
+): PreviewAddress | undefined {
+  if (options?.attachments?.includes(value)) return { event, attachment: value };
+  const reference = fileReference(value, event);
+  if (!reference) return undefined;
+  const basePath = options?.basePath;
+  if (basePath && !reference.path?.includes("/")) reference.path = basePath.slice(0, Math.max(0, basePath.lastIndexOf("/") + 1)) + reference.path;
+  return { ...reference, commit: reference.commit ?? options?.commit };
+}
+
 export function safeExternalLink(value: string): boolean {
   try { const url = new URL(value); return url.protocol === "https:" || url.protocol === "http:"; }
   catch { return false; }

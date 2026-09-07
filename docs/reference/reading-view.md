@@ -34,6 +34,21 @@ images are not fetched. JSON and other source files show line numbers. A
 reference such as `internal/service/server.go:42` highlights line 42;
 **Show source and line numbers** exposes Markdown's original lines too.
 
+A record's own text and body fields may name that record's own evidence.
+A name in the text, in a Markdown link or in a body value that is exactly
+the name of one of this record's attachments opens that attachment — the
+same content the evidence row opens under the same name. A reference that
+says more than that bare name opens a repository file instead, so a source
+path sharing an attachment's name stays reachable: an explicit revision
+such as `notes.md@<full object ID>`, an explicit line such as `notes.md:12`,
+or any other text that differs from every attachment name, including a
+directory component no attachment carries. The artifact **path** row always
+opens the source file at its commit, and the **evidence** row always opens
+the attachment. The reader compares whole names and guesses nothing: no
+other record, no other revision and no file outside this repository. Until
+this record's attachment listing has arrived, and if it cannot be read,
+every reference in the text resolves as a repository path.
+
 A file uses the selected record's exact artifact or review head, or its
 explicit `head` or `commit` field. With none of those, the reader considers
 only directly cited artifacts. One distinct revision can be selected
