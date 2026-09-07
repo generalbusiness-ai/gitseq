@@ -1,0 +1,10 @@
+=== RUN   TestCodexHeadWatchCancelledJoin
+    codex_headwatch_probe_test.go:8: cancelled joining waiter remains blocked on another waiter's baseline read
+--- FAIL: TestCodexHeadWatchCancelledJoin (0.10s)
+=== RUN   TestCodexHeadWatchReadOutlivesLastReleaseAndOverlapsRestart
+    codex_headwatch_probe_test.go:15: last release does not cancel in-flight background head read
+    codex_headwatch_probe_test.go:16: restart overlaps retired clock read: 2 concurrent ref reads
+--- FAIL: TestCodexHeadWatchReadOutlivesLastReleaseAndOverlapsRestart (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/service	0.395s
+FAIL

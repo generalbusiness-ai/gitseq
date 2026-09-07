@@ -1,0 +1,86 @@
+[
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8",
+    "path": "performance/HEAD-WAIT.md",
+    "bases": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+        "path": null,
+        "kind": "promise"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f4da61e08c74dc403d7e2fc4ea9b541f3f258e4",
+        "path": "internal/service/headwatch_evidence_test.go",
+        "kind": "artifact"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa253ffb264fff7e6c25949e1759538409fbb2e3",
+        "path": "performance/head-wait-before.json",
+        "kind": "artifact"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:746f1498455e6c3397aa3c780966e9a52bf5fc36",
+        "path": "performance/head-wait-after.json",
+        "kind": "artifact"
+      }
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4a42b90d3a5294a6525e09e11b283671836b172",
+    "path": "performance/README.md",
+    "bases": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+        "path": null,
+        "kind": "promise"
+      }
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8c30c14164bb469dd8e7e1a4ab097fd785bedf8",
+    "path": "docs/reference/performance.md",
+    "bases": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+        "path": null,
+        "kind": "promise"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7ef45ac738cedc99aac0c20df4e2e22b2a2e64",
+        "path": "docs/reference/performance.md",
+        "kind": "artifact"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8",
+        "path": "performance/HEAD-WAIT.md",
+        "kind": "artifact"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8",
+        "path": "internal/service/headwatch.go",
+        "kind": "artifact"
+      }
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d",
+    "path": "docs/reference/mcp/wait.md",
+    "bases": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+        "path": null,
+        "kind": "promise"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e064e588dbaf36905bf508457880ba18f0c0e528",
+        "path": "docs/reference/mcp/wait.md",
+        "kind": "artifact"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8",
+        "path": "internal/service/headwatch.go",
+        "kind": "artifact"
+      }
+    ]
+  }
+]
