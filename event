@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2e5535aa56a2d129bd0bf5280bcd9aa613d7f63d","text":"Merge retired a covered predecessor; the successor is at ui/test/work-populations.test.mjs."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3583b64399e45fe68235ac5f93114d21ad3e633c","text":"Merge retired a covered predecessor; the successor is at internal/workroom/testdata/render_status.golden.md."}
