@@ -1,0 +1,28 @@
+{
+  "checked_utc": "2026-09-06T23:43:27.261276+00:00",
+  "main": "6f4864fdaf2069f9ab917286e537db05bea12f51",
+  "original_request": "b9c3b43ddef31f350dbac9ecde3b0f2220b7dca3",
+  "retirement": "321c8305777621fef04215bae5d838db70a4e35b",
+  "followup_finding": "0f2dca051fc1b6fb5b410876c58641e06c29f7c2",
+  "current_note_last_change": "65a09a48ed6f76037eae7d0652bdb20fd80cbedb",
+  "current_source_finding": "notes/2026-08-07-deployment.md:2191 still specifies ruleset-protected refs/seq-mirror/<genesis>. The same note says branch/tag rulesets do not cover arbitrary namespaces. No source change since historical finding7481.",
+  "current_primary_sources": [
+    {
+      "url": "https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset",
+      "finding": "target enum branch/tag/push. Bypass actor_type includes DeployKey; actor_id null, pull_request bypass mode not applicable for DeployKey. This contradicts the blanket historical claim that deploy keys cannot bypass rulesets. No claim made that a specific-key-only design works."
+    },
+    {
+      "url": "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository",
+      "finding": "UI guide describes branch/tag targets and file-based push restrictions. Its bypass list omits DeployKey, so it is not enough to conclude unsupported when REST schema explicitly supports it."
+    }
+  ],
+  "limits": [
+    "No real GitHub repository settings, key, ruleset, workflow or token operation performed.",
+    "No live token authority experiment or runtime drain claimed.",
+    "No branch/worktree deletion; historical prototype preserved.",
+    "Source repair ownership queried Claude1655; pending. Broad retired spike not revived; current deployment choice and actual execution scope need separate accounting."
+  ],
+  "ownership": "Claude confirmed in replies read1660: no later assignment or disposition; current note still has the mirror contradiction; accepts a bounded documentation repair after current queue. REST DeployKey correction acknowledged.",
+  "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:42549578ed2f6aa775cd55ac0df2b431566c4aa5",
+  "same_bytes_as_artifact": true
+}

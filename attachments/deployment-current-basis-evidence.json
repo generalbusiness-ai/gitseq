@@ -1,0 +1,79 @@
+{
+  "prepared_utc": "2026-09-07T14:47:44.968023+00:00",
+  "draft_only": false,
+  "must_refresh_before_filing": "Refreshed immediately before filing: main b23; current published live bases checked at21222; original outcome/conditions/performer/destination/authority and previously confirmed availability unchanged.",
+  "original_request": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2407c51813e614b415de871f348ace081487049a",
+    "sequence": 20009,
+    "timestamp": 1788738516,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "kind": "request",
+    "lifecycle": "request",
+    "satisfier": "none",
+    "text": "Claude: repair the deployment note's remaining ruleset and custody claims on current evidence, after #20008 shared-head-notices. This recovers the unassigned documentation follow-up from #7481. The retired #286 six-case Action spike is not the deliverable: its conditions no longer match the eleven-case design, and no tier-1 drain is being commissioned here.\n\nAt current main 6f4864fdaf2069f9ab917286e537db05bea12f51, [the posture](notes/2026-08-07-deployment.md@6f4864fdaf2069f9ab917286e537db05bea12f51:84) says GitHub branch/tag protections do not reach arbitrary ref namespaces, but [case 6](notes/2026-08-07-deployment.md@6f4864fdaf2069f9ab917286e537db05bea12f51:2191) still requires ruleset protection for refs/seq-mirror/<genesis>. The path is byte-identical to its live 65a09a48 artifact; this is the unresolved contradiction you recorded in #7481. [Current audit evidence](deployment-ruleset-evidence.json) records the source and ownership check.\n\nRe-derive both historical findings from current primary sources. The [GitHub ruleset API](https://docs.github.com/en/rest/repos/rules#create-a-repository-ruleset) explicitly supports DeployKey as a bypass actor with null actor_id; pull_request bypass does not apply to that actor type. The [UI guide](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository) omits it from its list. Therefore do not repeat #7481's blanket claim that deploy keys cannot bypass rulesets, or infer that a GitHub App is mandatory solely from that omission. Conversely, schema support is not proof that the design's specific drain-only authority, key isolation or a live installation works.\n\nDeliver a small, internally consistent correction to the affected passages and cross-references: distinguish branches/tags from arbitrary refs; put any proposed branch-ruleset mirror under a namespace those rules cover or state the actual unsupported condition; state credential and bypass granularity precisely, with current source links; preserve independent auditor, append-only retention, refusal, reconciliation, availability and activation gates. Distinguish researched capability from an executed spike. Do not claim GITHUB_TOKEN custom-ref permissions, real deployment success, or historical test execution from documentation alone. Use a concise dated status or explicit unresolved prerequisite where proof is absent. Any material new credential, trust or deployment-policy choice needs an ordinary proposal and adoption before it is presented as settled.\n\nWork on request/deployment-ruleset-clarity from then-current main. Read the complete note for contradictory surviving passages, but avoid expanding this into another deployment design. Use current behavior provenance for described project behavior and acknowledge ordinary inherited staleness without routine refiling. Publish exact-path artifacts, obtain independent Architecture/Security/Simplification review of the exact head, ratify approval, seal the main merge, push origin/main, check CI and remove the owned worktree and branch. Validate the actual changed note and its links; a docset gate that excludes notes/ is not evidence that the changed claims are sound. Source delivery closes this request. No real GitHub settings, rulesets, keys, tokens, workflows, repo creation, service change or Action-drain implementation is authorized. #8162 remains deferred.",
+    "body": {
+      "conditions": "Correct the remaining deployment-note ruleset/mirror and credential claims against current primary evidence, preserve gates and explicit unknowns; bounded documentation delivery only, independently reviewed exact-head sealed main/push/CI/cleanup.",
+      "head": "6f4864fdaf2069f9ab917286e537db05bea12f51",
+      "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2dca051fc1b6fb5b410876c58641e06c29f7c2, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:42549578ed2f6aa775cd55ac0df2b431566c4aa5 stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c782762a48f86f67f27c65e95e27c3ea0c1cc7c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27a03025fa49877d28270aa79cfcaa55bcca96eb, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6188de3a5bff25a73df7c35c708d677db6ba688d, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:911fd560941339068b86f95e813cbd5ac9c90645",
+      "target_head": "6f4864fdaf2069f9ab917286e537db05bea12f51",
+      "target_ref": "refs/heads/main",
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+    },
+    "stale": true,
+    "stale_because_truncated": true
+  },
+  "original_bases": [
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2dca051fc1b6fb5b410876c58641e06c29f7c2",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:42549578ed2f6aa775cd55ac0df2b431566c4aa5"
+  ],
+  "current_snapshot_frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "0e37ce93d36cb19cdd237dfacb5bf977775da93e",
+    "depth": 21222
+  },
+  "candidate_current_bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06bcb7291a174a440c578541c69bf2bd41697ed0",
+      "path": "docs/reference/architecture.md",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9b2a40148ce7eb72d73787e08744e77390eafd6",
+      "stale_because_path": "internal/workroom/fold.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ea4ae86b6807b16474e5dc5ae7dfa485d2836fe",
+      "path": "internal/service/server.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ac4471b89126028a8888e3f986abc558d81830f9",
+      "stale_because_path": "internal/workroom/render.go"
+    }
+  ],
+  "target_document": {
+    "path": "notes/2026-08-07-deployment.md",
+    "head": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+    "sha256": "dc93475373c9820e24a4a5d0b1baf276bbabd136add27fcdfb721eadfb1a7e4d",
+    "git_blob": "7f82e78bc6e1943daa7e63a6d0a9a574c39672b4",
+    "byte_equal_to_live_document_head": "65a09a48ed6f76037eae7d0652bdb20fd80cbedb",
+    "contradiction_lines": [
+      84,
+      2191
+    ]
+  },
+  "historical_attachment_sha256": "e882a05ddfe77434627720bfcc305d81221b6f7abba5ab86d85717bd8906bc9b",
+  "authority_scope": "Same bounded documentation repair. New material credential/trust/deployment-policy choice still needs ordinaryproposal/adoption. No Githubadmin/settings/keys/tokens/workflows/realdrain/runtimeops. #8162 deferred.",
+  "availability_evidence": "Claude2518prioritychat confirmsunstarted/noWTorbranch, sameconditionsandavailability, after20622and20680, beforeotherqueue.",
+  "source_delivery_prerequisite": {
+    "request": 20680,
+    "merge": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+    "ci": 34133013501,
+    "ci_conclusion": "success",
+    "security": 34133013628,
+    "security_conclusion": "success"
+  }
+}
