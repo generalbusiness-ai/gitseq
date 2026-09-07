@@ -1,0 +1,5 @@
+--- FAIL: TestProfileFollowsTheProjectionProfileIdentity (0.41s)
+    profile_test.go:107: a different fold version produced the same profile
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.710s
+FAIL
