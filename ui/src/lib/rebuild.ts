@@ -21,3 +21,38 @@ export function rebuildQualifier(status: Status | undefined, rebuild: Rebuild | 
   const progress = total > 0 ? `${verified.toLocaleString()} of ${total.toLocaleString()} records verified` : "counting records";
   return `Showing frontier ${head} at depth ${depth.toLocaleString()} from before the resident began verifying durable history; ${progress}. Nothing here is current until that finishes.`;
 }
+
+// probeRebuild asks the resident, once a second, whether it is verifying from
+// cold, for as long as one wait is outstanding. Each wait owns one probe: the
+// stop function returned here is that wait's generation guard, so an answer
+// that arrives after the wait returned (or after the page was torn down) is
+// dropped rather than qualifying a newer status. At most one request is in
+// flight; a tick that finds one outstanding does nothing, so a slow endpoint
+// never accumulates overlapping requests. The timer is unreferenced where the
+// runtime allows, so a probe whose wait never returns cannot keep a process
+// alive by itself.
+export function probeRebuild(
+  fetchRebuild: () => Promise<Rebuild>,
+  report: (rebuild: Rebuild | undefined) => void,
+  intervalMs = 1000,
+): () => void {
+  let stopped = false;
+  let inFlight = false;
+  const timer = setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    fetchRebuild()
+      .then((next) => {
+        if (!stopped) report(next.running ? next : undefined);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        inFlight = false;
+      });
+  }, intervalMs);
+  (timer as unknown as { unref?: () => void }).unref?.();
+  return () => {
+    stopped = true;
+    clearInterval(timer);
+  };
+}

@@ -762,9 +762,9 @@ test("a record with many references shows the first twelve and says how many mor
 
 const REPO_PATH = "/Users/someone/play/gitseq";
 
-async function topBarMarkup(vite, repoRemote) {
+async function topBarMarkup(vite, repoRemote, extra = {}) {
   const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
-  const room = { ...workroom({}), repo: REPO_PATH, repoRemote };
+  const room = { ...workroom({}), repo: REPO_PATH, repoRemote, ...extra };
   return renderToStaticMarkup(
     React.createElement(TopBar, { workroom: room, session: {}, onJumpEvent() {}, onPublish() {} }),
   );
@@ -855,6 +855,24 @@ test("a remote carrying a query or fragment does not leak it into the DOM", asyn
       assert.doesNotMatch(markup, /s3cr3t-token|access_token/, `${bearing} reached the DOM`);
       assert.doesNotMatch(markup, /<a\b/, `${bearing} was linked rather than declined`);
     }
+  } finally {
+    await vite.close();
+  }
+});
+
+// The rebuild qualification is a status line the top bar shows over a
+// retained status, and only while the resident reports a rebuild running.
+test("the top bar qualifies a retained status while the resident rebuilds, and only then", async () => {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  try {
+    const quiet = await topBarMarkup(vite, undefined);
+    assert.doesNotMatch(quiet, /Showing frontier/, "no rebuild, no qualification");
+    const finished = await topBarMarkup(vite, undefined, { rebuilding: { running: false } });
+    assert.equal(finished, quiet, "a rebuild that is not running renders exactly as none");
+    const markup = await topBarMarkup(vite, undefined, { rebuilding: { running: true, verified: 7, total: 20 } });
+    const line = markup.match(/<span role="status"[^>]*>([^<]*)<\/span>/);
+    assert.ok(line, "the qualification must render as a status line");
+    assert.match(line[1], /Showing frontier head at depth 1 from before the resident began verifying durable history; 7 of 20 records verified\. Nothing here is current until that finishes\./);
   } finally {
     await vite.close();
   }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type Actor, type Cursor, type Projection, type Rebuild, type Status } from "./api";
+import { probeRebuild } from "./rebuild";
 import { projectName } from "./title";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
@@ -38,11 +39,7 @@ export function useWorkroom(): Workroom {
   useEffect(() => {
     let stopped = false;
     let cursor: Cursor | undefined;
-    let probe: ReturnType<typeof setInterval> | undefined;
-    const stopProbe = () => {
-      if (probe !== undefined) clearInterval(probe);
-      probe = undefined;
-    };
+    let stopProbe: () => void = () => {};
 
     const apply = (next: Status) => {
       if (stopped) return;
@@ -69,16 +66,14 @@ export function useWorkroom(): Workroom {
           } else {
             // While the wait is outstanding, ask the non-blocking rebuild
             // endpoint whether the resident is verifying from cold. A wait
-            // that returns within the second never fires the probe. The
-            // timer is unreferenced where the runtime allows, so a page torn
-            // down mid-wait (or a test whose wait never returns) does not
-            // keep the process alive; the cleanup below clears it too.
-            probe = setInterval(() => {
-              api.rebuild().then((next) => !stopped && setRebuilding(next.running ? next : undefined)).catch(() => undefined);
-            }, 1000);
-            (probe as unknown as { unref?: () => void }).unref?.();
+            // that returns within the second never fires the probe. Stopping
+            // the probe before the status is applied is what keeps a late
+            // answer from qualifying the newer status; the cleanup below
+            // stops it too.
+            stopProbe = probeRebuild(api.rebuild, (next) => !stopped && setRebuilding(next));
             try {
               const wait = await api.wait(cursor);
+              stopProbe();
               apply(wait.status);
             } finally {
               stopProbe();
