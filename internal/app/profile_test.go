@@ -74,4 +74,36 @@ func TestProfileNamesTheNewInterpreterWhileCheckpointReinterpretationIsPending(t
 	if after.Head != before.Head {
 		t.Fatalf("re-interpretation moved the frontier: %s then %s", before.Head, after.Head)
 	}
+	// Binding: the published snapshot was folded under exactly the identity
+	// Profile derives from, so a status carrying both is self-consistent.
+	w.snapshotMu.Lock()
+	published := w.snapshotProfile
+	w.snapshotMu.Unlock()
+	if published != w.selected.host.projectionProfile() {
+		t.Fatalf("snapshot published under %q, selected identity %q", published, w.selected.host.projectionProfile())
+	}
+}
+
+// The identifier follows the cache-invalidating identity exactly: same
+// application and fold version, same profile; either differing, different.
+func TestProfileFollowsTheProjectionProfileIdentity(t *testing.T) {
+	ctx := context.Background()
+	w, _, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := w.selected.host
+	same := w.Profile()
+	w.selected = selection{host: host{application: base.application, foldVersion: base.foldVersion, newFolder: base.newFolder}}
+	if w.Profile() != same {
+		t.Fatal("an equal identity produced a different profile")
+	}
+	w.selected = selection{host: host{application: base.application + "-other", foldVersion: base.foldVersion, newFolder: base.newFolder}}
+	if w.Profile() == same {
+		t.Fatal("a different application produced the same profile")
+	}
+	w.selected = selection{host: host{application: base.application, foldVersion: base.foldVersion + "-other", newFolder: base.newFolder}}
+	if w.Profile() == same {
+		t.Fatal("a different fold version produced the same profile")
+	}
 }

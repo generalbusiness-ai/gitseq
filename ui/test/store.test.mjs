@@ -36,7 +36,7 @@ const reply = (value) => ({ ok: true, json: async () => value });
 // Drives the hook with the probe timer and both endpoints under test control.
 // Only the one-second probe timer is intercepted; everything else keeps the
 // real timers so React's own scheduling is untouched.
-async function withHook(body) {
+async function withHook(body, initial = {}) {
   const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
   const { useWorkroom } = await vite.ssrLoadModule("/src/lib/store.ts");
   const { rebuildQualifier } = await vite.ssrLoadModule("/src/lib/rebuild.ts");
@@ -56,7 +56,11 @@ async function withHook(body) {
     if (!ticks.delete(id)) native.clearInterval(id);
   };
   globalThis.fetch = (url, options = {}) => {
-    if (url === "/v0/status") return Promise.resolve(reply(status("old00000", 1)));
+    if (url === "/v0/status") {
+      const first = status("old00000", 1);
+      if (initial.profile === null) delete first.profile;
+      return Promise.resolve(reply(first));
+    }
     if (url === "/v0/actors") return Promise.resolve(reply([]));
     if (url === "/v0/worktrees") return Promise.resolve(reply({ repo: "", worktrees: [] }));
     if (url === "/v0/wait") return new Promise((resolve) => waits.push(resolve));
@@ -115,7 +119,7 @@ test("a slow rebuild endpoint is not asked again before it answers", async () =>
     await tick();
     await tick();
     assert.equal(rebuilds.length, 1, "one rebuild request in flight per wait");
-    await act(async () => rebuilds[0](reply({ running: true })));
+    await act(async () => rebuilds[0](reply({ running: true, profile: "app@fold-1" })));
     await tick();
     assert.equal(rebuilds.length, 2, "after an answer the next tick asks again");
     assert.match(document.body.textContent, /Showing frontier old00000/);
@@ -152,12 +156,21 @@ test("a rebuild under the same profile keeps the retained status, another profil
   });
 });
 
-test("a rebuild report without a profile cannot drop a retained status", async () => {
+// A profile missing on either side is unverifiable: the page cannot show the
+// retained projection is interpretable by the process answering, so it does
+// not keep it. No exception for older residents that name no profile.
+test("a missing profile on either side drops the retained status", async () => {
   await withHook(async ({ tick, rebuilds, latest }) => {
     await tick();
     await act(async () => rebuilds[0](reply({ running: true })));
-    assert.equal(latest().status.durable.head, "old00000");
+    assert.equal(latest().status, undefined, "a probe answer naming no profile cannot vouch for the retained status");
+    assert.equal(document.body.textContent, "no status");
   });
+  await withHook(async ({ tick, rebuilds, latest }) => {
+    await tick();
+    await act(async () => rebuilds[0](reply({ running: true, profile: "app@fold-1" })));
+    assert.equal(latest().status, undefined, "a retained status naming no profile is not vouched for by a resident that names one");
+  }, { profile: null });
 });
 
 // The case with nothing running. A new binary that reuses the signed kernel

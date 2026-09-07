@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -2366,18 +2367,21 @@ func (w *Workspace) EventID(commit string) string {
 //
 // Running is false when no audit is in flight, which is the ordinary warm case
 // — callers should stay quiet then rather than render a finished progress bar.
-// Profile names the fold this process interprets with: the application and
-// its fold version, fixed for the life of the binary. A reader that kept a
-// status from an earlier process compares the two; a different profile means
-// the retained projection was produced under a contract this binary no longer
-// implements, and must not be shown. The value is an opaque identifier, not
-// a version to parse.
+// Profile names the fold this process interprets with, as an opaque
+// identifier derived from exactly the identity the snapshot cache is keyed
+// on (projectionProfile: the application and its fold version), fixed for
+// the life of the binary. Every snapshot this process publishes is folded
+// under that identity and no other, so a status carrying it is bound to the
+// snapshot it returns. A reader that kept a status from an earlier process
+// compares the two; anything but an equal identifier means the retained
+// projection cannot be shown to be interpretable under this binary.
 func (w *Workspace) Profile() string {
 	selected, err := w.interpreter()
 	if err != nil {
 		return ""
 	}
-	return selected.application + "@" + selected.foldVersion
+	sum := sha256.Sum256([]byte(selected.projectionProfile()))
+	return "profile:" + hex.EncodeToString(sum[:16])
 }
 
 func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {

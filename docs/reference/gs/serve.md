@@ -84,7 +84,7 @@ The full and summary resident status responses repeat that boundary as
 `trust_boundary`, and the browser displays it before actor selection.
 The full status and the rebuild report also carry `profile`, the fold
 profile this process interprets with; a page that kept a status across a
-restart compares the two and drops what a different profile produced.
+restart keeps it only while both name the same profile.
 So the banner names a port that is really open, a failed start announces
 nothing, and `--listen 127.0.0.1:0` is usable: the kernel picks the port
 and clients read it from the repository rather than being told it. That

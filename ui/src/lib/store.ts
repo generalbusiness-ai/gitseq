@@ -41,9 +41,12 @@ export function useWorkroom(): Workroom {
     let cursor: Cursor | undefined;
     let stopProbe: () => void = () => {};
 
+    // Whether the page is showing a status, and the profile it named.
+    let retained = false;
     let retainedProfile: string | undefined;
     const apply = (next: Status) => {
       if (stopped) return;
+      retained = true;
       retainedProfile = next.profile;
       setStatus(next);
       setOffline(false);
@@ -75,16 +78,19 @@ export function useWorkroom(): Workroom {
             stopProbe = probeRebuild(api.rebuild, (next) => {
               if (stopped) return;
               setRebuilding(next.running ? next : undefined);
-              // A resident answering under a different fold profile is a
+              // The retained status stays only while it can be shown to be
+              // interpretable by the process answering: both name a fold
+              // profile and the two are equal. A different profile is a
               // binary whose contract the retained status does not meet,
               // whether it is auditing from cold or re-interpreting a signed
-              // checkpoint with nothing "running". Drop the status: the page
-              // then shows the rebuild notice, as a new reader would, until
-              // the wait answers with one this process produced. Only a
-              // report that names a profile can say this; an older resident
-              // that names none changes nothing.
-              if (next.profile && retainedProfile && next.profile !== retainedProfile) {
-                retainedProfile = undefined;
+              // checkpoint with nothing "running"; a missing profile on
+              // either side is unverifiable and treated the same way. Drop
+              // the status: the page then shows the rebuild notice, as a new
+              // reader would, until the wait answers with one this process
+              // produced.
+              const compatible = Boolean(next.profile) && next.profile === retainedProfile;
+              if (!compatible && retained) {
+                retained = false;
                 setStatus(undefined);
               }
             });
