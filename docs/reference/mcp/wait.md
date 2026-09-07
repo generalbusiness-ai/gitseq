@@ -83,6 +83,23 @@ until [`ack`](ack.md) receives its exact thread handle. Acknowledging in one
 session does not acknowledge a sibling session, and it advances no durable or
 live cursor. Acknowledging the visible page reveals the next pending page.
 
+## How the resident waits
+
+Behind this tool the resident holds one head clock per log, not one per
+waiter. While any long poll is open it reads the log's head ref every 250 ms
+and advances a generation when the answer changes, fails, or rewinds. An
+open wait reads its live cursor on every tick, in memory, and asks the
+verified durable snapshot again only on its first pass, when that generation
+advances, or when the live cursor moved. So an idle wait costs one Git
+process at entry and the clock costs four a second however many waits are
+open; with no wait open the clock does not run.
+
+The clock is a notice, not a verifier or a second cache. Every answer still
+comes from the workspace snapshot, verified as before, and a head that
+rewinds or disappears reaches the waiter as that snapshot's own refusal or
+error rather than as a quiet timeout. The measured before-and-after figures
+are on the [performance page](../performance.md#resident-wait-cost).
+
 ## Resets are not losses
 
 On a live reset the durable frontier is still good: the server replays

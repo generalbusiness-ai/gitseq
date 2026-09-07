@@ -369,6 +369,18 @@ verified application projection, while the harness keeps two only to check the
 first one. The publishing commit is a descendant of the measured commit because
 this page and the retained evidence did not exist when sampling began.
 
+## Resident wait cost
+
+Every open long poll on the resident used to tick its own 250 ms clock and
+ask the verified snapshot on each tick, which is one `git rev-parse` process
+per waiter per tick. One head clock per log now does that read while any
+wait is open, and a waiter asks the snapshot again only on its first pass,
+when the clock advances, or when its live cursor moves. The
+[measured run](../../performance/HEAD-WAIT.md) puts eight idle staggered
+waiters over a 5 s poll at 28 ref reads against 160 before, and leaves
+external-change wake latency at about one clock tick. Depths 1, 31 and 300,
+one machine, warm fixtures; not a claim about deep logs.
+
 ## Preserved contracts
 
 The earlier fan-out lane changes measurement order and reporting only. This

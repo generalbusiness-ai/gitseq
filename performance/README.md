@@ -5,7 +5,9 @@ run from `make test` and it does not turn one machine's timing into a product
 guarantee.
 
 The [500k memory salvage measurements](500K-SALVAGE.md) record the isolated
-keep-or-drop evidence for the current checkpoint and decode reductions.
+keep-or-drop evidence for the current checkpoint and decode reductions. The
+[resident wait cost page](HEAD-WAIT.md) records the before and after figures
+for the shared per-log head clock.
 
 The versioned contract fixes the logical workload before a run: generator
 version and seed, required log depths through 500,000 records, actor counts,
