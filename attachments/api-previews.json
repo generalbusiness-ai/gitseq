@@ -1,0 +1,184 @@
+[
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "path": "internal/workroom/work.go",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "line": 75
+    },
+    "object": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c:internal/workroom/work.go",
+    "sha256": "0f4f9bc916441cc783a679e3c7714f9eef867168fe71df5d969aa7db3e259818",
+    "bytes": 5698,
+    "window": {
+      "start": 1,
+      "end": 126,
+      "total": 126,
+      "partial": false
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "path": "docs/reference/gs/merge.md",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "line": 544
+    },
+    "object": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c:docs/reference/gs/merge.md",
+    "sha256": "6204a35db5b58077807af9f8f5242620720b8417abed42e6a23368ad185d133e",
+    "bytes": 50321,
+    "window": {
+      "start": 401,
+      "end": 738,
+      "total": 738,
+      "partial": true,
+      "previous": 1
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "path": "docs/reference/reading-view.md",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "line": 28
+    },
+    "object": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c:docs/reference/reading-view.md",
+    "sha256": "157bdd96587c971615760921cf0e0d9d9e7f84a9cb0dcfbb975c559c3c41634d",
+    "bytes": 5848,
+    "window": {
+      "start": 1,
+      "end": 99,
+      "total": 99,
+      "partial": false
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "attachment": "rollout-baseline.json"
+    },
+    "object": "3b28bbb13093627a8c78bbf6d17b9adb18abb0c2:attachments/rollout-baseline.json",
+    "sha256": "c47751ebd0e482b4e450da5e36cf41759ec7de629a6d5040dd57d6325c3d3845",
+    "bytes": 5132,
+    "window": {
+      "start": 1,
+      "end": 150,
+      "total": 150,
+      "partial": false
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "attachment": "counts-landing.json"
+    },
+    "object": "3b28bbb13093627a8c78bbf6d17b9adb18abb0c2:attachments/counts-landing.json",
+    "sha256": "219a92b4e72bff2ef97f7f3583c32a4ce55b43fc6306d5efbd175903256d5d84",
+    "bytes": 11928,
+    "window": {
+      "start": 1,
+      "end": 286,
+      "total": 286,
+      "partial": false
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "attachment": "receipt-landing.json"
+    },
+    "object": "3b28bbb13093627a8c78bbf6d17b9adb18abb0c2:attachments/receipt-landing.json",
+    "sha256": "c209b074cea196fda4474a98e062d39c8e7d8515fab2b7e0db107be9a2d3cce9",
+    "bytes": 10928,
+    "window": {
+      "start": 1,
+      "end": 182,
+      "total": 182,
+      "partial": false
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+      "path": "cmd/gs/main_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "line": 5500
+    },
+    "object": "ad4656dd8d96e27e614880943222018b5fd840c9:cmd/gs/main_test.go",
+    "sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+    "bytes": 233257,
+    "window": {
+      "start": 5201,
+      "end": 5600,
+      "total": 5611,
+      "partial": true,
+      "previous": 4801,
+      "next": 5601
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+      "path": "cmd/gs/main_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "start": 4801
+    },
+    "object": "ad4656dd8d96e27e614880943222018b5fd840c9:cmd/gs/main_test.go",
+    "sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+    "bytes": 233257,
+    "window": {
+      "start": 4801,
+      "end": 5200,
+      "total": 5611,
+      "partial": true,
+      "previous": 4401,
+      "next": 5201
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+      "path": "cmd/gs/main_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "start": 5201
+    },
+    "object": "ad4656dd8d96e27e614880943222018b5fd840c9:cmd/gs/main_test.go",
+    "sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+    "bytes": 233257,
+    "window": {
+      "start": 5201,
+      "end": 5600,
+      "total": 5611,
+      "partial": true,
+      "previous": 4801,
+      "next": 5601
+    },
+    "exact_content": true
+  },
+  {
+    "request": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+      "path": "cmd/gs/main_test.go",
+      "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "start": 5601
+    },
+    "object": "ad4656dd8d96e27e614880943222018b5fd840c9:cmd/gs/main_test.go",
+    "sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+    "bytes": 233257,
+    "window": {
+      "start": 5601,
+      "end": 5611,
+      "total": 5611,
+      "partial": true,
+      "previous": 5201
+    },
+    "exact_content": true
+  }
+]

@@ -1,0 +1,11 @@
+package app
+import("context";"encoding/json";"fmt";"testing")
+func TestReader21221ObservePreservedHistory(t *testing.T) {
+ for _, room := range []string{"gitseq","tailapp","gitseq-chess","gitseq-inventory"} {
+  w, err := Open(context.Background(), "/Users/hughpyle/play/"+room); if err != nil {t.Fatal(err)}
+  result, err := w.SnapshotWithSource(context.Background()); if err != nil {t.Fatal(err)}
+  if result.Source != SnapshotSourceSignedCheckpointTail {t.Fatalf("%s load path %s",room,result.Source)}
+  if w.snapshotProfile != "workroom\x00workroom-fold@23" {t.Fatal(room,w.snapshotProfile)}
+  b,err:=json.Marshal(map[string]interface{}{"room":room,"head":result.Snapshot.Head,"depth":result.Snapshot.Depth,"source":result.Source,"cache_profile":w.snapshotProfile,"served_profile":w.Profile()});if err!=nil{t.Fatal(err)};fmt.Println(string(b))
+ }
+}

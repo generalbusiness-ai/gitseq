@@ -1,0 +1,186 @@
+{
+  "checked_utc": "2026-09-07T14:54:58.803762+00:00",
+  "rooms": {
+    "gitseq": {
+      "repo": "/Users/hughpyle/play/gitseq",
+      "port": 7777,
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 31631
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777",
+      "listeners": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      31631 hughpyle    5u  IPv4 0xc1da0c1b2ba8170b      0t0  TCP 127.0.0.1:7777 (LISTEN)\n",
+      "key_metadata": {
+        ".git/gitseq/actors/github-connector.key": {
+          "inode": 48178565,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786374720426948408
+        },
+        ".git/gitseq/actors/claude.key": {
+          "inode": 20329926,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030598586058151
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 20329781,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030593945073217
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 52294131,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786397116398336342
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 20329873,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030597851977333
+        }
+      },
+      "config_without_frontier_sha256": "748da2f42335b3f72b1ffb61bdc70007545265bd46b99d6141ff2e120e1bcd08",
+      "verified_frontier": {
+        "head": "508bc0eccdd3bea0fefa6dad3b3af76aba0d367f",
+        "depth": 21225
+      },
+      "sequence": "508bc0eccdd3bea0fefa6dad3b3af76aba0d367f",
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "tailapp": {
+      "repo": "/Users/hughpyle/play/tailapp",
+      "port": 7778,
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 33263
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778",
+      "listeners": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      33263 hughpyle    5u  IPv4 0x5a2056556f8dee36      0t0  TCP 127.0.0.1:7778 (LISTEN)\n",
+      "key_metadata": {
+        ".git/gitseq/actors/builder.key": {
+          "inode": 274244756,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897157956162126
+        },
+        ".git/gitseq/actors/checker.key": {
+          "inode": 274245627,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897159059407645
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 274244328,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897157444083226
+        }
+      },
+      "config_without_frontier_sha256": "7d766f6fc967198e20368d2880be78cd7dac9cf4ef1736f9626912eb5b7b804d",
+      "verified_frontier": {
+        "head": "2d54d6caafb88d3f1358098b8fa0bda08082c0b7",
+        "depth": 4204
+      },
+      "sequence": "2d54d6caafb88d3f1358098b8fa0bda08082c0b7",
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "gitseq-chess": {
+      "repo": "/Users/hughpyle/play/gitseq-chess",
+      "port": 7779,
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 36135
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779",
+      "listeners": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      36135 hughpyle    5u  IPv4 0xdb2b381058059798      0t0  TCP 127.0.0.1:7779 (LISTEN)\n",
+      "key_metadata": {
+        ".git/gitseq/actors/claude.key": {
+          "inode": 310935417,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1788331634673818586
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 169516592,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470656505715400
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 169543217,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470701460861180
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 169559507,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470720908899288
+        }
+      },
+      "config_without_frontier_sha256": "651ae7db71112b51c64cbdada2ed3162a824c9bd79b7910ae1f985e508ddc7f9",
+      "verified_frontier": {
+        "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+        "depth": 842
+      },
+      "sequence": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "gitseq-inventory": {
+      "repo": "/Users/hughpyle/play/gitseq-inventory",
+      "port": 7780,
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 39830
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780",
+      "listeners": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      39830 hughpyle    5u  IPv4 0xc00b342b856a4482      0t0  TCP 127.0.0.1:7780 (LISTEN)\n",
+      "key_metadata": {
+        ".git/gitseq/actors/claude.key": {
+          "inode": 260605193,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849668875899082
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 260600557,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849658530933187
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 260600674,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849664005169588
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 260609972,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849672842731398
+        }
+      },
+      "config_without_frontier_sha256": "b7560dc890e1c157dc30f599637f58d7fd6e2da9de13ec8194b4a261538d4be8",
+      "verified_frontier": {
+        "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+        "depth": 513
+      },
+      "sequence": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    }
+  },
+  "exclusions": {
+    "telemetry_pid": 66700,
+    "telemetry_command": "/Users/hughpyle/.local/bin/tailapp serve --otlp-http 127.0.0.1:4318",
+    "telemetry_sha256": "5e500c92db3aa7990bc803884e631e4d2b3f0008bd75f0d1b6d9cf5f8d0bc7c9",
+    "noseq_identity": {
+      "genesis": "77aeeeb3fa42aeb6babdf961f6397ba73fada68b",
+      "pid": 35668
+    }
+  }
+}
