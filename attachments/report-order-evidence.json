@@ -1,0 +1,98 @@
+{
+  "head": "1fba3d550091f720e48521bb89f222bd4c218af8",
+  "review_case": {
+    "candidate": "6f1b1832900980828c85371f769f674031fb54c3",
+    "verdict": "7495a3ce986d35d1ab56647d7fd4b6e22434c02c",
+    "finding": "2691534887621735b2c9509bb9ace8450196b85d",
+    "publication_order": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae0a2ee313353cb48a67675aa67b5da20d685751",
+        "sequence": 20023,
+        "path": "docs/concepts/staleness.md",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6215cafb10c5041f6dba8bb2039d2a8657eec742",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+        ]
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ac5121e1166ce1ca58622c30f06f6ac95c4570dc",
+        "sequence": 20024,
+        "path": "docs/reference/gs/status.md",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:012451209d3000492d2e523089e5973beec05f61",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35"
+        ]
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5e17a82c0aa82362b03133f11e220e2f27079f2",
+        "sequence": 20025,
+        "path": "docs/reference/gs/state.md",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:36fc269d852db749aca5b0587c96dcf319de4882",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+        ]
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4688f8e3d011afb45ad04477f5f83b51f7c54763",
+        "sequence": 20026,
+        "path": "docs/reference/mcp/state.md",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74ee3418d62de29e79192c76b7fdac6ca82f8665",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+        ]
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+        "sequence": 20027,
+        "path": "docs/reference/architecture.md",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35"
+        ]
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6aa633d3505b5447034ff98af44bc5ecf4de07c4",
+        "sequence": 20028,
+        "path": "internal/workroom/fold.go",
+        "rests_on": [
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+          "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015"
+        ]
+      }
+    ],
+    "claim": "Five docs at20023-27 preceded foldproducer20028 and review found no provenance path to it. Does not claim this caused the independent rendering/security defects or prove why the author chose the order."
+  },
+  "probe": {
+    "test": "TestPlannerBehaviorFirstReportBinding",
+    "command": "go test ./internal/reviewguard -run ^TestPlannerBehaviorFirstReportBinding$ -count=1 -v",
+    "result": "PASS0.260s at exactcurrentmain1fba3d",
+    "method": "Actual workroom.Fold over roster/ratification/currentstate@3assignedrequest/promise/twoartifacts, then actual reviewguard.Resolve with explicit primary+companion; all setup decisions effective.",
+    "cases": [
+      {
+        "later_doc_direct_promise": false,
+        "later_doc_behavior_basis": true,
+        "selected_report": "behavior primary",
+        "binding": "accepted, one exact implementation"
+      },
+      {
+        "later_doc_direct_promise": true,
+        "later_doc_behavior_basis": true,
+        "selected_report": "later document companion",
+        "binding": "refused original primary, correctly names required document report"
+      }
+    ],
+    "limitations": "Two-artifact single-commitment synthetic fold/binding probe, not a full signed merge, combined-delivery proof, measured time saving, or authorization to drop meaningful provenance. Own detached worktree removed."
+  },
+  "original_guidance": "#19016 attachment says publish intendedreportaftercompanions. Qualification needed when docsdescribe that reportingartifact. Most original concise-report/manifest guidance remains sound.",
+  "recommendation": "Dependency order first; intendedreport last among artifacts that directlyanswerthatclaim, not unconditionallyafter descriptivecompanions. Descriptive companions cite actualbehavior; do not copy a directpromiseedgeunless they actually answerit. Inspectactualselectedreport and explicitreviewset. No metadata toforceprimary/no newstate/authority. Existinggsbatch optionalorderedlabels peractnotatomic."
+}
