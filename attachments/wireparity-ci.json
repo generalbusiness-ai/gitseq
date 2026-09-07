@@ -1,0 +1,64 @@
+{
+  "run": 34076230751,
+  "url": "https://github.com/generalbusiness-ai/gitseq/actions/runs/34076230751",
+  "head": "449cdb0ea845146ca5fee7e5e4e064393128ec32",
+  "conclusion": "failure",
+  "failed_events": [
+    {
+      "Time": "2026-09-07T02:28:33.714524743Z",
+      "Action": "output",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Statement",
+      "Output": "          only in Go: [ineffective_bases]\n"
+    },
+    {
+      "Time": "2026-09-07T02:28:33.714529532Z",
+      "Action": "output",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Statement",
+      "Output": "          only in TS: []\n"
+    },
+    {
+      "Time": "2026-09-07T02:28:33.714544149Z",
+      "Action": "fail",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Statement",
+      "Elapsed": 0.04
+    },
+    {
+      "Time": "2026-09-07T02:28:33.819289999Z",
+      "Action": "output",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Artifact",
+      "Output": "          only in Go: [ineffective_bases]\n"
+    },
+    {
+      "Time": "2026-09-07T02:28:33.819293996Z",
+      "Action": "output",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Artifact",
+      "Output": "          only in TS: []\n"
+    },
+    {
+      "Time": "2026-09-07T02:28:33.82005507Z",
+      "Action": "fail",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits/Artifact",
+      "Elapsed": 0.05
+    },
+    {
+      "Time": "2026-09-07T02:28:33.855912624Z",
+      "Action": "fail",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Test": "TestTypeScriptMirrorNamesTheFieldsGoEmits",
+      "Elapsed": 0.21
+    },
+    {
+      "Time": "2026-09-07T02:28:33.856492671Z",
+      "Action": "fail",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Elapsed": 0.223
+    }
+  ],
+  "limitation": "Actual GitHub CI log, not a new local execution. Go verification failed; later UI/build/reproducibility/main-only-clone steps were skipped. Security run34076230671 passed."
+}
