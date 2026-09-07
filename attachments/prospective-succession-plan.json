@@ -1,0 +1,1106 @@
+{
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "618089243374041e99092a4124e7bcc506f6521c",
+    "depth": 20437
+  },
+  "mode": "fresh",
+  "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df516585a7e0432dfa08fcc09d0e55c529405a7c",
+  "exact_head": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+  "implementer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+  "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+  "target_ref": "refs/heads/main",
+  "target_pre_head": "dfbf4089e6826810083848e56e9deff6c0faec29",
+  "candidate_artifacts": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f",
+      "path": "internal/service/uidist/index.html",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ae9967b90652f1eee1b7d721c15dab99596e88f",
+      "path": "internal/service/server_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bdcffc27b34ac75bd85910fe4c6acd20fc862ac",
+      "path": "performance/head-wait-after.json",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3cae181a70d1b293bfced27581817efda1e81c7e",
+      "path": "docs/reference/performance.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41540cb03a78c47e10648a996d64750270bcbcc9",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b18dcde46b2e4b9ec2401256f5ab340264cea6c",
+      "path": "internal/app/profile_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849",
+      "path": "internal/service",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52e888b22e73602a551cdb1abdb58f1b19b7ce00",
+      "path": "ui/test/components.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:553cbe879bdb8ce088f3030e9768389d0a78da48",
+      "path": "performance/HEAD-WAIT.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599ca5decc44a6299f5e7b25ca24b8a0bc058844",
+      "path": "ui/test/store.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6756634f9d8d5a08ffb74b5acca3cb92bed2cf5b",
+      "path": "internal/service/headwatch_evidence_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70193521f1a8f3822f823f32e30fb66992080ad7",
+      "path": "internal/service/server.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73370c72bdcc7f0d3bd086a23d314f543daa70fd",
+      "path": "docs/reference/architecture.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902f72487d4d198f3c83e806955a718a2512be8b",
+      "path": "ui/src/lib/store.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9202e7faa5ba77d7dce1cd31f514d94d3ec6cd35",
+      "path": "ui/src/lib/api.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:93b391cd17b98ecf8dad6e4e31dd3de0dcf68acf",
+      "path": "ui/src/components/TopBar.tsx",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e874b11125b5502e32408bf995e65b03cba6f70",
+      "path": "internal/service/headwatch.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0653eb18aee29076aaf55cdab8ed3721508d775",
+      "path": "performance/head-wait-before.json",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6",
+      "path": "ui/src/lib/rebuild.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b06a958c053f761b21d808d588943621fc5375f4",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9f22941e200798ed862b8f067341b04e4851d6e",
+      "path": "internal/service/headwatch_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d10eb5bb3a7191e62503691d49f31587543808ae",
+      "path": "performance/README.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fbd1bc248144e2f7f6f07b955928960fa68380ad",
+      "path": "ui/test/rebuild.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff1719057a1988bfea91b1dfc538a82e5de5e4ce",
+      "path": "internal/app/app.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "reviewed": true
+    }
+  ],
+  "reviewed_paths": [
+    "docs/reference/architecture.md",
+    "docs/reference/gs/serve.md",
+    "docs/reference/mcp/wait.md",
+    "docs/reference/performance.md",
+    "internal/app/app.go",
+    "internal/app/profile_test.go",
+    "internal/service/headwatch.go",
+    "internal/service/headwatch_evidence_test.go",
+    "internal/service/headwatch_test.go",
+    "internal/service/server.go",
+    "internal/service/server_test.go",
+    "internal/service/uidist/assets/index-hIXoPEGS.js",
+    "internal/service/uidist/index.html",
+    "performance/HEAD-WAIT.md",
+    "performance/README.md",
+    "performance/head-wait-after.json",
+    "performance/head-wait-before.json",
+    "ui/src/components/TopBar.tsx",
+    "ui/src/lib/api.ts",
+    "ui/src/lib/rebuild.ts",
+    "ui/src/lib/store.ts",
+    "ui/test/components.test.mjs",
+    "ui/test/rebuild.test.mjs",
+    "ui/test/store.test.mjs"
+  ],
+  "changed_paths": [
+    "docs/reference/architecture.md",
+    "docs/reference/gs/serve.md",
+    "docs/reference/mcp/wait.md",
+    "docs/reference/performance.md",
+    "internal/app/app.go",
+    "internal/app/profile_test.go",
+    "internal/service/headwatch.go",
+    "internal/service/headwatch_evidence_test.go",
+    "internal/service/headwatch_test.go",
+    "internal/service/server.go",
+    "internal/service/server_test.go",
+    "internal/service/uidist/assets/index-DVoOmhXh.js",
+    "internal/service/uidist/assets/index-hIXoPEGS.js",
+    "internal/service/uidist/index.html",
+    "performance/HEAD-WAIT.md",
+    "performance/README.md",
+    "performance/head-wait-after.json",
+    "performance/head-wait-before.json",
+    "ui/src/components/TopBar.tsx",
+    "ui/src/lib/api.ts",
+    "ui/src/lib/rebuild.ts",
+    "ui/src/lib/store.ts",
+    "ui/test/components.test.mjs",
+    "ui/test/rebuild.test.mjs",
+    "ui/test/store.test.mjs"
+  ],
+  "covering_artifacts": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f",
+      "path": "internal/service/uidist/index.html",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:04fe2a1d37b1b47b96be69f1f13c3a2d530d5023",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "6779fd7c62949adbc1397dddd6ef4609f5525620",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a",
+      "path": "internal/service",
+      "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "internal/service"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1474b8ea38d68fadc4b18ae9e28979f5415dd05c",
+      "path": "docs/reference/architecture.md",
+      "commit": "37b81e550e7992076356eba86f2b17c2ff69ff62",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17126d80518faa9688fc3da8e9fa6f85038f1f28",
+      "path": "ui/src/components/TopBar.tsx",
+      "commit": "27e43714685992e2d09441e255f3048a7f58dc1b",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17759fcb2645f1e884ca0f8ba67ce8be22ac79c2",
+      "path": "internal/service/server_test.go",
+      "commit": "7f8df0e8f1c934e259b6b39e324825563040bcc4",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "internal/service/server_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:183729d555dc38ddb65806bdcf39052f572405e3",
+      "path": "internal/app/app.go",
+      "commit": "21b7e74225885452ab0ad0dc49b33aaf2c326d54",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1db255ea3ffa63ec309ceb037ae1211057593b09",
+      "path": "ui/src/components/TopBar.tsx",
+      "commit": "ad8793636a22985cc63eaecc16f6dbb61a6ec128",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "ui/src/components/TopBar.tsx"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ae9967b90652f1eee1b7d721c15dab99596e88f",
+      "path": "internal/service/server_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/server_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bdcffc27b34ac75bd85910fe4c6acd20fc862ac",
+      "path": "performance/head-wait-after.json",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "performance/head-wait-after.json"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7ef45ac738cedc99aac0c20df4e2e22b2a2e64",
+      "path": "docs/reference/performance.md",
+      "commit": "95c2b1e33edff789a76e037bce144a898392899d",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/performance.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:31d90c6502ea26fa7449d2b4ede821cef50c1a78",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3cae181a70d1b293bfced27581817efda1e81c7e",
+      "path": "docs/reference/performance.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "docs/reference/performance.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41540cb03a78c47e10648a996d64750270bcbcc9",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "docs/reference/gs/serve.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:452563b58ed6c7ef5058071b93b0cb14d870f559",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "2a273cf8baabe5dcef0eec82cc6cf4f9a90ebc84",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ca8ea3c8d94e418bf1b9cc539725d515f30d1b8"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47124b6fbe975475b475f0cfbd047d7af6156215",
+      "path": "internal/service/uidist/index.html",
+      "commit": "6849c84547b75a3781cccafd333e12a674c0d052",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a1314a33d7a710db189614fe08b04c49578121",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494ee033096e8120d62db5f33e853b3b99f82386",
+      "path": "internal/app/app.go",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b18dcde46b2e4b9ec2401256f5ab340264cea6c",
+      "path": "internal/app/profile_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/app/profile_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849",
+      "path": "internal/service",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "internal/service"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f4da61e08c74dc403d7e2fc4ea9b541f3f258e4",
+      "path": "internal/service/headwatch_evidence_test.go",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52e888b22e73602a551cdb1abdb58f1b19b7ce00",
+      "path": "ui/test/components.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b",
+      "path": "ui",
+      "commit": "5ea68de49b32fd86ec9a26a78021420955e856cc",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "carried"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:553cbe879bdb8ce088f3030e9768389d0a78da48",
+      "path": "performance/HEAD-WAIT.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "performance/HEAD-WAIT.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+      "path": "docs/reference/architecture.md",
+      "commit": "6f1b1832900980828c85371f769f674031fb54c3",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:564e3e0cb3457dcc7a7a92273028bbe51a89a892",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "a15eeb6f0568a564e0532665f2d336f4e84e16cc",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56c0e84d7115c2695fb92a8715268d42aedba8f7",
+      "path": "performance",
+      "commit": "cbf1ede7c9fe0f28a3f9bb1c9dfa198807c01e24",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "carried"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599ca5decc44a6299f5e7b25ca24b8a0bc058844",
+      "path": "ui/test/store.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/test/store.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5da989c97ba046259dab9e3b9d7cfa74b381ad7a",
+      "path": "internal/app/app.go",
+      "commit": "21341300c77c499e3a5b59c204ee7156de57760d",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61477a481fa829f83acf83566ce9bac263039f5c",
+      "path": "ui/test/components.test.mjs",
+      "commit": "6849c84547b75a3781cccafd333e12a674c0d052",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6756634f9d8d5a08ffb74b5acca3cb92bed2cf5b",
+      "path": "internal/service/headwatch_evidence_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/headwatch_evidence_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68a9cfaaa985840699f9f76b577c3ae7760ab270",
+      "path": "internal/app/app.go",
+      "commit": "7af1b816b8c7ed2594c5c1ffab58a7bdda48d796",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/uidist/assets/index-hIXoPEGS.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ee77a372345af6aad6ef081d36cbd05b9fbb1e0",
+      "path": "ui/test/components.test.mjs",
+      "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70193521f1a8f3822f823f32e30fb66992080ad7",
+      "path": "internal/service/server.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/server.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73370c72bdcc7f0d3bd086a23d314f543daa70fd",
+      "path": "docs/reference/architecture.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:746f1498455e6c3397aa3c780966e9a52bf5fc36",
+      "path": "performance/head-wait-after.json",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7557a52ebb389fd86bf3180a94069a44a8fdde45",
+      "path": "internal/service/uidist/index.html",
+      "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+      "path": "internal/app",
+      "commit": "1e868103416fea2ca832e2e740b4197940cf5057",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "carried"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7daa2e0fa57fe56419c4061a0102cfd2e3a556f3",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "7f8df0e8f1c934e259b6b39e324825563040bcc4",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/gs/serve.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7fbbacc91ea5d3df388e72f3373b8523f96e74c2",
+      "path": "internal/app",
+      "commit": "3f75695c0fcd67d32cb2150bb9c416c22ae85ccd",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "carried"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:83d8fe385341169695ed52f4f82d6c8145364f57",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "94f50d6f67318c161d6baf5e5738b0ae104bda5e",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f533029945dcd37f625d79e47918b0922cc6d85",
+      "path": "internal/service/server.go",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902f72487d4d198f3c83e806955a718a2512be8b",
+      "path": "ui/src/lib/store.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/src/lib/store.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325",
+      "path": "internal/service/server.go",
+      "commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "internal/service/server.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9202e7faa5ba77d7dce1cd31f514d94d3ec6cd35",
+      "path": "ui/src/lib/api.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/src/lib/api.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:93b391cd17b98ecf8dad6e4e31dd3de0dcf68acf",
+      "path": "ui/src/components/TopBar.tsx",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/src/components/TopBar.tsx"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e874b11125b5502e32408bf995e65b03cba6f70",
+      "path": "internal/service/headwatch.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/headwatch.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0653eb18aee29076aaf55cdab8ed3721508d775",
+      "path": "performance/head-wait-before.json",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "performance/head-wait-before.json"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a7c51b58a399aa39d72dbc0d25b395da1965c6f8",
+      "path": "performance/HEAD-WAIT.md",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ab6bd5931d8560a6080b6d3fae886bd2d103138b",
+      "path": "internal/app/app.go",
+      "commit": "ac2b28dc2300249568714547e3d8061ca8667913",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abbd2653b74ce3ce6d9150b8e2ac1b28878c4830",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "7da8b753682d38aa118e709943df0ee8c03e5c37",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6",
+      "path": "ui/src/lib/rebuild.ts",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/src/lib/rebuild.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af753db443de0c8d1f64436f5f27f6f55ac00f8e",
+      "path": "docs/reference/architecture.md",
+      "commit": "449cdb0ea845146ca5fee7e5e4e064393128ec32",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b06a958c053f761b21d808d588943621fc5375f4",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bae33e6e9ff9f1d2e138724c5f52763383b7132d",
+      "path": "ui",
+      "commit": "0da3b399faf37f3e0d845e3a0da2d1fa3987025b",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "carried"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:baf9a085d565d6b8dfb566a294080643f5a6dc2d",
+      "path": "docs/reference/gs/serve.md",
+      "commit": "36d91a708be16d72e01da62396bf628273a4318b",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1f32c5635a72285fecc5be28c04dc2c0f2a7a73",
+      "path": "ui/src/lib/api.ts",
+      "commit": "dfbf4089e6826810083848e56e9deff6c0faec29",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "ui/src/lib/api.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4a42b90d3a5294a6525e09e11b283671836b172",
+      "path": "performance/README.md",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c55b32f7442509440ea5cad1cde1302df2f267f8",
+      "path": "internal/service/headwatch.go",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9f22941e200798ed862b8f067341b04e4851d6e",
+      "path": "internal/service/headwatch_test.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/service/headwatch_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d10eb5bb3a7191e62503691d49f31587543808ae",
+      "path": "performance/README.md",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "performance/README.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e064e588dbaf36905bf508457880ba18f0c0e528",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "b883c2d9300743473f106529de305d39b2aa7726",
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "class": "in-target predecessor",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e25211b52bd255257388c3fd976129937e3db50f",
+      "path": "internal/service/headwatch_test.go",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9687f45b299b7728a92bed7ca81de42033166ca",
+      "path": "internal/app/app.go",
+      "commit": "bb65d89803533232f154aa7b53082838fa93d285",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "in-target predecessor",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f8c30c14164bb469dd8e7e1a4ab097fd785bedf8",
+      "path": "docs/reference/performance.md",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fa253ffb264fff7e6c25949e1759538409fbb2e3",
+      "path": "performance/head-wait-before.json",
+      "commit": "61b33f3785d14e0acfcc2f357f619256dceb93a0",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "protected sibling",
+      "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb39a99691adf135d58a7a108747dfe06a5d79b4",
+      "path": "docs/reference/performance.md",
+      "commit": "2cb7117fd698e1eea5ba62f30e93b060f9b88fb4",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "abandoned"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fbd1bc248144e2f7f6f07b955928960fa68380ad",
+      "path": "ui/test/rebuild.test.mjs",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "ui/test/rebuild.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff1719057a1988bfea91b1dfc538a82e5de5e4ce",
+      "path": "internal/app/app.go",
+      "commit": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "author": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "class": "reviewed candidate",
+      "successor": "internal/app/app.go"
+    }
+  ],
+  "retirements": [
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015aba51ab6c2416861618c5ac3c9ae0e444f17f",
+      "path": "internal/service/uidist/index.html",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a",
+      "path": "internal/service",
+      "successor": "internal/service"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1474b8ea38d68fadc4b18ae9e28979f5415dd05c",
+      "path": "docs/reference/architecture.md",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:17759fcb2645f1e884ca0f8ba67ce8be22ac79c2",
+      "path": "internal/service/server_test.go",
+      "successor": "internal/service/server_test.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:183729d555dc38ddb65806bdcf39052f572405e3",
+      "path": "internal/app/app.go",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1db255ea3ffa63ec309ceb037ae1211057593b09",
+      "path": "ui/src/components/TopBar.tsx",
+      "successor": "ui/src/components/TopBar.tsx"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ae9967b90652f1eee1b7d721c15dab99596e88f",
+      "path": "internal/service/server_test.go",
+      "successor": "internal/service/server_test.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bdcffc27b34ac75bd85910fe4c6acd20fc862ac",
+      "path": "performance/head-wait-after.json",
+      "successor": "performance/head-wait-after.json"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7ef45ac738cedc99aac0c20df4e2e22b2a2e64",
+      "path": "docs/reference/performance.md",
+      "successor": "docs/reference/performance.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3cae181a70d1b293bfced27581817efda1e81c7e",
+      "path": "docs/reference/performance.md",
+      "successor": "docs/reference/performance.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:41540cb03a78c47e10648a996d64750270bcbcc9",
+      "path": "docs/reference/gs/serve.md",
+      "successor": "docs/reference/gs/serve.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47124b6fbe975475b475f0cfbd047d7af6156215",
+      "path": "internal/service/uidist/index.html",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:494ee033096e8120d62db5f33e853b3b99f82386",
+      "path": "internal/app/app.go",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b18dcde46b2e4b9ec2401256f5ab340264cea6c",
+      "path": "internal/app/profile_test.go",
+      "successor": "internal/app/profile_test.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849",
+      "path": "internal/service",
+      "successor": "internal/service"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52e888b22e73602a551cdb1abdb58f1b19b7ce00",
+      "path": "ui/test/components.test.mjs",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:553cbe879bdb8ce088f3030e9768389d0a78da48",
+      "path": "performance/HEAD-WAIT.md",
+      "successor": "performance/HEAD-WAIT.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:564e3e0cb3457dcc7a7a92273028bbe51a89a892",
+      "path": "docs/reference/mcp/wait.md",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:599ca5decc44a6299f5e7b25ca24b8a0bc058844",
+      "path": "ui/test/store.test.mjs",
+      "successor": "ui/test/store.test.mjs"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5da989c97ba046259dab9e3b9d7cfa74b381ad7a",
+      "path": "internal/app/app.go",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61477a481fa829f83acf83566ce9bac263039f5c",
+      "path": "ui/test/components.test.mjs",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6756634f9d8d5a08ffb74b5acca3cb92bed2cf5b",
+      "path": "internal/service/headwatch_evidence_test.go",
+      "successor": "internal/service/headwatch_evidence_test.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+      "successor": "internal/service/uidist/assets/index-hIXoPEGS.js"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ee77a372345af6aad6ef081d36cbd05b9fbb1e0",
+      "path": "ui/test/components.test.mjs",
+      "successor": "ui/test/components.test.mjs"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70193521f1a8f3822f823f32e30fb66992080ad7",
+      "path": "internal/service/server.go",
+      "successor": "internal/service/server.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:73370c72bdcc7f0d3bd086a23d314f543daa70fd",
+      "path": "docs/reference/architecture.md",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7557a52ebb389fd86bf3180a94069a44a8fdde45",
+      "path": "internal/service/uidist/index.html",
+      "successor": "internal/service/uidist/index.html"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7daa2e0fa57fe56419c4061a0102cfd2e3a556f3",
+      "path": "docs/reference/gs/serve.md",
+      "successor": "docs/reference/gs/serve.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902f72487d4d198f3c83e806955a718a2512be8b",
+      "path": "ui/src/lib/store.ts",
+      "successor": "ui/src/lib/store.ts"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325",
+      "path": "internal/service/server.go",
+      "successor": "internal/service/server.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9202e7faa5ba77d7dce1cd31f514d94d3ec6cd35",
+      "path": "ui/src/lib/api.ts",
+      "successor": "ui/src/lib/api.ts"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:93b391cd17b98ecf8dad6e4e31dd3de0dcf68acf",
+      "path": "ui/src/components/TopBar.tsx",
+      "successor": "ui/src/components/TopBar.tsx"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e874b11125b5502e32408bf995e65b03cba6f70",
+      "path": "internal/service/headwatch.go",
+      "successor": "internal/service/headwatch.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0653eb18aee29076aaf55cdab8ed3721508d775",
+      "path": "performance/head-wait-before.json",
+      "successor": "performance/head-wait-before.json"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acfb5a3d8c01ea8780ae7e563d9907921a76b2e6",
+      "path": "ui/src/lib/rebuild.ts",
+      "successor": "ui/src/lib/rebuild.ts"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:af753db443de0c8d1f64436f5f27f6f55ac00f8e",
+      "path": "docs/reference/architecture.md",
+      "successor": "docs/reference/architecture.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b06a958c053f761b21d808d588943621fc5375f4",
+      "path": "docs/reference/mcp/wait.md",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1f32c5635a72285fecc5be28c04dc2c0f2a7a73",
+      "path": "ui/src/lib/api.ts",
+      "successor": "ui/src/lib/api.ts"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9f22941e200798ed862b8f067341b04e4851d6e",
+      "path": "internal/service/headwatch_test.go",
+      "successor": "internal/service/headwatch_test.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d10eb5bb3a7191e62503691d49f31587543808ae",
+      "path": "performance/README.md",
+      "successor": "performance/README.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e064e588dbaf36905bf508457880ba18f0c0e528",
+      "path": "docs/reference/mcp/wait.md",
+      "successor": "docs/reference/mcp/wait.md"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e9687f45b299b7728a92bed7ca81de42033166ca",
+      "path": "internal/app/app.go",
+      "successor": "internal/app/app.go"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fbd1bc248144e2f7f6f07b955928960fa68380ad",
+      "path": "ui/test/rebuild.test.mjs",
+      "successor": "ui/test/rebuild.test.mjs"
+    },
+    {
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ff1719057a1988bfea91b1dfc538a82e5de5e4ce",
+      "path": "internal/app/app.go",
+      "successor": "internal/app/app.go"
+    }
+  ],
+  "successors": [
+    "docs/reference/architecture.md",
+    "docs/reference/gs/serve.md",
+    "docs/reference/mcp/wait.md",
+    "docs/reference/performance.md",
+    "internal/app/app.go",
+    "internal/app/profile_test.go",
+    "internal/service",
+    "internal/service/headwatch.go",
+    "internal/service/headwatch_evidence_test.go",
+    "internal/service/headwatch_test.go",
+    "internal/service/server.go",
+    "internal/service/server_test.go",
+    "internal/service/uidist/assets/index-hIXoPEGS.js",
+    "internal/service/uidist/index.html",
+    "performance/HEAD-WAIT.md",
+    "performance/README.md",
+    "performance/head-wait-after.json",
+    "performance/head-wait-before.json",
+    "ui/src/components/TopBar.tsx",
+    "ui/src/lib/api.ts",
+    "ui/src/lib/rebuild.ts",
+    "ui/src/lib/store.ts",
+    "ui/test/components.test.mjs",
+    "ui/test/rebuild.test.mjs",
+    "ui/test/store.test.mjs"
+  ],
+  "allowed": false,
+  "reasons": [
+    {
+      "code": "checkout_allowed",
+      "check": "checkout",
+      "allowed": true,
+      "reason": "candidate is canonical, checkout belongs to the workroom repository, and the checkout is clean"
+    },
+    {
+      "code": "frontier_allowed",
+      "check": "frontier",
+      "allowed": true,
+      "reason": "the complete signed workroom verified and folded without publishing acceleration state"
+    },
+    {
+      "code": "approval_use_allowed",
+      "check": "approval_use",
+      "allowed": true,
+      "reason": "approval has no reservation, Git receipt, or durable merge receipt"
+    },
+    {
+      "code": "binding_allowed",
+      "check": "binding",
+      "allowed": true,
+      "reason": "approval is a assigned review closing git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:add297623a7c5f1d22725d891def3bcfe13ab87a"
+    },
+    {
+      "code": "target_allowed",
+      "check": "target",
+      "allowed": true,
+      "reason": "the governed checkout is on branch refs/heads/main of the workroom repository, at an exact pre-head commit"
+    },
+    {
+      "code": "candidate_allowed",
+      "check": "candidate",
+      "allowed": true,
+      "reason": "approved candidate is not already contained in the target"
+    },
+    {
+      "code": "tentative_merge_allowed",
+      "check": "tentative_merge",
+      "allowed": true,
+      "reason": "the exact candidate merges cleanly with the target pre-head in an isolated disposable clone"
+    },
+    {
+      "code": "changed_paths_allowed",
+      "check": "changed_paths",
+      "allowed": true,
+      "reason": "the complete staged merge path frontier is valid UTF-8 and representable"
+    },
+    {
+      "code": "reviewed_scope_refused",
+      "check": "reviewed_scope",
+      "allowed": false,
+      "reason": "merge would retire git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a31c287af5b705b6b0991914cafd64d6ab4d39a at \"internal/service\", which belongs to another actor and lies outside the reviewed paths docs/reference/architecture.md, docs/reference/gs/serve.md, docs/reference/mcp/wait.md, docs/reference/performance.md, internal/app/app.go, internal/app/profile_test.go, internal/service/headwatch.go, internal/service/headwatch_evidence_test.go, internal/service/headwatch_test.go, internal/service/server.go, internal/service/server_test.go, internal/service/uidist/assets/index-hIXoPEGS.js, internal/service/uidist/index.html, performance/HEAD-WAIT.md, performance/README.md, performance/head-wait-after.json, performance/head-wait-before.json, ui/src/components/TopBar.tsx, ui/src/lib/api.ts, ui/src/lib/rebuild.ts, ui/src/lib/store.ts, ui/test/components.test.mjs, ui/test/rebuild.test.mjs, ui/test/store.test.mjs:\nhave the approval cover it, or ask its author or an actor holding ratifier to retire it"
+    }
+  ]
+}
