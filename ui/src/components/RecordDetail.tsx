@@ -1,4 +1,4 @@
-import { EvidenceLinks, PreviewLink, ReferenceText } from "./Preview";
+import { EvidenceLinks, PreviewLink, ReferenceText, listedAttachments, useEvidenceListing } from "./Preview";
 import { useState } from "react";
 import type { Projection } from "../lib/api";
 import type { RecordIndex } from "../lib/records";
@@ -40,6 +40,11 @@ export function RecordDetail({
   const review = event ? index.review(event) : undefined;
   const sequence = event ? index.sequence(event) : undefined;
   const actor = statement?.actor ?? act?.actor;
+  // One listing of this record's own signed attachments, read once here and
+  // shared by the evidence row and every reference in the text and body rows,
+  // so a name means the same thing in the row and in the prose.
+  const listing = useEvidenceListing(event);
+  const attachments = listedAttachments(listing);
   const flags = [
     statement?.ratified && "ratified",
     (statement?.retired || artifact?.retired) && "retired",
@@ -75,10 +80,10 @@ export function RecordDetail({
       )}
       {(statement?.text || act?.text) && (
         <Row label="text">
-          <span className="whitespace-pre-wrap break-words text-foreground/90">{event ? <ReferenceText text={statement?.text ?? act?.text ?? ""} event={event} /> : statement?.text ?? act?.text}</span>
+          <span className="whitespace-pre-wrap break-words text-foreground/90">{event ? <ReferenceText text={statement?.text ?? act?.text ?? ""} event={event} attachments={attachments} /> : statement?.text ?? act?.text}</span>
         </Row>
       )}
-      {event && <Row label="evidence"><EvidenceLinks event={event} /></Row>}
+      {event && <Row label="evidence"><EvidenceLinks event={event} listing={listing} /></Row>}
       {act && <Row label="target">{ref(act.target)}</Row>}
       {statement?.body &&
         Object.entries(statement.body).filter(([key]) => !artifact || !["path", "commit"].includes(key)).map(([key, value]) => (
@@ -90,7 +95,7 @@ export function RecordDetail({
                 <span className="text-foreground/90">{nameOf(value)}</span> <Id value={value} />
               </>
             ) : (
-              <span className="whitespace-pre-wrap break-words font-mono">{event ? <ReferenceText text={value} event={event} /> : value}</span>
+              <span className="whitespace-pre-wrap break-words font-mono">{event ? <ReferenceText text={value} event={event} attachments={attachments} /> : value}</span>
             )}
           </Row>
         ))}
