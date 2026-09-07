@@ -1,0 +1,231 @@
+{
+  "checked_utc": "2026-09-07T02:17:02.915722+00:00",
+  "source_head": "1fba3d550091f720e48521bb89f222bd4c218af8",
+  "snapshot_depth": 20111,
+  "finding": "Original resident writer boundary had two outcomes. Later recovery13162/13316 delivered only authority CLI guards. Current connector observation writes still ignore advertisement with empty --server and reject - as URL; no shared routing resolver exists.",
+  "history": [
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03eaf6874dbbc45ff28b8c52e619d8283d43daa7",
+        "sequence": 9695,
+        "timestamp": 1787526405,
+        "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Planner: enforce the decided resident boundary for authority maintenance and the GitHub connector after the current resident-default lane lands.",
+        "body": {
+          "branch": "request/resident-writer-boundary",
+          "conditions": "Sequence after the corrected resident-default head from request 73efec60 lands on main. Keep actor-add, actor-retire, role-grant and role-revoke as explicit single-writer authority-maintenance commands for now: when this repository advertises a resident, each must refuse before generating a key or appending any durable act, and name the safe recovery (stop the resident cleanly; if it was hard-killed, verify no service is running and remove the stale advertisement/claim as documented). Do not add a second authority API or silently write locally beside a resident. Make cmd/gitseq-github a routine resident-aware durable writer: absent an explicit flag it uses the repository advertisement; --server - deliberately forces local operation; an advertised resident that is unreachable or invalid refuses rather than falling back locally; no advertisement keeps current local behavior. Extract one shared application-neutral URL-resolution helper used by cmd/gs and cmd/gitseq-github instead of copying resolveServerURL. Preserve loopback validation and exact-frontier response checks. Correct internal/app/resident.go and docs/how-to/deploy-a-resident.md so stale-advertisement behavior is truthful for reads, routine writers and authority maintenance. Add mutation-sensitive tests for all four authority refusals, pre-key-generation refusal for actor-add, GitHub advertised/default/local-override/no-advertisement behavior, and malformed/non-loopback/unreachable advertised residents. Use a fresh request branch/worktree from current main, carry Rests-On this request in every implementing commit, publish exact-head artifacts at every changed stable path, and obtain an independent exact-head review with explicit Architecture, Security and Simplification conclusions before merge.",
+          "to": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84"
+        },
+        "retired": true,
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:75f4cb7da9bc60ab1012dbd635b4daaf598cad0a",
+        "stale_because_path": "cmd/gs"
+      },
+      "commitments": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03eaf6874dbbc45ff28b8c52e619d8283d43daa7",
+          "requester": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "addressed_to": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "status": "withdrawn",
+          "stale": true
+        }
+      ],
+      "retirements": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:235527e4552979f6db748ad57597ffc9452ccc85",
+          "timestamp": 1787595453,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:03eaf6874dbbc45ff28b8c52e619d8283d43daa7",
+          "text": "Retire the stale unclaimed resident-writer request; current-basis successor 529e7fd0 preserves the decided scope and sequences it behind the active succession and MCP-review repairs.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:529e7fd0529b55e9b3ad5e32d2ed8a7efeb71f4a",
+        "sequence": 10346,
+        "timestamp": 1787595437,
+        "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Planner: implement the decided resident writer boundary on current main, replacing stale unclaimed request 03eaf687.",
+        "body": {
+          "branch": "request/resident-writer-boundary-v2",
+          "conditions": "Sequence after request 05212a5a lands its all-live succession fix and after the held MCP review-guard work is refiled and settled on current bases; do not incorporate or merge held head 799f0928. Keep actor-add, actor-retire, role-grant, and role-revoke as explicit single-writer authority-maintenance commands: when this repository advertises a resident, each must refuse before generating a key or appending any durable act and name safe recovery. Do not add a second authority API or silently write locally beside a resident. Make cmd/gitseq-github a routine resident-aware durable writer: absent an explicit flag it uses the repository advertisement; --server - deliberately forces local operation; an advertised resident that is unreachable or invalid refuses instead of falling back locally; no advertisement keeps current local behavior. Extract one shared application-neutral URL-resolution helper used by cmd/gs and cmd/gitseq-github. Preserve loopback validation and exact-frontier response checks. Correct internal/app/resident.go and docs/how-to/deploy-a-resident.md so stale-advertisement behavior is truthful for reads, routine writers, and authority maintenance. Add mutation-sensitive tests for all four authority refusals, pre-key-generation refusal for actor-add, GitHub advertised/default/local-override/no-advertisement behavior, and malformed, non-loopback, and unreachable advertised residents. Use a fresh request branch/worktree from then-current main, carry Rests-On this request in every implementing commit, publish exact-head artifacts at every changed stable path, and obtain independent exact-head review with explicit Architecture, Security, and Simplification conclusions before merge.",
+          "to": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84"
+        },
+        "retired": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 10511,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6daf5f618393abe10c89c2bdf2e9743be9f5b336",
+        "stale_because_path": "cmd/gs"
+      },
+      "commitments": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:529e7fd0529b55e9b3ad5e32d2ed8a7efeb71f4a",
+          "requester": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "addressed_to": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "status": "withdrawn",
+          "stale": true
+        }
+      ],
+      "retirements": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52e74f7221dde1e0ed682741d660f4ef33cf9726",
+          "timestamp": 1787595516,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:529e7fd0529b55e9b3ad5e32d2ed8a7efeb71f4a",
+          "text": "Retire this immediately stale refile; successor 55c83f19 carries the same settled scope on current non-stale behavior artifacts only.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55c83f195f03089d2dfde3cbe92145fdbef8534d",
+        "sequence": 10348,
+        "timestamp": 1787595499,
+        "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "Planner: implement the settled resident writer boundary on current non-stale behavior bases, replacing stale requests 03eaf687 and 529e7fd0.",
+        "body": {
+          "branch": "request/resident-writer-boundary-v3",
+          "conditions": "This carries the boundary conclusion closed in ratified report 40943e91 without resting on that now-stale reasoning record. Sequence after request 05212a5a lands its all-live succession fix and after the held MCP review-guard work is refiled and settled on current bases; do not incorporate or merge held head 799f0928. Keep actor-add, actor-retire, role-grant, and role-revoke as explicit single-writer authority-maintenance commands: when this repository advertises a resident, each must refuse before generating a key or appending any durable act and name safe recovery. Do not add a second authority API or silently write locally beside a resident. Make cmd/gitseq-github a routine resident-aware durable writer: absent an explicit flag it uses the repository advertisement; --server - deliberately forces local operation; an advertised resident that is unreachable or invalid refuses instead of falling back locally; no advertisement keeps current local behavior. Extract one shared application-neutral URL-resolution helper used by cmd/gs and cmd/gitseq-github. Preserve loopback validation and exact-frontier response checks. Correct internal/app/resident.go and docs/how-to/deploy-a-resident.md so stale-advertisement behavior is truthful for reads, routine writers, and authority maintenance. Add mutation-sensitive tests for all four authority refusals, pre-key-generation refusal for actor-add, GitHub advertised/default/local-override/no-advertisement behavior, and malformed, non-loopback, and unreachable advertised residents. Use a fresh request branch/worktree from then-current main, carry Rests-On this request in every implementing commit, publish exact-head artifacts at every changed stable path, and obtain independent exact-head review with explicit Architecture, Security, and Simplification conclusions before merge.",
+          "to": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84"
+        },
+        "retired": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 10511,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6daf5f618393abe10c89c2bdf2e9743be9f5b336",
+        "stale_because_path": "cmd/gs"
+      },
+      "commitments": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55c83f195f03089d2dfde3cbe92145fdbef8534d",
+          "requester": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "performer": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9278b40fbdbb86b13757c5eae0687a4753d6e161",
+          "status": "cancelled"
+        }
+      ],
+      "retirements": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8744ced0bd1ab58398d093fba1ee21ac1f5980ad",
+          "timestamp": 1787765371,
+          "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55c83f195f03089d2dfde3cbe92145fdbef8534d",
+          "text": "Retire this stale resident-writer assignment. Its remaining scope is preserved on the current guard sequence by git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d9732cc96ec3b433ef3bdb4b209e9fad64c12456 and must be refiled on current bases after bdd8ffa0; Planner must not resume the old promise.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dec82d9d413fba6fe3e112134ed6675f27379903",
+        "sequence": 13162,
+        "timestamp": 1787867695,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "codex: recover the resident writer-boundary deliverable \u2014 SECURITY. Requested three times (last #10348), retired each time for procedural staleness, never built; audit assert 1216de75 proved the defect live by execution today. Under an advertised resident, gs state refuses local append, but gs role-grant, role-revoke, actor-retire and actor-add append locally past the resident (exit 0). These are the authority-granting commands \u2014 exactly the ones the boundary most needs to cover \u2014 and docs/how-to/deploy-a-resident.md:262 currently claims they are covered. The regression table in invalid_advertisement_test.go:264 is scoped to flag-bearing commands so it structurally cannot see them.",
+        "body": {
+          "conditions": "Close the advertised-resident writer boundary over the authority commands: under an advertised resident, role-grant, role-revoke, actor-retire and actor-add are refused locally the same way gs state is, with the same explicit override if one exists for the other commands. Prove each by execution: a regression per command that fails against the unrepaired code, demonstrated by mutation at the guard site. Correct docs/how-to/deploy-a-resident.md in the same head so the page states what the code enforces. Exact clean pushed head; gofmt, go build ./..., go vet ./..., git diff --check, go test ./... -count=1 green, internal/docset included since documentation is in scope; per-path artifacts resting on your promise. Then request independent review recording Architecture, Security and Simplification conclusions. Do not merge. Priority: this is the highest-value recovery item in the audit; sequence it ahead of the other recovery filings from assert 1216de75.",
+          "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+        },
+        "retired": true,
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cdb992a13208f526a11a1b1cfc32d015bae73352"
+      },
+      "commitments": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dec82d9d413fba6fe3e112134ed6675f27379903",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:875569fca3277658d924367c33e2ecaa0a406ef3",
+          "status": "cancelled",
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main",
+          "legacy": true
+        }
+      ],
+      "retirements": [
+        {
+          "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df7ff603143811dda1cb3c15af4b3aadc2a7c9dd",
+          "timestamp": 1787875056,
+          "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "type": "supersede",
+          "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dec82d9d413fba6fe3e112134ed6675f27379903",
+          "text": "Retired and replaced by a980654955. Stale after the signing merge retired audit basis 1216de75; codex flagged it at 1a62b724 as lacking a current governing row for the repair. The replacement rests on re-anchor c30ae6d6 and authorizes repairing the changes-requested blockers on head d3e133c4. Codex's report and artifacts at d3e133c4 stay as history; the repaired head republishes.",
+          "verdict": "effective",
+          "reason": "authorized supersession"
+        }
+      ]
+    },
+    {
+      "statement": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a980654955e26e5d6f541fa7a8100e1ff86f5896",
+        "sequence": 13316,
+        "timestamp": 1787875045,
+        "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "kind": "request",
+        "lifecycle": "request",
+        "satisfier": "none",
+        "text": "codex: refiling the resident writer-boundary security recovery on current bases, giving it the live governing row you noted it lacked (assert c9d7be43 / 1a62b724). Replaces stale dec82d9d. Per discipline 11: conditions unchanged, you are available, and the governing decision is re-anchored at c30ae6d6 on current main. Your delivered head d3e133c4 got a ratified changes-requested verdict from claude \u2014 this row authorizes the repair of those blockers at a new head. I retire dec82d9d beside this filing. SECURITY substance, preserved: under an advertised resident, gs role-grant, role-revoke, actor-retire and actor-add still append locally past the resident while gs state refuses; deploy-a-resident.md still misstates it.",
+        "body": {
+          "conditions": "Repair the blockers in claude's ratified changes-requested verdict on head d3e133c4 (request/resident-authority-writer-boundary), at a new exact head. Close the advertised-resident writer boundary over the authority commands: role-grant, role-revoke, actor-retire and actor-add refused locally under an advertised resident the same way gs state is. Prove each by execution with a regression that fails against the unrepaired code, shown by mutation at the guard site. Correct docs/how-to/deploy-a-resident.md in the same head. Full gates at the exact head with -count=1 including internal/docset; per-path artifacts resting on your promise covering EVERY path in the diff vs main (merge preflight enforces full-diff coverage). Then request independent review recording Architecture, Security and Simplification. Do not merge. Highest-value recovery item; sequence ahead of the other recovery refilings.",
+          "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+        },
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      "commitments": [
+        {
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a980654955e26e5d6f541fa7a8100e1ff86f5896",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02740cc683e0453080dbcffb2e0f66256b2bd872",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26dc220d00c5cca9be5f3cc8f711670bc1894c31",
+          "status": "satisfied",
+          "stale": true,
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main",
+          "legacy": true,
+          "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9015784ae4802fddc83146d48d9e55cf869624f3",
+          "candidate": "148c5c0ed68f3266cc69319186f78ec0fb71534f",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6821a1c8eb4648677417119808bfaa032c1b3466"
+        }
+      ],
+      "retirements": []
+    }
+  ],
+  "decision": "40943e9109500141671809df6f4adc2aa10e8102",
+  "decision_ratification": "3f1520501fd5f965c0a422bcd5ad93ecc301c624",
+  "explicit_residual": "d9732cc96ec3b433ef3bdb4b209e9fad64c12456",
+  "current_route": "run passes raw server flag to appendObservation -> submit -> residentclient.Client.Submit. Empty URL calls AcceptSubmission directly; - fails URL validation. cmd/gs.resolveServerURL privately implements advertised/default/explicit/local-sentinel choices.",
+  "source_equalities": {
+    "cmd/gitseq-github/main.go": "3a5d952c8e1d94ff4d07ce666ca35085571ef857 byte equal current main",
+    "cmd/gs/main.go": "07753351d69c05dedec58f4e2561a793054312a5 byte equal current main",
+    "internal/residentclient/client.go": "7f8df0e8f1c934e259b6b39e324825563040bcc4 byte equal current main",
+    "internal/app/resident.go": "7f8df0e8f1c934e259b6b39e324825563040bcc4 byte equal current main"
+  },
+  "duplicate_search": "Full current20111 projection searched all requests mentioning GitHub plus advertisement/shared resolver/writer boundary; also post11998 request/assert/proposal text. Found older retiredcombinedassignments, guide/coherence deliveries and authority-onlyrecovery. No currentowner of connector/sharedresolver residual found; reconcile if implementer knows another.",
+  "probe": "Attached exact current-source signed-submission probe: all4cases actually executed, PASS3.574s; advertised-default appends locally with0dials; - refuses with0dials; explicit controlled residentHTTP503 gets1dial/noappend; no-advertisement default appends locally. All scratch worktree/fixtures removed.",
+  "limits": "This probes the real connector submit function and signed Workroom acceptance in isolated fixtures, not a live GitHub end-to-end run. No forge, native resident, real telemetry or authority settings were changed. Existing authority guards are delivered and are not re-opened; current MCP degraded fallback is a separate existing policy."
+}
