@@ -1,0 +1,94 @@
+# First full-suite run at 7d09a2d1 (pre-amend head; same Go tree as d0fd2a53), the focused rerun, and the second full run
+ok  	github.com/generalbusiness-ai/gitseq	0.326s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	36.375s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	137.447s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.108s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	413.434s
+ok  	github.com/generalbusiness-ai/gitseq/host	30.951s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	20.483s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	1.220s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	132.742s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	1.616s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	2.890s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.612s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	1.138s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	7.636s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	96.637s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.764s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	20.333s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	2.131s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	81.609s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	17.612s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.217s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.458s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	12.017s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.628s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	2.869s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+--- FAIL: TestWaitBudgetOfSixtyFourIsSharedAcrossBothWaitRoutes (3.28s)
+    testing.go:1617: TempDir RemoveAll cleanup: unlinkat /var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestWaitBudgetOfSixtyFourIsSharedAcrossBothWaitRoutes3598699385/001/repo/.git/gitseq: directory not empty
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/service	77.622s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.715s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.126s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.347s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	1.606s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	12.406s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.053s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	4.945s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.782s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	1.081s
+FAIL
+exit_code=1
+
+NOTE: this first full-suite run failed only in t.TempDir cleanup
+("TempDir RemoveAll cleanup: unlinkat .../repo/.git/gitseq: directory not empty"),
+not in any assertion. The focused test passed twice on its own
+(gates-go-test-rerun-service.txt) and a second full-suite run was green
+(gates-go-test-run2.txt, exit_code=0). The change under review is notes-only and
+touches no Go source.
+
+=== rerun of internal/service focused test
+=== service rerun 1 ===
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	1.001s
+=== service rerun 2 ===
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	0.829s
+
+=== second full run
+ok  	github.com/generalbusiness-ai/gitseq	0.260s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	35.940s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	140.937s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.436s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	413.227s
+ok  	github.com/generalbusiness-ai/gitseq/host	32.370s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	19.334s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	3.256s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	134.025s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	1.621s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	1.604s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.855s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	3.100s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	3.538s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	100.847s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.059s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	20.837s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	4.257s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	85.631s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	17.506s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.436s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.720s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	11.234s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.156s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	2.852s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	80.182s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.608s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.843s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.545s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	2.492s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	11.461s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.913s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.937s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.961s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	1.003s
+exit_code=0

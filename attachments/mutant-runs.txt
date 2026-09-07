@@ -1,0 +1,107 @@
+=== 01-cold-sequencer-signature-mutant.txt
+--- FAIL: TestVerifierRejectsWrongSequencerSignatureOnColdAudit (0.19s)
+    kernel_test.go:868: wrong sequencer cold-audit error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.559s
+FAIL
+exit_code=1
+=== 02-delta-sequencer-signature-mutant.txt
+--- FAIL: TestReaderRejectsWrongSequencerDeltaWithoutMutatingVerifiedCache (0.35s)
+    kernel_test.go:3793: reader accepted a delta signed by a non-descriptor sequencer
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.649s
+FAIL
+exit_code=1
+=== 03-named-genesis-mutant.txt
+--- FAIL: TestSequenceBoundsPinNamedGenesisAndHeadIndependently (0.00s)
+    kernel_test.go:1900: wrong genesis boundary error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.292s
+FAIL
+exit_code=1
+=== 04-named-head-mutant.txt
+--- FAIL: TestSequenceBoundsPinNamedGenesisAndHeadIndependently (0.00s)
+    kernel_test.go:1903: wrong head boundary error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.294s
+FAIL
+exit_code=1
+=== 05-parentless-genesis-mutant.txt
+--- FAIL: TestChainParentGuardsPinGenesisAndEventsIndependently (0.00s)
+    kernel_test.go:1973: parented genesis error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.289s
+FAIL
+exit_code=1
+=== 06-single-parent-chain-mutant.txt
+--- FAIL: TestChainParentGuardsPinGenesisAndEventsIndependently (0.00s)
+    kernel_test.go:1979: merge event error = <nil>
+--- FAIL: TestVerifierRejectsSequencerSignedMergeEvent (0.32s)
+    kernel_test.go:2125: merge event error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.613s
+FAIL
+exit_code=1
+=== 07-actor-signature-mutant.txt
+--- FAIL: TestVerifierRejectsSequencerSignedEventWithInvalidActorSignature (0.20s)
+    kernel_test.go:2006: invalid actor signature error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.593s
+FAIL
+exit_code=1
+=== 08-target-log-mutant.txt
+--- FAIL: TestVerifierRejectsIntentReboundToAnotherLog (0.40s)
+    kernel_test.go:1858: verifier accepted an intent rebound into another log
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.759s
+FAIL
+exit_code=1
+=== 09-causal-trailers-mutant.txt
+--- FAIL: TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity (0.20s)
+    kernel_test.go:1889: altered causal trailer error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.484s
+FAIL
+exit_code=1
+=== 10-signed-payload-tree-mutant.txt
+--- FAIL: TestVerifierRejectsCommitTreeDifferentFromSignedPayloadTree (0.19s)
+    kernel_test.go:2029: substituted tree error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.482s
+FAIL
+exit_code=1
+=== 11-payload-shape-mutant.txt
+--- FAIL: TestVerifierRejectsExtraPayloadTreeEntry (0.19s)
+    kernel_test.go:2058: extra payload entry error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.469s
+FAIL
+exit_code=1
+=== 12-attachment-name-mutant.txt
+--- FAIL: TestVerifierRejectsInvalidAttachmentName (0.19s)
+    kernel_test.go:2088: invalid attachment name error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.466s
+FAIL
+exit_code=1
+=== 13-dedup-conflict-mutant.txt
+--- FAIL: TestVerifierRejectsExternallySequencedDedupConflict (0.33s)
+    kernel_test.go:2102: external dedup conflict error = commit 99d9bac624941826a0846dfe856a63b2c83346b6 duplicates idempotent event 0f469d62f9867ffc08c70928f63cae49cbcd12b4
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.624s
+FAIL
+exit_code=1
+=== 14-verifier-ceiling-mutant.txt
+--- FAIL: TestVerifierAppliesCeilingToEnvelopeAndPayloadTogether (0.21s)
+    kernel_test.go:1818: combined envelope and payload verification error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.490s
+FAIL
+exit_code=1
+=== 15-submit-aggregate-ceiling-mutant.txt
+--- FAIL: TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling (0.29s)
+    kernel_test.go:1711: combined payload and attachments error = <nil>
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.574s
+FAIL
+exit_code=1
