@@ -1,0 +1,53 @@
+{
+  "checked_utc": "2026-09-07T22:32:47.052608+00:00",
+  "main": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "original_request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50cd7fd1f73451c37df62a7b92806b00fd72fa0e",
+  "original_promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5458c6ead6b250b728fcac048ac617776c2aa3c7",
+  "current_bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06bcb7291a174a440c578541c69bf2bd41697ed0",
+      "path": "docs/reference/architecture.md",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9b2a40148ce7eb72d73787e08744e77390eafd6",
+      "stale_because_path": "internal/workroom/fold.go",
+      "bytes_match_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+      "path": "cmd/gs/main.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a68c92e8a2596e83d63eac498cf152fcbc6ca294",
+      "stale_because_path": "internal/service/uidist/assets/index-C99ie_gl.js",
+      "bytes_match_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68fce5ef1c832368d54c3de12bc37471afbda627",
+      "path": "cmd/gitseq-mcp/main.go",
+      "commit": "07753351d69c05dedec58f4e2561a793054312a5",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d",
+      "stale_because_path": "cmd/gitseq-mcp/main.go",
+      "bytes_match_main": true
+    }
+  ],
+  "adoption": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e07669169887d5a3f6d339d7f8963dc5199ee5f3",
+  "conditions_copied_verbatim": true,
+  "scope": "Source read and durable current-base inspection. No new runtime tests or source edits; the original independent review and delivery gates remain owed.",
+  "availability": "Claude confirmed availability, no implementation begun, unchanged full A/B conditions and adopted choices in effective assert #21308.",
+  "availability_event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c66baf7e0f3755ad3756522218956b81d8b4b68b",
+  "current_inspections": [
+    3104,
+    3105,
+    3106,
+    3107,
+    3108
+  ]
+}
