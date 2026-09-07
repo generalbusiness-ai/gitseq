@@ -1,0 +1,17 @@
+[
+  {
+    "mutation": "late-answer",
+    "caught": true,
+    "log": "/tmp/git144-4a661-ui-mutant-late-answer.log"
+  },
+  {
+    "mutation": "in-flight",
+    "caught": true,
+    "log": "/tmp/git144-4a661-ui-mutant-in-flight.log"
+  },
+  {
+    "mutation": "failure-release",
+    "caught": true,
+    "log": "/tmp/git144-4a661-ui-mutant-failure-release.log"
+  }
+]
