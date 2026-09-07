@@ -1,0 +1,38 @@
+[
+  {
+    "path": "performance/HEAD-WAIT.md",
+    "server": true,
+    "clock": true,
+    "app": false
+  },
+  {
+    "path": "performance/README.md",
+    "server": true,
+    "clock": true,
+    "app": false
+  },
+  {
+    "path": "docs/reference/performance.md",
+    "server": true,
+    "clock": true,
+    "app": false
+  },
+  {
+    "path": "docs/reference/architecture.md",
+    "server": true,
+    "clock": false,
+    "app": true
+  },
+  {
+    "path": "docs/reference/gs/serve.md",
+    "server": true,
+    "clock": false,
+    "app": false
+  },
+  {
+    "path": "docs/reference/mcp/wait.md",
+    "server": true,
+    "clock": true,
+    "app": false
+  }
+]

@@ -1,0 +1,146 @@
+[
+  {
+    "path": "internal/service/headwatch.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/headwatch_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/headwatch_evidence_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "performance/head-wait-before.json",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "performance/head-wait-after.json",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/src/lib/rebuild.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/src/lib/api.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/src/lib/store.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/src/components/TopBar.tsx",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/test/rebuild.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/test/store.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "ui/test/components.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/uidist/index.html",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/uidist/assets/index-BH8l9H6S.js",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/app/app.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/server.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/app/profile_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "internal/service/server_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "performance/HEAD-WAIT.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "performance/README.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "docs/reference/performance.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "docs/reference/architecture.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "docs/reference/gs/serve.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  },
+  {
+    "path": "docs/reference/mcp/wait.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "7d32e01dd20eb64f5d6aad97ce09741a16f470f1"
+  }
+]
