@@ -1,0 +1,12 @@
+[
+  {
+    "source": "candidate",
+    "exit": 1,
+    "log": "/tmp/git20112-proposal-candidate.log"
+  },
+  {
+    "source": "prior-main",
+    "exit": 0,
+    "log": "/tmp/git20112-proposal-prior-main.log"
+  }
+]

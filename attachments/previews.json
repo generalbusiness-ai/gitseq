@@ -1,0 +1,58 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6d521e84bcaa3ddb10f899bc464007a964b1cab9",
+    "path": "internal/residentclient/client.go",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5df971f46a931e936b50484b5d6db1877b2dc894",
+    "path": "cmd/gs/main.go",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a44d91109c64f0f966a49452042f11806a67001",
+    "path": "internal/app/resident.go",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a02c321f8ddd055787b3552b200a7ff769593c98",
+    "path": "cmd/gitseq-github/routing_test.go",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d6c0aa7f9b2a271210a3662da8878362349e2420",
+    "path": "cmd/gitseq-github/main.go",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34bc80e5d5830bba8c6ac9301cc125b10b92191d",
+    "path": "docs/how-to/connect-github.md",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b94f5721b7f164ff8292d5f28591c757b4a66116",
+    "path": "docs/how-to/deploy-a-resident.md",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9520a6326ea9be5dee494e408e0a8d554b0246d5",
+    "path": "docs/reference/architecture.md",
+    "status": "ready",
+    "commit": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+    "exact": true
+  }
+]

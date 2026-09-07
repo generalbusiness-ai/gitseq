@@ -1,0 +1,5 @@
+--- FAIL: TestUnreachableAdvertisedResidentRefuses (0.71s)
+    routing_test.go:250: error = Post "http://127.0.0.1:61813/v0/submit": dial tcp 127.0.0.1:61813: connect: connection refused, want the refused-dial sentence naming --server -
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	10.816s
+FAIL

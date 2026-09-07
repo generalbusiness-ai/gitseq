@@ -1,0 +1,5 @@
+=== RUN   TestCodexLostReplyCanFollowAnAppend
+    codex_lost_reply_test.go:13: resident appended one event before the reply was lost; client returned Post "http://127.0.0.1:61937/v0/submit": EOF
+--- PASS: TestCodexLostReplyCanFollowAnAppend (0.87s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	1.259s

@@ -1,0 +1,5 @@
+--- FAIL: TestCodexProposalDryRunIgnoresObservationRoute (4.81s)
+    codex_proposal_probe_test.go:53: dry-run proposal required local connector custody: this repository advertises a resident that cannot be trusted: the record at /private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestCodexProposalDryRunIgnoresObservationRoute4090003041/001/repo/.git/gitseq/resident.json is not a resident record: invalid character 'o' in literal null (expecting 'u'); pass --server - to act locally instead
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	5.115s
+FAIL

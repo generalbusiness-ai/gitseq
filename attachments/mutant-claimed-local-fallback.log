@@ -1,0 +1,7 @@
+--- FAIL: TestUnreachableAdvertisedResidentRefuses (0.84s)
+    routing_test.go:250: error = <nil>, want the refused-dial sentence naming --server -
+--- FAIL: TestRefusingResidentDoesNotFoldLocally (0.94s)
+    routing_test.go:267: error = <nil>, want the resident's refusal
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	11.177s
+FAIL
