@@ -1,0 +1,8 @@
+--- FAIL: TestCodexReviewHostileNewRows (0.00s)
+    codex_review_probe_test.go:7: kind=dissent raw terminal/structural controls retained
+    codex_review_probe_test.go:7: kind=unregistered raw terminal/structural controls retained
+--- FAIL: TestCodexReviewRefusedDissentTarget (0.00s)
+    codex_review_probe_test.go:13: refused target presented current: against #10 git:sha1:1111111111111111111111111111111111111111#refused (current)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/workroom	0.308s
+FAIL

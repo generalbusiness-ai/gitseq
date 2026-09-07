@@ -1,0 +1,57 @@
+[
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:55a0983e8b12246ba49739ac1aa6e01131c39270",
+    "sequence": 20027,
+    "reaches_candidate_fold": false,
+    "direct_bases": [
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:092bd6cbe60056cd85ba626ea22807c1e97cc376",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35"
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ae0a2ee313353cb48a67675aa67b5da20d685751",
+    "sequence": 20023,
+    "reaches_candidate_fold": false,
+    "direct_bases": [
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6215cafb10c5041f6dba8bb2039d2a8657eec742",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ac5121e1166ce1ca58622c30f06f6ac95c4570dc",
+    "sequence": 20024,
+    "reaches_candidate_fold": false,
+    "direct_bases": [
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:012451209d3000492d2e523089e5973beec05f61",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35"
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5e17a82c0aa82362b03133f11e220e2f27079f2",
+    "sequence": 20025,
+    "reaches_candidate_fold": false,
+    "direct_bases": [
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:36fc269d852db749aca5b0587c96dcf319de4882",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+    ]
+  },
+  {
+    "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4688f8e3d011afb45ad04477f5f83b51f7c54763",
+    "sequence": 20026,
+    "reaches_candidate_fold": false,
+    "direct_bases": [
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7b6f36d63902806d638b858d4221598206f663",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74ee3418d62de29e79192c76b7fdac6ca82f8665",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a99db70fe0541df198dd5092500ca57c659dc4a",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b1910034ae9e93d2692a7d0b3f41bfe6ab12084"
+    ]
+  }
+]
