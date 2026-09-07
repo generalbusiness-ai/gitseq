@@ -1,0 +1,286 @@
+{
+  "frontier": {
+    "head": "caf5d22f4d4c8fea3bd88699aa08494dedd705ca",
+    "depth": 21144
+  },
+  "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:105a6966b711391b07b7f9a289ba0716fc7dc451",
+  "receipt_sequence": 21064,
+  "published_count": 26,
+  "planned_successor_count": 26,
+  "missing_successors": [],
+  "retired_count": 53,
+  "planned_retirements": 53,
+  "unretired": [],
+  "seal_fields_match": {
+    "Gitseq-Approval": true,
+    "Gitseq-Candidate": true,
+    "Gitseq-Target-Pre-Head": true,
+    "Gitseq-Retirements": true,
+    "Gitseq-Successors": true,
+    "Gitseq-Target-Repo": true,
+    "Gitseq-Target-Ref": true,
+    "Gitseq-Left-Live": true,
+    "Gitseq-Changed-Paths": true,
+    "Gitseq-Staleness": true
+  },
+  "changed_paths_match": true,
+  "left_live_classes": {
+    "sibling": 5,
+    "carried": 6,
+    "abandoned": 6
+  },
+  "publications": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+      "path": "cmd/gs/main.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d075b36fd1db1957f687073fb93bc4999c1b537a",
+      "path": "docs/reference/architecture.md",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fb1c04fd8165fb9e54a4289385c2fbace50507a1",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58038428699af31607e2770581b748c71687dd0c",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ecb367fc240e3119041a0e9cb28ecc78f070ab5b",
+      "path": "docs/reference/gs/status.md",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ac5121e1166ce1ca58622c30f06f6ac95c4570dc",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:898647eb6c67f340372ec798569300518a44369b",
+      "path": "docs/reference/mcp/status.md",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d2bf2b6a1fad0bc51cb43e2368ec2824dc125ae1",
+      "path": "docs/reference/mcp/wait.md",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6b9f47f03fbd35df56e20282030b0ee90b89fe3d",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:70a7f7284856b52b9f97ba4bb544f1335f7e7d3f",
+      "path": "internal/service",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "live_predecessors": 1,
+      "succession_unrecorded": true,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:de586bcbfa6bd2bd30d162196ab605cca6eb3751",
+          "class": "",
+          "verified": false,
+          "reason": "not classified by receipt"
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ea4ae86b6807b16474e5dc5ae7dfa485d2836fe",
+      "path": "internal/service/server.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f533029945dcd37f625d79e47918b0922cc6d85",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26dd239706b9367844106fae22c110ed430c25ca",
+      "path": "internal/service/uidist/assets/index-C99ie_gl.js",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f06f8569f2a93242b9c226cf0738b91f13b00be7",
+      "path": "internal/service/uidist/index.html",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c93b4d4577389c55898a93b307f1f951d645fb8",
+      "path": "internal/statusview/actor.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:11aa78828c5f16a2ece6c70546272cfe3f387d4d",
+      "path": "internal/statusview/bounded_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1dcd91b15e2f6d80b41df9e7129b17a0169f5db",
+      "path": "internal/statusview/testdata/bounded-summary-golden.json",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bce39c253ab8f654cd788f5c152463dd0b6bfd11",
+      "path": "internal/statusview/view.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:048be4d6feee61460a623c3b0ecb498d1df979a1",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38b80d693c58ca8274293108e4538461ce64109a",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ca5e011f77d721d10106bde21e352127000bb514",
+      "path": "internal/statusview/work_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a4918fdcfe5dd526519955fa86f415514c468bf",
+      "path": "internal/wireparity/parity_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb7c93c905e6af563be8f3be9ec360778b8ac327",
+      "path": "internal/wireparity/work_populations_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b538717b40e2ce1d317329d4d4392f699573a18",
+      "path": "internal/workroom/render.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58fbbb254eea3914c0b198d1e449c0536ae40329",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:72be53360f6c14020b92dc0c6a1b94a301b654cf",
+          "class": "sibling",
+          "commitment": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+          "verified": true
+        },
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f688cb34ab9cd7739fbd50e9d4691864a3bb6f35",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ef46b7e8bbc24fe2a75efe5209a56861e2d0c16c",
+      "path": "internal/workroom/testdata/render_status.golden.md",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad903b40292c987442ca3589cd9e8092c8eff757",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d04ebe9b51b43a958460b49d13920065cecf5381",
+      "path": "internal/workroom/truthfulness_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false,
+      "merge_left_live": [
+        {
+          "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f98215dc3bed915a2b4290b55e8147b795ffa010",
+          "class": "abandoned",
+          "verified": true
+        }
+      ]
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df27ed89f625c7bcf61cf1a85c69e48ce97298e7",
+      "path": "internal/workroom/work.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:05d82c18182fa7ffc4b228a8c89137d6a89633f0",
+      "path": "internal/workroom/work_test.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ddaa923c46e5c3a05b1c4c222eef77c453888a4",
+      "path": "ui/src/components/RequestList.tsx",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a58e92dc78241cc83d7b8acd05ae599c60471d7b",
+      "path": "ui/src/lib/api.ts",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f922ea3066e5a4ad3b53a57ce6b258606f7882fc",
+      "path": "ui/test/dom.test.mjs",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d2671c87bfd534c6fcff1ecbdca889b28ce243f5",
+      "path": "ui/test/fixtures/work-populations.json",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b3a7a860bc9c9a9ede7b48932fdcd8a7c2c0777",
+      "path": "ui/test/work-populations.test.mjs",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": false
+    }
+  ],
+  "tree_equal": true,
+  "changed_paths_validation": "git diff --no-renames --name-only; rename source and destination remain distinct changed paths",
+  "publications_rest_on_receipt": true,
+  "effective_receipt_resting_retirements": 53,
+  "unique_successor_paths_match": true,
+  "receipt_ref": "refs/gitseq/merge-receipts/069c6150829953fc74e25b3ca7d740566c3d61bbcf1beb83de803776c1ceacf0",
+  "six_cleanup_events_pushed": true,
+  "cleanup_remote_before_root_push": "3f12a00fd9baf794e2379acdd2c7e23f4821bb5d",
+  "cleanup_remote_after_root_push": "e75de3fda69d8ada7fd2812bab5d0944641b70a8",
+  "push_observation": "git push origin refs/seq/5d2622748872b7e2dec3fe5c59e4be73a35e0bc8 succeeded fast-forward3f12a00fd..e75de3fda, session1489 exit0"
+}

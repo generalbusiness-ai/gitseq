@@ -1,0 +1,182 @@
+{
+  "checked_utc": "2026-09-07T14:29:40.787048+00:00",
+  "snapshot_head": "2ee2966a226844bd4492cfe3db9158041cbe8049",
+  "depth": 21220,
+  "merge": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+  "approved_candidate": "64e7193e50930e8dcf7ff299c66fda8ffaa9f8c7",
+  "receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b016153a372b1b7e8f5c089e74713993a4d42a9",
+  "receipt_sequence": 21188,
+  "ten_seal_fields_match": true,
+  "published_paths": {
+    "docs/reference/architecture.md": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06bcb7291a174a440c578541c69bf2bd41697ed0",
+    "docs/reference/gs/merge.md": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7469579549609daf2cb816958ec369fde2fcfafb",
+    "internal/app/app_test.go": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e376589bcf5c54df4bc96b2223f31449f6a11cf1",
+    "internal/app/receipt_profile_test.go": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53640b45fd2efeb686c5c675799d9251e050693a",
+    "internal/workroom/fold.go": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6cfa8192c11da576b700bb9afa05cbdf197f686c",
+    "internal/workroom/receipt_deletion_test.go": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9601da072ceeb2c896ee19aabd3153ac4cb473b",
+    "internal/workroom/schema.go": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:395b8b814b783ec202cf7794f74c7d7b23c9e8ef"
+  },
+  "retirements": [
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02a271dd2342e67ecd4cb631354baa3b6a19e838",
+      "successor_path": "internal/app/app_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e3dde30bb55f799ffeb8168bf52a8a18759fa050"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:199c07d28dbbcb6e05afda021b1bea0a82629f48",
+      "successor_path": "docs/reference/gs/merge.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:18c37a28a1796f89cdb4c3d4556575fa84173ee5"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:311563b5b58782de710dcb8b872cd2460539ea8f",
+      "successor_path": "internal/workroom/receipt_deletion_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:51e926f7ae5e22cd2e9ee88930f42d49c32f6092"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:32c718596d33e5c4702757a8590734638a9d1e8b",
+      "successor_path": "internal/app/app_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b5c98cfad8491a4314879b7956329b3e569d43c"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:38942fc0c6cc31efe0c3682bf2357fd31aaa6f29",
+      "successor_path": "internal/workroom/schema.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c63a1732da8623da75112ca791a2e3f07d5be8f"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:62b6e3b267b4cdaee6715b8cfeae8797761e9650",
+      "successor_path": "internal/workroom/schema.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2c467175907c2a8eae2419d28742b2b515b314c0"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67d8962a3163fd22861a22d9387da877764ef02c",
+      "successor_path": "docs/reference/architecture.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa430bda86c7d0fbc70f6ded1e1d6777b3a0c336"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:765878117cb1813fae8925e4dd84dc5955ec94f9",
+      "successor_path": "docs/reference/gs/merge.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:694d552242fe0766c92368894c89194e002620e4"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7969e828638dd739c819c302b1bd0204e762d8ba",
+      "successor_path": "internal/app/receipt_profile_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35e9ca6253fae0b8aae23f95d265a370d7b3e168"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:924337c070f7268f7ec4817d2c64ae9ea6f227f6",
+      "successor_path": "docs/reference/gs/merge.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7bd08d7cded426dfd07718bd87607440c011caf3"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9e7c44101a5bdbce586192e9a806716bc4e670b",
+      "successor_path": "internal/app/receipt_profile_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2efa305dec1d837d4905f1fe6061536f224ca74"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:acada6321a26f17976f959b6e966faf00d93019b",
+      "successor_path": "internal/app/app_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3802efe068c6143f0e2f0b0ae1ebd8c3d0bacd4f"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b3169bbc5f115b052ab830e4b22f3f7e9c9abea0",
+      "successor_path": "internal/app/app_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c72b4a9e1f760679cf3654dd88604c131dbbe116"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b664e8dd2592ed1afded59585fab0ba7378a682e",
+      "successor_path": "internal/workroom/schema.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fe03c04f7f0ec8369efb7e00150fb9b9ee84346"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bf4dce00685ed00f6e840610979ef043d84942de",
+      "successor_path": "internal/workroom/schema.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:777c37b9d7b49c6fe57f868efa62a7f91a5d675c"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c9b2a40148ce7eb72d73787e08744e77390eafd6",
+      "successor_path": "internal/workroom/fold.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e8a58cf6a3bda7becfb3089b84e6b4161890156"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d075b36fd1db1957f687073fb93bc4999c1b537a",
+      "successor_path": "docs/reference/architecture.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f584dd2a513f50fd85da0be7f0e1e49f7d863882"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e134f86d384469563ab0909d345c0f4c7486ccbb",
+      "successor_path": "internal/app/app_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c15febc2f22be38b5ae5058f69f104e3d814dfce"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e781aa71563faa3387a71dd7cec27c0f1365d799",
+      "successor_path": "internal/workroom/fold.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e84e57c50fc02056ba16e251875f6b7c00a070f1"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:efef55622ef5418e3770987fe2cf98e2ceab8f5f",
+      "successor_path": "internal/workroom/fold.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24671d6d7d1d6d2e9446419b8bc8e7be6321863f"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f267aa8b3f3dc109e3115a5b91845cb138001432",
+      "successor_path": "docs/reference/gs/merge.md",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:07eed0b68f89c639a35cfc2fc1f63eb3f0dea5d2"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f9fdbae461c3ce521616c9e4cc58c588b83fd199",
+      "successor_path": "internal/workroom/schema.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:769bafb7739372770615074a62a8c1322f19fb59"
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffd4eca06bbf253770d59e9a141b5065764f3960",
+      "successor_path": "internal/app/receipt_profile_test.go",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c419ce901fa02b4c5d96ba85e287ca60325197f"
+    }
+  ],
+  "left_live_classes": {
+    "sibling": 2,
+    "abandoned": 2,
+    "carried": 3
+  },
+  "abandoned_own_author_cleanup": [
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20944d317369f1f2df4877e67852557af60a9386",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e2c1138087dc15ceb7dd34427bcc7323c073921b",
+      "own_author": true
+    },
+    {
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6aa633d3505b5447034ff98af44bc5ecf4de07c4",
+      "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ee2966a226844bd4492cfe3db9158041cbe8049",
+      "own_author": true
+    }
+  ],
+  "other_left_live_preserved": 5,
+  "commitment": {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58038428699af31607e2770581b748c71687dd0c",
+    "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d7c60ec40c143b49ba731319225aa3de50bb093",
+    "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:efef55622ef5418e3770987fe2cf98e2ceab8f5f",
+    "status": "satisfied",
+    "stale": true,
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7a5d0137b98c2792948a517acb08918563f26904",
+    "candidate": "64e7193e50930e8dcf7ff299c66fda8ffaa9f8c7",
+    "terminal": "landed",
+    "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b016153a372b1b7e8f5c089e74713993a4d42a9"
+  },
+  "remote_refs_verified": {
+    "main": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+    "receipt_ref": "refs/gitseq/merge-receipts/c8c8d85e199e1953cfe064eb9068a46497b166bc332c0d82c217f40695d5fb32",
+    "seq_head": "2ee2966a226844bd4492cfe3db9158041cbe8049"
+  },
+  "feature_worktree_and_branch_absent": true,
+  "ci": {
+    "run": 34133013501,
+    "status": "in_progress",
+    "security_run": 34133013628,
+    "security_conclusion": "success"
+  },
+  "state": "Exactreviewedtree landed/pushed/receiptsuccession/cleanupcomplete; main CI pending, residentrollout notyetfiled."
+}

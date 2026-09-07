@@ -1,0 +1,150 @@
+{
+  "checked_utc": "2026-09-07T14:34:50.670433+00:00",
+  "rooms": {
+    "gitseq": {
+      "port": 7777,
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 31631
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      31631 hughpyle    5u  IPv4 0xc1da0c1b2ba8170b      0t0  TCP 127.0.0.1:7777 (LISTEN)\n",
+      "process": "31631 03:56:26 /Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777\n",
+      "frontier": {
+        "head": "2ee2966a226844bd4492cfe3db9158041cbe8049",
+        "depth": 21220
+      },
+      "totals": {
+        "approved_not_landed": 78,
+        "commitments": {
+          "awaiting-review": 2,
+          "cancelled": 371,
+          "open": 1,
+          "promised": 1,
+          "reneged": 3,
+          "satisfied": 1547,
+          "stale": 10,
+          "superseded": 37,
+          "withdrawn": 550
+        },
+        "stale_commitments": {
+          "awaiting-review": 2,
+          "satisfied": 1265,
+          "stale": 10,
+          "superseded": 21,
+          "withdrawn": 501
+        },
+        "artifacts": 5575,
+        "stale_artifacts": 5301,
+        "retired_artifacts": 4736,
+        "world_stale_artifacts": 1579,
+        "ineffective_acts": 265,
+        "disputed_acts": 9,
+        "statements": 13511
+      }
+    },
+    "tailapp": {
+      "port": 7778,
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 33263
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      33263 hughpyle    5u  IPv4 0x5a2056556f8dee36      0t0  TCP 127.0.0.1:7778 (LISTEN)\n",
+      "process": "33263 03:55:31 /Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778\n",
+      "frontier": {
+        "head": "f9088a369fad57377e689b5e9be98453a7af27f9",
+        "depth": 4203
+      },
+      "totals": {
+        "approved_not_landed": 9,
+        "commitments": {
+          "cancelled": 52,
+          "promised": 1,
+          "satisfied": 223,
+          "stale": 6,
+          "withdrawn": 33
+        },
+        "stale_commitments": {
+          "satisfied": 141,
+          "stale": 6,
+          "withdrawn": 27
+        },
+        "artifacts": 1595,
+        "stale_artifacts": 1481,
+        "retired_artifacts": 1306,
+        "world_stale_artifacts": 220,
+        "ineffective_acts": 29,
+        "disputed_acts": 0,
+        "statements": 2611
+      }
+    },
+    "chess": {
+      "port": 7779,
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 36135
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      36135 hughpyle    5u  IPv4 0xdb2b381058059798      0t0  TCP 127.0.0.1:7779 (LISTEN)\n",
+      "process": "36135 03:54:42 /Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779\n",
+      "frontier": {
+        "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+        "depth": 842
+      },
+      "totals": {
+        "approved_not_landed": 3,
+        "commitments": {
+          "cancelled": 6,
+          "satisfied": 63,
+          "stale": 1,
+          "superseded": 1,
+          "withdrawn": 13
+        },
+        "stale_commitments": {
+          "satisfied": 33,
+          "stale": 1,
+          "superseded": 1,
+          "withdrawn": 8
+        },
+        "artifacts": 282,
+        "stale_artifacts": 278,
+        "retired_artifacts": 225,
+        "world_stale_artifacts": 37,
+        "ineffective_acts": 0,
+        "disputed_acts": 0,
+        "statements": 542
+      }
+    },
+    "inventory": {
+      "port": 7780,
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 39830
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      39830 hughpyle    5u  IPv4 0xc00b342b856a4482      0t0  TCP 127.0.0.1:7780 (LISTEN)\n",
+      "process": "39830 03:53:46 /Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780\n",
+      "frontier": {
+        "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+        "depth": 513
+      },
+      "totals": {
+        "approved_not_landed": 0,
+        "commitments": {
+          "satisfied": 24,
+          "withdrawn": 8
+        },
+        "stale_commitments": {
+          "satisfied": 15,
+          "withdrawn": 4
+        },
+        "artifacts": 215,
+        "stale_artifacts": 179,
+        "retired_artifacts": 166,
+        "world_stale_artifacts": 17,
+        "ineffective_acts": 0,
+        "disputed_acts": 0,
+        "statements": 309
+      }
+    }
+  },
+  "telemetry_exclusion": "66700 06-19:57:47 /Users/hughpyle/.local/bin/tailapp serve --otlp-http 127.0.0.1:4318\n",
+  "instruction": "Revalidate ownership immediately before mutation; this baseline is factual evidence, not permission to act on a reused PID."
+}
