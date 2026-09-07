@@ -1,3 +1,4 @@
+import { rebuildQualifier } from "../lib/rebuild";
 import { useEffect, useRef, useState } from "react";
 import { AtSign, Bell, Inbox } from "lucide-react";
 import {
@@ -286,6 +287,11 @@ export function TopBar({
               </div>
             )}
           </div>
+        )}
+        {rebuildQualifier(workroom.status, workroom.rebuilding) && (
+          <span role="status" className="text-xs text-danger">
+            {rebuildQualifier(workroom.status, workroom.rebuilding)}
+          </span>
         )}
         {workroom.offline && (
           <span role="alert" className="text-xs text-danger">

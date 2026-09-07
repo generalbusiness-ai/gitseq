@@ -321,6 +321,8 @@ export interface Rebuild {
   running: boolean;
   verified?: number;
   total?: number;
+  // The fold profile of the process rebuilding; compare with Status.profile.
+  profile?: string;
 }
 
 export interface Status {
@@ -328,6 +330,9 @@ export interface Status {
   live: LiveSnapshot;
   cursor: Cursor;
   trust_boundary: string;
+  // The fold profile this status was produced under: an opaque identifier
+  // fixed for the life of the resident process.
+  profile?: string;
 }
 
 export interface GraphCommit {
@@ -415,7 +420,7 @@ export const api = {
   // Deliberately a separate call from status. /v0/status queues behind the
   // rebuild it would be reporting on, which is the whole reason a verifying
   // resident looked like a broken page; this one answers while that waits.
-  rebuild: () => fetch("/v0/rebuild", { cache: "no-store" }).then((r) => json<Rebuild>(r)),
+  rebuild: (signal?: AbortSignal) => fetch("/v0/rebuild", { cache: "no-store", signal }).then((r) => json<Rebuild>(r)),
   graph: () =>
     fetch("/v0/graph", { cache: "no-store" })
       .then((r) => json<{ commits: GraphCommit[]; truncated?: boolean }>(r))
