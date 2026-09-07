@@ -1,0 +1,63 @@
+[
+  {
+    "target": {
+      "class": "abandoned",
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53917cd6d74c49316e15fb3ae11116952684b242",
+      "path": "internal/residentclient",
+      "retired": false,
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    },
+    "current": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:53917cd6d74c49316e15fb3ae11116952684b242",
+      "path": "internal/residentclient",
+      "commit": "4856eaf27a94f50b111f21730fcab6ba55273802",
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b5d7a693b721eedf46b387f46c87d1f687cb132e",
+      "live_predecessors": 3,
+      "succession_unrecorded": true
+    },
+    "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "protections": []
+  },
+  {
+    "target": {
+      "class": "abandoned",
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8cac650df85961058ad671c35d1fb182424f8f24",
+      "path": "docs/how-to/deploy-a-resident.md",
+      "retired": false,
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    },
+    "current": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8cac650df85961058ad671c35d1fb182424f8f24",
+      "path": "docs/how-to/deploy-a-resident.md",
+      "commit": "d3e133c47347e1e2cb4aea687f09df942c605d3f",
+      "stale": true,
+      "describes_superseded_world": true,
+      "world_superseded_at": 13383,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:480bf65a8d6ae4eb6e19bc6746f85e18e9321aa1",
+      "stale_because_path": "cmd/gs"
+    },
+    "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "protections": []
+  },
+  {
+    "target": {
+      "class": "abandoned",
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c57f89422cac4917bc3c13e8984069843f47f077",
+      "path": "internal/residentclient",
+      "retired": false,
+      "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    },
+    "current": {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c57f89422cac4917bc3c13e8984069843f47f077",
+      "path": "internal/residentclient",
+      "commit": "36d91a708be16d72e01da62396bf628273a4318b",
+      "stale": true,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3741252384bd02eaf3510aef5b1cd62208cf1d2a",
+      "live_predecessors": 1,
+      "succession_unrecorded": true
+    },
+    "author": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "protections": []
+  }
+]
