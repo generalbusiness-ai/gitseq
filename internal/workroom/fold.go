@@ -2965,11 +2965,6 @@ func (f *foldState) isArtifact(event string) bool {
 	return ok && record.definition.Render == RenderArtifact
 }
 
-// unableToFlare reports whether nothing in the log could ever make a statement
-// with these bases stale. Citing nothing qualifies; so does citing only events
-// the log does not contain, since supersede requires a resolvable target and
-// no act can retire what is not there. One resolvable basis is enough to
-// escape — it is a handle a future supersession can take hold of.
 // ineffectiveBases returns, in citation order and without repeats, the cited
 // records this log holds that the fold refused. Unknown identifiers are not
 // listed: they are unresolved citations, a different fact reported elsewhere.
@@ -2987,6 +2982,11 @@ func (f *foldState) ineffectiveBases(restsOn []string) []string {
 	return out
 }
 
+// unableToFlare reports whether nothing in the log could ever make a statement
+// with these bases stale. Citing nothing qualifies; so does citing only events
+// the log does not contain, since supersede requires a resolvable target and
+// no act can retire what is not there. One resolvable basis is enough to
+// escape — it is a handle a future supersession can take hold of.
 func (f *foldState) unableToFlare(restsOn []string) bool {
 	for _, basis := range restsOn {
 		if _, exists := f.byID[basis]; exists {

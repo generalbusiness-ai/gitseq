@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/generalbusiness-ai/gitseq/internal/safetext"
 )
 
 func RenderJSON(projection Projection) ([]byte, error) {
@@ -146,7 +148,7 @@ func RenderStatus(projection Projection) []byte {
 			}
 		}
 	}
-	renderDissent(&output, projection, sequences, authors)
+	renderDissent(&output, projection, sequences)
 	renderRatified(&output, projection, sequences)
 	renderUninterpretable(&output, projection, sequences)
 	output.WriteString("\n## Attempts\n\n")
@@ -163,7 +165,7 @@ func RenderStatus(projection Projection) []byte {
 // the newest twenty; the complete render must not show fewer than the
 // summary, so it shows them all. A dissent rests on the act it concerns, so
 // the first basis names it.
-func renderDissent(output *bytes.Buffer, projection Projection, sequences map[string]int, authors map[string]string) {
+func renderDissent(output *bytes.Buffer, projection Projection, sequences map[string]int) {
 	verdicts := projection.verdicts()
 	states := projection.recordStates()
 	output.WriteString("\n## Standing dissent\n\n")
@@ -264,13 +266,19 @@ func (p Projection) verdicts() map[string]Verdict {
 	return index
 }
 
-// recordStates says, for every statement and act, whether it is current,
-// stale or retired now — the one word a reader needs beside a record another
-// record points at.
+// recordStates says, for every statement and act, the one word a reader needs
+// beside a record another record points at. A record the fold refused is
+// named by its verdict — ineffective, undefined-kind, uninterpretable — not
+// by its lifecycle: it is neither stale nor retired only because nothing
+// refused ever takes force, and calling it current would say the opposite of
+// what happened. Effective records read current, stale or retired.
 func (p Projection) recordStates() map[string]string {
+	verdicts := p.verdicts()
 	states := make(map[string]string, len(p.Statements)+len(p.Acts))
 	for _, statement := range p.Statements {
 		switch {
+		case verdicts[statement.Event] != "" && verdicts[statement.Event] != Effective:
+			states[statement.Event] = string(verdicts[statement.Event])
 		case statement.Retired:
 			states[statement.Event] = "retired"
 		case statement.Stale:
@@ -280,7 +288,11 @@ func (p Projection) recordStates() map[string]string {
 		}
 	}
 	for _, act := range p.Acts {
-		states[act.Event] = act.Type + " act"
+		state := act.Type + " act"
+		if act.Verdict != Effective {
+			state = string(act.Verdict) + " " + state
+		}
+		states[act.Event] = state
 	}
 	return states
 }
@@ -347,8 +359,13 @@ func RenderProvenance(projection Projection, event string) []byte {
 	return output.Bytes()
 }
 
+// escape is the one boundary every actor-controlled string crosses on its
+// way onto this page: the shared safetext policy first, so a control byte, a
+// newline or a bidi override is shown as a visible escape and cannot add a
+// line or repaint a terminal, then the pipe, so a cell cannot end its table
+// row. The durable bytes are untouched.
 func escape(value string) string {
-	return strings.ReplaceAll(value, "|", "\\|")
+	return strings.ReplaceAll(safetext.Safe(value), "|", "\\|")
 }
 
 // sequences indexes every durable record by its number. Decisions are the right

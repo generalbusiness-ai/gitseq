@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/safetext"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -153,32 +154,11 @@ func Cap[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
-// hostile reports whether a rune must be shown as an escape rather than sent
-// to a terminal as itself: every C0 and C1 control, DEL, every format
-// character — the bidi overrides and isolates, and the zero-width marks that
-// let one string print as another — and the line and paragraph separators.
-// Newline, tab and carriage return are in that first class deliberately. A
-// caller that renders text whole must not let it invent lines, because a line
-// an attacker writes looks exactly like a line the program wrote.
-func hostile(value rune) bool {
-	return value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f) ||
-		unicode.Is(unicode.Cf, value) || value == '\u2028' || value == '\u2029'
-}
+// hostile and encode are the shared safetext policy; the bounded views and
+// the complete page must agree about every character they neutralize.
+func hostile(value rune) bool { return safetext.Hostile(value) }
 
-// encode writes one rune as a visible escape. The widths are the conventional
-// ones, and they are not decoration: \u is exactly four hex digits, so a rune
-// above U+FFFF written that way would run to five and the next character could
-// not be told from part of the escape.
-func encode(out *strings.Builder, value rune) {
-	switch {
-	case value <= 0xff:
-		fmt.Fprintf(out, `\x%02x`, value)
-	case value <= 0xffff:
-		fmt.Fprintf(out, `\u%04x`, value)
-	default:
-		fmt.Fprintf(out, `\U%08x`, value)
-	}
-}
+func encode(out *strings.Builder, value rune) { safetext.Encode(out, value) }
 
 // neutralized renders a list of user-controlled strings for display. The
 // durable values are unchanged; a caller that needs to match a path exactly
@@ -192,29 +172,9 @@ func neutralized(values []string) []string {
 }
 
 // Safe neutralizes user-controlled text a caller renders whole: the same
-// escapes as Text, with no one-line fold and no byte cap, so a long message
-// keeps its length and its runs of spacing exactly.
-//
-// It escapes newline and tab as well. Keeping them would have preserved the
-// shape of a chat message, but shape is exactly what an attacker wants: a
-// newline lets untrusted text add a line to a rendered block, and a reader has
-// no way to tell that line from one the program wrote.
-func Safe(value string) string {
-	var out strings.Builder
-	for index := 0; index < len(value); {
-		decoded, size := utf8.DecodeRuneInString(value[index:])
-		switch {
-		case decoded == utf8.RuneError && size == 1:
-			encode(&out, rune(value[index]))
-		case hostile(decoded):
-			encode(&out, decoded)
-		default:
-			out.WriteString(value[index : index+size])
-		}
-		index += size
-	}
-	return out.String()
-}
+// escapes as Text, with no one-line fold and no byte cap. It is the shared
+// safetext policy, kept under this name for the views that call it.
+func Safe(value string) string { return safetext.Safe(value) }
 
 // Text renders user-controlled text as one safe terminal line and caps it by
 // bytes. Runs of benign spacing fold to single spaces; anything that could

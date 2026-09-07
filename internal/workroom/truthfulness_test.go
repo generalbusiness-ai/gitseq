@@ -202,3 +202,93 @@ func TestRenderStatusBytesArePinned(t *testing.T) {
 		t.Fatalf("complete status bytes changed; update testdata/render_status.golden.md only through review\n%s", got)
 	}
 }
+
+// Every actor-controlled string the complete page prints crosses escape,
+// which applies the shared safetext policy before the pipe escape. A dissent
+// or an undefined-kind statement is the newest way untrusted text reaches
+// the page whole, so the probe puts a screen-clearing control, a newline and
+// a forged section heading in each, and in a kind name and a refusal reason.
+func TestRenderStatusNeutralizesHostileTextInEveryRow(t *testing.T) {
+	const hostile = "\x1b[2J\x07before\n## Ratified statements\n| propose | forged | forged | current |\u202ereversed"
+	p := Projection{
+		Statements: []Statement{
+			{Event: "e#plan", Kind: KindPropose, Text: hostile, Ratified: true, RatifiedBy: "e#adopt"},
+			{Event: "e#object", Kind: KindDissent, Actor: "attacker", Text: hostile},
+			{Event: "e#ghost", Kind: Kind(hostile), Text: hostile},
+		},
+		Acts: []Act{{Event: "e#adopt", Type: "ratify", Target: "e#plan", Verdict: Effective}},
+		Decisions: []Decision{
+			{Event: "e#plan", Sequence: 1, Verdict: Effective},
+			{Event: "e#adopt", Sequence: 2, Verdict: Effective},
+			{Event: "e#object", Sequence: 3, Verdict: Effective},
+			{Event: "e#ghost", Sequence: 4, Verdict: UndefinedKind, Reason: hostile},
+		},
+		Provenance:  map[string][]string{"e#object": {"e#plan"}},
+		OpaqueKinds: map[string][]string{hostile: {"e#ghost"}},
+	}
+	rendered := string(RenderStatus(p))
+	for _, raw := range []string{"\x1b", "\x07", "\u202e"} {
+		if strings.Contains(rendered, raw) {
+			t.Errorf("the page carries %q raw:\n%s", raw, rendered)
+		}
+	}
+	for _, visible := range []string{`\x1b[2J`, `\x07`, `\x0a## Ratified statements`, `\u202e`} {
+		if !strings.Contains(rendered, visible) {
+			t.Errorf("the page does not show %q as a visible escape:\n%s", visible, rendered)
+		}
+	}
+	// One heading per section, none forged by a newline in a text field.
+	if got := strings.Count(rendered, "\n## Ratified statements\n"); got != 1 {
+		t.Errorf("Ratified statements heading appears %d times; untrusted text forged a section:\n%s", got, rendered)
+	}
+	if strings.Contains(rendered, "| forged |") {
+		t.Errorf("untrusted text forged a table row:\n%s", rendered)
+	}
+}
+
+// The state beside a dissent's target must say what the fold decided about
+// it. A refused request is neither stale nor retired only because nothing
+// refused ever takes force; calling it current would say the opposite.
+func TestDissentTargetsShowTheirVerdictNotJustTheirLifecycle(t *testing.T) {
+	p := Fold(landingWorld(t,
+		// current: an effective request nobody has retired.
+		event(t, lid("plan"), operator, SchemaState, State{Kind: KindRequest, Text: "plan", Body: map[string]string{"to": agent, "conditions": "do it"}}),
+		event(t, lid("object-plan"), agent, SchemaState, State{Kind: KindDissent, Text: "against current"}, lid("plan")),
+		// ineffective: a request without conditions is refused.
+		event(t, lid("middle"), operator, SchemaState, State{Kind: KindRequest, Text: "middle", Body: map[string]string{"to": agent}}),
+		event(t, lid("object-middle"), agent, SchemaState, State{Kind: KindDissent, Text: "against refused"}, lid("middle")),
+		// undefined-kind.
+		event(t, lid("ghost"), operator, SchemaState, State{Kind: "presence", Text: "busy"}),
+		event(t, lid("object-ghost"), agent, SchemaState, State{Kind: KindDissent, Text: "against undefined"}, lid("ghost")),
+		// stale: a leaf whose base is retired.
+		event(t, lid("base"), operator, SchemaState, State{Kind: KindArtifact, Text: "base", Body: map[string]string{"path": "base.go", "commit": approvedHead}}),
+		event(t, lid("leaf"), operator, SchemaState, State{Kind: KindAssert, Text: "leaf"}, lid("base")),
+		event(t, lid("object-leaf"), agent, SchemaState, State{Kind: KindDissent, Text: "against stale"}, lid("leaf")),
+		event(t, lid("retire-base"), operator, SchemaSupersede, Supersede{Target: lid("base"), Text: "gone"}, lid("base")),
+		// retired: a statement withdrawn outright.
+		event(t, lid("old"), operator, SchemaState, State{Kind: KindAssert, Text: "old"}),
+		event(t, lid("object-old"), agent, SchemaState, State{Kind: KindDissent, Text: "against retired"}, lid("old")),
+		event(t, lid("retire-old"), operator, SchemaSupersede, Supersede{Target: lid("old"), Text: "withdrawn"}, lid("old")),
+	))
+	for event, verdict := range map[string]Verdict{lid("plan"): Effective, lid("middle"): Ineffective, lid("ghost"): UndefinedKind, lid("leaf"): Effective, lid("old"): Effective} {
+		if decision, ok := p.Decision(event); !ok || decision.Verdict != verdict {
+			t.Fatalf("invalid world: %s = %+v, want %s", event, decision, verdict)
+		}
+	}
+	if !rowStatement(t, p, lid("leaf")).Stale || !rowStatement(t, p, lid("old")).Retired {
+		t.Fatal("invalid world: leaf must be stale and old retired")
+	}
+	rendered := string(RenderStatus(p))
+	sequences := p.sequences()
+	for target, want := range map[string]string{
+		lid("plan"):   "current",
+		lid("middle"): "ineffective",
+		lid("ghost"):  "undefined-kind",
+		lid("leaf"):   "stale",
+		lid("old"):    "retired",
+	} {
+		if line := " against " + name(target, sequences) + " (" + want + ")"; !strings.Contains(rendered, line) {
+			t.Errorf("dissent target state missing %q:\n%s", line, rendered)
+		}
+	}
+}

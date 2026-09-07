@@ -208,9 +208,9 @@ A basis the fold **refused** is neither: nothing was withdrawn and nothing
 underneath it can move. The act is admitted, and the command notes the
 citation on standard error as `already dead (ineffective)`, the same way it
 notes a retired, stale or superseding one, so an author sees at filing time
-that part of what the act rests on never took force. The landed record then
-carries `ineffective_bases` in the projection. See
-[staleness](../../concepts/staleness.md#ineffective-bases).
+that part of what the act rests on never took force. The landed statement,
+and its artifact row when it is one, then carry `ineffective_bases` in the
+projection. See [staleness](../../concepts/staleness.md#ineffective-bases).
 
 ## Reserved fields you cannot write
 

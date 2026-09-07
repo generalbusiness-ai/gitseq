@@ -188,7 +188,7 @@ and it is unchanged: a refused record carries no authority and no
 staleness, and nothing under it can reach anything above it.
 
 What the fold does instead is say so where the citation is made. An
-effective record that rests on a refused record carries `ineffective_bases`
+effective statement or artifact that rests on a refused record carries `ineffective_bases`
 in the projection, naming the refused citations directly; the artifact row
 in `gs status --all` notes `rests on ineffective support`; and filing an
 act on such a citation earns the same note the other dead bases earn, on

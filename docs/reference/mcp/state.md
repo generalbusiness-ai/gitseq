@@ -122,8 +122,8 @@ A basis the fold **refused** is neither: nothing was withdrawn and nothing
 underneath it can move. The act is admitted, and the result's `dead_rests_on`
 note classifies the citation `ineffective`, beside `retired`, `stale` and
 `supersede`, so a caller sees at filing time that part of what the act rests
-on never took force. The landed record then carries `ineffective_bases` in
-the projection. See
+on never took force. The landed statement, and its artifact row when it is
+one, then carry `ineffective_bases` in the projection. See
 [staleness](../../concepts/staleness.md#ineffective-bases).
 
 ## Reserved fields you cannot write
