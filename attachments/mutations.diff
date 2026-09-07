@@ -1,0 +1,209 @@
+=== 01-cold-sequencer-signature.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..5c4b41b09 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1216,7 +1216,7 @@ func scanHeadInto(ctx context.Context, store gitstore.Store, genesis, head strin
+ 				log.Events = make([]Event, 0, len(sequence)-1)
+ 			}
+ 		}
+-		if err := gitstore.VerifySSHSignature(commit, log.sequencerPublicKey); err != nil {
++		if err := gitstore.VerifySSHSignature(commit, log.sequencerPublicKey); err != nil && false {
+ 			return scannedLog{}, fmt.Errorf("commit %s sequencer signature: %w", commit.OID, err)
+ 		}
+ 		if index == 0 {
+=== 02-delta-sequencer-signature.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..43d9876c4 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1410,7 +1410,7 @@ func (s *deltaScan) accept(commit gitstore.CommitMetadata) error {
+ 	if err := validateChainParents(1, audited.Parents, s.expectedParent); err != nil {
+ 		return fmt.Errorf("%w: commit %s does not follow %s: %v", ErrNotDescendant, audited.OID, s.expectedParent, err)
+ 	}
+-	if err := gitstore.VerifySSHSignature(audited, s.base.sequencerPublicKey); err != nil {
++	if err := gitstore.VerifySSHSignature(audited, s.base.sequencerPublicKey); err != nil && false {
+ 		return fmt.Errorf("commit %s sequencer signature: %w", audited.OID, err)
+ 	}
+ 	event, successor, rotation, err := loadCommit(s.batch, s.desc, s.base.Verification.Genesis, audited.CommitMetadata, s.loadPayload)
+=== 03-named-genesis.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..d4a0f7285 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1272,7 +1272,7 @@ func scanHeadInto(ctx context.Context, store gitstore.Store, genesis, head strin
+ }
+ 
+ func validateSequenceBounds(commits []string, genesis, head string) error {
+-	if len(commits) == 0 || commits[0] != genesis {
++	if len(commits) == 0 || (commits[0] != genesis && false) {
+ 		return errors.New("chain does not begin at named genesis")
+ 	}
+ 	if commits[len(commits)-1] != head {
+=== 04-named-head.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..681757bc9 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1275,7 +1275,7 @@ func validateSequenceBounds(commits []string, genesis, head string) error {
+ 	if len(commits) == 0 || commits[0] != genesis {
+ 		return errors.New("chain does not begin at named genesis")
+ 	}
+-	if commits[len(commits)-1] != head {
++	if commits[len(commits)-1] != head && false {
+ 		return errors.New("history does not end at named head")
+ 	}
+ 	return nil
+=== 05-parentless-genesis.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..bc93803d6 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1295,7 +1295,7 @@ func normalizeEventMessage(message string) string {
+ 
+ func validateChainParents(index int, parents []string, prior string) error {
+ 	if index == 0 {
+-		if len(parents) != 0 {
++		if len(parents) != 0 && false {
+ 			return errors.New("genesis has a parent")
+ 		}
+ 		return nil
+=== 06-single-parent-chain.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..8b662ef9f 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1300,7 +1300,7 @@ func validateChainParents(index int, parents []string, prior string) error {
+ 		}
+ 		return nil
+ 	}
+-	if len(parents) != 1 || parents[0] != prior {
++	if (len(parents) != 1 || parents[0] != prior) && false {
+ 		return errors.New("is not single-parent chained")
+ 	}
+ 	return nil
+=== 07-actor-signature.diff
+diff --git a/internal/intent/intent.go b/internal/intent/intent.go
+index 3fd4247ce..b9f730657 100644
+--- a/internal/intent/intent.go
++++ b/internal/intent/intent.go
+@@ -163,7 +163,7 @@ func Verify(s Signed) (Intent, error) {
+ 	if err != nil {
+ 		return Intent{}, err
+ 	}
+-	if !ed25519.Verify(ed25519.PublicKey(s.ActorKey), message, s.Signature) {
++	if !ed25519.Verify(ed25519.PublicKey(s.ActorKey), message, s.Signature) && false {
+ 		return Intent{}, errors.New("invalid actor signature")
+ 	}
+ 	return i, nil
+=== 08-target-log.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..3d9915a98 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1529,7 +1529,7 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
+ 	if err != nil {
+ 		return Event{}, "", false, err
+ 	}
+-	if !targetMatches {
++	if !targetMatches && false {
+ 		return Event{}, "", false, errors.New("intent target does not name chain genesis")
+ 	}
+ 	if !intent.EqualRefs(decoded.RestsOn, trailers) {
+=== 09-causal-trailers.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..971d115d3 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1532,7 +1532,7 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
+ 	if !targetMatches {
+ 		return Event{}, "", false, errors.New("intent target does not name chain genesis")
+ 	}
+-	if !intent.EqualRefs(decoded.RestsOn, trailers) {
++	if !intent.EqualRefs(decoded.RestsOn, trailers) && false {
+ 		return Event{}, "", false, errors.New("causal trailers differ from signed intent")
+ 	}
+ 	_, treeOID, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+=== 10-signed-payload-tree.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..acb0dc588 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1539,7 +1539,7 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
+ 	if err != nil {
+ 		return Event{}, "", false, err
+ 	}
+-	if commit.Tree != treeOID {
++	if commit.Tree != treeOID && false {
+ 		return Event{}, "", false, errors.New("commit tree differs from signed intent")
+ 	}
+ 	remaining := desc.PayloadCeiling - uint64(len(message))
+=== 11-payload-shape.diff
+diff --git a/internal/gitstore/audit.go b/internal/gitstore/audit.go
+index 485d356ab..292d2ab4b 100644
+--- a/internal/gitstore/audit.go
++++ b/internal/gitstore/audit.go
+@@ -434,7 +434,6 @@ func (b *AuditBatch) PayloadTree(tree string, ceiling uint64, load bool) ([]byte
+ 		case entry.name == "attachments" && entry.mode == "40000" && attachmentsOID == "":
+ 			attachmentsOID = entry.oid
+ 		default:
+-			return nil, nil, fmt.Errorf("invalid payload path %q", entry.name)
+ 		}
+ 	}
+ 	if eventOID == "" {
+=== 12-attachment-name.diff
+diff --git a/internal/gitstore/audit.go b/internal/gitstore/audit.go
+index 485d356ab..c917ba359 100644
+--- a/internal/gitstore/audit.go
++++ b/internal/gitstore/audit.go
+@@ -455,7 +455,7 @@ func (b *AuditBatch) PayloadTree(tree string, ceiling uint64, load bool) ([]byte
+ 			attachments = make(map[string][]byte, len(entries))
+ 		}
+ 		for _, entry := range entries {
+-			if !isBlobMode(entry.mode) || !attachmentName.MatchString(entry.name) {
++			if !isBlobMode(entry.mode) {
+ 				return nil, nil, fmt.Errorf("invalid payload path %q", "attachments/"+entry.name)
+ 			}
+ 			remaining := ceiling - total
+=== 13-dedup-conflict.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..549e1f500 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1562,7 +1562,7 @@ func dedupPrior(index map[string]Event, key string, signed intent.Signed) (Event
+ 	if !exists {
+ 		return Event{}, false, nil
+ 	}
+-	if !prior.Signed.Equal(signed) {
++	if !prior.Signed.Equal(signed) && false {
+ 		return Event{}, false, ErrIdempotencyConflict
+ 	}
+ 	return prior, true, nil
+=== 14-verifier-ceiling.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..9eaab7e79 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -1542,7 +1542,7 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
+ 	if commit.Tree != treeOID {
+ 		return Event{}, "", false, errors.New("commit tree differs from signed intent")
+ 	}
+-	remaining := desc.PayloadCeiling - uint64(len(message))
++	remaining := desc.PayloadCeiling
+ 	event := Event{Commit: commit.OID, Timestamp: commit.Timestamp, Intent: decoded, Signed: signed, PayloadTree: decoded.PayloadTree}
+ 	event.Payload, event.Attachments, err = batch.PayloadTree(commit.Tree, remaining, loadPayload)
+ 	if err != nil {
+=== 15-submit-aggregate-ceiling.diff
+diff --git a/internal/kernel/kernel.go b/internal/kernel/kernel.go
+index b0622dd52..99b9bfc91 100644
+--- a/internal/kernel/kernel.go
++++ b/internal/kernel/kernel.go
+@@ -480,7 +480,7 @@ func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64)
+ 		if eventSize > ceiling || size > ceiling-eventSize {
+ 			return errors.New("event exceeds genesis ceiling")
+ 		}
+-		eventSize += size
++		eventSize += 0 * size
+ 	}
+ 	if eventSize > ceiling {
+ 		return errors.New("event exceeds genesis ceiling")
