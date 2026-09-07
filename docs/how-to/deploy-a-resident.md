@@ -70,6 +70,15 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
   --kind assert --text 'submitted through the resident' --rests-on "$SEED"
 ```
 
+With no `--server` flag, `gs` and the GitHub connector (`gitseq-github`)
+both submit through the resident this repository advertises, and act locally
+only when nothing is advertised; `--server -` chooses the local fold
+deliberately. An advertisement that cannot be trusted or used, or an
+advertised resident that does not answer or refuses, stops the act rather
+than folding it locally. The MCP adapter is governed separately: after
+transport loss it re-reads the advertisement and may fold locally, marked
+degraded.
+
 Four authority commands have no resident write path: `actor-add`,
 `actor-retire`, `role-grant`, and `role-revoke`. Their work spans more than one
 append, or changes local key custody as well as the log. They therefore refuse

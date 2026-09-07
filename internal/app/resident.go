@@ -40,13 +40,14 @@ const residentFile = "resident.json"
 // A record left behind by a dead process is still a trustworthy advertisement:
 // it reads, parses, names this workroom and carries a usable address. What
 // happens next depends on the caller. A read may name the failed request and
-// answer from the verified local fold instead. For a durable act the two
-// surfaces differ: `gs` refuses when the advertised address does not answer,
-// naming `--server -` as the deliberate way to fold locally, while the MCP
-// adapter re-reads this record after transport loss and folds the act
-// locally, marked degraded, when the re-read still yields something it can
-// act on — the same record, a valid replacement, or no record at all. Only a
-// re-read that cannot be trusted refuses that fallback.
+// answer from the verified local fold instead. For a durable act the
+// surfaces differ: `gs` and the GitHub connector share one routing rule
+// (residentclient.ResolveServerURL) and refuse when the advertised address
+// does not answer, naming `--server -` as the deliberate way to fold locally,
+// while the MCP adapter re-reads this record after transport loss and folds
+// the act locally, marked degraded, when the re-read still yields something
+// it can act on — the same record, a valid replacement, or no record at all.
+// Only a re-read that cannot be trusted refuses that fallback.
 //
 // An advertisement that is not trustworthy — unreadable, oversized, not a
 // record, addressless, or naming another workroom — refuses every durable
