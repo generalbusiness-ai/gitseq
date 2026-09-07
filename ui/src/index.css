@@ -1,6 +1,8 @@
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/source-serif-4";
-@import "tailwindcss";
+/* Utilities are detected only under ui/src. Test and fixture prose under
+   ui/test must not add rules to the shipped stylesheet. */
+@import "tailwindcss" source("./");
 
 /* shadcn zinc, dark by default; a warm literary accent used sparingly. */
 @theme {
