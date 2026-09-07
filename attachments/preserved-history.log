@@ -1,8 +1,0 @@
-=== RUN   TestReader21221ObservePreservedHistory
-{"cache_profile":"workroom\u0000workroom-fold@23","depth":21228,"head":"4453592b92d2781b3e86f7b7ac75f64663e6e1df","room":"gitseq","served_profile":"profile:34fc8b15d9640d9198eaa3b0f408f760","source":"verified_signed_checkpoint_tail"}
-{"cache_profile":"workroom\u0000workroom-fold@23","depth":4204,"head":"2d54d6caafb88d3f1358098b8fa0bda08082c0b7","room":"tailapp","served_profile":"profile:34fc8b15d9640d9198eaa3b0f408f760","source":"verified_signed_checkpoint_tail"}
-{"cache_profile":"workroom\u0000workroom-fold@23","depth":842,"head":"ec4492f9f21e31cac348200f50a12b10f537ba28","room":"gitseq-chess","served_profile":"profile:34fc8b15d9640d9198eaa3b0f408f760","source":"verified_signed_checkpoint_tail"}
-{"cache_profile":"workroom\u0000workroom-fold@23","depth":513,"head":"5ab059d397140032a1b38570c2a98b196de3529e","room":"gitseq-inventory","served_profile":"profile:34fc8b15d9640d9198eaa3b0f408f760","source":"verified_signed_checkpoint_tail"}
---- PASS: TestReader21221ObservePreservedHistory (15.93s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/app	16.308s
