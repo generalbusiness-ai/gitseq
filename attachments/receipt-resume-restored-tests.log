@@ -1,0 +1,14 @@
+=== RUN   TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging
+=== PAUSE TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging
+=== RUN   TestPlannerHistoricalWiderReceiptResume
+=== PAUSE TestPlannerHistoricalWiderReceiptResume
+=== CONT  TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging
+=== CONT  TestPlannerHistoricalWiderReceiptResume
+git:sha1:8ea222c7829cb33e62dbbb78cfdb8739a6b62856#git:sha1:c4a3b2effbe15ef4a066c7b65c51ca6a87cdbaf1
+git:sha1:8ea222c7829cb33e62dbbb78cfdb8739a6b62856#git:sha1:d3d55a6c40d85b873a07794c0f8bdcbddf90f886
+c50935b3dad94390fbb2f2c786fd5c16ecd0d47e
+7cfe0d02896c181e41b8b949863fbdd41f25ab71
+--- PASS: TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging (7.52s)
+--- PASS: TestPlannerHistoricalWiderReceiptResume (7.59s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	7.905s
