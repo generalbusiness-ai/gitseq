@@ -1,0 +1,11 @@
+== head 6192b18d5b45f9c0960fad9732148a3c0edeecf1 2026-09-07T15:00:43Z
+== git diff --check
+rc=0
+== files changed vs main
+ notes/2026-08-07-deployment.md | 111 +++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 101 insertions(+), 10 deletions(-)
+== seq-mirror occurrences
+2265:   `refs/seq-mirror/<genesis>` and called it ruleset-protected, which
+== other files mentioning seq-mirror
+none
+== relative links touched exist
