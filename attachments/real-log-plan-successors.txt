@@ -1,0 +1,11 @@
+2e47527d9d03 06f77db78fcc planlen=2 successor='notes/2026-08-26-jsonata-ddl-application-implementation.md' -> STAYS-VISIBLE
+353d2d6fcbf6 1d7e41508a87 planlen=16 successor='ui/src/components/RequestList.tsx' -> STAYS-VISIBLE
+353d2d6fcbf6 25e549618a8f planlen=16 successor='' -> ACCOUNTED
+353d2d6fcbf6 4a22b67b87ad planlen=16 successor='docs/reference/architecture.md' -> STAYS-VISIBLE
+353d2d6fcbf6 88b1084129d9 planlen=16 successor='ui/test/components.test.mjs' -> STAYS-VISIBLE
+353d2d6fcbf6 fc16f07eb3ef planlen=16 successor='ui/test/interaction.test.mjs' -> STAYS-VISIBLE
+494f5aeeff9e 0ae1673458a0 planlen=33 successor='' -> ACCOUNTED
+5d99baa987fa e6f7de1e29da planlen=9 successor='' -> ACCOUNTED
+765acd87720d 3df321df862b planlen=7 successor='' -> ACCOUNTED
+b4e8a8d51168 025f2bca15c5 planlen=55 successor='' -> ACCOUNTED
+b4e8a8d51168 c6be71908d21 planlen=55 successor='' -> ACCOUNTED
