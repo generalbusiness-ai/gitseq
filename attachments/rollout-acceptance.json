@@ -1,0 +1,399 @@
+{
+  "binary": [
+    {
+      "binary": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs",
+      "sha256": "e471e86fd7a3d9e781c718bf8c22082dd8b19da2cd8edbb64016c62507392413",
+      "manifest_match": true,
+      "vcs_correct": true,
+      "clean": true
+    },
+    {
+      "binary": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gitseq-mcp",
+      "sha256": "63fac8d4a11d257ad709ea17451c76a6ea5b433a353303ba881224f4981e531f",
+      "manifest_match": true,
+      "vcs_correct": true,
+      "clean": true
+    }
+  ],
+  "process": [
+    {
+      "room": "gitseq",
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 31631
+      },
+      "pid_matches": true,
+      "process": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777",
+      "binary_matches": true
+    },
+    {
+      "room": "tailapp",
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 33263
+      },
+      "pid_matches": true,
+      "process": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778",
+      "binary_matches": true
+    },
+    {
+      "room": "gitseq-chess",
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 36135
+      },
+      "pid_matches": true,
+      "process": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779",
+      "binary_matches": true
+    },
+    {
+      "room": "gitseq-inventory",
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 39830
+      },
+      "pid_matches": true,
+      "process": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780",
+      "binary_matches": true
+    }
+  ],
+  "full-comparison": [
+    {
+      "room": "gitseq",
+      "frontier_equal": true,
+      "full_projection_equal": true,
+      "vocabulary_equal": true,
+      "depth": 20907
+    },
+    {
+      "room": "tailapp",
+      "frontier_equal": true,
+      "full_projection_equal": true,
+      "vocabulary_equal": true,
+      "depth": 4198
+    },
+    {
+      "room": "gitseq-chess",
+      "frontier_equal": true,
+      "full_projection_equal": true,
+      "vocabulary_equal": true,
+      "depth": 842
+    },
+    {
+      "room": "gitseq-inventory",
+      "frontier_equal": true,
+      "full_projection_equal": true,
+      "vocabulary_equal": true,
+      "depth": 513
+    }
+  ],
+  "window": [
+    {
+      "path": "cmd/gs/main_test.go",
+      "parameter": {
+        "line": 5500
+      },
+      "status": "ready",
+      "window": {
+        "start": 5201,
+        "end": 5600,
+        "total": 5611,
+        "partial": true,
+        "previous": 4801,
+        "next": 5601
+      },
+      "exact_content": true,
+      "bounds": true
+    },
+    {
+      "path": "cmd/gs/main_test.go",
+      "parameter": {
+        "start": 5601
+      },
+      "status": "ready",
+      "window": {
+        "start": 5601,
+        "end": 5611,
+        "total": 5611,
+        "partial": true,
+        "previous": 5201
+      },
+      "exact_content": true,
+      "bounds": true
+    },
+    {
+      "path": "cmd/gs/main_test.go",
+      "parameter": {
+        "start": 4801
+      },
+      "status": "ready",
+      "window": {
+        "start": 4801,
+        "end": 5200,
+        "total": 5611,
+        "partial": true,
+        "previous": 4401,
+        "next": 5201
+      },
+      "exact_content": true,
+      "bounds": true
+    },
+    {
+      "path": "performance/retained/fanout-20260819-f71b4d73/evidence.json",
+      "parameter": {
+        "start": 1
+      },
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 39259,
+        "partial": true,
+        "next": 401
+      },
+      "exact_content": true,
+      "bounds": true
+    },
+    {
+      "path": "performance/retained/fanout-20260819-f71b4d73/evidence.json",
+      "parameter": {
+        "start": 401
+      },
+      "status": "ready",
+      "window": {
+        "start": 401,
+        "end": 800,
+        "total": 39259,
+        "partial": true,
+        "previous": 1,
+        "next": 801
+      },
+      "exact_content": true,
+      "bounds": true
+    }
+  ],
+  "served-assets": [
+    {
+      "room": "gitseq",
+      "path": "/index.html",
+      "byte_equal": true,
+      "sha256": "bbb3ebb256457ae3f5c6d3b5d56c3b0a90a448d175f6064fd287b3bacf8cdc9d"
+    },
+    {
+      "room": "gitseq",
+      "path": "/assets/index-Ch2xM566.js",
+      "byte_equal": true,
+      "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4"
+    },
+    {
+      "room": "gitseq",
+      "path": "/assets/index-DUUWuxG-.css",
+      "byte_equal": true,
+      "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8"
+    },
+    {
+      "room": "tailapp",
+      "path": "/index.html",
+      "byte_equal": true,
+      "sha256": "bbb3ebb256457ae3f5c6d3b5d56c3b0a90a448d175f6064fd287b3bacf8cdc9d"
+    },
+    {
+      "room": "tailapp",
+      "path": "/assets/index-Ch2xM566.js",
+      "byte_equal": true,
+      "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4"
+    },
+    {
+      "room": "tailapp",
+      "path": "/assets/index-DUUWuxG-.css",
+      "byte_equal": true,
+      "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8"
+    },
+    {
+      "room": "gitseq-chess",
+      "path": "/index.html",
+      "byte_equal": true,
+      "sha256": "bbb3ebb256457ae3f5c6d3b5d56c3b0a90a448d175f6064fd287b3bacf8cdc9d"
+    },
+    {
+      "room": "gitseq-chess",
+      "path": "/assets/index-Ch2xM566.js",
+      "byte_equal": true,
+      "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4"
+    },
+    {
+      "room": "gitseq-chess",
+      "path": "/assets/index-DUUWuxG-.css",
+      "byte_equal": true,
+      "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8"
+    },
+    {
+      "room": "gitseq-inventory",
+      "path": "/index.html",
+      "byte_equal": true,
+      "sha256": "bbb3ebb256457ae3f5c6d3b5d56c3b0a90a448d175f6064fd287b3bacf8cdc9d"
+    },
+    {
+      "room": "gitseq-inventory",
+      "path": "/assets/index-Ch2xM566.js",
+      "byte_equal": true,
+      "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4"
+    },
+    {
+      "room": "gitseq-inventory",
+      "path": "/assets/index-DUUWuxG-.css",
+      "byte_equal": true,
+      "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8"
+    }
+  ],
+  "state-continuity": [
+    {
+      "room": "gitseq",
+      "key_metadata_entries": 5,
+      "metadata_matches": true,
+      "sequence_ancestry": true,
+      "before_head": "87a1aecc3543cb39a160e751e1e6f46b35531a4d",
+      "current_head": "34aacebd62acb2a285938503218cb76c8f91eb89"
+    },
+    {
+      "room": "tailapp",
+      "key_metadata_entries": 3,
+      "metadata_matches": true,
+      "sequence_ancestry": true,
+      "before_head": "2989e2fc24bdc6383f1ec371d3adfa98b509020f",
+      "current_head": "f9088a369fad57377e689b5e9be98453a7af27f9"
+    },
+    {
+      "room": "gitseq-chess",
+      "key_metadata_entries": 4,
+      "metadata_matches": true,
+      "sequence_ancestry": true,
+      "before_head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "current_head": "ec4492f9f21e31cac348200f50a12b10f537ba28"
+    },
+    {
+      "room": "gitseq-inventory",
+      "key_metadata_entries": 4,
+      "metadata_matches": true,
+      "sequence_ancestry": true,
+      "before_head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "current_head": "5ab059d397140032a1b38570c2a98b196de3529e"
+    }
+  ],
+  "signed-evidence": {
+    "sequence": 20911,
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:34aacebd62acb2a285938503218cb76c8f91eb89",
+    "attachments": [
+      {
+        "attachment": "api-windows.json",
+        "immutable_matches_read_file": true,
+        "sha256": "1a6378fc2d5ee0cb7126a3fb11279691c34958c3ceba3605a03bf2b00fd57839"
+      },
+      {
+        "attachment": "browser-checks.json",
+        "immutable_matches_read_file": true,
+        "sha256": "5cbe10d6865a699679cd299f3452446b4a9a205d0ab4cdb388bacc81c3866cfc"
+      },
+      {
+        "attachment": "build-provenance.json",
+        "immutable_matches_read_file": true,
+        "sha256": "595508b5670e9de31a79e92ba85d836f24b6ff2d4e9e8ab1001cf79c225aa0c5"
+      },
+      {
+        "attachment": "operational-evidence.json",
+        "immutable_matches_read_file": true,
+        "sha256": "e2b4492d59f18aebacd67dd9832dcf6b9499bb0a363745bbd904bb526859c1fb"
+      }
+    ]
+  },
+  "report_previews": [
+    {
+      "kind": "source",
+      "path": "docs/reference/reading-view.md",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 99,
+        "total": 99,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "source",
+      "path": "internal/service/preview.go",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 265,
+        "total": 265,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "attachment",
+      "path": "api-windows.json",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 390,
+        "total": 390,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "attachment",
+      "path": "before.json",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 186,
+        "total": 186,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "attachment",
+      "path": "browser-checks.json",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 37,
+        "total": 37,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "attachment",
+      "path": "build-provenance.json",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 35,
+        "total": 35,
+        "partial": false
+      },
+      "exact_content_or_disclosed_prefixes": true
+    },
+    {
+      "kind": "attachment",
+      "path": "operational-evidence.json",
+      "status": "ready",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 617,
+        "partial": true,
+        "next": 401
+      },
+      "exact_content_or_disclosed_prefixes": true
+    }
+  ],
+  "browser_qualification": "Executor Codex actual IAB journeys accepted under20880; root CUA inventory succeeded but createBrowserTab iab returned Browser is not available: iab. Root did not repeat or claim its own browser journey and did not retry Chrome or Ghostty.",
+  "report": "34aacebd62acb2a285938503218cb76c8f91eb89",
+  "ratification": "77e10b234a09ac92e8def07fe2b42e9f1b947023"
+}
