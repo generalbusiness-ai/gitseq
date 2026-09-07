@@ -1,0 +1,390 @@
+{
+  "source": "ad4656dd8d96e27e614880943222018b5fd840c9",
+  "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+  "files": [
+    {
+      "path": "cmd/gs/main_test.go",
+      "blob_sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+      "size": 233257,
+      "total": 5611,
+      "windows": [
+        {
+          "start": 1,
+          "end": 400,
+          "total": 5611,
+          "partial": true,
+          "next": 401,
+          "content_bytes": 14398,
+          "exact_git_slice": true
+        },
+        {
+          "start": 401,
+          "end": 800,
+          "total": 5611,
+          "partial": true,
+          "previous": 1,
+          "next": 801,
+          "content_bytes": 16758,
+          "exact_git_slice": true
+        },
+        {
+          "start": 801,
+          "end": 1200,
+          "total": 5611,
+          "partial": true,
+          "previous": 401,
+          "next": 1201,
+          "content_bytes": 16759,
+          "exact_git_slice": true
+        },
+        {
+          "start": 1201,
+          "end": 1600,
+          "total": 5611,
+          "partial": true,
+          "previous": 801,
+          "next": 1601,
+          "content_bytes": 19649,
+          "exact_git_slice": true
+        },
+        {
+          "start": 1601,
+          "end": 2000,
+          "total": 5611,
+          "partial": true,
+          "previous": 1201,
+          "next": 2001,
+          "content_bytes": 17328,
+          "exact_git_slice": true
+        },
+        {
+          "start": 2001,
+          "end": 2400,
+          "total": 5611,
+          "partial": true,
+          "previous": 1601,
+          "next": 2401,
+          "content_bytes": 19128,
+          "exact_git_slice": true
+        },
+        {
+          "start": 2401,
+          "end": 2800,
+          "total": 5611,
+          "partial": true,
+          "previous": 2001,
+          "next": 2801,
+          "content_bytes": 18671,
+          "exact_git_slice": true
+        },
+        {
+          "start": 2801,
+          "end": 3200,
+          "total": 5611,
+          "partial": true,
+          "previous": 2401,
+          "next": 3201,
+          "content_bytes": 17277,
+          "exact_git_slice": true
+        },
+        {
+          "start": 3201,
+          "end": 3600,
+          "total": 5611,
+          "partial": true,
+          "previous": 2801,
+          "next": 3601,
+          "content_bytes": 17401,
+          "exact_git_slice": true
+        },
+        {
+          "start": 3601,
+          "end": 4000,
+          "total": 5611,
+          "partial": true,
+          "previous": 3201,
+          "next": 4001,
+          "content_bytes": 15126,
+          "exact_git_slice": true
+        },
+        {
+          "start": 4001,
+          "end": 4400,
+          "total": 5611,
+          "partial": true,
+          "previous": 3601,
+          "next": 4401,
+          "content_bytes": 14687,
+          "exact_git_slice": true
+        },
+        {
+          "start": 4401,
+          "end": 4800,
+          "total": 5611,
+          "partial": true,
+          "previous": 4001,
+          "next": 4801,
+          "content_bytes": 14795,
+          "exact_git_slice": true
+        },
+        {
+          "start": 4801,
+          "end": 5200,
+          "total": 5611,
+          "partial": true,
+          "previous": 4401,
+          "next": 5201,
+          "content_bytes": 15853,
+          "exact_git_slice": true
+        },
+        {
+          "start": 5201,
+          "end": 5600,
+          "total": 5611,
+          "partial": true,
+          "previous": 4801,
+          "next": 5601,
+          "content_bytes": 15015,
+          "exact_git_slice": true
+        },
+        {
+          "start": 5601,
+          "end": 5611,
+          "total": 5611,
+          "partial": true,
+          "previous": 5201,
+          "content_bytes": 397,
+          "exact_git_slice": true
+        }
+      ]
+    },
+    {
+      "path": "performance/retained/fanout-20260819-f71b4d73/evidence.json",
+      "blob_sha256": "61a53e96c9bf31da07d7e37722d5bd2225f4f5ea9dad5a8bbf2e30acf9254a7b",
+      "size": 1240620,
+      "total": 39259,
+      "windows": [
+        {
+          "start": 1,
+          "end": 400,
+          "total": 39259,
+          "partial": true,
+          "next": 401,
+          "content_bytes": 10213,
+          "exact_git_slice": true
+        },
+        {
+          "start": 401,
+          "end": 800,
+          "total": 39259,
+          "partial": true,
+          "previous": 1,
+          "next": 801,
+          "content_bytes": 12565,
+          "exact_git_slice": true
+        }
+      ]
+    },
+    {
+      "path": "internal/service/uidist/assets/index-Ch2xM566.js",
+      "blob_sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4",
+      "size": 341029,
+      "total": 14,
+      "windows": [
+        {
+          "start": 1,
+          "end": 14,
+          "total": 14,
+          "partial": true,
+          "truncated": [
+            1,
+            8,
+            9,
+            10,
+            14
+          ],
+          "content_bytes": 25063,
+          "exact_git_slice": true
+        }
+      ]
+    },
+    {
+      "path": "go.mod",
+      "blob_sha256": "8823157d8c05bc73b4d7389327edebfaaafe6177bc4e26bc7d16ebc245d2eab2",
+      "size": 1846,
+      "total": 44,
+      "windows": [
+        {
+          "start": 1,
+          "end": 44,
+          "total": 44,
+          "partial": false,
+          "content_bytes": 1846,
+          "exact_git_slice": true
+        }
+      ]
+    }
+  ],
+  "invalid": [
+    {
+      "request": {
+        "line": -1
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "status": "invalid",
+        "message": "A line or window start must be a positive line number of one cited file or attachment.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304
+      }
+    },
+    {
+      "request": {
+        "start": -1
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "status": "invalid",
+        "message": "A line or window start must be a positive line number of one cited file or attachment.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304
+      }
+    },
+    {
+      "request": {
+        "line": "5500"
+      },
+      "http": 400,
+      "answer": {
+        "error": "invalid preview request"
+      }
+    },
+    {
+      "request": {
+        "line": 10000000
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "status": "invalid",
+        "message": "A line or window start must be a positive line number of one cited file or attachment.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304
+      }
+    },
+    {
+      "request": {
+        "start": 10000000
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "status": "invalid",
+        "message": "A line or window start must be a positive line number of one cited file or attachment.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304
+      }
+    },
+    {
+      "request": {
+        "line": 9999999
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+        "path": "cmd/gs/main_test.go",
+        "status": "ready",
+        "message": "Cited line 9999999 is outside this file, which has 5611 lines.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304,
+        "size": 233257,
+        "window": {
+          "start": 5601,
+          "end": 5611,
+          "total": 5611,
+          "partial": true,
+          "previous": 5201
+        }
+      }
+    },
+    {
+      "request": {
+        "start": 9999999
+      },
+      "http": 200,
+      "answer": {
+        "repo": "/Users/hughpyle/play/gitseq",
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95a0dddf1d50f73ac2794adc07ebd1ad2aecc7d0",
+        "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+        "path": "cmd/gs/main_test.go",
+        "status": "ready",
+        "message": "Window start 9999999 is outside this file, which has 5611 lines.",
+        "heads": [
+          "ad4656dd8d96e27e614880943222018b5fd840c9"
+        ],
+        "limit": 4194304,
+        "size": 233257,
+        "window": {
+          "start": 9999999,
+          "end": 9999998,
+          "total": 5611,
+          "partial": true,
+          "previous": 5601
+        }
+      }
+    }
+  ],
+  "line5500": {
+    "start": 5201,
+    "end": 5600,
+    "total": 5611,
+    "partial": true,
+    "previous": 4801,
+    "next": 5601
+  },
+  "attachments": [
+    {
+      "name": "preview-source-landing.json",
+      "sha256": "62e8b8053ae0491c7ca9d7e5dad5b49173c68a55116530298f3e9e0358cb53bc",
+      "ready_exact_window": true,
+      "window": {
+        "start": 1,
+        "end": 260,
+        "total": 260,
+        "partial": true,
+        "truncated": [
+          13
+        ]
+      }
+    },
+    {
+      "name": "reader-rollout-baseline.json",
+      "sha256": "dc044b2ddccf2db20801bc5fe62f7f7db0d98e1315e2ed863f0886b7746ea9ed",
+      "ready_exact_window": true,
+      "window": {
+        "start": 1,
+        "end": 62,
+        "total": 62,
+        "partial": false
+      }
+    }
+  ]
+}

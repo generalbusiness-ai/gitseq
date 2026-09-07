@@ -1,0 +1,617 @@
+{
+  "checked_utc": "2026-09-07T10:56:10.587712+00:00",
+  "transitions": {
+    "gitseq": {
+      "room": "gitseq",
+      "repo": "/Users/hughpyle/play/gitseq",
+      "url": "http://127.0.0.1:7777",
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "old_pid": 51014,
+      "old_command": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777",
+      "old_executable": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs",
+      "old_sha256": "cd5cd2be9f88d9e7de725916ced01aa900044904141c8b0a00e4db0f5c9a98c7",
+      "source_head": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "new_executable": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs",
+      "new_sha256": "e471e86fd7a3d9e781c718bf8c22082dd8b19da2cd8edbb64016c62507392413",
+      "prior_sequence": "b104511cdcf979905292dc251b280a86641d5ed9",
+      "prior_verified_frontier": {
+        "head": "b104511cdcf979905292dc251b280a86641d5ed9",
+        "depth": 20907
+      },
+      "custody_config_sha256": "748da2f42335b3f72b1ffb61bdc70007545265bd46b99d6141ff2e120e1bcd08",
+      "log": "/tmp/gitseq-reader20880.log",
+      "ready": true,
+      "custody_file_metadata": {
+        ".git/gitseq/actors/github-connector.key": {
+          "inode": 48178565,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786374720426948408
+        },
+        ".git/gitseq/actors/claude.key": {
+          "inode": 20329926,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030598586058151
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 20329781,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030593945073217
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 52294131,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786397116398336342
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 20329873,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1786030597851977333
+        }
+      },
+      "new_pid": 31631,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "status_head": "b104511cdcf979905292dc251b280a86641d5ed9",
+      "status_depth": 20907,
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 31631
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      31631 hughpyle    5u  IPv4 0xc1da0c1b2ba8170b      0t0  TCP 127.0.0.1:7777 (LISTEN)\n",
+      "current_sequence": "b104511cdcf979905292dc251b280a86641d5ed9",
+      "current_verified_frontier": {
+        "head": "b104511cdcf979905292dc251b280a86641d5ed9",
+        "depth": 20907
+      },
+      "custody_preserved": true,
+      "sequence_continues": true
+    },
+    "tailapp": {
+      "room": "tailapp",
+      "repo": "/Users/hughpyle/play/tailapp",
+      "url": "http://127.0.0.1:7778",
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "old_pid": 18476,
+      "old_command": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778",
+      "old_executable": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs",
+      "old_sha256": "cd5cd2be9f88d9e7de725916ced01aa900044904141c8b0a00e4db0f5c9a98c7",
+      "source_head": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "new_executable": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs",
+      "new_sha256": "e471e86fd7a3d9e781c718bf8c22082dd8b19da2cd8edbb64016c62507392413",
+      "prior_sequence": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+      "prior_verified_frontier": {
+        "head": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+        "depth": 4198
+      },
+      "custody_config_sha256": "7d766f6fc967198e20368d2880be78cd7dac9cf4ef1736f9626912eb5b7b804d",
+      "log": "/tmp/tailapp-reader20880.log",
+      "ready": true,
+      "custody_file_metadata": {
+        ".git/gitseq/actors/builder.key": {
+          "inode": 274244756,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897157956162126
+        },
+        ".git/gitseq/actors/checker.key": {
+          "inode": 274245627,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897159059407645
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 274244328,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787897157444083226
+        }
+      },
+      "new_pid": 33263,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "status_head": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+      "status_depth": 4198,
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 33263
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      33263 hughpyle    5u  IPv4 0x5a2056556f8dee36      0t0  TCP 127.0.0.1:7778 (LISTEN)\n",
+      "current_sequence": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+      "current_verified_frontier": {
+        "head": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+        "depth": 4198
+      },
+      "custody_preserved": true,
+      "sequence_continues": true
+    },
+    "gitseq-chess": {
+      "room": "gitseq-chess",
+      "repo": "/Users/hughpyle/play/gitseq-chess",
+      "url": "http://127.0.0.1:7779",
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "old_pid": 16562,
+      "old_command": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779",
+      "old_executable": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs",
+      "old_sha256": "cd5cd2be9f88d9e7de725916ced01aa900044904141c8b0a00e4db0f5c9a98c7",
+      "source_head": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "new_executable": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs",
+      "new_sha256": "e471e86fd7a3d9e781c718bf8c22082dd8b19da2cd8edbb64016c62507392413",
+      "prior_sequence": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "prior_verified_frontier": {
+        "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+        "depth": 842
+      },
+      "custody_config_sha256": "651ae7db71112b51c64cbdada2ed3162a824c9bd79b7910ae1f985e508ddc7f9",
+      "log": "/tmp/gitseq-chess-reader20880.log",
+      "ready": true,
+      "custody_file_metadata": {
+        ".git/gitseq/actors/claude.key": {
+          "inode": 310935417,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1788331634673818586
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 169516592,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470656505715400
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 169543217,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470701460861180
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 169559507,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787470720908899288
+        }
+      },
+      "new_pid": 36135,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "status_head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "status_depth": 842,
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 36135
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      36135 hughpyle    5u  IPv4 0xdb2b381058059798      0t0  TCP 127.0.0.1:7779 (LISTEN)\n",
+      "current_sequence": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "current_verified_frontier": {
+        "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+        "depth": 842
+      },
+      "custody_preserved": true,
+      "sequence_continues": true
+    },
+    "gitseq-inventory": {
+      "room": "gitseq-inventory",
+      "repo": "/Users/hughpyle/play/gitseq-inventory",
+      "url": "http://127.0.0.1:7780",
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "old_pid": 13823,
+      "old_command": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780",
+      "old_executable": "/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gs",
+      "old_sha256": "cd5cd2be9f88d9e7de725916ced01aa900044904141c8b0a00e4db0f5c9a98c7",
+      "source_head": "ad4656dd8d96e27e614880943222018b5fd840c9",
+      "new_executable": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs",
+      "new_sha256": "e471e86fd7a3d9e781c718bf8c22082dd8b19da2cd8edbb64016c62507392413",
+      "prior_sequence": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "prior_verified_frontier": {
+        "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+        "depth": 513
+      },
+      "custody_config_sha256": "b7560dc890e1c157dc30f599637f58d7fd6e2da9de13ec8194b4a261538d4be8",
+      "log": "/tmp/gitseq-inventory-reader20880.log",
+      "ready": true,
+      "custody_file_metadata": {
+        ".git/gitseq/actors/claude.key": {
+          "inode": 260605193,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849668875899082
+        },
+        ".git/gitseq/actors/hugh.key": {
+          "inode": 260600557,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849658530933187
+        },
+        ".git/gitseq/actors/planner.key": {
+          "inode": 260600674,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849664005169588
+        },
+        ".git/gitseq/actors/codex.key": {
+          "inode": 260609972,
+          "size": 87,
+          "mode": 33152,
+          "mtime_ns": 1787849672842731398
+        }
+      },
+      "new_pid": 39830,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "status_head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "status_depth": 513,
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 39830
+      },
+      "listener": "COMMAND   PID     USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME\ngs      39830 hughpyle    5u  IPv4 0xc00b342b856a4482      0t0  TCP 127.0.0.1:7780 (LISTEN)\n",
+      "current_sequence": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "current_verified_frontier": {
+        "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+        "depth": 513
+      },
+      "custody_preserved": true,
+      "sequence_continues": true
+    }
+  },
+  "comparisons": {
+    "gitseq": {
+      "room": "gitseq",
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "head": "b104511cdcf979905292dc251b280a86641d5ed9",
+      "depth": 20907,
+      "complete_projection_equal": true,
+      "vocabulary_equal": true,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "rebuild": {
+        "running": false,
+        "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+      },
+      "key_commitments": [
+        {
+          "sequence": 20008,
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:add297623a7c5f1d22725d891def3bcfe13ab87a",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849",
+          "status": "satisfied",
+          "stale": true,
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main",
+          "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982cae2132c166c8956091cd51bb1899723edc7c",
+          "candidate": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3"
+        },
+        {
+          "sequence": 20301,
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e855a8cacf6e182447f2cdd0589a676266854301",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c47099ba9d050aacf0cffb3b3591f769dc5a98b8",
+          "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3c7fab9dc106129e601449062eeb453f51f595cb",
+          "status": "awaiting-review",
+          "stale": true,
+          "waiting_on": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+          "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+          "target_ref": "refs/heads/main"
+        },
+        {
+          "sequence": 20880,
+          "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67faa2b1b56e51259b2945cdeade2f15744d332f",
+          "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+          "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+          "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:87a1aecc3543cb39a160e751e1e6f46b35531a4d",
+          "status": "stale",
+          "stale": true,
+          "waiting_on": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+        }
+      ]
+    },
+    "tailapp": {
+      "room": "tailapp",
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "head": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+      "depth": 4198,
+      "complete_projection_equal": true,
+      "vocabulary_equal": true,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "rebuild": {
+        "running": false,
+        "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+      },
+      "key_commitments": [
+        {
+          "sequence": 4043,
+          "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:42c2ce37bf635f3fffa9b5109ec95ac513b92c49",
+          "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+          "performer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5cfedb59bc1285a0de3609b8dc7ae3221076fa2a",
+          "status": "stale",
+          "stale": true,
+          "waiting_on": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+          "target_ref": "refs/heads/main"
+        }
+      ]
+    },
+    "gitseq-chess": {
+      "room": "gitseq-chess",
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842,
+      "complete_projection_equal": true,
+      "vocabulary_equal": true,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "rebuild": {
+        "running": false,
+        "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+      },
+      "key_commitments": [
+        {
+          "sequence": 506,
+          "request": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:025a6e0168967478a876d5e6bb95afd36495d72c",
+          "requester": "1a036d78868a6cb9d709d9d9d86db429ff72669311e08e66f426c2d2c103a25f",
+          "performer": "09c97907402e7747d051c0c599d9eb463c48d19825820a3e4c433cde2e60e2a8",
+          "promise": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:975a1528a751f617e4e87ba4d006ee22c7b7f3aa",
+          "status": "stale",
+          "stale": true,
+          "waiting_on": "09c97907402e7747d051c0c599d9eb463c48d19825820a3e4c433cde2e60e2a8"
+        }
+      ]
+    },
+    "gitseq-inventory": {
+      "room": "gitseq-inventory",
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513,
+      "complete_projection_equal": true,
+      "vocabulary_equal": true,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+      "rebuild": {
+        "running": false,
+        "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+      },
+      "key_commitments": [
+        {
+          "sequence": 503,
+          "request": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:7473b1eaeb979030d55f94ee5ed249533fccc018",
+          "requester": "10b27d580f73fe9769e741bb41ef17fdcc5c96b51d60506d2f530f9f6176ea02",
+          "performer": "826c05d4fd56efee52cb270debdccd04322835c8dd312ec29c01dc33a9ebe003",
+          "promise": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:4845727a06fab1ebdb70dee2456e85fbd216c95c",
+          "report": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:5457da15902e85fb279f1b70db57ebf019637953",
+          "status": "satisfied",
+          "target_repo": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+          "target_ref": "refs/heads/main",
+          "approval": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:12c707fd205e431ad0d98bbb37453f0fba5fa4ff",
+          "candidate": "0a2510b1911f4bf2490a5f370f49536e689ab663",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:8c1a1da1bee44f20bd2b7da8f2a42079bd8f9fdb"
+        }
+      ]
+    }
+  },
+  "continuity": {
+    "gitseq": {
+      "identity": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "pid": 31631
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq --listen 127.0.0.1:7777",
+      "config_and_key_metadata_preserved": true,
+      "verified_frontier": {
+        "head": "b77aaf676ba2843b3858b503b34897977440076d",
+        "depth": 20909
+      },
+      "ancestry_preserved": true
+    },
+    "tailapp": {
+      "identity": {
+        "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+        "pid": 33263
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/tailapp --listen 127.0.0.1:7778",
+      "config_and_key_metadata_preserved": true,
+      "verified_frontier": {
+        "head": "d0be957c9f0daecd492adebbf3228cf04d7579f6",
+        "depth": 4198
+      },
+      "ancestry_preserved": true
+    },
+    "gitseq-chess": {
+      "identity": {
+        "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+        "pid": 36135
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-chess --listen 127.0.0.1:7779",
+      "config_and_key_metadata_preserved": true,
+      "verified_frontier": {
+        "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+        "depth": 842
+      },
+      "ancestry_preserved": true
+    },
+    "gitseq-inventory": {
+      "identity": {
+        "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+        "pid": 39830
+      },
+      "command": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gs serve --repo /Users/hughpyle/play/gitseq-inventory --listen 127.0.0.1:7780",
+      "config_and_key_metadata_preserved": true,
+      "verified_frontier": {
+        "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+        "depth": 513
+      },
+      "ancestry_preserved": true
+    },
+    "exclusions_preserved": {
+      "telemetry_pid": 66700,
+      "telemetry_command": "/Users/hughpyle/.local/bin/tailapp serve --otlp-http 127.0.0.1:4318",
+      "telemetry_sha256": "5e500c92db3aa7990bc803884e631e4d2b3f0008bd75f0d1b6d9cf5f8d0bc7c9",
+      "noseq_identity": {
+        "genesis": "77aeeeb3fa42aeb6babdf961f6397ba73fada68b",
+        "pid": 35668
+      }
+    }
+  },
+  "assets": {
+    "gitseq": {
+      "index_exact_source": true,
+      "assets": [
+        {
+          "url": "/assets/index-Ch2xM566.js",
+          "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4",
+          "bytes": 341029,
+          "exact_source": true
+        },
+        {
+          "url": "/assets/index-DUUWuxG-.css",
+          "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+          "bytes": 37342,
+          "exact_source": true
+        }
+      ]
+    },
+    "tailapp": {
+      "index_exact_source": true,
+      "assets": [
+        {
+          "url": "/assets/index-Ch2xM566.js",
+          "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4",
+          "bytes": 341029,
+          "exact_source": true
+        },
+        {
+          "url": "/assets/index-DUUWuxG-.css",
+          "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+          "bytes": 37342,
+          "exact_source": true
+        }
+      ]
+    },
+    "gitseq-chess": {
+      "index_exact_source": true,
+      "assets": [
+        {
+          "url": "/assets/index-Ch2xM566.js",
+          "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4",
+          "bytes": 341029,
+          "exact_source": true
+        },
+        {
+          "url": "/assets/index-DUUWuxG-.css",
+          "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+          "bytes": 37342,
+          "exact_source": true
+        }
+      ]
+    },
+    "gitseq-inventory": {
+      "index_exact_source": true,
+      "assets": [
+        {
+          "url": "/assets/index-Ch2xM566.js",
+          "sha256": "0edc605dba98ae765e48074877a0911b624043fc7c5ce8e06084eec5542c9dd4",
+          "bytes": 341029,
+          "exact_source": true
+        },
+        {
+          "url": "/assets/index-DUUWuxG-.css",
+          "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+          "bytes": 37342,
+          "exact_source": true
+        }
+      ]
+    }
+  },
+  "cross_room_source": [
+    {
+      "room": "gitseq",
+      "request": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e708dd117f0cb18dcfc04cdaad42a506d035e297",
+        "path": "go.mod",
+        "commit": "ad4656dd8d96e27e614880943222018b5fd840c9",
+        "line": 1
+      },
+      "window": {
+        "start": 1,
+        "end": 44,
+        "total": 44,
+        "partial": false
+      },
+      "bytes": 1846,
+      "sha256": "8823157d8c05bc73b4d7389327edebfaaafe6177bc4e26bc7d16ebc245d2eab2",
+      "exact_source": true
+    },
+    {
+      "room": "tailapp",
+      "request": {
+        "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:4357cae21cccb883131fe9ad679696ad14ac14a5",
+        "path": "go.mod",
+        "commit": "3a593721231326d589541113add606b270490e35",
+        "line": 1
+      },
+      "window": {
+        "start": 1,
+        "end": 31,
+        "total": 31,
+        "partial": false
+      },
+      "bytes": 1192,
+      "sha256": "4b542cc61731246e20248909bee2687b6369e94c1a2ee1994e850630c093a39d",
+      "exact_source": true
+    },
+    {
+      "room": "gitseq-chess",
+      "request": {
+        "event": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:9f910bb4f199d6789cd8510a1f6399136b41832e",
+        "path": "go.mod",
+        "commit": "b97c6a82ef7e3618721696f5a69efef13da10a79",
+        "line": 1
+      },
+      "window": {
+        "start": 1,
+        "end": 17,
+        "total": 17,
+        "partial": false
+      },
+      "bytes": 519,
+      "sha256": "29f0688df7154f82e6dd4c9fa340bdb247fd4a5f901d595ee4beab062b25ccc0",
+      "exact_source": true
+    },
+    {
+      "room": "gitseq-inventory",
+      "request": {
+        "event": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:4418ad9945da471c2f7d0c97049c8ae64d3667e0",
+        "path": "go.mod",
+        "commit": "88c2d593dc3ff63f1c37152583d83cba32f7cb63",
+        "line": 1
+      },
+      "window": {
+        "start": 1,
+        "end": 18,
+        "total": 18,
+        "partial": false
+      },
+      "bytes": 569,
+      "sha256": "485c45846ed23fcd537f16613a8ab37e0d622b4383fb32afe99ca7c0f0cb8bc9",
+      "exact_source": true
+    }
+  ],
+  "client": {
+    "new_own_mcp_pid": 5760,
+    "binary": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/gitseq-mcp",
+    "initialized": true,
+    "five_room_waits_passed": true,
+    "old_own_mcp44374_closed_normally": true,
+    "native_hosts": "untouched",
+    "claude": "retained d630 CLI explicitly confirmed and independently observed by planner performing ad465 merge; registered modified183211c3 native MCP remains read/advisory only; newad465 paths supplied, no claim native MCP renewed"
+  },
+  "availability": "Each settled HTTP status carried current durable projection and common profile; rebuild.running=false. New live generations accurately appeared in wait cursors after restart; no previous-snapshot, manufactured-event, or unfinished20301policy proof claimed.",
+  "cleanup": {
+    "removed_owned_build": "/Users/hughpyle/play/gitseq-reader-ad465-jw9l7sj4/build",
+    "retained_executables_and_hashes_verified": true,
+    "method": "shutil.rmtree of isolated owned clean clone; no forced rm flags; retained parent and rollback preserved"
+  }
+}

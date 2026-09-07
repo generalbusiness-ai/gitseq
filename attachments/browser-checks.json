@@ -1,0 +1,37 @@
+{
+  "surface": "Codex in-app browser, browser1 owned tab3, provider browser-use:a34ad7ed-79e6-4960-b188-be2a071198ea",
+  "native_chrome_acceptance": "Not performed; remains separate under20545 for planner disposition",
+  "views": [
+    {
+      "room": "gitseq",
+      "table_and_graph": "5 open requests; real graph rendered with bounded omissions and existing provenance/cycle warnings"
+    },
+    {
+      "room": "tailapp",
+      "table_and_graph": "3 open requests; selected authorized builder identity; graph same3 with cycle warning"
+    },
+    {
+      "room": "gitseq-chess",
+      "table_and_graph": "0 open, selected63completed in Table then Graph; graph names21context/83relation omissions; existing codex actor selected"
+    },
+    {
+      "room": "gitseq-inventory",
+      "table_and_graph": "0open, selected24completed Table then Graph; rendered screenshot; existing codex selected"
+    }
+  ],
+  "gitseq_journeys": [
+    "Notes search #19016 -> Open exact record -> standalone note heading and spine",
+    "published95a0dddf source cmd/gs/main_test.go at ad465 line5500 opens5201-5600, row5500 highlights exact Git text",
+    "Previous4801-5200 -> Next5201-5600 -> Next5601-5611; Back5201-5600 and Forward5601-5611; Previous then reload restores5201-5600 and highlighted5500 visually confirmed",
+    "1240620byte fanout evidence JSON opens lines1-400/39259; correct source and exact revision; no old oversize refusal",
+    "request20880 expanded, existing reader-rollout-baseline.json evidence link opens62lines whole exact attachment",
+    "request20880 implementation source link opens internal/service/preview.go exactad465 line51,265lines whole",
+    "published preview contract wrapped link activated with Enter opens docs/reference/reading-view.md line69 atad465;99lines whole; ReadMarkdown renders atsamehead"
+  ],
+  "tool_observations": [
+    "Reload row lookup initially timed out; subsequent screenshot visibly confirmed5500 highlight and correct text. Not recorded as an application failure.",
+    "Pointer activation of wrapped published-preview-contract link twice left URL unchanged; keyboard Enter on that same link succeeded. Adjacent source and evidence pointer links succeeded.",
+    "Initial Tailapp Graph click occurred behind the actor chooser; chose existingbuilder then Graph worked."
+  ],
+  "target_changes": "Source/test -> fanout -> close -> request -> attachment -> close -> implementation -> close -> Markdown -> other room; correct title/record/revision/content at each settled target. No UI durable form submitted."
+}
