@@ -1,0 +1,40 @@
+{
+  "checked_utc": "2026-09-07T17:58:29.156746+00:00",
+  "candidate": "49db764553a2d925d4f715006f464418cac6d8a4",
+  "base_reader_source": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+  "identities": [
+    {
+      "port": 7777,
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "pid": 46777
+    },
+    {
+      "port": 7778,
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "pid": 47157
+    },
+    {
+      "port": 7779,
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "pid": 47757
+    },
+    {
+      "port": 7780,
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "pid": 48120
+    }
+  ],
+  "positive_process_check": "46777     1 Ss   /Users/hughpyle/play/gitseq-reader-b23-7n69py7_/gs\n47157     1 Ss   /Users/hughpyle/play/gitseq-reader-b23-7n69py7_/gs\n47757     1 Ss   /Users/hughpyle/play/gitseq-reader-b23-7n69py7_/gs\n48120     1 Ss   /Users/hughpyle/play/gitseq-reader-b23-7n69py7_/gs\n66700     1 R    /Users/hughpyle/.local/bin/tailapp\n35668 48407 S+   gs\n",
+  "changed_paths": [
+    "docs/reference/reading-view.md",
+    "internal/service/uidist/assets/index-C3rNnIYs.js",
+    "internal/service/uidist/assets/index-C99ie_gl.js",
+    "internal/service/uidist/index.html",
+    "notes/2026-08-07-deployment.md",
+    "ui/src/components/Preview.tsx",
+    "ui/src/components/RecordDetail.tsx",
+    "ui/src/lib/fileReferences.ts",
+    "ui/test/inline-evidence.test.mjs"
+  ],
+  "status": "Preparation only: sourceapproved, awaitClaudesratification/sealedlanding/push/CI beforefilingconcrete readerdeploymentrequest. RecheckPIDs/source/exactlivepublishedbases atfiling; existingb23rollbackretained. No newkernel/servicecontractormigration; do not rerunCASrecovery orsevenemptyreceipt migration. Protecttelemetry/noseq/nativehosts/keys/foreignworktrees."
+}
