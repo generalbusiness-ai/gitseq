@@ -1,5 +1,0 @@
-$ python3 - (compares B1 section 3 with B3, field by field)   (2026-09-07T12:28:39Z)
-frontier 43c958eabf13a25fbdb8c7486365cb97a0086a55 depth 20989
-Go owner   : {"artifact_landing_audit": 78, "closed_not_completed": 960, "commitments": 2518, "completed": 1541, "open": 6, "open_lifecycles": {"awaiting-authorization": 0, "awaiting-landing": 0, "awaiting-review": 4, "open": 1, "promised": 1, "reported": 0}, "reasoning_moved": 4, "scope": "workroom", "stale": 11}
-rows.ts    : {"artifact_landing_audit": 78, "closed_not_completed": 960, "commitments": 2518, "completed": 1541, "open": 6, "open_lifecycles": {"awaiting-authorization": 0, "awaiting-landing": 0, "awaiting-review": 4, "open": 1, "promised": 1, "reported": 0}, "reasoning_moved": 4, "scope": "workroom", "stale": 11}
-identical  : True

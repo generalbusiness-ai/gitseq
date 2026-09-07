@@ -1,7 +1,0 @@
-$ curl -s http://127.0.0.1:7777/v0/status -o status-full.json   (2026-09-07T12:27:32Z)
-frontier head 43c958eabf13a25fbdb8c7486365cb97a0086a55
-depth 20989
-commitments 2518
-top-level keys ['cursor', 'durable', 'live', 'profile', 'trust_boundary']
-has top-level work field: False
-resident profile profile:d06f59acb2f7cd9853bdaae4c8bbf615
