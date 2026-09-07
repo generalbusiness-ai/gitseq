@@ -1,0 +1,166 @@
+{
+  "gitseq": {
+    "head": "8dcb9a317c15cb63e065a60c070ede4951e199a9",
+    "depth": 21282,
+    "work": {
+      "scope": "workroom",
+      "commitments": 2529,
+      "open": 4,
+      "open_lifecycles": {
+        "open": 1,
+        "promised": 1,
+        "reported": 0,
+        "awaiting-review": 2,
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0
+      },
+      "completed": 1553,
+      "closed_not_completed": 962,
+      "stale": 10,
+      "reasoning_moved": 2,
+      "artifact_landing_audit": 78
+    },
+    "full_cli_http_projection_equal": true,
+    "cli_http_mcp_work_equal": true,
+    "independent_lifecycle_recount_equal": true,
+    "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760",
+    "index_exact_source": true,
+    "assets": [
+      {
+        "url": "/assets/index-C3rNnIYs.js",
+        "bytes": 341384,
+        "sha256": "ffae0a1bf86b94444946b4feaa97cf60b844058431255c70b0a208506bba15fb",
+        "exact_source": true
+      },
+      {
+        "url": "/assets/index-DUUWuxG-.css",
+        "bytes": 37342,
+        "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+        "exact_source": true
+      }
+    ]
+  },
+  "tailapp": {
+    "head": "183772adb423a5b10867577d4b1d804cb1e878f9",
+    "depth": 4216,
+    "work": {
+      "scope": "workroom",
+      "commitments": 317,
+      "open": 2,
+      "open_lifecycles": {
+        "open": 0,
+        "promised": 1,
+        "reported": 1,
+        "awaiting-review": 0,
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0
+      },
+      "completed": 224,
+      "closed_not_completed": 85,
+      "stale": 6,
+      "reasoning_moved": 1,
+      "artifact_landing_audit": 9
+    },
+    "full_cli_http_projection_equal": true,
+    "cli_http_mcp_work_equal": true,
+    "independent_lifecycle_recount_equal": true,
+    "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760",
+    "index_exact_source": true,
+    "assets": [
+      {
+        "url": "/assets/index-C3rNnIYs.js",
+        "bytes": 341384,
+        "sha256": "ffae0a1bf86b94444946b4feaa97cf60b844058431255c70b0a208506bba15fb",
+        "exact_source": true
+      },
+      {
+        "url": "/assets/index-DUUWuxG-.css",
+        "bytes": 37342,
+        "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+        "exact_source": true
+      }
+    ]
+  },
+  "gitseq-chess": {
+    "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+    "depth": 842,
+    "work": {
+      "scope": "workroom",
+      "commitments": 84,
+      "open": 0,
+      "open_lifecycles": {
+        "open": 0,
+        "promised": 0,
+        "reported": 0,
+        "awaiting-review": 0,
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0
+      },
+      "completed": 63,
+      "closed_not_completed": 20,
+      "stale": 1,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 3
+    },
+    "full_cli_http_projection_equal": true,
+    "cli_http_mcp_work_equal": true,
+    "independent_lifecycle_recount_equal": true,
+    "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760",
+    "index_exact_source": true,
+    "assets": [
+      {
+        "url": "/assets/index-C3rNnIYs.js",
+        "bytes": 341384,
+        "sha256": "ffae0a1bf86b94444946b4feaa97cf60b844058431255c70b0a208506bba15fb",
+        "exact_source": true
+      },
+      {
+        "url": "/assets/index-DUUWuxG-.css",
+        "bytes": 37342,
+        "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+        "exact_source": true
+      }
+    ]
+  },
+  "gitseq-inventory": {
+    "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+    "depth": 513,
+    "work": {
+      "scope": "workroom",
+      "commitments": 32,
+      "open": 0,
+      "open_lifecycles": {
+        "open": 0,
+        "promised": 0,
+        "reported": 0,
+        "awaiting-review": 0,
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0
+      },
+      "completed": 24,
+      "closed_not_completed": 8,
+      "stale": 0,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 0
+    },
+    "full_cli_http_projection_equal": true,
+    "cli_http_mcp_work_equal": true,
+    "independent_lifecycle_recount_equal": true,
+    "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760",
+    "index_exact_source": true,
+    "assets": [
+      {
+        "url": "/assets/index-C3rNnIYs.js",
+        "bytes": 341384,
+        "sha256": "ffae0a1bf86b94444946b4feaa97cf60b844058431255c70b0a208506bba15fb",
+        "exact_source": true
+      },
+      {
+        "url": "/assets/index-DUUWuxG-.css",
+        "bytes": 37342,
+        "sha256": "d4d7d83ead6f9cffb0edb3dbb3142605e9f06edd499740f2ebccbefb5129bfd8",
+        "exact_source": true
+      }
+    ]
+  }
+}

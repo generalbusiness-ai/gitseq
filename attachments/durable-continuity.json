@@ -1,0 +1,278 @@
+{
+  "gitseq": {
+    "before_frontier": {
+      "head": "8dcb9a317c15cb63e065a60c070ede4951e199a9",
+      "depth": 21282
+    },
+    "after_frontier": {
+      "head": "8dcb9a317c15cb63e065a60c070ede4951e199a9",
+      "depth": 21282
+    },
+    "before_counts": {
+      "decisions": 21282,
+      "acts": 7731,
+      "statements": 13551,
+      "commitments": 2529,
+      "reviews": 899,
+      "artifacts": 5593
+    },
+    "after_counts": {
+      "decisions": 21282,
+      "acts": 7731,
+      "statements": 13551,
+      "commitments": 2529,
+      "reviews": 899,
+      "artifacts": 5593
+    },
+    "work_before": {
+      "scope": "workroom",
+      "commitments": 2529,
+      "open": 4,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 2,
+        "open": 1,
+        "promised": 1,
+        "reported": 0
+      },
+      "completed": 1553,
+      "closed_not_completed": 962,
+      "stale": 10,
+      "reasoning_moved": 2,
+      "artifact_landing_audit": 78
+    },
+    "work_after": {
+      "scope": "workroom",
+      "commitments": 2529,
+      "open": 4,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 2,
+        "open": 1,
+        "promised": 1,
+        "reported": 0
+      },
+      "completed": 1553,
+      "closed_not_completed": 962,
+      "stale": 10,
+      "reasoning_moved": 2,
+      "artifact_landing_audit": 78
+    },
+    "full_projection_unchanged": true,
+    "profile_unchanged": true,
+    "concurrent_events": []
+  },
+  "tailapp": {
+    "before_frontier": {
+      "head": "933cbc53c8789ca2f5d6351e3914fd039349d041",
+      "depth": 4213
+    },
+    "after_frontier": {
+      "head": "183772adb423a5b10867577d4b1d804cb1e878f9",
+      "depth": 4216
+    },
+    "before_counts": {
+      "decisions": 4213,
+      "acts": 1593,
+      "statements": 2620,
+      "commitments": 317,
+      "reviews": 144,
+      "artifacts": 1595
+    },
+    "after_counts": {
+      "decisions": 4216,
+      "acts": 1594,
+      "statements": 2622,
+      "commitments": 317,
+      "reviews": 144,
+      "artifacts": 1595
+    },
+    "work_before": {
+      "scope": "workroom",
+      "commitments": 317,
+      "open": 2,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 1,
+        "reported": 1
+      },
+      "completed": 224,
+      "closed_not_completed": 85,
+      "stale": 6,
+      "reasoning_moved": 1,
+      "artifact_landing_audit": 9
+    },
+    "work_after": {
+      "scope": "workroom",
+      "commitments": 317,
+      "open": 2,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 1,
+        "reported": 1
+      },
+      "completed": 224,
+      "closed_not_completed": 85,
+      "stale": 6,
+      "reasoning_moved": 1,
+      "artifact_landing_audit": 9
+    },
+    "full_projection_unchanged": false,
+    "profile_unchanged": true,
+    "concurrent_events": [
+      {
+        "sequence": 4214,
+        "event": "606aa78c4a814521d6f2a090055f8917efffc67a",
+        "meaning": "Hugh preserved four planning corrections on existing4211 promise"
+      },
+      {
+        "sequence": 4215,
+        "event": "f49456dc2aa63b59f709bc38b3884020a70beb44",
+        "meaning": "Checker corrected recommendation on same promise"
+      },
+      {
+        "sequence": 4216,
+        "event": "183772adb423a5b10867577d4b1d804cb1e878f9",
+        "meaning": "Checker retired predecessor report933cbc53 in favor of4215"
+      }
+    ]
+  },
+  "gitseq-chess": {
+    "before_frontier": {
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842
+    },
+    "after_frontier": {
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842
+    },
+    "before_counts": {
+      "decisions": 842,
+      "acts": 300,
+      "statements": 542,
+      "commitments": 84,
+      "reviews": 29,
+      "artifacts": 282
+    },
+    "after_counts": {
+      "decisions": 842,
+      "acts": 300,
+      "statements": 542,
+      "commitments": 84,
+      "reviews": 29,
+      "artifacts": 282
+    },
+    "work_before": {
+      "scope": "workroom",
+      "commitments": 84,
+      "open": 0,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 0,
+        "reported": 0
+      },
+      "completed": 63,
+      "closed_not_completed": 20,
+      "stale": 1,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 3
+    },
+    "work_after": {
+      "scope": "workroom",
+      "commitments": 84,
+      "open": 0,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 0,
+        "reported": 0
+      },
+      "completed": 63,
+      "closed_not_completed": 20,
+      "stale": 1,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 3
+    },
+    "full_projection_unchanged": true,
+    "profile_unchanged": true,
+    "concurrent_events": []
+  },
+  "gitseq-inventory": {
+    "before_frontier": {
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513
+    },
+    "after_frontier": {
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513
+    },
+    "before_counts": {
+      "decisions": 513,
+      "acts": 204,
+      "statements": 309,
+      "commitments": 32,
+      "reviews": 7,
+      "artifacts": 215
+    },
+    "after_counts": {
+      "decisions": 513,
+      "acts": 204,
+      "statements": 309,
+      "commitments": 32,
+      "reviews": 7,
+      "artifacts": 215
+    },
+    "work_before": {
+      "scope": "workroom",
+      "commitments": 32,
+      "open": 0,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 0,
+        "reported": 0
+      },
+      "completed": 24,
+      "closed_not_completed": 8,
+      "stale": 0,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 0
+    },
+    "work_after": {
+      "scope": "workroom",
+      "commitments": 32,
+      "open": 0,
+      "open_lifecycles": {
+        "awaiting-authorization": 0,
+        "awaiting-landing": 0,
+        "awaiting-review": 0,
+        "open": 0,
+        "promised": 0,
+        "reported": 0
+      },
+      "completed": 24,
+      "closed_not_completed": 8,
+      "stale": 0,
+      "reasoning_moved": 0,
+      "artifact_landing_audit": 0
+    },
+    "full_projection_unchanged": true,
+    "profile_unchanged": true,
+    "concurrent_events": []
+  }
+}

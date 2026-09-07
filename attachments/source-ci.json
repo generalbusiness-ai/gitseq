@@ -1,0 +1,17 @@
+{
+  "head": "e8278a6dacd14b08bbbcd1276fc193edd6401f53",
+  "reviewed_candidate": "49db764553a2d925d4f715006f464418cac6d8a4",
+  "same_tree": true,
+  "ci": {
+    "conclusion": "success",
+    "headSha": "e8278a6dacd14b08bbbcd1276fc193edd6401f53",
+    "status": "completed",
+    "url": "https://github.com/generalbusiness-ai/gitseq/actions/runs/34150297691"
+  },
+  "security": {
+    "conclusion": "success",
+    "headSha": "e8278a6dacd14b08bbbcd1276fc193edd6401f53",
+    "status": "completed",
+    "url": "https://github.com/generalbusiness-ai/gitseq/actions/runs/34150297690"
+  }
+}

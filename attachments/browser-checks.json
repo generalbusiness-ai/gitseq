@@ -1,0 +1,73 @@
+{
+  "browser": "Owned in-app browser, tabs8\u201311, all closed after acceptance. UI read-only; no durable fixture created. Gitseq inherited planner display identity; no activity/read-ack/signing action taken through it. All actor operations used codex MCP.",
+  "source": "e8278a6dacd14b08bbbcd1276fc193edd6401f53",
+  "gitseq": {
+    "table": {
+      "record": 21221,
+      "event": "3b28bbb13093627a8c78bbf6d17b9adb18abb0c2",
+      "action": "Requests completed population -> search21221 -> original request -> expand request -> current reader baseline prose link",
+      "route": "preview_event=git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3b28bbb13093627a8c78bbf6d17b9adb18abb0c2&evidence=rollout-baseline.json",
+      "contents": "150 lines, exact event revision3b28bbb1; checked_utc2026-09-07T14:34:50.670433+00:00, Gitseq oldPID31631; full dialog snapshot identical from prose and evidence list"
+    },
+    "graph": "Completed/search21221 -> graph node -> Open full thread -> expand original request -> prose link. Full dialog snapshot identical to Table baseline.",
+    "notes": {
+      "record": 21041,
+      "event": "14ce4f348f13f864e77e781e3d91dd91566c522b",
+      "action": "Notes search#21041 -> matching note -> expand -> current scan and concrete replacement",
+      "route": "preview_event=git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14ce4f348f13f864e77e781e3d91dd91566c522b&evidence=stale-intake-evidence.json",
+      "contents": "242 lines, checked_utc2026-09-07T12:36:17.902466+00:00; same note event revision and full snapshot identical to evidence-list link"
+    },
+    "body_field": {
+      "record": 21254,
+      "event": "be9432c51bed53e746d44fe5916ca2bed612ec33",
+      "action": "Notes exact record -> expand request -> gates.txt in body.conditions -> compare gates.txt evidence-list link",
+      "route": "preview_event=git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:be9432c51bed53e746d44fe5916ca2bed612ec33&evidence=gates.txt",
+      "contents": "643-line signed gates attachment, window1\u2013400. Opens with gates for the inline evidence links change, original author-owned worktree/date. Full dialog identical from conditions field and evidence list. Historical first gate failure remains evidence; acceptance does not recast it as final build result."
+    },
+    "source": {
+      "record": 21221,
+      "path": "internal/workroom/work.go",
+      "at": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "line": 75,
+      "observed": "126-line file, package workroom, line75 func WorkOf(projection Projection) WorkSummary { visibly highlighted and scrolled into view; actual screenshot inspected."
+    },
+    "history": "Baseline prose preview: Back removes dialog, Forward restores byte-identical full dialog snapshot, reload restores byte-identical full snapshot.",
+    "large_attachment": {
+      "record": 21229,
+      "event": "366d13eb85d890d8d3f9eaaafdea37f308de06a0",
+      "name": "final-continuity.json",
+      "total_lines": 1124,
+      "windows": [
+        "1\u2013400",
+        "401\u2013800",
+        "1\u2013400"
+      ],
+      "observed": "Next/Previous links retain preview_event/evidence; Previous restores identical numbered content to first window; first checked_utc2026-09-07T16:20:52.506967+00:00."
+    },
+    "standalone19016": "Notes search#19016 finds original matching note; clicking opens standalone heading/commitment spine #19016, explain each delivery once and keep companion path records short."
+  },
+  "other_rooms": {
+    "tailapp": {
+      "record": 4214,
+      "event": "606aa78c4a814521d6f2a090055f8917efffc67a",
+      "route": "evidence=adapter_v206.go",
+      "action": "Notes -> #4214 -> expand -> v206 adapter prose link",
+      "displayed": "129-line signed snapshot, exact event revision606aa78c; package jsonata, line6 v206 github.com/jsonata-go/jsonata/v206, type v206Instance struct{}"
+    },
+    "gitseq-chess": {
+      "record": 797,
+      "event": "3b1897c59ed4c9ebe2c61a7a12c62a8bca56f9cf",
+      "route": "file=docs/local-agent.md&at=b97c6a82ef7e3618721696f5a69efef13da10a79",
+      "action": "Notes exact#797 -> expand artifact -> path row source link",
+      "displayed": "161-line Markdown, exact published revisionb97c6a82, heading Play through the running service with your agent, continuously running chess serve / own existing private key."
+    },
+    "gitseq-inventory": {
+      "record": 511,
+      "event": "4418ad9945da471c2f7d0c97049c8ae64d3667e0",
+      "route": "file=README.md&at=88c2d593dc3ff63f1c37152583d83cba32f7cb63",
+      "action": "Notes exact#511 -> expand artifact -> path row source link",
+      "displayed": "90-line Markdown, heading Gitseq inventory application, shared tailapps/jsonataddl v0.2.0, production replay refused until deterministic step/allocation bounds."
+    }
+  },
+  "support": "Each displayed object/window independently compared with exact Git bytes by attached preview probe; APIs supplement actual UI interactions."
+}
