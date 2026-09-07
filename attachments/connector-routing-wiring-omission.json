@@ -1,0 +1,19 @@
+{
+  "head": "5a0fbc38fe2295cd309af7f2d41323362a034b15",
+  "request": "da2018c951453e4cfb6b6ac6485bd96a6e43ef9e",
+  "review_request": "0d0c8bb400d2cc9f6cfb6236861b34b92b9b4150",
+  "date": "2026-09-07",
+  "baseline": {
+    "command": "go test ./cmd/gitseq-github -count=1",
+    "exit": 0,
+    "seconds": 13.146
+  },
+  "mutant": {
+    "patch": "diff --git a/cmd/gitseq-github/main.go b/cmd/gitseq-github/main.go\nindex 5e68187c9..75753a970 100644\n--- a/cmd/gitseq-github/main.go\n+++ b/cmd/gitseq-github/main.go\n@@ -166,7 +166,8 @@ func run(ctx context.Context, arguments []string) error {\n \t\t\tfmt.Printf(\"would observe %s (admitted by %s)\\n\", observation.ExternalID, observation.AdmittedBy)\n \t\t\tcontinue\n \t\t}\n-\t\tevent, err := appendObservation(ctx, workspace, connector, serverURL, *charter, observation)\n+\t\t_ = serverURL // mutation probe: validate the route, then wrongly pass the raw flag\n+\t\tevent, err := appendObservation(ctx, workspace, connector, *server, *charter, observation)\n \t\tif err != nil {\n \t\t\treturn fmt.Errorf(\"observing %s: %w\", observation.ExternalID, err)\n \t\t}\n",
+    "command": "go test ./cmd/gitseq-github -count=1",
+    "exit": 0,
+    "seconds": 13.721
+  },
+  "finding": "The production run() observation call can discard the resolved route and use the raw server flag while all connector package tests pass. observeThrough manually supplies the correct route, bypassing that production wiring. Missing regression sensitivity against condition3, not a claim that current implementation itself routes wrongly.",
+  "scope": "Owned detached worktree only; no live Github, key, resident or native host mutation."
+}
