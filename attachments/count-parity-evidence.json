@@ -1,0 +1,117 @@
+{
+  "checked_utc": "2026-09-07T06:28:37.119190+00:00",
+  "original_request": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e6092e8ad23b6788d20825f56147639a7a7bbb5",
+    "sequence": 4586,
+    "timestamp": 1786571103,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "kind": "request",
+    "lifecycle": "request",
+    "satisfier": "none",
+    "text": "Make `gs status` report the same Work counts as the UI\n\nGitHub issue #1 remains functionally unresolved. The issue entered this workroom as observation #2462 (`generalbusiness-ai/gitseq#1`). Commit 186127ce treated the mismatch as a documentation problem and explained why the surfaces differ. Hugh now clarifies the product contract: this is a functional inconsistency. When the UI says `active 50`, `gs status` must report that same named count and let a reader see how it was derived.\n\nAt the current frontier, the UI's 50 is open 5 + promised 3 + reported 42. The CLI prints those lifecycle buckets but does not expose their `active` grouping, so a user cannot reconcile the two surfaces without knowing UI implementation details. Preserve the detailed lifecycle counts, but add the user-facing Work grouping and its breakdown.",
+    "body": {
+      "branch": "request/status-work-counts",
+      "conditions": "1. The bounded human `gs status` output names the same global Work counts as the browser: active, closed, lifecycle-stale, total, and overlapping attention.\n2. `active` uses exactly the browser definition: open + promised + reported. Show the lifecycle breakdown beside it so the value is auditable; at the observed frontier this was active 50 = open 5 + promised 3 + reported 42.\n3. Closed and lifecycle-stale use the browser's current classifications, and active + closed + lifecycle-stale equals the commitment total.\n4. Attention is explicitly an overlapping qualifier, not part of that partition. Report enough breakdown to show how it overlaps active, closed, and lifecycle-stale commitments. Keep artifact attention separate from commitment counts.\n5. Preserve the existing detailed per-lifecycle totals; the new Work summary adds the missing user-facing grouping rather than replacing diagnostic detail.\n6. Expose the same named derived counts in the bounded status JSON returned by the resident summary. `gs status --all` must present the same classification rather than reverting to an incompatible summary.\n7. Give the classification one Go owner used by both bounded and complete status rendering. Do not introduce another independent formula at each CLI surface. Compare it explicitly with the browser matrix in tests so drift is detected.\n8. Replace the documentation claim that disagreement is intentional with the shared counting contract and its partition/overlap rules.\n9. Tests pin each status classification, active breakdown, partition invariant, attention overlap, JSON shape, bounded rendering, and complete rendering. Run the relevant Go tests, UI count tests, `make docs`, and `git diff --check`.\n10. Review names the Workroom projection/status and CLI surface layers; the kernel contract is unchanged. Complete the required architecture, security, and simplification conclusions before approval.",
+      "external_id": "generalbusiness-ai/gitseq#1",
+      "prior_resolution_commit": "186127ce0a68835e0842bb774737ed5b9a24e1f0",
+      "source_event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa31d08e5b6ee141922d4aa1e20d500022f93880",
+      "to": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    },
+    "retired": true,
+    "stale": true,
+    "describes_superseded_world": true,
+    "world_superseded_at": 4611,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24d800c0ea95157cd7464d1281f4b3f83b7f205d",
+    "stale_because_path": "cmd/gs"
+  },
+  "retirement": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3d49a184ac83711ac88e13865f6e2a3feeb4331a",
+    "timestamp": 1787190874,
+    "actor": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+    "type": "supersede",
+    "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0e6092e8ad23b6788d20825f56147639a7a7bbb5",
+    "text": "Retire: verified overtaken in the 2026-08-20 stale-request review, batch 6 \u2014 long-ID handling landed via the MCP round-trip cuts (c4d7ce8c); the Work-count items target the deleted pre-simplification selector (count parity on the new surface is a separate fresh check); the pseudo-path retirement completed (zero comma-path artifacts remain); the second-application delta-review re-file was mooted when the plan items became their own requests.",
+    "verdict": "effective",
+    "reason": "authorized supersession"
+  },
+  "exact_source_head": "50850a358d01666fe19c85007aed98f3ceaff591",
+  "deployed_reader": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+  "affected_code_byte_equal": {
+    "internal/statusview/view.go": true,
+    "ui/src/lib/rows.ts": true,
+    "ui/src/components/RequestList.tsx": true,
+    "internal/workroom/render.go": true,
+    "internal/workroom/fold.go": true
+  },
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "367d832bb844a18ce81de2d8da2e6cc14521edd0",
+    "depth": 20619
+  },
+  "ui_workRows_actual": {
+    "live": {
+      "label": "open",
+      "count": 4
+    },
+    "moved": {
+      "label": "reasoning moved",
+      "count": 3
+    },
+    "approved": {
+      "label": "artifact landing audit",
+      "count": 78
+    },
+    "stale": {
+      "label": "stale, not in flight",
+      "count": 12
+    },
+    "done": {
+      "label": "completed",
+      "count": 1527
+    },
+    "closed": {
+      "label": "closed, not completed",
+      "count": 956
+    }
+  },
+  "summary_lifecycle_totals": {
+    "awaiting-review": 2,
+    "cancelled": 369,
+    "open": 1,
+    "reneged": 3,
+    "reported": 1,
+    "satisfied": 1527,
+    "stale": 12,
+    "superseded": 37,
+    "withdrawn": 547
+  },
+  "summary_totals_fields": [
+    "approved_not_landed",
+    "commitments",
+    "stale_commitments",
+    "artifacts",
+    "stale_artifacts",
+    "retired_artifacts",
+    "world_stale_artifacts",
+    "ineffective_acts",
+    "disputed_acts",
+    "statements"
+  ],
+  "partition": {
+    "open": 4,
+    "completed": 1527,
+    "closed_not_completed": 956,
+    "stale": 12,
+    "total": 2499
+  },
+  "cli_evidence": "/tmp/planner-countparity4586-current-cli-20260907.json",
+  "finding": "At identical frontier20619, actual browser row-selection code counts open4 = lifecycle open1 + reported1 + awaiting-review2. Bounded CLI and HTTP summary expose lifecycle open1 and no named Work grouping. No inconsistent arithmetic is alleged: the missing shared named grouping leaves the requested cross-surface reconciliation unresolved. Browser rendering unavailable; this is an actual source-function plus HTTP/CLI comparison, not a rendered-browser test.",
+  "existing_work_overlap": "Unadopted19939P2 changes lifecycle-stale and its tab, but requires existing lifecycle/stale totals; it does not supply shared named Work summaries. Preserve current classifications now and reconcile with any subsequently adopted/landedP2 before implementation. 20203 was wire field parity only,19996 ineffective request admission and lifecycle truthfulness; neither adds this grouping.",
+  "github_issue": {
+    "body": "The UI shows\n```\nActive\n69\nAttention\n355\nClosed\n382\n```\n\nBut `gs status` shows\n```\nCommitments: cancelled 32, open 24, promised 2, reneged 4, reported 43 (37 stale), satisfied 309 (95 stale), stale 34, withdrawn 37 (24 stale). Artifacts: 218 current, 157 stale. Attempts: 33 ineffective, 1 disputed.\n```\n\nExpected: the UI numbers reflect the same counting methodology as the CLI and MCP",
+    "number": 1,
+    "state": "OPEN",
+    "title": "UI counts are different from `gs status`",
+    "url": "https://github.com/generalbusiness-ai/gitseq/issues/1"
+  }
+}
