@@ -43,12 +43,34 @@ There is no current-branch or working-copy fallback. Evidence comes from the
 owning signed event's attachment tree, independently of its source head.
 
 The same dialog reports missing objects, absent paths, binary content,
-unsupported symbolic links or submodules, and content too large to show.
+unsupported symbolic links or submodules, and content too large to read.
 A directory lists at most 128 entries and states how many were omitted.
-Text is limited to 512 KiB and 5,000 lines. A cited line beyond the file is
-reported explicitly. Git metadata has separate bounds: 1 MiB for the commit,
-4 MiB across trees, and at most 32 path components. Eight previews may run
-at once, each with a ten-second read deadline.
+
+A text file is shown in bounded windows. A file that fits in one window
+(at most 400 lines, 64 KiB, no line over 4 KiB) is shown whole. A larger
+file opens at the window containing the cited line, or at its first lines
+without one; the dialog says which lines it is showing of how many, that
+the view is partial, and offers **Previous lines** and **Next lines**. Line
+numbers are the file's own. Windows are a fixed division of the file:
+reading from line one, each window takes up to 400 lines and closes early
+when the next line would take it past 64 KiB, so for ordinary files the
+windows are the aligned 400-line runs and for files with long lines they
+are shorter. A link naming any line opens the window holding it, so a
+copied link returns to the same window later; **Next lines** and
+**Previous lines** are the neighbouring windows, with no lines skipped or
+repeated. A line over 4 KiB is cut at a character boundary and named as
+cut. A cited line or window start beyond the file is reported
+explicitly. Markdown reads as a document only when the whole file is shown;
+a window is source with line numbers. Evidence attachments use the same
+windows. The window a link names is part of the address (`from=`), so
+reload, Back and Forward return to it.
+
+Reading is bounded separately from showing. The resident reads and
+hash-verifies at most 4 MiB of one file; a larger file is refused with no
+content, and so is one that is not valid UTF-8 text. Git metadata has its own
+bounds: 1 MiB for the commit, 4 MiB across trees, and at most 32 path
+components. Eight previews may run at once, each with a ten-second read
+deadline.
 
 ## Keep your place
 

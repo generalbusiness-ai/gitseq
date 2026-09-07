@@ -241,3 +241,78 @@ test("a delayed earlier preview cannot appear under a newer target", async () =>
     });
   } finally { globalThis.fetch = savedFetch; }
 });
+
+// Review 318bec67 (SW-05): the whole path a reader takes through a large
+// file, in the App with real history. A reference in a record is the review
+// link; clicking it opens the window holding the cited line; Next is a
+// history entry; Back and Forward walk the windows; a reload lands on the
+// window the address names. The resident stand-in answers with the fixed
+// 400-line partition the Go tests prove.
+test("a review link opens the cited window, and Next, Back, Forward and reload walk the windows", async () => {
+  const savedFetch = globalThis.fetch;
+  const savedText = projection.statements[0].text;
+  const head = "a".repeat(40);
+  projection.statements[0].text = `Review cites cmd/gs/main_test.go@${head}:726 for the locator gate`;
+  const TOTAL = 5611;
+  const requests = [];
+  globalThis.fetch = async (url, options, ...args) => {
+    if (!String(url).includes("/v0/preview")) return savedFetch(url, options, ...args);
+    const input = JSON.parse(options.body);
+    requests.push(input);
+    const start = input.start ? Math.floor((input.start - 1) / 400) * 400 + 1 : input.line ? Math.floor((input.line - 1) / 400) * 400 + 1 : 1;
+    const end = Math.min(start + 399, TOTAL);
+    const lines = [];
+    for (let i = start; i <= end; i++) lines.push(`line ${i}`);
+    return { ok: true, statusText: "OK", json: async () => ({ event: request, repo: "/repo", commit: head, path: input.path, status: "ready", limit: 4194304, size: 60000, content: lines.join("\n"),
+      window: { start, end, total: TOTAL, partial: true, previous: start > 1 ? start - 400 : undefined, next: end < TOTAL ? end + 1 : undefined } }) };
+  };
+  const windowText = () => document.querySelector('[aria-label="Window"]')?.textContent ?? "";
+  const highlighted = () => [...document.querySelectorAll(".bg-accent\\/20")].map((row) => row.firstChild.textContent);
+  const linkNamed = (name) => [...document.querySelectorAll("a")].find((a) => a.textContent === name);
+  const click = (element) => act(async () => { element.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })); await Promise.resolve(); await Promise.resolve(); });
+  try {
+    await withApp(`#/thread/${request}/${request}`, async (vite) => {
+      // The review link is the reference rendered inside the record.
+      const reviewLink = document.querySelector('a[href*="line=726"]');
+      assert.ok(reviewLink, "the record's source reference is not a link");
+      await click(reviewLink);
+      await act(async () => { await Promise.resolve(); });
+      assert.match(dom.window.location.hash, /file=cmd%2Fgs%2Fmain_test.go/);
+      assert.match(dom.window.location.hash, /line=726/);
+      assert.match(windowText(), /Lines 401–800 of 5,611/);
+      assert.deepEqual(highlighted(), ["726"]);
+
+      // Next is a step in the visit: a new address naming the next window.
+      await click(linkNamed("Next lines"));
+      await act(async () => { await Promise.resolve(); });
+      assert.match(dom.window.location.hash, /from=801/);
+      assert.match(windowText(), /Lines 801–1,200 of 5,611/);
+      assert.deepEqual(highlighted(), []);
+
+      // Back returns to the cited window, highlight and all; Forward returns.
+      await traverse(() => dom.window.history.back());
+      assert.doesNotMatch(dom.window.location.hash, /from=/);
+      assert.match(windowText(), /Lines 401–800 of 5,611/);
+      assert.deepEqual(highlighted(), ["726"]);
+      await traverse(() => dom.window.history.forward());
+      assert.match(dom.window.location.hash, /from=801/);
+      assert.match(windowText(), /Lines 801–1,200 of 5,611/);
+    });
+    // A reload is a fresh App reading the address the visit left behind: it
+    // asks the resident for that window and lands on it.
+    const reloadHash = dom.window.location.hash;
+    assert.match(reloadHash, /from=801/);
+    requests.length = 0;
+    await withApp(reloadHash, async () => {
+      assert.match(windowText(), /Lines 801–1,200 of 5,611/);
+      // The evidence listing also asks the preview endpoint, with no path;
+      // the file request is the one that named the window.
+      const fileRequest = requests.find((input) => input.path);
+      assert.equal(fileRequest.start, 801);
+      assert.equal(fileRequest.line, 726);
+    });
+  } finally {
+    globalThis.fetch = savedFetch;
+    projection.statements[0].text = savedText;
+  }
+});

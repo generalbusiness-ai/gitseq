@@ -6,6 +6,9 @@ export interface PreviewAddress {
   commit?: string;
   attachment?: string;
   line?: number;
+  // start names a window of a large file by its first line; the resident
+  // chooses the window for a line when it is absent.
+  start?: number;
 }
 export type Address = ({ kind: "list"; population?: Population } | { kind: "notes" } | { kind: "thread"; event: string; focus?: string }) & {
   preview?: PreviewAddress;
@@ -41,9 +44,9 @@ export function parseAddress(hash: string): Address {
     const params = new URLSearchParams(query);
     const event = params.get("preview_event");
     if (event) {
-      const line = params.get("line");
+      const number = (name: string) => { const value = params.get(name); return value && /^[1-9]\d{0,6}$/.test(value) ? Number(value) : undefined; };
       address.preview = { event, path: params.get("file") || undefined, commit: params.get("at") || undefined,
-        attachment: params.get("evidence") || undefined, line: line && /^[1-9]\d{0,6}$/.test(line) ? Number(line) : undefined };
+        attachment: params.get("evidence") || undefined, line: number("line"), start: number("from") };
     }
   } catch { error = "The preview link contains malformed encoding."; }
   if (error) address.error = error;
@@ -61,6 +64,7 @@ export function formatAddress(address: Address): string {
     if (p.commit) params.set("at", p.commit);
     if (p.attachment) params.set("evidence", p.attachment);
     if (p.line) params.set("line", String(p.line));
+    if (p.start) params.set("from", String(p.start));
     route += `?${params}`;
   }
   return route;

@@ -104,13 +104,25 @@ export function Preview({ target, onClose }: { target: PreviewAddress; onClose: 
   useEffect(() => {
     const abort = new AbortController(); setLoaded(undefined); setError(undefined); setSource(Boolean(target.line));
     dialog.current?.querySelector<HTMLButtonElement>("button")?.focus();
-    const { line: _, ...input } = target;
-    api.preview(input, abort.signal).then((value) => { if (!abort.signal.aborted) setLoaded({ key: requestKey, value }); }).catch((error) => { if (!abort.signal.aborted) setError(String(error)); });
+    // The cited line and window start go to the resident, which chooses the
+    // window; a target that changes before the answer arrives is abandoned.
+    api.preview(target, abort.signal).then((value) => { if (!abort.signal.aborted) setLoaded({ key: requestKey, value }); }).catch((error) => { if (!abort.signal.aborted) setError(String(error)); });
     return () => abort.abort();
-  }, [target.event, target.path, target.commit, target.attachment, target.line]);
+  }, [target.event, target.path, target.commit, target.attachment, target.line, target.start]);
   useEffect(() => { selected.current?.scrollIntoView?.({ block: "center" }); }, [result, source, target.line]);
   const markdown = /\.(md|mdx)$/i.test(result?.path ?? "");
   const content = result?.content ?? "";
+  const window = result?.window;
+  // Markdown reads as a document only when the whole file is here; a window
+  // is source with real line numbers, starting at the window's first line.
+  const whole = !window?.partial;
+  const first = window?.start ?? 1;
+  // Rows are the lines the window says it carries: none for an empty file
+  // or an empty window, and a whole file's trailing newline ends its last
+  // line rather than starting an empty one.
+  const shown = window
+    ? (window.end < window.start || window.total === 0 ? [] : (whole ? content.replace(/\n$/, "") : content).split("\n"))
+    : (content === "" ? [] : content.replace(/\n$/, "").split("\n"));
   return <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 p-2 backdrop-blur-sm sm:p-6">
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="preview-title" tabIndex={-1} className="flex max-h-full w-full max-w-5xl flex-col rounded-xl border border-border bg-card shadow-2xl">
       <header className="border-b border-border p-4">
@@ -118,6 +130,11 @@ export function Preview({ target, onClose }: { target: PreviewAddress; onClose: 
         <h2 id="preview-title" className="break-all font-serif text-lg">{target.attachment ?? target.path ?? "Evidence attachments"}</h2>
         <p className="mt-2 break-all text-xs text-muted">Record: {target.event}</p>
         {result && <><p className="break-all text-xs text-muted">Repository: {result.repo}</p>{result.commit && <p className="break-all text-xs text-muted">Exact revision: {result.commit}</p>}</>}
+        {window && <p className="text-xs text-muted" aria-label="Window">{window.partial
+          ? `Lines ${window.start.toLocaleString()}–${window.end.toLocaleString()} of ${window.total.toLocaleString()} · partial view of this file`
+          : `${window.total.toLocaleString()} lines, whole file`}
+          {window.previous ? <> · <PreviewLink target={{ ...target, start: window.previous }}>Previous lines</PreviewLink></> : null}
+          {window.next ? <> · <PreviewLink target={{ ...target, start: window.next }}>Next lines</PreviewLink></> : null}</p>}
       </header>
       <div className="min-h-0 overflow-auto p-4">
         {!result && !error && <p role="status">Loading exact content…</p>}
@@ -127,11 +144,11 @@ export function Preview({ target, onClose }: { target: PreviewAddress; onClose: 
         {result?.status === "directory" && <ul>{result.entries?.map((name) => <li key={name}><PreviewLink target={{ event: target.event, commit: result.commit, path: `${target.path}/${name}` }}>{name}</PreviewLink></li>)}{!!result.omitted && <li>{result.omitted} more entries exceed the listing limit.</li>}</ul>}
         {result?.status === "ready" && !target.path && !target.attachment && <EvidenceLinks event={target.event} />}
         {result?.status === "ready" && (target.path || target.attachment) && <>
-          {markdown && <button type="button" className="mb-3 text-sm text-accent underline" onClick={() => setSource(!source)}>{source ? "Read Markdown" : "Show source and line numbers"}</button>}
-          {markdown && !source ? <MarkdownPreview text={content} event={target.event} commit={target.attachment ? undefined : result.commit} path={target.attachment ? undefined : target.path} attachments={target.attachment ? result.attachments : undefined} />
-            : <div className="font-mono text-xs" aria-label="Source with line numbers">{content.split("\n").map((line, i) => <div key={i} ref={i + 1 === target.line ? selected : undefined} className={`flex ${i + 1 === target.line ? "bg-accent/20" : ""}`}>
-              <span className="mr-4 min-w-10 shrink-0 select-none text-right text-faint">{i + 1}</span><pre className="whitespace-pre-wrap break-all">{line || " "}</pre></div>)}</div>}
-          {target.line && target.line > content.split("\n").length && <p role="status">Cited line {target.line} is outside this file.</p>}
+          {markdown && whole && <button type="button" className="mb-3 text-sm text-accent underline" onClick={() => setSource(!source)}>{source ? "Read Markdown" : "Show source and line numbers"}</button>}
+          {!!window?.truncated?.length && <p role="status">{window.truncated.length === 1 ? `Line ${window.truncated[0]} is` : `Lines ${window.truncated.join(", ")} are`} longer than 4 KiB and shown cut.</p>}
+          {markdown && whole && !source ? <MarkdownPreview text={content} event={target.event} commit={target.attachment ? undefined : result.commit} path={target.attachment ? undefined : target.path} attachments={target.attachment ? result.attachments : undefined} />
+            : shown.length > 0 && <div className="font-mono text-xs" aria-label="Source with line numbers">{shown.map((line, i) => <div key={first + i} ref={first + i === target.line ? selected : undefined} className={`flex ${first + i === target.line ? "bg-accent/20" : ""}`}>
+              <span className="mr-4 min-w-10 shrink-0 select-none text-right text-faint">{first + i}</span><pre className="whitespace-pre-wrap break-all">{line || " "}</pre></div>)}</div>}
         </>}
       </div>
     </div>
