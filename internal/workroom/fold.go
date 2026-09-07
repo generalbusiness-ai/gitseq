@@ -115,6 +115,13 @@ type Statement struct {
 	StaleBecause          string `json:"stale_because,omitempty"`
 	StaleBecausePath      string `json:"stale_because_path,omitempty"`
 	StaleBecauseTruncated bool   `json:"stale_because_truncated,omitempty"`
+	// IneffectiveBases names the direct bases of this effective statement that
+	// the fold refused. Staleness does not propagate through a refused record,
+	// so a basis retired underneath one never reaches this row; the citation
+	// is disclosed instead, so a reader can see that part of what this
+	// statement stands on never took force. Only direct citations are named:
+	// the disclosure does not walk further, and it grants nothing.
+	IneffectiveBases []string `json:"ineffective_bases,omitempty"`
 }
 
 type Commitment struct {
@@ -217,6 +224,8 @@ type Artifact struct {
 	// later settlement or retirement cannot rewrite what the merge accounted
 	// for. Unverified testimony remains visible but accounts for nothing.
 	MergeLeftLive []LeftLiveAccounting `json:"merge_left_live,omitempty"`
+	// IneffectiveBases carries the same disclosure as on Statement.
+	IneffectiveBases []string `json:"ineffective_bases,omitempty"`
 }
 
 // LeftLiveAccounting is one merge receipt's prospective testimony about an
@@ -2956,6 +2965,23 @@ func (f *foldState) isArtifact(event string) bool {
 	return ok && record.definition.Render == RenderArtifact
 }
 
+// ineffectiveBases returns, in citation order and without repeats, the cited
+// records this log holds that the fold refused. Unknown identifiers are not
+// listed: they are unresolved citations, a different fact reported elsewhere.
+func (f *foldState) ineffectiveBases(restsOn []string) []string {
+	var out []string
+	seen := make(map[string]bool, len(restsOn))
+	for _, basis := range restsOn {
+		record := f.byID[basis]
+		if record == nil || record.decision.Verdict == Effective || seen[basis] {
+			continue
+		}
+		seen[basis] = true
+		out = append(out, basis)
+	}
+	return out
+}
+
 // unableToFlare reports whether nothing in the log could ever make a statement
 // with these bases stale. Citing nothing qualifies; so does citing only events
 // the log does not contain, since supersede requires a resolvable target and
@@ -3091,6 +3117,9 @@ func (f *foldState) project() Projection {
 			WorldSupersededAt:        result.causedAt[record.record.ID],
 			MergeLeftLive:            projectLeftLive(record.mergeLeftLive, ""),
 		}
+		if record.decision.Verdict == Effective {
+			statement.IneffectiveBases = f.ineffectiveBases(record.record.RestsOn)
+		}
 		if statement.Stale {
 			statement.StaleBecause, statement.StaleBecausePath, statement.StaleBecauseTruncated =
 				staleness.nearestRetiredCause(record.record.ID, result.causes)
@@ -3152,6 +3181,7 @@ func (f *foldState) project() Projection {
 				SuccessionUnrecorded:     live > 0,
 				LivePredecessors:         live,
 				MergeLeftLive:            leftLive,
+				IneffectiveBases:         statement.IneffectiveBases,
 			})
 			if !f.retired(record.record.ID) {
 				liveByPath[path]++

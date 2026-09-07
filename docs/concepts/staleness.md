@@ -178,16 +178,28 @@ nothing the fold can verify, because trailer text is not an actor-signed
 statement. How a reader is warned about that is a presentation question;
 see [`gs serve`](../reference/gs/serve.md).
 
-## The known gap
+## Ineffective bases
 
 **Staleness does not propagate through ineffective bases.** If a page is
 anchored to an act that was judged ineffective, retiring that act's own
 bases will not flare the page: the chain is broken at the ineffective
-link, so the page goes quiet rather than stale.
+link, so the page goes quiet rather than stale. That is the governed rule,
+and it is unchanged: a refused record carries no authority and no
+staleness, and nothing under it can reach anything above it.
 
-This is open work, carried by the lying-by-omission request. Until it
-closes, the practical defence is to anchor pages to acts you have
-confirmed are effective and live — which `gs status` and
+What the fold does instead is say so where the citation is made. An
+effective statement or artifact that rests on a refused record carries `ineffective_bases`
+in the projection, naming the refused citations directly; the artifact row
+in `gs status --all` notes `rests on ineffective support`; and filing an
+act on such a citation earns the same note the other dead bases earn, on
+standard error from `gs state` and under `dead_rests_on` from the MCP
+`state` tool, classified `ineffective`. The note is advisory: the act is
+admitted, no override is asked for, and no staleness is recorded, because
+there is none. The disclosure is direct and stops there: a record resting
+on that record sees a live basis, and reads the disclosure from its row.
+
+The practical defence is unchanged: anchor pages to acts you have confirmed
+are effective and live, which `gs status` and
 [`gs provenance`](../reference/gs/provenance.md) both show.
 
 ## See also

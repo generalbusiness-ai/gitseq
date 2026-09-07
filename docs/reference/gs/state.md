@@ -26,7 +26,7 @@ the only two acts it cannot make.
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event identifier, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
-| `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession stays advisory. |
+| `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession, or a record the fold refused, stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
@@ -203,6 +203,14 @@ is sequenced, the boundary computes the note again from the world the act
 would join and refuses any act whose signed `body.stale_bases` differs, or
 that carries the field at all on fresh ground. If your world moved between
 signing and sequencing, re-run the command to sign the current note.
+
+A basis the fold **refused** is neither: nothing was withdrawn and nothing
+underneath it can move. The act is admitted, and the command notes the
+citation on standard error as `already dead (ineffective)`, the same way it
+notes a retired, stale or superseding one, so an author sees at filing time
+that part of what the act rests on never took force. The landed statement,
+and its artifact row when it is one, then carry `ineffective_bases` in the
+projection. See [staleness](../../concepts/staleness.md#ineffective-bases).
 
 ## Reserved fields you cannot write
 

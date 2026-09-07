@@ -29,7 +29,7 @@ retired artifacts forever, so the default answers "what now" rather than
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--all` | `false` | Render the complete commitment, artifact and attempt tables instead of the bounded view. |
+| `--all` | `false` | Render the complete commitment, artifact, dissent, ratification, uninterpretable-record and attempt tables instead of the bounded view. |
 | `--json` | `false` | Emit the complete snapshot as JSON, with no human view. |
 | `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
@@ -209,12 +209,38 @@ the same path` and `RETIRED — withdrawn with no successor`.
 
 ## `--all`
 
-The complete human-readable tables: every commitment, every artifact,
-every non-effective attempt, with no cap. The artifact summary under that
-table reports both the number of rows and the number of supersessions
-**actually owed**. Those differ: one forgotten retirement at a long-lived
-path repeats on every later link of the chain, so the row count
-overstates how many situations there are to fix.
+The complete human-readable tables, with no cap: every commitment, every
+artifact, every standing dissent, every ratified statement, every record
+the fold could not interpret, and every non-effective attempt. Nothing the
+bounded view shows is missing here; the bounded view shows the newest
+twenty of each, this shows all of them.
+
+The artifact summary under that table reports both the number of rows and
+the number of supersessions **actually owed**. Those differ: one forgotten
+retirement at a long-lived path repeats on every later link of the chain,
+so the row count overstates how many situations there are to fix. An
+artifact row whose notes say `rests on ineffective support` cites a record
+the fold refused; see [staleness](../../concepts/staleness.md#ineffective-bases)
+for what that does and does not mean.
+
+**Standing dissent** lists each effective, unretired dissent with the
+record it stands against and that record's state now: `current`, `stale`
+or `retired` for a record that took force, the fold's verdict
+(`ineffective`, `undefined-kind`, `uninterpretable`) for one it refused,
+and `unknown` only for a target this log does not hold. A dissent never
+rewrites its target, so the target reads as it always did; this section is
+where a reader learns it is opposed.
+
+**Ratified statements** lists every statement whose ratification stands,
+with the ratifying act. This is the fold's own reading of authority: a
+proposal that became a decision, a report that closed a commitment, a
+roster grant that took effect.
+
+**Uninterpretable records** lists statements of a kind the vocabulary does
+not define, grouped by the kind they claimed and with their text, and any
+record whose payload could not be read at all. Each also appears among the
+attempts with the fold's refusal; this section gives them back the only
+disposition they have.
 
 ## `--json`
 

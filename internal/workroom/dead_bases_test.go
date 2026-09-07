@@ -13,12 +13,21 @@ func TestDeadBasesClassifiesOnlyAlreadyDeadCitations(t *testing.T) {
 		retiredArtifact  = "git:sha1:g#git:sha1:retired-artifact"
 		staleArtifact    = "git:sha1:g#git:sha1:stale-artifact"
 		effectiveAct     = "git:sha1:g#git:sha1:supersede-act"
+		refusedStatement = "git:sha1:g#git:sha1:refused"
+		failedSupersede  = "git:sha1:g#git:sha1:failed-supersede"
 	)
 	projection := Projection{
 		Statements: []Statement{
 			{Event: retiredStatement, Kind: KindAssert, Retired: true},
 			{Event: staleStatement, Kind: KindAssert, Stale: true},
 			{Event: liveStatement, Kind: KindAssert},
+			// A refused statement keeps its row; only its decision says it
+			// never took force.
+			{Event: refusedStatement, Kind: KindRequest},
+		},
+		Decisions: []Decision{
+			{Event: refusedStatement, Sequence: 7, Verdict: Ineffective, Reason: "request state requires body.conditions"},
+			{Event: failedSupersede, Sequence: 8, Verdict: Ineffective, Reason: "supersede target is not effective"},
 		},
 		Artifacts: []Artifact{
 			{Event: retiredArtifact, Path: "docs/a.md", Retired: true},
@@ -26,7 +35,7 @@ func TestDeadBasesClassifiesOnlyAlreadyDeadCitations(t *testing.T) {
 		},
 		Acts: []Act{
 			{Event: effectiveAct, Type: "supersede", Target: retiredStatement, Verdict: Effective},
-			{Event: "git:sha1:g#git:sha1:failed-supersede", Type: "supersede", Target: liveStatement, Verdict: Ineffective},
+			{Event: failedSupersede, Type: "supersede", Target: liveStatement, Verdict: Ineffective},
 			{Event: "git:sha1:g#git:sha1:ratify-act", Type: "ratify", Target: liveStatement, Verdict: Effective},
 		},
 	}
@@ -34,9 +43,10 @@ func TestDeadBasesClassifiesOnlyAlreadyDeadCitations(t *testing.T) {
 	dead := DeadBases(projection, []string{
 		retiredStatement, staleStatement, retiredArtifact, staleArtifact,
 		effectiveAct, liveStatement, "git:sha1:g#git:sha1:nothing",
+		refusedStatement, failedSupersede,
 		// Cited although expected absent, so a classification that starts
-		// firing on them fails here instead of passing silently.
-		"git:sha1:g#git:sha1:failed-supersede", "git:sha1:g#git:sha1:ratify-act",
+		// firing on it fails here instead of passing silently.
+		"git:sha1:g#git:sha1:ratify-act",
 	})
 	want := map[string]DeadBasis{
 		retiredStatement: DeadBasisRetired,
@@ -44,6 +54,8 @@ func TestDeadBasesClassifiesOnlyAlreadyDeadCitations(t *testing.T) {
 		retiredArtifact:  DeadBasisRetired,
 		staleArtifact:    DeadBasisStale,
 		effectiveAct:     DeadBasisSupersede,
+		refusedStatement: DeadBasisIneffective,
+		failedSupersede:  DeadBasisIneffective,
 	}
 	if len(dead) != len(want) {
 		t.Fatalf("DeadBases = %v, want exactly %v", dead, want)
@@ -53,8 +65,7 @@ func TestDeadBasesClassifiesOnlyAlreadyDeadCitations(t *testing.T) {
 			t.Errorf("%s classified %q, want %q", id, dead[id], basis)
 		}
 	}
-	for _, absent := range []string{liveStatement, "git:sha1:g#git:sha1:nothing",
-		"git:sha1:g#git:sha1:failed-supersede", "git:sha1:g#git:sha1:ratify-act"} {
+	for _, absent := range []string{liveStatement, "git:sha1:g#git:sha1:nothing", "git:sha1:g#git:sha1:ratify-act"} {
 		if basis, reported := dead[absent]; reported {
 			t.Errorf("%s was reported dead as %q", absent, basis)
 		}

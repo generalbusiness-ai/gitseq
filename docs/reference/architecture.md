@@ -954,6 +954,15 @@ where applicable and an explicit exhaustion flag. Fewest hops wins, then the
 original citation order. General provenance remains the top-level side table;
 the row carries one answer for diagnosis, not a second copy of that graph.
 
+Staleness stops at a refused record: an ineffective basis carries no
+authority and no staleness, so a retirement underneath it reaches nothing
+above it. The projection discloses the citation instead of propagating
+through it. An effective statement or artifact that rests directly on a
+refused record carries `ineffective_bases` naming those citations, and the
+dead-basis classification the filing surfaces and admission share reports
+such a citation as `ineffective`, advisory only. The disclosure is direct:
+it does not walk further, and it grants nothing.
+
 A retirement is read for what its own act rested on. A supersession resting on
 an artifact covering the same path is succession, and carries no staleness
 across reasoning edges. One naming no covering successor is condemnation, and
