@@ -1,0 +1,17 @@
+$ go build -o bin/gs ./cmd/gs && go build -o bin/gitseq-mcp ./cmd/gitseq-mcp   (2026-09-07T12:27:20Z)
+$ go version -m bin/gs bin/gitseq-mcp
+
+bin/gs:
+  	path	github.com/generalbusiness-ai/gitseq/cmd/gs
+  	mod	github.com/generalbusiness-ai/gitseq	v0.0.0-20260907122508-03f7f721cc6e	
+  	build	vcs.revision=03f7f721cc6e1aead5d6d164f9dd07c6395427ab
+  	build	vcs.modified=false
+bin/gitseq-mcp:
+  	path	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp
+  	mod	github.com/generalbusiness-ai/gitseq	v0.0.0-20260907122508-03f7f721cc6e	
+  	build	vcs.revision=03f7f721cc6e1aead5d6d164f9dd07c6395427ab
+  	build	vcs.modified=false
+
+$ git rev-parse HEAD
+03f7f721cc6e1aead5d6d164f9dd07c6395427ab
+$ git status --short --untracked-files=normal   (empty means clean)

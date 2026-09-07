@@ -1,0 +1,21 @@
+$ ./bin/gs status --repo <scratch> --server http://127.0.0.1:7995   (2026-09-07T12:29:22Z)
+(the bounded page reading a resident that does carry the counts)
+
+# Workroom status
+
+frontier 8d0786b2…d484729 at depth 6 (resident summary)
+
+Commitments: open 1, promised 1. Artifacts: 0 current, 0 stale, 0 retired, 0 describing a superseded world. Attempts: 0 ineffective, 0 disputed.
+Work, workroom: 2 open, 0 completed, 0 closed and not completed, 0 stale and not in flight, of 2 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 0, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 0 open resting on reasoning that moved, 0 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+Approved but not landed at their target: 0.
+
+$ ./bin/gs status --repo <scratch> --server http://127.0.0.1:7995 --all
+
+# Workroom status
+
+open=1 promised=1
+
+Work, workroom: 2 open, 0 completed, 0 closed and not completed, 0 stale and not in flight, of 2 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 0, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 0 open resting on reasoning that moved, 0 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+

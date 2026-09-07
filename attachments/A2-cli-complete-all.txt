@@ -1,0 +1,13 @@
+$ ./bin/gs status --repo /Users/hughpyle/play/gitseq --server http://127.0.0.1:7777 --all   (2026-09-07T12:27:38Z)
+resident frontier before: 43c958eabf13a25fbdb8c7486365cb97a0086a55 depth 20989
+
+# Workroom status
+
+awaiting-review=4 cancelled=371 open=1 promised=1 reneged=3 satisfied=1541 stale=11 superseded=37 withdrawn=549
+
+Work, workroom: 6 open, 1541 completed, 960 closed and not completed, 11 stale and not in flight, of 2518 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 4, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 4 open resting on reasoning that moved, 78 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+
+## Requests and commitments
+
+resident frontier after:  43c958eabf13a25fbdb8c7486365cb97a0086a55 depth 20989

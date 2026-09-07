@@ -1,0 +1,22 @@
+$ printf '{… "name":"status" …}' | ./bin/gitseq-mcp --repo <scratch> --actor alice   (2026-09-07T12:29:30Z)
+
+frontier 8d0786b2649836b427009fdde782d1f91d484729 depth 6
+totals.work = {
+ "scope": "workroom",
+ "commitments": 2,
+ "open": 2,
+ "open_lifecycles": {
+  "awaiting-authorization": 0,
+  "awaiting-landing": 0,
+  "awaiting-review": 0,
+  "open": 1,
+  "promised": 1,
+  "reported": 0
+ },
+ "completed": 0,
+ "closed_not_completed": 0,
+ "stale": 0,
+ "reasoning_moved": 0,
+ "artifact_landing_audit": 0
+}
+totals.approved_not_landed = 0

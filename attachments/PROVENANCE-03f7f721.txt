@@ -1,0 +1,19 @@
+Evidence provenance for request #20622, exact head 03f7f721cc6e1aead5d6d164f9dd07c6395427ab
+(request/shared-work-population-counts, one commit over main ad4656dd).
+
+Head history
+- 9be714c075b3: implementation commit over main 41453387 (first review 67107cb9; evidence directory evidence/).
+- 1fdf9e6b18e4: the same change rebased onto main ad4656dd after #20424 landed; only the embed regenerated
+  (evidence directory evidence-1fdf9e6b/; review request 498526c5, withdrawn unclaimed).
+- 03f7f721cc6e: 1fdf9e6b plus review 00efbe26's two simplifications: WorkOf decides open membership from the
+  OpenLifecycles map it already builds instead of a second map, and the repeated open-5/open-1 origin story is
+  trimmed from production comments and test preambles (git diff 1fdf9e6b..03f7f721: 14 files, +33/-62, all
+  comments except the one map removal in internal/workroom/work.go). No assertion, fixture, wire field, JSON tag
+  or doc changed; docs/ is byte-identical to 1fdf9e6b; make ui reproduces the identical bundle
+  index-C99ie_gl.js and index.html.
+
+What is attached to this request
+- Only traces produced at exact 03f7f721, from scratchpad/20622/evidence-03f7f721/, indexed by SUMMARY.txt with the
+  command and observed frontier per file, and MANIFEST.txt with size and SHA-256 per file. Nothing from the two
+  older directories is attached. The 45-51 MB raw JSON payloads (A3-cli-json-full.json, status-full.json) stay on
+  disk and are reproducible from the commands in SUMMARY.txt.
