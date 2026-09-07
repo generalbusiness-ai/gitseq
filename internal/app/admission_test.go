@@ -573,3 +573,26 @@ func TestAdmissionRefusesAnEmptyStaleBasesKeyOnFreshGround(t *testing.T) {
 		t.Fatalf("absent body.%s on fresh ground = %v, want admission", StaleBasesField, err)
 	}
 }
+
+// A refused record is named when cited, and nothing more. The classification
+// is shared with the CLI and MCP filing notes, and admission reads it as
+// advisory: no refusal, no dead-basis override needed, and no staleness note,
+// because the cited record carries no staleness to record. Turning the
+// disclosure into a refusal would be a policy change nobody adopted.
+func TestDeadBasisVerdictKeepsIneffectiveCitationsAdvisory(t *testing.T) {
+	const refused = "git:sha1:g#git:sha1:refused"
+	projection := workroom.Projection{
+		Statements: []workroom.Statement{{Event: refused, Kind: workroom.KindRequest}},
+		Decisions:  []workroom.Decision{{Event: refused, Sequence: 2, Verdict: workroom.Ineffective, Reason: "request state requires body.conditions"}},
+	}
+	if got := workroom.DeadBases(projection, []string{refused})[refused]; got != workroom.DeadBasisIneffective {
+		t.Fatalf("DeadBases classified the refused record %q, want ineffective", got)
+	}
+	blocking, note := deadBasisVerdict(projection, []string{refused})
+	if len(blocking) != 0 {
+		t.Fatalf("a refused basis blocks admission: %v", blocking)
+	}
+	if note != "" {
+		t.Fatalf("a refused basis earned a staleness note %q", note)
+	}
+}

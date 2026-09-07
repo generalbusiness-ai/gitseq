@@ -111,6 +111,9 @@ func RenderStatus(projection Projection) []byte {
 				unableToFlare++
 				notes = append(notes, "unable to flare")
 			}
+			if len(artifact.IneffectiveBases) > 0 {
+				notes = append(notes, "rests on ineffective support: "+namesOf(artifact.IneffectiveBases, sequences))
+			}
 			if artifact.SuccessionUnrecorded {
 				successionUnrecorded++
 				successionPaths[artifact.Path] = struct{}{}
@@ -143,6 +146,9 @@ func RenderStatus(projection Projection) []byte {
 			}
 		}
 	}
+	renderDissent(&output, projection, sequences, authors)
+	renderRatified(&output, projection, sequences)
+	renderUninterpretable(&output, projection, sequences)
 	output.WriteString("\n## Attempts\n\n")
 	for _, decision := range projection.Decisions {
 		if decision.Verdict != Effective {
@@ -150,6 +156,141 @@ func RenderStatus(projection Projection) []byte {
 		}
 	}
 	return output.Bytes()
+}
+
+// renderDissent lists every effective, unretired dissent with the record it
+// stands against and that record's current state. The bounded status shows
+// the newest twenty; the complete render must not show fewer than the
+// summary, so it shows them all. A dissent rests on the act it concerns, so
+// the first basis names it.
+func renderDissent(output *bytes.Buffer, projection Projection, sequences map[string]int, authors map[string]string) {
+	verdicts := projection.verdicts()
+	states := projection.recordStates()
+	output.WriteString("\n## Standing dissent\n\n")
+	count := 0
+	for _, statement := range projection.Statements {
+		if statement.Kind != KindDissent || statement.Retired || verdicts[statement.Event] != Effective {
+			continue
+		}
+		count++
+		fmt.Fprintf(output, "- %s by %s", name(statement.Event, sequences), short(statement.Actor))
+		if bases := projection.Provenance[statement.Event]; len(bases) > 0 {
+			state := states[bases[0]]
+			if state == "" {
+				state = "unknown"
+			}
+			fmt.Fprintf(output, " against %s (%s)", name(bases[0], sequences), state)
+		}
+		if statement.Text != "" {
+			fmt.Fprintf(output, ": %s", escape(statement.Text))
+		}
+		output.WriteString("\n")
+	}
+	if count == 0 {
+		output.WriteString("None.\n")
+	}
+}
+
+// renderRatified lists every statement whose ratification stands now, with
+// the act that ratifies it. Ratified is the fold's own reading of authority
+// and appears nowhere else on the human page: a proposal that became a
+// decision was previously visible only to a JSON reader.
+func renderRatified(output *bytes.Buffer, projection Projection, sequences map[string]int) {
+	states := projection.recordStates()
+	output.WriteString("\n## Ratified statements\n\n")
+	count := 0
+	for _, statement := range projection.Statements {
+		if !statement.Ratified {
+			continue
+		}
+		if count == 0 {
+			output.WriteString("| kind | statement | ratified by | state |\n")
+			output.WriteString("|---|---|---|---|\n")
+		}
+		count++
+		fmt.Fprintf(output, "| %s | %s | %s | %s |\n", escape(string(statement.Kind)), name(statement.Event, sequences), name(statement.RatifiedBy, sequences), states[statement.Event])
+	}
+	if count == 0 {
+		output.WriteString("None.\n")
+	}
+}
+
+// renderUninterpretable lists the records the fold could not read as any
+// governed kind: statements of an undefined kind, grouped by the kind they
+// claimed, and records whose payload could not be interpreted at all. Each
+// also appears among the attempts with its refusal; this section gives the
+// undefined ones back their text, which is the only disposition they have.
+func renderUninterpretable(output *bytes.Buffer, projection Projection, sequences map[string]int) {
+	output.WriteString("\n## Uninterpretable records\n\n")
+	texts := make(map[string]string, len(projection.Statements))
+	for _, statement := range projection.Statements {
+		texts[statement.Event] = statement.Text
+	}
+	kinds := make([]string, 0, len(projection.OpaqueKinds))
+	for kind := range projection.OpaqueKinds {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	count := 0
+	for _, kind := range kinds {
+		for _, event := range projection.OpaqueKinds[kind] {
+			count++
+			fmt.Fprintf(output, "- undefined kind `%s`: %s", escape(kind), name(event, sequences))
+			if text := texts[event]; text != "" {
+				fmt.Fprintf(output, ": %s", escape(text))
+			}
+			output.WriteString("\n")
+		}
+	}
+	for _, decision := range projection.Decisions {
+		if decision.Verdict == Uninterpretable {
+			count++
+			fmt.Fprintf(output, "- uninterpretable payload: %s: %s\n", name(decision.Event, sequences), escape(decision.Reason))
+		}
+	}
+	if count == 0 {
+		output.WriteString("None.\n")
+	}
+}
+
+// verdicts indexes every record's decision, for the same reason sequences
+// does: a statement row survives its own refusal, so the row alone cannot say
+// whether the record took force.
+func (p Projection) verdicts() map[string]Verdict {
+	index := make(map[string]Verdict, len(p.Decisions))
+	for _, decision := range p.Decisions {
+		index[decision.Event] = decision.Verdict
+	}
+	return index
+}
+
+// recordStates says, for every statement and act, whether it is current,
+// stale or retired now — the one word a reader needs beside a record another
+// record points at.
+func (p Projection) recordStates() map[string]string {
+	states := make(map[string]string, len(p.Statements)+len(p.Acts))
+	for _, statement := range p.Statements {
+		switch {
+		case statement.Retired:
+			states[statement.Event] = "retired"
+		case statement.Stale:
+			states[statement.Event] = "stale"
+		default:
+			states[statement.Event] = "current"
+		}
+	}
+	for _, act := range p.Acts {
+		states[act.Event] = act.Type + " act"
+	}
+	return states
+}
+
+func namesOf(events []string, sequences map[string]int) string {
+	names := make([]string, 0, len(events))
+	for _, event := range events {
+		names = append(names, name(event, sequences))
+	}
+	return strings.Join(names, ", ")
 }
 
 func renderLeftLive(accounting LeftLiveAccounting, sequences map[string]int, authors map[string]string, actors map[string]ActorState) string {

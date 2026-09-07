@@ -200,7 +200,12 @@ func deadBasisVerdict(projection workroom.Projection, restsOn []string) (blockin
 	var stale []string
 	for basis, class := range dead {
 		switch class {
-		case workroom.DeadBasisSupersede:
+		case workroom.DeadBasisSupersede, workroom.DeadBasisIneffective:
+			// Advisory only. Citing a retirement can be intentional, and
+			// citing a refused record is disclosed on the act's own row
+			// (ineffective_bases) and in the filing note; neither is the
+			// withdrawn ground a retired basis is, and refusing here would
+			// turn a disclosure into a policy nobody adopted.
 			continue
 		case workroom.DeadBasisStale:
 			stale = append(stale, basis)

@@ -26,7 +26,7 @@ against the ref as it stands now.
 | `rests_on` | required | Array of event identifiers. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
-| `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. |
+| `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. Citing a record the fold refused stays advisory. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 | `agent` | optional | The actor whose existing accessible key signs this statement; defaults to startup `--actor`. |
@@ -117,6 +117,14 @@ computes the note again from the world the act would join and refuses any act
 whose signed `body.stale_bases` differs, or that carries the field at all on
 fresh ground. If your world moved between signing and sequencing, call the
 tool again to sign the current note.
+
+A basis the fold **refused** is neither: nothing was withdrawn and nothing
+underneath it can move. The act is admitted, and the result's `dead_rests_on`
+note classifies the citation `ineffective`, beside `retired`, `stale` and
+`supersede`, so a caller sees at filing time that part of what the act rests
+on never took force. The landed record then carries `ineffective_bases` in
+the projection. See
+[staleness](../../concepts/staleness.md#ineffective-bases).
 
 ## Reserved fields you cannot write
 
