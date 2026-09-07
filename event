@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:902f72487d4d198f3c83e806955a718a2512be8b","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/store.ts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9032b1529724a17ee2a200a01363a61ab8d76325","text":"Merge retired a covered predecessor; the successor is at internal/service/server.go."}
