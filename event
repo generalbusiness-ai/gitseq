@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3f7ea4ece874c037c6025962861ae7034bfdd6d3","text":"Retired: candidate at bd6fb383, succeeded at the same path by the 7d32e01d candidate."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c494a16a8e8c17b2ceecbafcf3017add34c2e25a","text":"Retired: author cleanup of a candidate the #140 landing receipt 5dedc140 (main 449cdb0e) sealed as abandoned; its lane is settled and the landed successor occupies the path."}
