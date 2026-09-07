@@ -1,0 +1,81 @@
+frozen frontier 71b03a6ac8dfb434149763ff1ea99ad276366363 depth 20820
+
+== bounded status rendering (gs status) ==
+# Workroom status
+
+frontier 71b03a6a…6366363 at depth 20820 (frozen projection)
+
+Commitments: awaiting-review 3 (3 stale), cancelled 369, open 1, promised 1, reneged 3, satisfied 1534 (1252 stale), stale 14, superseded 37 (21 stale), withdrawn 549 (500 stale). Artifacts: 294 current, 581 stale, 4548 retired, 1476 describing a superseded world. Attempts: 265 ineffective, 9 disputed.
+Work, workroom: 5 open, 1534 completed, 958 closed and not completed, 14 stale and not in flight, of 2511 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 3, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 3 open resting on reasoning that moved, 78 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+Approved but not landed at their target: 78.
+
+== complete status rendering (gs status --all) ==
+# Workroom status
+
+awaiting-review=3 cancelled=369 open=1 promised=1 reneged=3 satisfied=1534 stale=14 superseded=37 withdrawn=549
+
+Work, workroom: 5 open, 1534 completed, 958 closed and not completed, 14 stale and not in flight, of 2511 commitments.
+
+== complete JSON (gs status --json) work / HTTP GET /v0/status work ==
+{
+  "scope": "workroom",
+  "commitments": 2511,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1534,
+  "closed_not_completed": 958,
+  "stale": 14,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+
+== bounded summary totals (GET /v0/status-summary durable.totals.work) ==
+{
+  "scope": "workroom",
+  "commitments": 2511,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1534,
+  "closed_not_completed": 958,
+  "stale": 14,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+totals.approved_not_landed = 78
+lifecycle totals.commitments["open"] = 1
+
+== MCP status/wait totals.work ==
+{
+  "scope": "workroom",
+  "commitments": 2511,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1534,
+  "closed_not_completed": 958,
+  "stale": 14,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+wait totals.work equals status totals.work: true

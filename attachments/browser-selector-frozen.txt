@@ -1,0 +1,17 @@
+{
+  "frontier": "71b03a6ac8dfb434149763ff1ea99ad276366363",
+  "depth": 20820,
+  "scope": "workroom",
+  "commitments": 2511,
+  "open": 5,
+  "open_lifecycles": {
+    "open": 1,
+    "awaiting-review": 3,
+    "promised": 1
+  },
+  "completed": 1534,
+  "closed_not_completed": 958,
+  "stale": 14,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
