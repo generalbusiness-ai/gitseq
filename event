@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:93b391cd17b98ecf8dad6e4e31dd3de0dcf68acf","text":"Merge retired a covered predecessor; the successor is at ui/src/components/TopBar.tsx."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9e874b11125b5502e32408bf995e65b03cba6f70","text":"Merge retired a covered predecessor; the successor is at internal/service/headwatch.go."}
