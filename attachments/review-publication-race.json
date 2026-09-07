@@ -1,0 +1,11 @@
+{
+  "review_request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7d3fe9b950337722eea91eb1d425afeb16ac2bd",
+  "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:20aeb3ba6cd4fc1096c3063abe841cfd7b3c2874",
+  "evidence": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcc67252b08993b3f9405dd2ffb9cd57b7cd9cbd",
+  "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2c7f8d96ae36e4a6ef8c5d3482fc3fcff165582d",
+  "replacement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:81c6e8095378fe5480276067491edb2e1bc09cb9",
+  "observed_status": "cancelled",
+  "reviewer_ephemeral_report": "Guarded verdict filing for7d32 refused because its artifacts were retired. Evidence fcc67252 is effective; no formal sixth-head verdict exists. I have moved both owned review/probe worktrees to7c999 and will review the corrected exact head. All previous twelve missing/known-profile scenarios are retained for direct rerun.",
+  "thread": "eph:sha256:98ed6218e19b3b6f65ea78bc5ad647144a3001e7aae43b00f09bbeca3f06cbc4:0",
+  "limits": "Reviewer-reported actual guard refusal; root independently inspected admitted promise, effective retirement and cancelled projection. No claim about project-wide incident frequency."
+}
