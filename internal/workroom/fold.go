@@ -370,6 +370,13 @@ type parsedRecord struct {
 	// own position. Nil for every request admitted under an older schema,
 	// which is what keeps the same body names powerless there.
 	result *requestResult
+	// retiresOnOwnStanding seals that this supersession was admitted on its own
+	// actor's entitlement — the target's author, or an actor holding ratifier —
+	// rather than on authority borrowed from a merge receipt's plan. It is
+	// written when the supersession lands, because that is the moment the
+	// standing was exercised; asking again later would read a role grant that
+	// has since changed.
+	retiresOnOwnStanding bool
 	// supersedeBody carries a supersede@1 body past the lowering to Supersede.
 	// carriedSuccessorRequest and abandonedSuccession seal how a supersession
 	// disposed of an approved head, for the same reason the transfer above is
@@ -389,6 +396,17 @@ type leftLiveAccounting struct {
 	LeftLiveAccounting
 	path      string
 	successor string
+	// declaredDeletion marks an entry the receipt's own signed retirement plan
+	// names with the explicit empty-string successor — the deletion shape, and
+	// the only shape the reviewed-path cut is structurally unable to reach.
+	// declaredDeletions settles that from the signed JSON value once; a plan
+	// entry naming any other successor is claiming a surviving destination, so
+	// it is answerable at that path and stays visible when the review did not
+	// cover it, and a value that is not a string is no successor at all. Whether an honest-looking deletion claim is honest depends on a
+	// retirement the merge records after the receipt, so that half of the
+	// answer is not available at the receipt's position and is settled when
+	// the projection is built.
+	declaredDeletion bool
 }
 
 type roleGrant struct {
@@ -1211,6 +1229,7 @@ func (f *foldState) decideSupersede(record *parsedRecord, supersede Supersede) D
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized governance supersession"}
 	}
 	if target.record.Actor == record.record.Actor || f.hasRole(record.record.Actor, "ratifier") {
+		record.retiresOnOwnStanding = true
 		return Decision{Event: record.record.ID, Verdict: Effective, Reason: "authorized supersession"}
 	}
 	// Past the own-authored branch above, every remaining path is authority
@@ -1766,6 +1785,7 @@ func (f *foldState) missingLeftLiveAtReceipt(receipt *parsedRecord, classified m
 	if !receipt.mergeChangedPathsValid {
 		return nil
 	}
+	deletions := f.declaredDeletions(receipt)
 	var missing []leftLiveAccounting
 	for index := range f.records {
 		record := &f.records[index]
@@ -1779,9 +1799,99 @@ func (f *foldState) missingLeftLiveAtReceipt(receipt *parsedRecord, classified m
 		missing = append(missing, leftLiveAccounting{
 			LeftLiveAccounting: LeftLiveAccounting{Artifact: record.record.ID, Verified: false, Reason: "not classified by receipt"},
 			path:               state.Body["path"], successor: f.leftLiveSuccessor(receipt, state.Body["path"]),
+			declaredDeletion: deletions[record.record.ID],
 		})
 	}
 	return missing
+}
+
+// declaredDeletions reads the retirement plan the receipt actually signed,
+// before validateMergeReceiptNow cuts it down to the paths an independent
+// review covers, and returns only the artifacts that plan maps to the deletion
+// shape. That narrow map stays the only source of retirement authority and
+// this one grants none: it answers the different question of what the merge
+// said it was deleting, and only the accounting below reads it.
+//
+// The deletion shape is the explicit JSON empty string, and it is recognised
+// here, once, from the value as the receipt signed it, with no normalising and
+// no conversion. An empty string is the merge client's one way of saying the
+// path did not survive; every other string — a real path, a relative escape,
+// anything at all — is a claim about a surviving destination; and a JSON null,
+// number, boolean, array or object is not a successor of any kind. Decoding
+// the plan into Go strings would turn null into "" before anything could look
+// at it, and that zero value is exactly the claim this set must not contain.
+// A plan that does not parse as an object of values declares nothing. Only the
+// deletion shape is unreachable by the reviewed-path cut, so only the
+// deletion shape may be read back out of the plan here. Anything else stays an
+// unsupported claim.
+func (f *foldState) declaredDeletions(receipt *parsedRecord) map[string]bool {
+	state, ok := receipt.body.(*State)
+	if !ok {
+		return nil
+	}
+	var plan map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(state.Body["merge_retirements"]), &plan); err != nil {
+		return nil
+	}
+	deletions := make(map[string]bool, len(plan))
+	for artifact, successor := range plan {
+		if string(successor) == `""` {
+			deletions[artifact] = true
+		}
+	}
+	return deletions
+}
+
+// retirementOnOwnStanding reports whether the log actually records this
+// artifact's retirement by an actor entitled to record it in their own right:
+// the artifact's author, or an actor holding ratifier at the moment they
+// signed. Nothing else counts. A supersession admitted on a merge receipt's
+// borrowed authority is not own standing, a refused one recorded nothing, and
+// a supersession since withdrawn no longer retires anything — which is why the
+// artifact must also be retired now.
+//
+// This is the fact that makes a receipt's own retirement claim honest.
+// Appearing in the receipt's JSON proves nothing, because the signer wrote
+// that JSON; the retiring act is signed by someone the fold can hold to a
+// standing it checked.
+func (f *foldState) retirementOnOwnStanding(artifact string) bool {
+	if !f.retired(artifact) {
+		return false
+	}
+	for _, supersession := range f.supersessions {
+		if !supersession.retiresOnOwnStanding || f.retired(supersession.record.ID) {
+			continue
+		}
+		if supersede, ok := supersession.body.(*Supersede); ok && supersede.Target == artifact {
+			return true
+		}
+	}
+	return false
+}
+
+// accountedDeletion reports whether one frozen missing-classification entry is
+// really an accounted deletion: the receipt's own plan named it with the
+// explicit empty-string successor, and the log records its retirement on the
+// retiring actor's own standing. The plan and the retirement stay two separate
+// facts — the plan alone leaves the entry visible, and so does a retirement
+// the plan never claimed — and a plan entry carrying anything other than the
+// empty string is not the deletion shape at all, so it is left visible
+// whatever was retired.
+func (f *foldState) accountedDeletion(entry leftLiveAccounting) bool {
+	return entry.declaredDeletion && f.retirementOnOwnStanding(entry.Artifact)
+}
+
+// accountedDeletions counts those entries at one declared successor path. The
+// receipt's sealed unaccounted tally is not rewritten; this is the part of it
+// that was never a debt, subtracted where the debt is published.
+func (f *foldState) accountedDeletions(receipt *parsedRecord, path string) int {
+	count := 0
+	for _, entry := range receipt.mergeLeftLive {
+		if entry.successor == path && f.accountedDeletion(entry) {
+			count++
+		}
+	}
+	return count
 }
 
 // parseMergeChangedPaths accepts only the canonical representation the merge
@@ -1820,7 +1930,10 @@ func artifactCoversChangedPath(artifact string, changed []string) bool {
 // unaccountedAtReceipt counts live artifacts at each declared successor path
 // exactly when the receipt lands. Planned retirements and verified left-live
 // testimony account for a predecessor. Later retirement cannot change this
-// stored answer.
+// stored answer; where the receipt's own plan named a predecessor whose
+// retirement the log later records on its actor's own standing, the projection
+// subtracts that entry from the published debt rather than rewriting the
+// sealed count.
 func (f *foldState) unaccountedAtReceipt(receipt *parsedRecord, verified map[string]bool) map[string]int {
 	if !receipt.mergeChangedPathsValid {
 		unaccounted := make(map[string]int)
@@ -3115,7 +3228,7 @@ func (f *foldState) project() Projection {
 			Retired: f.retired(record.record.ID), Stale: result.stale[record.record.ID],
 			DescribesSupersededWorld: result.world[record.record.ID],
 			WorldSupersededAt:        result.causedAt[record.record.ID],
-			MergeLeftLive:            projectLeftLive(record.mergeLeftLive, ""),
+			MergeLeftLive:            f.projectLeftLive(record.mergeLeftLive, ""),
 		}
 		if record.decision.Verdict == Effective {
 			statement.IneffectiveBases = f.ineffectiveBases(record.record.RestsOn)
@@ -3138,10 +3251,11 @@ func (f *foldState) project() Projection {
 			if receipt := f.leftLiveReceiptFor(&record); receipt != nil {
 				// The receipt snapshot is immutable. Artifacts after its frontier
 				// remain unaccounted even if a later retirement would have removed
-				// them from the old end-of-fold count.
+				// them from the old end-of-fold count. The one subtraction is the
+				// receipt's own accounted deletions, which were never debt.
 				postCount, postLive := f.postReceiptAccounting(receipt, &record, path)
-				live = receipt.mergeUnaccounted[path] + postCount
-				leftLive = projectLeftLive(receipt.mergeLeftLive, path)
+				live = max(0, receipt.mergeUnaccounted[path]+postCount-f.accountedDeletions(receipt, path))
+				leftLive = f.projectLeftLive(receipt.mergeLeftLive, path)
 				if !f.retired(record.record.ID) {
 					for _, artifact := range postLive {
 						receiptDebts[artifact] = true
@@ -3339,10 +3453,16 @@ func cloneStringMap(input map[string]string) map[string]string {
 	return output
 }
 
-func projectLeftLive(input []leftLiveAccounting, path string) []LeftLiveAccounting {
+// projectLeftLive publishes a receipt's frozen accounting, less the entries
+// that turned out to be accounted deletions. Every other entry is published
+// exactly as the receipt's position sealed it.
+func (f *foldState) projectLeftLive(input []leftLiveAccounting, path string) []LeftLiveAccounting {
 	var output []LeftLiveAccounting
 	for _, entry := range input {
 		if path != "" && entry.successor != path {
+			continue
+		}
+		if f.accountedDeletion(entry) {
 			continue
 		}
 		output = append(output, entry.LeftLiveAccounting)

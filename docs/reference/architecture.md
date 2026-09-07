@@ -1080,6 +1080,30 @@ caches from `@19` are rejected and verified history is replayed. Kernel
 checkpoints remain profile-independent. Cleanup remains an explicit act by
 the old artifact's author or a ratifier.
 
+The receipt's cross-author retirement authority stays cut down to the reviewed
+paths, and the missing-classification accounting no longer reads that cut map
+as the whole plan. A merge that deletes a file publishes no successor at the
+deleted path, so the cut can never reach the deleted predecessor even though
+the receipt maps it to the empty successor in the plan it signs. That explicit
+empty JSON string, read once from the signed value with its type intact and
+never normalised or converted, is the deletion shape; a plan entry naming any
+other string claims a surviving destination and stays visible when the review
+did not cover it, and a `null` names no successor and stays visible too; a
+plan carrying a number, boolean, array or object value is not a plan the fold
+can read, so that receipt is admitted with no plan, retires nothing and
+publishes no accounting at all. An explicit deletion entry is reported as
+accounted for only when the log also records that artifact's retirement by
+an actor entitled to record it in their own right — the artifact's author, or
+an actor holding `ratifier` — and that retirement still stands. A plan entry
+with no such retirement, a refused one, and an entry naming anything that is
+not a live covered artifact all stay visible as before, as does a covered
+artifact the plan never named. The receipt's sealed unaccounted tally is not
+rewritten; the published cleanup count subtracts only these accounted
+deletions. No new retirement authority is granted, and cleanup remains an
+explicit act. This projection change advances the profile to
+`workroom-fold@23`; a cache written under `@22` is rejected and verified
+history is replayed.
+
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON
 transport limit when that surface is selected. Thus the application cannot

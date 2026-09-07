@@ -2485,7 +2485,7 @@ func TestAnOlderProfileCacheIsRebuiltUnderTheNewRules(t *testing.T) {
 		unsatisfied.Projection.Statements[position].Satisfier = ""
 	}
 	oldProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@13"
-	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@22"
+	wantProfile := apphost.DefaultApplication + "\x00" + "workroom-fold@23"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &unsatisfied
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2552,7 +2552,7 @@ func TestAwaitingReviewStatusRebuildsAnOlderProfileCache(t *testing.T) {
 	// would keep the approved head out of every actor's queue.
 	old.Projection.Commitments[position].WaitingOn = ""
 	oldProfile := apphost.DefaultApplication + "\x00workroom-fold@18"
-	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@22"
+	wantProfile := apphost.DefaultApplication + "\x00workroom-fold@23"
 	workspace.snapshotMu.Lock()
 	workspace.snapshotCache = &old
 	workspace.snapshotSource = SnapshotSourceSignedCheckpointTail
@@ -2628,7 +2628,7 @@ func TestReassignSchemasRebuildAnOlderProfileCache(t *testing.T) {
 			t.Fatalf("rebuilt guarded decision %s = %+v, found=%v", event, decision, ok)
 		}
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@22"
+	want := apphost.DefaultApplication + "\x00workroom-fold@23"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
@@ -2704,7 +2704,7 @@ func TestReplacementSchemaRebuildsATwentyOneProfileCache(t *testing.T) {
 	if got := commitmentRow(t, rebuilt.Snapshot, replacement.ID); got.TargetRef != "refs/heads/main" || got.Legacy {
 		t.Fatalf("rebuilt replacement commitment = %+v, want the stated refs/heads/main target", got)
 	}
-	want := apphost.DefaultApplication + "\x00workroom-fold@22"
+	want := apphost.DefaultApplication + "\x00workroom-fold@23"
 	if fixture.workspace.snapshotProfile != want {
 		t.Fatalf("cache profile = %q, want %q", fixture.workspace.snapshotProfile, want)
 	}
