@@ -1,0 +1,37 @@
+{
+  "checked_utc": "2026-09-07T23:24:16.759489+00:00",
+  "source_head": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "source_basis": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fd87880c4246c7b924803dd3cf8d7e9d7ac7386",
+  "source_basis_head": "b8f0308b0413698aac6e9dcab150b90482408ed9",
+  "proof_scope": "Unchanged repository forge test file copied to a private temporary directory with the matching guide and three Compose variants; all tests run using go test <absolute compose_test.go> -count=1. No production source or live deployment changed.",
+  "cases": {
+    "baseline": {
+      "exit_code": 0,
+      "log": "ok  \tcommand-line-arguments\t0.241s\n"
+    },
+    "unsafe-short-control": {
+      "exit_code": 1,
+      "log": "--- FAIL: TestEveryPublishedPortBindsLoopback (0.00s)\n    compose_test.go:76: port mapping \"0.0.0.0:3300:3000\" publishes on \"0.0.0.0\", which is not loopback\nFAIL\nFAIL\tcommand-line-arguments\t0.125s\nFAIL\n"
+    },
+    "unsafe-long-addition": {
+      "exit_code": 0,
+      "log": "ok  \tcommand-line-arguments\t0.124s\n"
+    }
+  },
+  "yaml_parsed_ports": [
+    "127.0.0.1:3300:3000",
+    {
+      "host_ip": "0.0.0.0",
+      "protocol": "tcp",
+      "published": "3301",
+      "target": 3000
+    }
+  ],
+  "independent_parser": "Existing gopkg.in/yaml.v3 dependency via temporary read-only parser; successful decode of the unsafe fixture. This establishes YAML structure, not a Compose runtime run.",
+  "official_syntax_source": "https://docs.docker.com/reference/compose-file/services/#long-syntax-3",
+  "official_syntax_summary": "Docker documents target, published, host_ip and protocol fields for long port mappings; omitted host_ip binds all interfaces. The fixture explicitly specifies 0.0.0.0.",
+  "runtime_limit": "Docker CLI exists but Compose plugin and standalone docker-compose unavailable. No daemon/image/container or runtime exposure test performed.",
+  "source_matches_current_main": true,
+  "historical_context": "Original1326 was replaced by8101 and repair8133. Independent approval8175 names c87ae05b; merge8177 records b7f5b015. That historical delivery is not undone. This task repairs a newly reproduced surviving coverage hole in the current gate.",
+  "diff": "--- baseline.yaml\n+++ unsafe-long-addition.yaml\n@@ -19,6 +19,10 @@\n       # fresh volume, its open installer - on every network the host is\n       # attached to.\n       - \"127.0.0.1:3300:3000\"\n+      - target: 3000\n+        published: \"3301\"\n+        host_ip: 0.0.0.0\n+        protocol: tcp\n     volumes:\n       - gitseq-forge-data:/data\n     healthcheck:\n"
+}
