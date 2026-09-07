@@ -1,0 +1,16 @@
+=== RUN   TestPlannerRetirementScope
+=== RUN   TestPlannerRetirementScope/unapproved-bare
+    planner_retirement_test.go:48: verdict=effective reason="authorized supersession" status=withdrawn successor="" terminal=""
+=== RUN   TestPlannerRetirementScope/unapproved-explicit-abandon
+    planner_retirement_test.go:48: verdict=ineffective reason="disposition applies only to a request that holds an approved head" status=open successor="" terminal=""
+=== RUN   TestPlannerRetirementScope/approved-bare
+    planner_retirement_test.go:48: verdict=ineffective reason="request holds approved head \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"; carry it in the successor or declare abandoned" status=awaiting-landing successor="" terminal=""
+=== RUN   TestPlannerRetirementScope/approved-explicit-abandon
+    planner_retirement_test.go:48: verdict=effective reason="authorized supersession" status=abandoned successor="" terminal="abandoned"
+--- PASS: TestPlannerRetirementScope (0.00s)
+    --- PASS: TestPlannerRetirementScope/unapproved-bare (0.00s)
+    --- PASS: TestPlannerRetirementScope/unapproved-explicit-abandon (0.00s)
+    --- PASS: TestPlannerRetirementScope/approved-bare (0.00s)
+    --- PASS: TestPlannerRetirementScope/approved-explicit-abandon (0.00s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	0.331s
