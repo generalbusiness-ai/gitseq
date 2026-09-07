@@ -1,0 +1,28 @@
+{
+  "checked_utc": "2026-09-07 04:29 UTC",
+  "candidate": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+  "main_when_observed": "dfbf4089e6826810083848e56e9deff6c0faec29",
+  "approval": "df516585a7e0432dfa08fcc09d0e55c529405a7c",
+  "ratification": "ad276d1215b71e817ba654170dbc1bfa9a14c8a5",
+  "merge_refusal_evidence": "b4380583e7a75f86ceb74eb71aab4a550fa54715",
+  "cleanup_request": "f87d58d3f854c80a53b6684ec47eb2515ae6abfe",
+  "author_citation_guard_evidence": "b7306c1482098773bdbcdab842ce8af077168e6c",
+  "independent_git_citation_paths": [
+    "7c9991b58a05cad9a232a821f78a07d830e17f7c:docs/reference/architecture.md",
+    "7c9991b58a05cad9a232a821f78a07d830e17f7c:docs/reference/mcp/status.md",
+    "7c9991b58a05cad9a232a821f78a07d830e17f7c:docs/reference/mcp/work.md"
+  ],
+  "independent_git_bundle_diff": [
+    "D\tinternal/service/uidist/assets/index-DVoOmhXh.js",
+    "A\tinternal/service/uidist/assets/index-hIXoPEGS.js"
+  ],
+  "effective_bundle_retirements": [
+    "e749cd7097ba4759162d68f0938ccd7669c86ae1",
+    "36e08c023e61ba05c0f7785c2b842fdd757db932"
+  ],
+  "scope": "One observed approved-head landing; no review-time saving measured. Refusals are durable native reports corroborated by source rules and actual candidate paths/citations. This audit did not execute a merge or bypass an admission guard.",
+  "source_files_at_07753351_equal_dfbf": [
+    "internal/mergeplan/mergeplan.go",
+    "docs/reference/gs/merge.md"
+  ]
+}
