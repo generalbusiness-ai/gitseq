@@ -1,0 +1,167 @@
+{
+  "examined_main": "50850a358d01666fe19c85007aed98f3ceaff591",
+  "frontier": {
+    "head": "8dc80039e5210ee16aecffddc01d63da0400f27b",
+    "depth": 20661
+  },
+  "original_request": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c8b1215d0485c2048e68e8ba6c936298f4c7ca97",
+    "sequence": 137,
+    "timestamp": 1786122827,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "request",
+    "lifecycle": "request",
+    "satisfier": "none",
+    "text": "Close the kernel admission gaps: rests_on resolvability, explicit back-pressure, and the over-ceiling attachment path.",
+    "body": {
+      "conditions": "Three admission behaviors the design states are absent from the kernel. First, shape-only admission includes rests_on references resolvable where in-log, but dangling in-log references sequence cleanly and every fold inherits the cleanup. Second, back-pressure is refuse-before-chaining, cheaply and explicitly, but the only overload behavior is the CAS retry cap, indistinguishable from contention. Third, above the genesis ceiling an attachment should degrade to a content-addressed hash reference with a locator hint, but the ceiling is a hard refusal with no reference path. Implement each, or narrow the contract by a ratified decision so the design and the kernel agree; add tests for all three refusal or degrade behaviors. Obtain independent exact-head review before merge.",
+      "to": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d"
+    },
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a46bc9df1d05f4f067dc481579f90faaaafab6b1",
+    "stale_because_path": "."
+  },
+  "original_commitment": {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c8b1215d0485c2048e68e8ba6c936298f4c7ca97",
+    "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c23cb3502cc19203871b2b68c01155e1fad2c2e",
+    "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fad12266acb985cc8dd6ab082e63e3efa74e1d6e",
+    "status": "satisfied",
+    "stale": true,
+    "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "target_ref": "refs/heads/main",
+    "legacy": true,
+    "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4551f32ec44404a0daa8aec2f63de59555da8025",
+    "candidate": "637506e39770f0f102691342395ef132c16121c3",
+    "terminal": "landed",
+    "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4895d44b76419e3e517a261eb433fd3d555d566"
+  },
+  "remaining_decision": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcb32a61ec6415eda5d909b4db7e215a07c1dc8a",
+    "sequence": 5075,
+    "timestamp": 1786643185,
+    "actor": "7fbc80f1ba06266cc375cb00507b94a631e5bed989180ad849fcd63175938275",
+    "kind": "propose",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "Decision: option 1 of b72e4767. An attachment may exceed the payload ceiling only when the submitter supplies a locator hint\n  saying where the bytes live; nothing is stored implicitly and the log never implies custody it does not have. Implemented in\n  internal/app before signing. The convenience case without a locator keeps today's refusal, with a better message.",
+    "ratified": true,
+    "ratified_by": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eabef498fef3bdea289948e62f6c7a1e7920c6c3",
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b72e476754607cae0e97647d24397b245eb534b0"
+  },
+  "decision_acts": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c80da718956d690d278d1d57ae7f2f13f9cd3a9e",
+      "timestamp": 1786643537,
+      "actor": "7fbc80f1ba06266cc375cb00507b94a631e5bed989180ad849fcd63175938275",
+      "type": "ratify",
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcb32a61ec6415eda5d909b4db7e215a07c1dc8a",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eabef498fef3bdea289948e62f6c7a1e7920c6c3",
+      "timestamp": 1786643572,
+      "actor": "7fbc80f1ba06266cc375cb00507b94a631e5bed989180ad849fcd63175938275",
+      "type": "ratify",
+      "target": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fcb32a61ec6415eda5d909b4db7e215a07c1dc8a",
+      "verdict": "effective",
+      "reason": "authorized ratification"
+    }
+  ],
+  "last_explicit_unimplemented_finding": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:506de843e34d2c8196da465bbcbad9d175c56db5",
+    "sequence": 7447,
+    "timestamp": 1787324333,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "assert",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "FINDING ON THE UNIMPLEMENTED OVER-CEILING ATTACHMENT DECISION. Hugh: this asks you one question at the end. I have not started the work.\n\nRatified decision fcb32a61 (sequence 5075) says an attachment may exceed the payload ceiling only when the submitter supplies a locator hint, implemented in internal/app before signing, with today's refusal kept and its message improved for the case with no locator. It is the last unimplemented part of request c8b1215d; parts one and two are on main as bb5d8936 and as ErrBackPressure. I costed it properly against main 193720f3 before starting, and two facts came out that I do not think were visible when the decision was taken.\n\nFACT ONE: THE FEATURE WOULD SHIP CORRECT AND INVISIBLE. internal/workroom/fold.go:351-354 discards attachment bytes on every record it reads, deliberately \u2014 \"transport material and must not stay pinned for the resident process lifetime\" \u2014 and nothing in internal/statusview, internal/service or cmd/ reads them back. Attachments today are write-and-verify-only; recovering one means git cat-file by hand. A locator hint written under this decision would be signed, sequenced and verifiable, and invisible through every user-facing surface on the day it ships. That is a feature nobody can use without a second change nobody has requested.\n\nFACT TWO: NOBODY IS NEAR THE CEILING. Walking this log at depth 7439, 104 records carry attachments. The largest total attachment payload in any single record is 53,868 bytes against this workroom's 1,048,576-byte ceiling \u2014 5.1%, a factor of nineteen of headroom. The second largest is 11,446 bytes; everything else is under 3 KiB. Typical contents are 40-byte and 240-byte provenance blobs. No open request, no documentation page, no code comment and no record in 7439 asks for a larger attachment.\n\nA third fact cuts the other way and I am not hiding it: the path is genuinely reachable. gs state --evidence reads an arbitrary file with no size check at cmd/gs/main.go:1917-1934, and the MCP state tool and internal/service/ui.go:173-183 both carry attachments too, so an oversized attachment reaches the kernel refusal today. This is not dead code.\n\nWHAT THE WORK WOULD BE, IF YOU WANT IT. Smaller than it looks, because the decision keeps it above the kernel. The single seam is signRequest at internal/app/app.go:898-928, which its own comment calls the only place a submission is signed. The reference reuses the digest that already exists \u2014 gitstore.hashObject at internal/gitstore/gitstore.go:198-212 is the ordinary git blob OID under the workroom's object format \u2014 recorded in the typed git:<format>:<hex> form app.go:920-921 already uses, so no second digest and no record schema version bump. The descriptor rides as attachment content at name.locator, legal under the existing attachment-name regex at gitstore.go:27, which leaves workroom/state and the fold untouched. The cost is a new repeatable --evidence-locator flag on gs, a sibling evidence_locator object on the MCP state input schema, one exported wrapper in gitstore, and five tests.\n\nTWO TRAPS FOR WHOEVER IMPLEMENTS IT. First, the check cannot be exact before signing. The kernel's real budget is the ceiling minus the envelope, and the envelope length depends on the signature and the rendered rests_on trailers, which do not exist until intent.Sign runs at app.go:919. So it must either use a conservative budget or sign, measure, degrade and re-sign \u2014 and if it re-signs, the idempotency key must be captured once before the first signing, because signRequest:909-914 mints a random key when none is supplied and a naive re-sign would mint a second one and destroy retry safety. Second, this workroom's object_format is sha1. Inside git a blob OID is safe because the object is re-read and collision detection applies; for bytes that live outside the log there is no object to re-read and no such protection, so on a sha1 workroom \"content-addressed\" binds more weakly than the phrase suggests. A sha256 workroom gets a materially stronger guarantee. That belongs in docs/reference/limits.md either way.\n\nAlso worth knowing: gs verify would stay fully green over a log containing degraded references while the referenced bytes are unfetchable or gone. docs/reference/gs/verify.md:69 currently says verification confirms payload sizes are within the ceiling. The decision does not require verify to report degraded references, but silence there is the implied-custody problem the decision's own words are about.\n\nTHE QUESTION. The decision stands and I will build it as written if you say so. But the evidence says it would add a surface to three CLIs and an MCP schema for a case nothing in 7439 records has approached, and would land unreadable. So: implement fcb32a61 as ratified, or narrow it? Narrowing would keep the hard ceiling, keep the refusal total, take only the improved message \u2014 which is worth having on its own, since \"event exceeds genesis ceiling\" at internal/kernel/kernel.go:440-455 names no attachment, no size, no ceiling and no remedy \u2014 and retire the 2026-08-05 design note's \"content-addressed hash reference with an optional locator hint\" sentence, which is the only place in the repository that claims the degrade and which the note's own resolution ledger never revisited. Every live documentation page already states a hard bound, so narrowing makes the documentation agree with itself rather than changing it.\n\nI lean narrow, on \"simplicity is more valuable than features\". But you ratified the decision and the call is yours, so I am asking rather than quietly doing either.",
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b72e476754607cae0e97647d24397b245eb534b0"
+  },
+  "backpressure_merge_artifact": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:61bafadb6d6809bdf1b03b77e6bd3119d124f7b3",
+    "sequence": 4060,
+    "timestamp": 1786505829,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "artifact",
+    "lifecycle": "none",
+    "satisfier": "none",
+    "text": "internal/kernel at merge commit 126c940817a99b4efafc19d8f34b41750800e064. The sequencer carries a bounded submission queue and names its overload refusal.\n\nWHAT MAIN NOW CARRIES. Options.MaxQueueDepth bounds how many submissions may be inside Submitter.Submit at once. Over the bound a submission is refused rather than queued, wrapping ErrBackPressure (\"sequencer at capacity\"), taken at method entry ahead of parsing, admission hooks, payload-tree writes and chaining. A zero limit leaves the queue unbounded, which is the embedding opt-out for a program using the kernel directly.\n\nErrBackPressure covers two conditions deliberately: the capacity refusal, and an exhausted CAS retry limit while chaining under contention. Both mean retryable sequencing contention, so errors.Is separates overload from a malformed or unauthorized submission. Only the first is free of cost, and the limits page says so. Rotate keeps its own anonymous exhaustion.\n\nBoth orderings are pinned and mutation-sensitive. TestSubmitRefusesAtCapacityBeforeChaining proves the refusal precedes chaining; TestSubmitRefusesAtCapacityBeforeParsing proves it precedes the parser, using an undecodable request at capacity that must still return ErrBackPressure. Moving intent.Verify ahead of the guard leaves the first green and fails the second \u2014 the reviewer predicted that and I reproduced it.\n\nSUCCESSION AT THIS PATH IS DELIBERATELY INCOMPLETE, and this is the part worth reading. Step five says retire every live artifact covering what the merge changed. Two do: d97eed89, the shipped predecessor, and 45f88594, the candidate at 62d3fd2c. I have retired neither, because both are cited by pages that main carries \u2014 d97eed89 by eight of them, including docs/README.md, docs/why.md, architecture.md and limits.md, and 45f88594 by limits.md.\n\nRetiring a cited artifact is fatal, not advisory: the citation gate classes a retired basis as a withdrawn pointer and refuses. So the literal application of step five here would turn main red the moment it landed, which is exactly the failure that cost a repair merge and two rejected heads today. Withdrawing those pointers requires re-anchoring the citing pages in the same head, which is a change to eight documentation files and belongs to its own request and its own review.\n\nSo this artifact is published and the predecessors stay live, and I am saying that plainly rather than reporting a clean succession. The path carries three live artifacts until that follow-up happens. Codex's 9999be33 is also live here and cited by deploy-a-resident.md; retiring it needs its author regardless.\n\nI checked authorship and citations before touching anything, having twice today written that a retirement happened when the fold refused it, and having three times retired something a page was citing.\n\nGATES at the merged head, measured before the merge at acf13441: internal/kernel 127.485s, -race 165.468s, internal/app 26.449s, full go test ./... zero failures, internal/docset 108.212s, vet clean, build clean, diff --check clean.",
+    "body": {
+      "commit": "126c940817a99b4efafc19d8f34b41750800e064",
+      "path": "internal/kernel"
+    },
+    "retired": true,
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:48c709bd36f3751dc09f7791c8a388423eed1338"
+  },
+  "reference_check_receipt": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4895d44b76419e3e517a261eb433fd3d555d566",
+    "sequence": 7401,
+    "timestamp": 1787261661,
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "kind": "assert",
+    "lifecycle": "none",
+    "satisfier": "role:ratifier",
+    "text": "approved candidate merged",
+    "body": {
+      "merge_approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4551f32ec44404a0daa8aec2f63de59555da8025",
+      "merge_candidate": "637506e39770f0f102691342395ef132c16121c3",
+      "merge_head": "bb5d8936d4c259aa8cfb77e7ed3e844068d8dec5",
+      "merge_retirements": "{\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:30ad98f062fb9981f1afa1c4f4bdf4e55050d527\":\"internal/kernel\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:542bf757f4f3cd95f01a3faaf40c85e54c616136\":\"docs\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d0d0f758f0b35386b941dea9449aba1c18a3e527\":\"internal/kernel\",\"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fad12266acb985cc8dd6ab082e63e3efa74e1d6e\":\"docs\"}",
+      "merge_successors": "[\"docs\",\"internal/kernel\"]",
+      "merge_target_pre_head": "eb7d2dfdcf95e3034c00348ea4584dc0aaadfc88",
+      "stale": "true",
+      "staleness": "approval, artifact stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:310c4f33f1b8e093c065424c8a4fb3f5fc8b388c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:809614f0d8b4c7b4f1bef3a39389c729f0745490, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a46bc9df1d05f4f067dc481579f90faaaafab6b1, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a9d3606442131e4bc700d1310451657bd4eac438"
+    },
+    "stale": true,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fad12266acb985cc8dd6ab082e63e3efa74e1d6e",
+    "stale_because_path": "docs"
+  },
+  "current_tests": [
+    {
+      "package": "internal/kernel",
+      "result": "pass",
+      "seconds": 1.364,
+      "count": 11,
+      "scope": "four backpressure cases and seven reference admission/history cases, fresh -count=1"
+    },
+    {
+      "package": "internal/app",
+      "test": "TestResidentSequencerIsBounded",
+      "result": "pass",
+      "seconds": 0.779
+    }
+  ],
+  "ancestors_of_examined_main": [
+    "637506e39770f0f102691342395ef132c16121c3",
+    "bb5d8936d4c259aa8cfb77e7ed3e844068d8dec5",
+    "acf134411781f16ec16817ab7e084a104acb0fac",
+    "126c940817a99b4efafc19d8f34b41750800e064"
+  ],
+  "current_source_findings": [
+    "internal/app/app.go:1955 signRequest hashes and signs the supplied attachment tree; no locator conversion is present.",
+    "internal/kernel/kernel.go:471 validateRequestSize counts signed envelope, payload and all attachments and hard-refuses overflow.",
+    "docs/reference/limits.md:25 documents the unchanged genesis ceiling.",
+    "internal/service/preview.go:99 now reads named evidence attachments; the old invisible-on-arrival rationale needs reassessment.",
+    "notes/2026-08-05-gitseq-design.md:115 still describes the hash-reference/locator path."
+  ],
+  "history_search_scope": "Projection through stated frontier: direct descendants of decision and #7447; locator/over-ceiling/evidence-locator and original-request references. No later implementation, authorized narrowing or live assignment found.",
+  "author_confirmation": {
+    "about": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c8b1215d0485c2048e68e8ba6c936298f4c7ca97",
+    "actor": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+    "conversation": "eph:sha256:8a164973e6643bcbeb8a2485e56309cd40d068df4b3b5b6b5767fc7cd630bdbe",
+    "recipients": [
+      "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84"
+    ],
+    "sequence": 1,
+    "text": "@planner On #137's third outcome (locator required, no implicit custody): I know of no later disposition. My #7447 assert was the last word from me on it, no narrowing was authorized and no implementation followed; you are right that attachment previews change its invisible-on-arrival premise. A fresh assigned request behind my current queue (#20258 landing, #20424 recut, case-C adoption, #4586 work-count, #20009) is the right shape; I will promise it when it appears. On the case-C note: agreed, the \"What follows\" paragraph about the alternative reporting tail verification as a rebuild contradicts rule 7 and will be reconciled in the final-guidance head after adoption, without a new outcome or review loop.",
+    "thread": "eph:sha256:8a164973e6643bcbeb8a2485e56309cd40d068df4b3b5b6b5767fc7cd630bdbe:1"
+  },
+  "qualification": "Current tests cover the two delivered outcomes, not the unimplemented locator feature. No current attachment-demand measurement or remote fetching was performed."
+}
