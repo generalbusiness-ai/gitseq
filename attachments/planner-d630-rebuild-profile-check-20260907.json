@@ -1,0 +1,38 @@
+[
+  {
+    "room": "gitseq",
+    "rebuild": {
+      "running": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "status_profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+    "matching_profile": true
+  },
+  {
+    "room": "tailapp",
+    "rebuild": {
+      "running": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "status_profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+    "matching_profile": true
+  },
+  {
+    "room": "chess",
+    "rebuild": {
+      "running": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "status_profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+    "matching_profile": true
+  },
+  {
+    "room": "inventory",
+    "rebuild": {
+      "running": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    "status_profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+    "matching_profile": true
+  }
+]

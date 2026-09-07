@@ -1,0 +1,12 @@
+{
+  "telemetry_process_unchanged": true,
+  "telemetry_sha256": "5e500c92db3aa7990bc803884e631e4d2b3f0008bd75f0d1b6d9cf5f8d0bc7c9",
+  "native_processes_unchanged": [
+    "Google Chrome",
+    "ChatGPT"
+  ],
+  "retained_tools_verified": true,
+  "old_bridge_pid_absent": true,
+  "new_adapter_pid": 44374,
+  "new_adapter_executable": "p44374\nftxt\nn/Users/hughpyle/play/gitseq-reader-d630-qjzcv142/gitseq-mcp\nftxt\nn/usr/lib/dyld\n"
+}

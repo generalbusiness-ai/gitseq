@@ -1,0 +1,30 @@
+{
+  "room": "gitseq-inventory",
+  "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+  "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+  "depth": 513,
+  "complete_projection_equal": true,
+  "vocabulary_equal": true,
+  "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+  "rebuild": {
+    "running": false,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  "key_commitments": [
+    {
+      "sequence": 503,
+      "request": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:7473b1eaeb979030d55f94ee5ed249533fccc018",
+      "requester": "10b27d580f73fe9769e741bb41ef17fdcc5c96b51d60506d2f530f9f6176ea02",
+      "performer": "826c05d4fd56efee52cb270debdccd04322835c8dd312ec29c01dc33a9ebe003",
+      "promise": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:4845727a06fab1ebdb70dee2456e85fbd216c95c",
+      "report": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:5457da15902e85fb279f1b70db57ebf019637953",
+      "status": "satisfied",
+      "target_repo": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:12c707fd205e431ad0d98bbb37453f0fba5fa4ff",
+      "candidate": "0a2510b1911f4bf2490a5f370f49536e689ab663",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:8c1a1da1bee44f20bd2b7da8f2a42079bd8f9fdb"
+    }
+  ]
+}

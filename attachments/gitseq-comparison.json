@@ -1,0 +1,43 @@
+{
+  "room": "gitseq",
+  "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+  "head": "05b47087d17373ff7ff0d78b78abba2ec6f36bc2",
+  "depth": 20602,
+  "complete_projection_equal": true,
+  "vocabulary_equal": true,
+  "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+  "rebuild": {
+    "running": false,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  "key_commitments": [
+    {
+      "sequence": 20008,
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:add297623a7c5f1d22725d891def3bcfe13ab87a",
+      "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d521563cf60b09d287f04e71667ceae931d4356",
+      "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c66949bf7f7fb6fda7120bd47701740ed99b849",
+      "status": "satisfied",
+      "stale": true,
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:982cae2132c166c8956091cd51bb1899723edc7c",
+      "candidate": "7c9991b58a05cad9a232a821f78a07d830e17f7c",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3dbbcb98055d5c30f92bc03354bf0327400b70d3"
+    },
+    {
+      "sequence": 20301,
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e855a8cacf6e182447f2cdd0589a676266854301",
+      "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c47099ba9d050aacf0cffb3b3591f769dc5a98b8",
+      "status": "stale",
+      "stale": true,
+      "waiting_on": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main"
+    }
+  ]
+}

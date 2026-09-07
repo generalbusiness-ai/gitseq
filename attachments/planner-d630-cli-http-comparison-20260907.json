@@ -1,0 +1,94 @@
+[
+  {
+    "room": "gitseq",
+    "cli_keys": [
+      "genesis",
+      "head",
+      "depth",
+      "projection",
+      "vocabulary"
+    ],
+    "cli_frontier": {
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "head": "05b47087d17373ff7ff0d78b78abba2ec6f36bc2",
+      "depth": 20602
+    },
+    "http_frontier": {
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "head": "05b47087d17373ff7ff0d78b78abba2ec6f36bc2",
+      "depth": 20602
+    },
+    "frontier_equal": true,
+    "projection_equal": true,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  {
+    "room": "tailapp",
+    "cli_keys": [
+      "genesis",
+      "head",
+      "depth",
+      "projection",
+      "vocabulary"
+    ],
+    "cli_frontier": {
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "head": "70b50fef58458dd7f875dfb90f779ae2660cead7",
+      "depth": 4175
+    },
+    "http_frontier": {
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "head": "70b50fef58458dd7f875dfb90f779ae2660cead7",
+      "depth": 4175
+    },
+    "frontier_equal": true,
+    "projection_equal": true,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  {
+    "room": "chess",
+    "cli_keys": [
+      "genesis",
+      "head",
+      "depth",
+      "projection",
+      "vocabulary"
+    ],
+    "cli_frontier": {
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842
+    },
+    "http_frontier": {
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842
+    },
+    "frontier_equal": true,
+    "projection_equal": true,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  {
+    "room": "inventory",
+    "cli_keys": [
+      "genesis",
+      "head",
+      "depth",
+      "projection",
+      "vocabulary"
+    ],
+    "cli_frontier": {
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513
+    },
+    "http_frontier": {
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513
+    },
+    "frontier_equal": true,
+    "projection_equal": true,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  }
+]

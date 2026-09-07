@@ -1,0 +1,53 @@
+{
+  "before": {
+    "frontier": [
+      {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "f2961369c3deba062ee09324a6b0b5e5bf463b7d",
+        "depth": 20603
+      }
+    ],
+    "live": {
+      "generation": "generation:c3e989adde0136ef2694be08ec6dbc0d",
+      "position": 50
+    }
+  },
+  "observations": [
+    {
+      "cursor": {
+        "frontier": [
+          {
+            "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+            "head": "f2961369c3deba062ee09324a6b0b5e5bf463b7d",
+            "depth": 20603
+          }
+        ],
+        "live": {
+          "generation": "generation:c3e989adde0136ef2694be08ec6dbc0d",
+          "position": 51
+        }
+      },
+      "reset": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    },
+    {
+      "cursor": {
+        "frontier": [
+          {
+            "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+            "head": "1bf101993e5f0d168b6ebf4ce2252298f7382453",
+            "depth": 20604
+          }
+        ],
+        "live": {
+          "generation": "generation:c3e989adde0136ef2694be08ec6dbc0d",
+          "position": 51
+        }
+      },
+      "reset": false,
+      "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+    }
+  ],
+  "purpose": "Observe an ordinary assigned-work event, without creating a probe event",
+  "durable_advance_observed": true
+}

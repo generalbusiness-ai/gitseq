@@ -1,0 +1,27 @@
+{
+  "room": "tailapp",
+  "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+  "head": "70b50fef58458dd7f875dfb90f779ae2660cead7",
+  "depth": 4175,
+  "complete_projection_equal": true,
+  "vocabulary_equal": true,
+  "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615",
+  "rebuild": {
+    "running": false,
+    "profile": "profile:d06f59acb2f7cd9853bdaae4c8bbf615"
+  },
+  "key_commitments": [
+    {
+      "sequence": 4043,
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:42c2ce37bf635f3fffa9b5109ec95ac513b92c49",
+      "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+      "performer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5cfedb59bc1285a0de3609b8dc7ae3221076fa2a",
+      "status": "stale",
+      "stale": true,
+      "waiting_on": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+      "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "target_ref": "refs/heads/main"
+    }
+  ]
+}
