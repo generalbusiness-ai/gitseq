@@ -1,0 +1,6 @@
+$ curl -s http://127.0.0.1:7777/v0/status-summary   (2026-09-07T11:27:58Z)
+frontier head c77283aa7f9d223cee5ada5357ac2530ae0b66af depth 20920
+durable.totals keys: ['approved_not_landed', 'artifacts', 'commitments', 'disputed_acts', 'ineffective_acts', 'retired_artifacts', 'stale_artifacts', 'stale_commitments', 'statements', 'world_stale_artifacts']
+has durable.totals.work: False
+approved_not_landed 78
+lifecycle commitments {'awaiting-review': 3, 'cancelled': 370, 'open': 1, 'promised': 1, 'reneged': 3, 'satisfied': 1539, 'stale': 12, 'superseded': 37, 'withdrawn': 549}

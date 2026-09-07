@@ -1,0 +1,84 @@
+$ bin/evidence status-full.json   (2026-09-07T11:28:25Z)
+(a throwaway main compiled against the worktree at 1fdf9e6b; it only calls statusview.Build/Render, workroom.RenderStatus/WorkOf, statusview.BuildActorStatus/BuildWait)
+
+frozen frontier c77283aa7f9d223cee5ada5357ac2530ae0b66af depth 20920, 2515 commitments
+
+== 1. bounded status rendering: statusview.Render(statusview.Build(...)) — what `gs status` prints ==
+# Workroom status
+
+frontier c77283aa…e0b66af at depth 20920 (frozen projection)
+
+Commitments: awaiting-review 3 (3 stale), cancelled 370, open 1, promised 1, reneged 3, satisfied 1539 (1257 stale), stale 12, superseded 37 (21 stale), withdrawn 549 (500 stale). Artifacts: 305 current, 578 stale, 4581 retired, 1515 describing a superseded world. Attempts: 265 ineffective, 9 disputed.
+Work, workroom: 5 open, 1539 completed, 959 closed and not completed, 12 stale and not in flight, of 2515 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 3, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 3 open resting on reasoning that moved, 78 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+Approved but not landed at their target: 78.
+
+== 2. complete status rendering: workroom.RenderStatus(...) — what `gs status --all` prints ==
+# Workroom status
+
+awaiting-review=3 cancelled=370 open=1 promised=1 reneged=3 satisfied=1539 stale=12 superseded=37 withdrawn=549
+
+Work, workroom: 5 open, 1539 completed, 959 closed and not completed, 12 stale and not in flight, of 2515 commitments.
+
+== 3. workroom.WorkOf(projection) — `gs status --json` .work and GET /v0/status .work ==
+{
+  "scope": "workroom",
+  "commitments": 2515,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1539,
+  "closed_not_completed": 959,
+  "stale": 12,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+
+== 4. bounded summary totals — GET /v0/status-summary .durable.totals.work ==
+{
+  "scope": "workroom",
+  "commitments": 2515,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1539,
+  "closed_not_completed": 959,
+  "stale": 12,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+durable.totals.approved_not_landed = 78 (read from the owner's landing audit)
+durable.totals.commitments["open"] = 1 (the lifecycle word, kept distinct from the population)
+
+== 5. MCP status and wait totals.work — statusview.BuildActorStatus / BuildWait ==
+{
+  "scope": "workroom",
+  "commitments": 2515,
+  "open": 5,
+  "open_lifecycles": {
+    "awaiting-authorization": 0,
+    "awaiting-landing": 0,
+    "awaiting-review": 3,
+    "open": 1,
+    "promised": 1,
+    "reported": 0
+  },
+  "completed": 1539,
+  "closed_not_completed": 959,
+  "stale": 12,
+  "reasoning_moved": 3,
+  "artifact_landing_audit": 78
+}
+wait totals.work identical to status totals.work: true

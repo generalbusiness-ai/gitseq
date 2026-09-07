@@ -1,0 +1,1305 @@
+$ go build ./... && go vet ./... && gofmt -l . && go test -count=1 ./...   (2026-09-07T11:52:49Z, worktree at 1fdf9e6b, run alone)
+build/vet/gofmt exit 0
+
+ok  	github.com/generalbusiness-ai/gitseq	0.528s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	114.573s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	287.811s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	2.454s
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c40e03bee4598edd25a203ba6bf0fba4bbf13e1d
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+warning: the implementation request's landing is held and no effective release names this candidate and approval; the compatibility window permits this merge, and the receipt records it
+983bab5dc730223b9f3709a7706dbf0da4874b9a
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6f49f4f03285859201c5991541b96544ffa6c45b
+d92bbffe08e46b33ea27f2bf8560962795caec9b
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:50dafa425b9ce0e60d03f6e8bebdbcd65921cffa
+c1a6cec6c97832a7d799f5ad4815cf6850d84b36
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:f69af98d5e2c3abc10e4e357e87bd45535b2e0d8
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:09c0a3adb2d8735fe373a0f425b3f4b3c06b63b4
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e10a44e24ffd5d7cf5b1ff3783d401c1d6c685e9
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+4638707ff6943394e6079c19f049ed242aabd747
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ee604dd29b49ab81b281db298e2d8c0cda36672d
+67766180c04da28157a77f27e009974938fb96e1
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:50415d12a534074d30948ee3569fba11e6afc1f4
+017e0b5a2085d38561d1f3f64672ca14eb722ada
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:b7a08ec18105ff31cde0f1d93b4b80e348e6a724
+b7253480936e038a866cc8e143d093c11498a79d
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:d1d33ab0c4377d4d4e11deecbeb9d2f195d2faa2
+d9c9d987e2608b204215ae17cfc987b5f75cdc14
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:85f3996a3de9937c979dae0e1801818f045d2204
+b03fe042e3a41917323e416056c475aa5b8bc727
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:fd4a09c3a194201cf6b65b961b726db3fd427a4a
+383849180e57476de5d62348c7a9cb238ee50454
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:9534c973ec80f14c0d52bdbf1f3c00c0815604be
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:5d9f46eaec8bcf20ada10947e8a210888dfa092c
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4ec25e3f70474ee085a46676ccbc91aff8b47c89
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7aa58675cae422234b09d097aca74bf35a734ee9
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+flag provided but not defined: -authorization
+usage: gs merge-plan [flags]
+
+Flags:
+  -approval string
+    	ratified approval report event
+  -as string
+    	actor who would record the merge receipt
+  -candidate string
+    	full approved commit ID
+  -checkout string
+    	checkout that would receive the merge
+  -repo string
+    	ordinary Git repository (default ".")
+  -server string
+    	resident sequencer URL
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:48aaf29b7b34752b7c0abb7310d03b8c7b34f3b7
+gitseq workroom http://127.0.0.1:52411
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+gitseq workroom http://127.0.0.1:52413
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+gitseq workroom http://127.0.0.1:52414
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+gitseq workroom http://127.0.0.1:52416
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ad80c58baced8d06ecd7201993d0b65215c99827
+{
+  "genesis": "8bf5b3501bc79c315a2c577dc137f2a3b709726c",
+  "operator": {
+    "name": "alice",
+    "fingerprint": "6adc74ba57b605979d71c2bde30fa438f79e8e2b29f6a5747ce2ae5450940450",
+    "key_file": "/private/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/TestInitRefusesToSeedAnOperatorNobodyChose3456947494/001/repo/.git/gitseq/actors/alice.key"
+  },
+  "seed": "git:sha1:8bf5b3501bc79c315a2c577dc137f2a3b709726c#git:sha1:08531b1a32a51a493f8daff4e8d231513846ebaf"
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:cff6419ec607e7220649da7c71c66ca0517480d7
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:2f9803a2db85041603a03962d44ecc3fee370277
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8708a52ae3befb0d0b5d8556cfd75c1fb42926eb
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4180b3fb95837f36a1da84d07c50f7236ddf5429
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8cb29f3f42817936a4d8b759640a5365b5c5340f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c739e49a2d2c709947573d0f233b12084d92924b
+git:sha1:6873f3cc53766137649585cff1344302103d7313#git:sha1:30febaa221098bd88772cae2d8b119d92e0e438f
+git:sha1:6873f3cc53766137649585cff1344302103d7313#git:sha1:0ff98bc444451ddb31d4e5ebcebab5adcf712f8e
+git:sha1:6873f3cc53766137649585cff1344302103d7313#git:sha1:9b2771daab5165c1e8ee9ddf3f0ccf978814cc46
+git:sha1:6873f3cc53766137649585cff1344302103d7313#git:sha1:3ab6b61b8d4fa7cad38ac2619856fd12df68940f
+git:sha1:6873f3cc53766137649585cff1344302103d7313#git:sha1:216e945454a87f48c5fe460cdb29ec2062c80172
+git:sha1:0fc1fd1a1359d74636e0006e32f0280cd7410a35#git:sha1:5614ae9ece973afdcfdcd50f4c59b1542416ef3a
+git:sha1:0fc1fd1a1359d74636e0006e32f0280cd7410a35#git:sha1:5614ae9ece973afdcfdcd50f4c59b1542416ef3a
+git:sha1:0fc1fd1a1359d74636e0006e32f0280cd7410a35#git:sha1:f9ac88bc7cda919ea5b69284d5522285db64453f
+git:sha1:ebd46ab49abb43ab98da630f14987e87c667a349#git:sha1:4f927833405122d4d0d0d58aa1916dd0909c6f06
+git:sha1:7fcd5f6159c6cffb106a440e65fcbe33bf660ce5#git:sha1:57283589660278dbf7944febce2aea030d269c9a
+git:sha1:7fd284d48ea4bea7ba94896358d99c6d6bd39305#git:sha1:68f73f5bb090a4408338d0746d9a63242b77afaa
+git:sha1:fee0722101db8521d535b33a84c5c4d462a71c0c#git:sha1:29d21665e00f29ff55498705645209b82a9eb17b
+{
+  "retirement": "git:sha1:fee0722101db8521d535b33a84c5c4d462a71c0c#git:sha1:f3940e73164e76777cd88995eb678af42ec6d5f2",
+  "request": "git:sha1:fee0722101db8521d535b33a84c5c4d462a71c0c#git:sha1:db4bce42677a38fbf32b1db8bcc00d92c112e954"
+}
+git:sha1:4823187073213ab28647b2483ba4ebe4eef29928#git:sha1:656b0288811f2b3c9204d0b53133a561c90a3045
+git:sha1:9384dccd0b952256a26c620843a69a2c9dc8db66#git:sha1:e53ce631437f9295ec4e578554a22017070895ca
+git:sha1:9384dccd0b952256a26c620843a69a2c9dc8db66#git:sha1:e53ce631437f9295ec4e578554a22017070895ca
+git:sha1:960630a4a33185ddfd50410a5cb741c3b7afe258#git:sha1:1ea165904d41aeae45e550949fb5b4635fbcf7f8
+git:sha1:3b89023b562ee39777489d117c986a82953a0ac8#git:sha1:fed86899aa5ec282e87484eb55056d338d85d00d
+{
+  "retirement": "git:sha1:3b89023b562ee39777489d117c986a82953a0ac8#git:sha1:5e25118852d0a8074c7d2b66f383a080472a2ca5",
+  "request": "git:sha1:3b89023b562ee39777489d117c986a82953a0ac8#git:sha1:f35e5dc27ac9dbefe799d50ab70d0989c9959c7c"
+}
+{
+  "retirement": "git:sha1:3b89023b562ee39777489d117c986a82953a0ac8#git:sha1:5e25118852d0a8074c7d2b66f383a080472a2ca5",
+  "request": "git:sha1:3b89023b562ee39777489d117c986a82953a0ac8#git:sha1:f35e5dc27ac9dbefe799d50ab70d0989c9959c7c"
+}
+git:sha1:1c2b2cb32df1fe62104a6a1e7b8cc6124968293e#git:sha1:2d517684b8f05eac5eaa2a8823a1a9487dd0d0de
+git:sha1:1c2b2cb32df1fe62104a6a1e7b8cc6124968293e#git:sha1:3b971ee2631cf0ee9a958f311a0e99c818fd3a1c
+git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:97d066f498020490e71f45c726645d03fb525a53
+git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:708c15713c72a4fe3c1a43d3ad8c5c216ccf392d
+{
+  "retirement": "git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:fe100b433c6772e04d6ffdaa84ae8630c6f1260f",
+  "request": "git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:8d49227af1f4de39fe4feffc0e53edfee710c793"
+}
+{
+  "retirement": "git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:fe100b433c6772e04d6ffdaa84ae8630c6f1260f",
+  "request": "git:sha1:b4caa45de12d37cd84281debd99dcc18ae40fe3a#git:sha1:8d49227af1f4de39fe4feffc0e53edfee710c793"
+}
+gitseq workroom http://127.0.0.1:52658
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+gitseq workroom http://127.0.0.1:52665
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+{
+  "Genesis": "b0bf68b3b4acfa3f02a5c99b2fbe544606cfa886",
+  "Head": "9078850347fdda1fb144b1ebf7a5b3ba9f10f175",
+  "Depth": 1,
+  "Events": 1
+}
+{
+  "Genesis": "b0bf68b3b4acfa3f02a5c99b2fbe544606cfa886",
+  "Head": "9078850347fdda1fb144b1ebf7a5b3ba9f10f175",
+  "Depth": 1,
+  "Events": 1
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4434873ffd0cf5accc5ed46b3bec13ad68732301
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:715798ba4e4dabaf76afad848c5ff1a7a55b07ee
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c29d938d9c461b08c0b92a4f72235cbb74e4414e
+{
+  "Genesis": "47b945f236d4799e833d2a19b4092ca847d2ee3e",
+  "Head": "1ee6d814880aa06a6fbe8dec196c0c581138572b",
+  "Depth": 1,
+  "Events": 1
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:d2aa42eda1ed1e4856e5c13f2bf259f23955bbbb
+{
+  "Genesis": "47b945f236d4799e833d2a19b4092ca847d2ee3e",
+  "Head": "1ee6d814880aa06a6fbe8dec196c0c581138572b",
+  "Depth": 1,
+  "Events": 1
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6ce5c00f71835d28385e3568d5ddb20d146406fe
+gitseq workroom http://127.0.0.1:52669
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:315a7be197f8fdb06bbf2b45b88186ce1326a09e
+git:sha1:70d5c89ca2f379e99777a09cd39583ddd7642d11#git:sha1:065ad096155548fe0aae785adf3fdab5f44e0f88
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:70d5c89ca2f379e99777a09cd39583ddd7642d11#git:sha1:3ec3f0c79489e709d22d994747260da3c1a07666
+{
+  "Genesis": "ced52fc316d470f584dd6b73ec2aec33d9bc085a",
+  "Head": "efa650fc64abbe9793e5192fc19f9510e0ddd692",
+  "Depth": 1,
+  "Events": 1
+}
+{
+  "Genesis": "ced52fc316d470f584dd6b73ec2aec33d9bc085a",
+  "Head": "efa650fc64abbe9793e5192fc19f9510e0ddd692",
+  "Depth": 1,
+  "Events": 1
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:cbf7528779e0232cf83ccc7c4dd9282ed7a299db
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8eb739aceb303838a35aa3156ea6cfd0f3a42366
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7478f138c04df2a18d0629c22995c329323bf90e
+gitseq workroom http://127.0.0.1:52689
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+gitseq workroom http://127.0.0.1:52692
+trusted processes only: every process inside this resident boundary can act as every actor key this application can open
+40a10ed8ea29f7ec3f453086518e89b3430f4f4c
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:0d9ffd3eb23cb72c4a13bf11fc0a1808365d0790
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:129fca845cd5ef3e7c0d63ffdfc4623287bf4fff
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:21692d2e53b1225a293f442250610ea57cdece18
+db03da173151514f7164e1e08595cbcb466eb384
+7fee1c26db0d9f4b761ecd7c31cf861473b0f3ec
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:5af59bf1116b38b7649a69f413eaa5dd370d6cae
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:3b3452187844bfb491cb35b0802d8765bdd43791
+2e958e866b4acea7c0eb2b8b6e1f6b849b4b3a40
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:dc42240ef62a057f9c2e1bb9bc788a06accde450
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:0df3ed4b724c03077b96149a8b612857b9a34128
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:0d9ffd3eb23cb72c4a13bf11fc0a1808365d0790
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:bc2e66e1e7d676c72263478971bce572a0d1309a
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:3153c78888e49af2232357f0b3f1e05c3d93f3ae
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:358e357d97404d7a56f02089ddfe9c1e37313370
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:2bbdf0013cb14e3de1c77acaf3bb2fdb71bd190d
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4daae790f5005055568cc3972b4cfb52c01b0d93
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ef4cb5a2fe0630321f2c375b7e7445b8fcc0f824
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:a4ee1d56179b3d279a0a7deaa0567ccba8020adc
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:80ff1e4dca2d6159033e7ceb2fe899a7ab3e2248
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:698795624721a970b9a16ff5929d5c374c55a629
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8853f0dcc54cd682cc06103d174c572a81965219
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8e2f5d0b555614a5347c8cff596ae04d8fe51d9e
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:9bd1b06707d9f5dadcf2d7eabac4ac14848f6a2d
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:65b50ab76f24a4748f6d49722e929226be847352
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+8aba7bdcafbff9a8b140f7b1ecbe2d748aa21963
+cd92f57c34d9f98ece9ef8243e4544330c070fd0
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4f31328687807b110f5932c0819046d7d168a8dc
+5c977ab98628124598d35b0b8730dbd2e11cc3dd
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:149f401265546538e01c738d12579ba52d4f71f5
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e1672d94386dfe70b8426b877ec57c3551b71033
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7ef81290a98dd7266a9cca1a3f2c027077278b46
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:be31e03f1fa711218a8a331de70cfcfacbed819a
+16fd8e9ca353bc1520141cbf25ce3010666d5705
+de915ab57a3702236363effe1fd091af069295e0
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6b6beb3e31aa3ba2f26630fcf5c19bdb182d9859
+4ba5148cb168c36a88d382280bc47f3076e46f47
+d492f1f3b79116f8a59bbea36df6456b4fec5927
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7f0b53c21a8e19748f3d71508ab6c90718bdd0c0
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ed260499b5a6bf51194249cbfaa50f580c981887
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:52935e71ef99e90e3c8c6fc2d4d861aa0cac7f3b
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ddd7bb9bf90193b094edeaa59be42f9c9d7cb686
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:468d15a10df0f2f9fdce1294e011192beefb8eef
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e2680eaf1eca237b3353ce07f03b86836fd2be43
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ad8febd589a783ec8033a444649b2bf0ba505d3d
+6a1d940c68f389ce5e9d7e8d74bc49d165b6ea1a
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:3cbee87ad5979771527efda8c80e49328605227a
+{
+  "remote": "origin",
+  "ref": "refs/heads/main",
+  "head": "439b797d2e42521ae566e9e22d3dd1abefee4e7a",
+  "basis": "git:sha1:39a7831a1a84280603d29f967ecd21fc10aa91da#git:sha1:39a7831a1a84280603d29f967ecd21fc10aa91da",
+  "refused": [
+    "257 watched paths exceed the batch ceiling of 256"
+  ]
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c883fb92e031778e6ef5d3a20a86315b88282846
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8de4525f97a5114213a8665c2d7a7ebcb848b24f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4879b51912532830d573606b1e61027b76e2a6cb
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ae6091163c566480d300424d19a53b4c664c7b16
+Candidate: 5535ebed3104765f117d6f22e3ef0c23ad2412ce
+Binding: assigned
+Primary: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c4df535826475e1f4f165629c611aeae19c43a39
+Examined: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c4df535826475e1f4f165629c611aeae19c43a39 (first.txt)
+Implementation: request git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:83568e76c1564924639dc5e58e9718fc43203ffd promise git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ab2245f714a6df0cf9c4abeeac86d22619b5d23d report git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c4df535826475e1f4f165629c611aeae19c43a39 (first.txt) target git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c refs/heads/main
+Closes on a sealed receipt: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:83568e76c1564924639dc5e58e9718fc43203ffd
+No verdict recorded.
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:1f8f77d83e32e91803a5e304823e5d7156d72094
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6871eb66a69794563a0895951f7a527ad7844168
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e846ce99f50e68740e56ec4675bccddfe6ecd3bd
+4868da0fe1391c3018aae074758d562117e2d68b
+git:sha1:78395ff70d123e4862bd01dae1ff5bb980a75637#git:sha1:845a7fd1f79f547aab4d1534e164f46e84f1305f
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c030263918b5a7668c337ff1fa950108fffbdbd4
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+c0763026ea731ef68c7be19aeff52656f67e635a
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+37f5dc4370e4467a9224f56efee7c9378a3c212c
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:60f35e51bd9fe58db36f6b8636b1f2b9f35db6ab
+5ccf4e9f6f278726c64f430455a573e42b11e14e
+ab4da5801bbc1f13fb9ea0f115c621e78cf65f78
+b4706d9f756c983eb7eb335a8794aae834a9b4fd
+{
+  "Genesis": "487298faa27649f0ba463944ca2f9b779706688d",
+  "Head": "09ec47cb15f0613b139bd25024a7fb57a65a0bd9",
+  "Depth": 1,
+  "Events": 1
+}
+42e9999708fdecc987d50be255f441a9ff357e5a
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:80b7d46daed5935ed5b60ad5efc554382d94a2d7
+{
+  "Genesis": "4d2c7410f79810a665b5350329b1d6459c8a3321",
+  "Head": "258badf02d9ccc6788a84a7c45f2a49e12c01572",
+  "Depth": 2,
+  "Events": 2
+}
+{
+  "Genesis": "487298faa27649f0ba463944ca2f9b779706688d",
+  "Head": "a1d2ba128490bb97b3178d3471d00300317eecd2",
+  "Depth": 2,
+  "Events": 2
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:86ce57d11eebd60dc0a1ca70ed3fb35a06a61363
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:b31a872756bd72b7636908460c3a785fb7a0fa58
+{
+  "Genesis": "4d2c7410f79810a665b5350329b1d6459c8a3321",
+  "Head": "aacea33e2d9dd88fc940480eeda7e6945d03e483",
+  "Depth": 2,
+  "Events": 2
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:204a3d912529fd60315c70c8a2ada6ca03c2f46f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:40cfa07c74a7fabc180ed32f40028ea90b262f4b
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:3204c4d1ae1b6f621986798c9608c7e5ba297d30
+dac84d9a535dccb0673ab637452bae40b35e1bab
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:79a6c9338fa909196386bf75ec2920cfaea75612
+git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:811d80b344161fdeb5e81bb572561d02478445a8
+git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945
+{
+  "genesis": "a58ace334f5725dda106efce0a826ef33e4a4f67",
+  "head": "f2beb3364bb792b59ac74abaf2b9b07584e93945",
+  "depth": 3,
+  "projection": {
+    "decisions": [
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "sequence": 1,
+        "verdict": "effective",
+        "reason": "operator roster seed"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da",
+        "sequence": 2,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945",
+        "sequence": 3,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      }
+    ],
+    "acts": [],
+    "statements": [
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "sequence": 1,
+        "timestamp": 1788782516,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "roster",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "operator begins the workroom",
+        "body": {
+          "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+          "kind": "human",
+          "name": "operator",
+          "role": "operator"
+        }
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da",
+        "sequence": 2,
+        "timestamp": 1788782517,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "assert",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "written from main"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945",
+        "sequence": 3,
+        "timestamp": 1788782519,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "assert",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "written from linked checkout"
+      }
+    ],
+    "commitments": [],
+    "reviews": [],
+    "artifacts": [],
+    "actors": {
+      "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f": {
+        "name": "operator",
+        "kind": "human",
+        "roles": [
+          "operator",
+          "participant",
+          "ratifier"
+        ],
+        "membership_event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "role_sources": {
+          "operator": [
+            "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+          ],
+          "participant": [
+            "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+          ]
+        },
+        "dormant_role_sources": {},
+        "retired_role_sources": {}
+      }
+    },
+    "provenance": {
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c": null,
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da": [
+        "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+      ],
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945": [
+        "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+      ]
+    }
+  },
+  "vocabulary": {
+    "definitions": [
+      {
+        "name": "admission-profile",
+        "fields": [
+          {
+            "op": "present",
+            "name": "bundle"
+          },
+          {
+            "op": "present",
+            "name": "contract"
+          },
+          {
+            "op": "present",
+            "name": "genesis"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Activate an admission profile. The newest ratified profile matching this genesis governs; retiring one restores its predecessor.",
+        "source": "starter"
+      },
+      {
+        "name": "artifact",
+        "fields": [
+          {
+            "op": "present",
+            "name": "path"
+          },
+          {
+            "op": "present",
+            "name": "commit"
+          }
+        ],
+        "basis": null,
+        "satisfier": "none",
+        "render": "artifact",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Point to an exact repository path and commit that a reader can inspect.",
+        "source": "starter"
+      },
+      {
+        "name": "assert",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "note",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Record a durable claim. Ratification marks a claim as adopted; cite the acts that ground it.",
+        "source": "starter"
+      },
+      {
+        "name": "dissent",
+        "fields": null,
+        "basis": null,
+        "satisfier": "none",
+        "render": "dissent",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Preserve a concrete disagreement against the act it concerns; dissent does not rewrite history.",
+        "source": "starter"
+      },
+      {
+        "name": "infra-key",
+        "fields": [
+          {
+            "op": "present",
+            "name": "service"
+          },
+          {
+            "op": "present",
+            "name": "public_key"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Bind an infrastructure service name to its public key.",
+        "source": "starter"
+      },
+      {
+        "name": "kind-def",
+        "fields": [
+          {
+            "op": "present",
+            "name": "name"
+          },
+          {
+            "op": "present",
+            "name": "fields"
+          },
+          {
+            "op": "present",
+            "name": "basis"
+          },
+          {
+            "op": "present",
+            "name": "satisfier"
+          },
+          {
+            "op": "present",
+            "name": "render"
+          },
+          {
+            "op": "present",
+            "name": "staleness"
+          },
+          {
+            "op": "present",
+            "name": "lifecycle"
+          },
+          {
+            "op": "present",
+            "name": "guidance"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Declare a kind using the finite constraint algebra. Guidance is visible to actors and powerless in the fold.",
+        "source": "starter"
+      },
+      {
+        "name": "promise",
+        "fields": null,
+        "basis": [
+          {
+            "kinds": [
+              "request"
+            ],
+            "min": 1,
+            "max": 1
+          }
+        ],
+        "satisfier": "none",
+        "render": "commitment",
+        "staleness": "propagates",
+        "lifecycle": "promise",
+        "guidance": "Accept exactly one request. Rest on that request and promise only work you can own.",
+        "source": "starter"
+      },
+      {
+        "name": "propose",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "proposal",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Offer a decision for ratification. State the choice and the consequences it adopts.",
+        "source": "starter"
+      },
+      {
+        "name": "report",
+        "fields": null,
+        "basis": [
+          {
+            "kinds": [
+              "promise",
+              "request"
+            ],
+            "min": 1,
+            "max": 2
+          }
+        ],
+        "satisfier": "originating-requester",
+        "render": "result",
+        "staleness": "propagates",
+        "lifecycle": "report",
+        "guidance": "Report the result of exactly one promise, or of the request you were asked directly, with the tests and conditions actually met.",
+        "source": "starter"
+      },
+      {
+        "name": "request",
+        "fields": [
+          {
+            "op": "present",
+            "name": "to"
+          },
+          {
+            "op": "type",
+            "name": "to",
+            "type": "actor-ref"
+          },
+          {
+            "op": "present",
+            "name": "conditions"
+          }
+        ],
+        "basis": null,
+        "satisfier": "none",
+        "render": "commitment",
+        "staleness": "propagates",
+        "lifecycle": "request",
+        "guidance": "Ask a named participant for an outcome and state observable conditions of satisfaction.",
+        "source": "starter"
+      },
+      {
+        "name": "roster",
+        "fields": [
+          {
+            "op": "present",
+            "name": "actor"
+          },
+          {
+            "op": "present",
+            "name": "name"
+          },
+          {
+            "op": "present",
+            "name": "role"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Govern durable membership and authority. Participant grants also carry the actor kind.",
+        "source": "starter"
+      },
+      {
+        "name": "seal",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Record a governed seal over the workroom state.",
+        "source": "starter"
+      }
+    ],
+    "binding": {
+      "status": "unbound",
+      "reason": "no ratified seed or prefix binding",
+      "transitions": []
+    }
+  },
+  "work": {
+    "scope": "workroom",
+    "commitments": 0,
+    "open": 0,
+    "open_lifecycles": {
+      "awaiting-authorization": 0,
+      "awaiting-landing": 0,
+      "awaiting-review": 0,
+      "open": 0,
+      "promised": 0,
+      "reported": 0
+    },
+    "completed": 0,
+    "closed_not_completed": 0,
+    "stale": 0,
+    "reasoning_moved": 0,
+    "artifact_landing_audit": 0
+  }
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:909be2974fb864ed2ad04fdd3c867528eef8244f
+{
+  "Genesis": "a58ace334f5725dda106efce0a826ef33e4a4f67",
+  "Head": "f2beb3364bb792b59ac74abaf2b9b07584e93945",
+  "Depth": 3,
+  "Events": 3
+}
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ac0cfb96a64be36eedbd599e0323c3ab9a096b4b
+{
+  "genesis": "a58ace334f5725dda106efce0a826ef33e4a4f67",
+  "head": "f2beb3364bb792b59ac74abaf2b9b07584e93945",
+  "depth": 3,
+  "projection": {
+    "decisions": [
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "sequence": 1,
+        "verdict": "effective",
+        "reason": "operator roster seed"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da",
+        "sequence": 2,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945",
+        "sequence": 3,
+        "verdict": "effective",
+        "reason": "statement recorded"
+      }
+    ],
+    "acts": [],
+    "statements": [
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "sequence": 1,
+        "timestamp": 1788782516,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "roster",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "operator begins the workroom",
+        "body": {
+          "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+          "kind": "human",
+          "name": "operator",
+          "role": "operator"
+        }
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da",
+        "sequence": 2,
+        "timestamp": 1788782517,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "assert",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "written from main"
+      },
+      {
+        "event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945",
+        "sequence": 3,
+        "timestamp": 1788782519,
+        "actor": "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f",
+        "kind": "assert",
+        "lifecycle": "none",
+        "satisfier": "role:ratifier",
+        "text": "written from linked checkout"
+      }
+    ],
+    "commitments": [],
+    "reviews": [],
+    "artifacts": [],
+    "actors": {
+      "3cccbc27f807fa6f4eb6a848353438a5c65c03156918eb91a59c7476279fd29f": {
+        "name": "operator",
+        "kind": "human",
+        "roles": [
+          "operator",
+          "participant",
+          "ratifier"
+        ],
+        "membership_event": "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c",
+        "role_sources": {
+          "operator": [
+            "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+          ],
+          "participant": [
+            "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+          ]
+        },
+        "dormant_role_sources": {},
+        "retired_role_sources": {}
+      }
+    },
+    "provenance": {
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c": null,
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:48f3d2120aa111e096e86a3fc918b784055001da": [
+        "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+      ],
+      "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:f2beb3364bb792b59ac74abaf2b9b07584e93945": [
+        "git:sha1:a58ace334f5725dda106efce0a826ef33e4a4f67#git:sha1:46ea435ed97d2c1dfa15a5ee5c4a641011d5d36c"
+      ]
+    }
+  },
+  "vocabulary": {
+    "definitions": [
+      {
+        "name": "admission-profile",
+        "fields": [
+          {
+            "op": "present",
+            "name": "bundle"
+          },
+          {
+            "op": "present",
+            "name": "contract"
+          },
+          {
+            "op": "present",
+            "name": "genesis"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Activate an admission profile. The newest ratified profile matching this genesis governs; retiring one restores its predecessor.",
+        "source": "starter"
+      },
+      {
+        "name": "artifact",
+        "fields": [
+          {
+            "op": "present",
+            "name": "path"
+          },
+          {
+            "op": "present",
+            "name": "commit"
+          }
+        ],
+        "basis": null,
+        "satisfier": "none",
+        "render": "artifact",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Point to an exact repository path and commit that a reader can inspect.",
+        "source": "starter"
+      },
+      {
+        "name": "assert",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "note",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Record a durable claim. Ratification marks a claim as adopted; cite the acts that ground it.",
+        "source": "starter"
+      },
+      {
+        "name": "dissent",
+        "fields": null,
+        "basis": null,
+        "satisfier": "none",
+        "render": "dissent",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Preserve a concrete disagreement against the act it concerns; dissent does not rewrite history.",
+        "source": "starter"
+      },
+      {
+        "name": "infra-key",
+        "fields": [
+          {
+            "op": "present",
+            "name": "service"
+          },
+          {
+            "op": "present",
+            "name": "public_key"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Bind an infrastructure service name to its public key.",
+        "source": "starter"
+      },
+      {
+        "name": "kind-def",
+        "fields": [
+          {
+            "op": "present",
+            "name": "name"
+          },
+          {
+            "op": "present",
+            "name": "fields"
+          },
+          {
+            "op": "present",
+            "name": "basis"
+          },
+          {
+            "op": "present",
+            "name": "satisfier"
+          },
+          {
+            "op": "present",
+            "name": "render"
+          },
+          {
+            "op": "present",
+            "name": "staleness"
+          },
+          {
+            "op": "present",
+            "name": "lifecycle"
+          },
+          {
+            "op": "present",
+            "name": "guidance"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Declare a kind using the finite constraint algebra. Guidance is visible to actors and powerless in the fold.",
+        "source": "starter"
+      },
+      {
+        "name": "promise",
+        "fields": null,
+        "basis": [
+          {
+            "kinds": [
+              "request"
+            ],
+            "min": 1,
+            "max": 1
+          }
+        ],
+        "satisfier": "none",
+        "render": "commitment",
+        "staleness": "propagates",
+        "lifecycle": "promise",
+        "guidance": "Accept exactly one request. Rest on that request and promise only work you can own.",
+        "source": "starter"
+      },
+      {
+        "name": "propose",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "proposal",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Offer a decision for ratification. State the choice and the consequences it adopts.",
+        "source": "starter"
+      },
+      {
+        "name": "report",
+        "fields": null,
+        "basis": [
+          {
+            "kinds": [
+              "promise",
+              "request"
+            ],
+            "min": 1,
+            "max": 2
+          }
+        ],
+        "satisfier": "originating-requester",
+        "render": "result",
+        "staleness": "propagates",
+        "lifecycle": "report",
+        "guidance": "Report the result of exactly one promise, or of the request you were asked directly, with the tests and conditions actually met.",
+        "source": "starter"
+      },
+      {
+        "name": "request",
+        "fields": [
+          {
+            "op": "present",
+            "name": "to"
+          },
+          {
+            "op": "type",
+            "name": "to",
+            "type": "actor-ref"
+          },
+          {
+            "op": "present",
+            "name": "conditions"
+          }
+        ],
+        "basis": null,
+        "satisfier": "none",
+        "render": "commitment",
+        "staleness": "propagates",
+        "lifecycle": "request",
+        "guidance": "Ask a named participant for an outcome and state observable conditions of satisfaction.",
+        "source": "starter"
+      },
+      {
+        "name": "roster",
+        "fields": [
+          {
+            "op": "present",
+            "name": "actor"
+          },
+          {
+            "op": "present",
+            "name": "name"
+          },
+          {
+            "op": "present",
+            "name": "role"
+          }
+        ],
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Govern durable membership and authority. Participant grants also carry the actor kind.",
+        "source": "starter"
+      },
+      {
+        "name": "seal",
+        "fields": null,
+        "basis": null,
+        "satisfier": "role:ratifier",
+        "render": "governance",
+        "staleness": "propagates",
+        "lifecycle": "none",
+        "guidance": "Record a governed seal over the workroom state.",
+        "source": "starter"
+      }
+    ],
+    "binding": {
+      "status": "unbound",
+      "reason": "no ratified seed or prefix binding",
+      "transitions": []
+    }
+  },
+  "work": {
+    "scope": "workroom",
+    "commitments": 0,
+    "open": 0,
+    "open_lifecycles": {
+      "awaiting-authorization": 0,
+      "awaiting-landing": 0,
+      "awaiting-review": 0,
+      "open": 0,
+      "promised": 0,
+      "reported": 0
+    },
+    "completed": 0,
+    "closed_not_completed": 0,
+    "stale": 0,
+    "reasoning_moved": 0,
+    "artifact_landing_audit": 0
+  }
+}
+{
+  "Genesis": "a58ace334f5725dda106efce0a826ef33e4a4f67",
+  "Head": "f2beb3364bb792b59ac74abaf2b9b07584e93945",
+  "Depth": 3,
+  "Events": 3
+}
+{
+  "remote": "origin",
+  "ref": "refs/heads/main",
+  "head": "11b6ab1306ea72115d6bae75c57c9e8487c6e719",
+  "basis": "git:sha1:08a3137c7bf40e16da2223fd7c8eec40084b324d#git:sha1:08a3137c7bf40e16da2223fd7c8eec40084b324d",
+  "published": [
+    {
+      "path": "notes/one.md",
+      "event": "git:sha1:08a3137c7bf40e16da2223fd7c8eec40084b324d#git:sha1:59355d91cfe812691b09d7dad4dc23290ebb8045",
+      "outcome": "landed"
+    }
+  ]
+}
+git:sha1:7434109bfebb291f6043e0a11df37853070c5b2f#git:sha1:2bd980ee46dfeff1be55e38ff432b5b73870883f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8a51ea74e8f0d6838b22b70bb593ca832f8fbe0c
+e6dbbc85d0a9fe12d267b6d8e3214d2a23f8d7dc
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8d5d81c94732c5b8d6eaca9670297d36d81c61e9
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:de2196165c96b9e92df52937ec4160673e1ef0bd
+a18cc71a5253c0b460c0d35f83459119c4a58d8a
+5233aa6b0a4104a4ded4a0370c07596a83da685d
+git:sha1:8451a8c099e5e3f828f365197b35bb9645c8988f#git:sha1:337850a6632be885499092e06c537cea8222c7fa
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c88d02364990b96761dc546c989375e07cc7d8a0
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ed37cb646b6382b595c2ba9621e0d882cfaf32eb
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:85abc77f474bcd4fda5c8b4aa076fff8e66a375b
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8659d939a240bf4b1c60d43a0b2a25ab30a6e15f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8407f103eed343a1538b14a4841896cf199f2d9d
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:dfdac7ee1ab4bc5c78394d233218fa8218d0bf31
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:b49a73595c998e543559a2d1424d395c09c33fc9
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4c4cad1ce0dbce4907f6e751572103768e9d07ed
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7e036cdefbb44d571987eabd0c0664d5fdec7286
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:172ea1c54f0a15633599ec2fc854e69f7639a08e
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:10330f25cc4bbb81e1f82860f3caa81a02b254a5
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:5d00904ab51f13a9f15787df14a96445123e0974
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c573518fff87d1c3ad354af105240727414f0511
+Candidate: 77bd1776e7b229f367cff65d612f62a6df07b80a
+Binding: assigned
+Primary: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c07aa78f127839f730c081481ac67e12917a2287
+Examined: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c07aa78f127839f730c081481ac67e12917a2287 (binding-prepare.txt)
+Examined: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:0d137391ae274c8e2f9922f6ff9fb6b397d77c4f (binding-prepare.txt)
+Implementation: request git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6a137e84d4e7f4c96e7b9ba18c2dd1d1998901cf promise git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:399578d3ea82a3fcffd9e3feb7b1b7d9b8828069 report git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:c07aa78f127839f730c081481ac67e12917a2287 (binding-prepare.txt) target git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c refs/heads/main
+Closes on a sealed receipt: git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6a137e84d4e7f4c96e7b9ba18c2dd1d1998901cf
+No verdict recorded.
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:8a57044ed3de63230e0bf4cc11612b02cec91877
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:095e38448ddaf3459d501c66c1c090f36a6580fd
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:b4130ae81781dbebcf8eecd42a9d18eee470002b
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:311b9d434cb7665b8c18ccb0b1ea5de42d35e67d
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:af36ffa3d11dba8f202c4db8536e381e5b46b3d0
+cf91183a5bbbfcbb553007597cf07a777a5915a6
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:01076016776efbb581b88ac19a6871f24bd69375
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:3e2e703fa97b7d4437a1c6e17e47723aee476f9f
+fbf928011209b66bb2a2e45fb68502f2b4d73159
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:6741daa8da490f4687ea78657a4fe2c1bdd29eb9
+07e54bac8df50040a984c1acdc4793cf1246a775
+bfecd18a046b89bbd600e06d70f585141f816253
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:aed343b02cae7f3223119ce530b812dc8f0627c4
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:544403c00d40821c3e40fac4737a68939f8a211c
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:ee29a804d687d4b4816f071aca126e1eac44473c
+945986b3712a9b8bf9e4c02dab22e4691e6fb3f1
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:7519284476810e3a477f5c5e3b8462a1766f4e4f
+e06e17a57edcd234238067f47cadcf4d35d8bdc1
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:1193e70eee9406c6e58b2dd5026d7321e6d1c29e
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:0909807b0c9ede1f60ae9827f8da60baff0712e9
+8c44aa62f1e88494795b283939d4c3355991acf8
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e6461f2c1d6c5dde18f8db25089573937030d42c
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e98ab9250bb3550bb474c6b850f93822f1ee7b3f
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:4cc0b1bac98f62ddd1520c8785095c0a814f91c0
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:e27a55c699bf81bcce89103e5dd53d13971c4bee
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:2bf25368d31e97b7b49a2bfa716ea4b2c2abc846
+git:sha1:2d36b538fb717013585b79cb5b0e8fc1f446cf0c#git:sha1:d374b6716ef16437ec5ac9b19af58ab89fc11d3e
+panic: test timed out after 10m0s
+	running tests:
+		TestPublishRefusesMoreThanTheBatchCeilingBeforeQueueing (1m15s)
+
+goroutine 100849 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/local/go/src/testing/testing.go:2959 +0x2c4
+created by time.goFunc
+	/usr/local/go/src/time/sleep.go:182 +0x38
+
+goroutine 1 [chan receive]:
+testing.tRunner.func1()
+	/usr/local/go/src/testing/testing.go:2142 +0x378
+testing.tRunner(0x13a768db8d88, 0x13a768edfa68)
+	/usr/local/go/src/testing/testing.go:2199 +0x100
+testing.runTests({0x10097ce98, 0x24}, {0x100987ba8, 0x2b}, 0x13a768c1aa50, {0x101467df0, 0xff, 0xff}, {0x13a768edfcc8?, 0x100833400?, ...})
+	/usr/local/go/src/testing/testing.go:2740 +0x400
+testing.(*M).Run(0x13a768cd3cc0)
+	/usr/local/go/src/testing/testing.go:2600 +0x578
+github.com/generalbusiness-ai/gitseq/internal/testgit.Run(0x13a768cd3cc0)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/testgit/environment.go:32 +0x78
+github.com/generalbusiness-ai/gitseq/cmd/gs.TestMain(0x1013e3180?)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/main_test.go:3905 +0x20
+main.main()
+	_testmain.go:556 +0x88
+
+goroutine 100730 [IO wait]:
+internal/poll.runtime_pollWait(0x12ef3d400, 0x72)
+	/usr/local/go/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0x13a76933c840?, 0x13a768e44e00?, 0x1)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:84 +0x28
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0x13a76933c840, {0x13a768e44e00, 0x200, 0x200})
+	/usr/local/go/src/internal/poll/fd_unix.go:170 +0x22c
+os.(*File).read(...)
+	/usr/local/go/src/os/file_posix.go:30
+os.(*File).Read(0x13a7696900f0, {0x13a768e44e00?, 0x13a769343d18?, 0x0?})
+	/usr/local/go/src/os/file.go:144 +0x68
+bytes.(*Buffer).ReadFrom(0x13a769a8a248, {0x1013d6a88, 0x13a7696900f0})
+	/usr/local/go/src/bytes/buffer.go:229 +0x90
+io.copyBuffer({0x1013d6c48, 0x13a769a8a248}, {0x1013d6a88, 0x13a7696900f0}, {0x0, 0x0, 0x0})
+	/usr/local/go/src/io/io.go:415 +0x14c
+io.Copy(...)
+	/usr/local/go/src/io/io.go:388
+os.genericWriteTo(0x13a769343e68?, {0x1013d6c48?, 0x13a769a8a248?})
+	/usr/local/go/src/os/file.go:295 +0x44
+os.(*File).WriteTo(0x13a769343e98?, {0x1013d6c48?, 0x13a769a8a248?})
+	/usr/local/go/src/os/file.go:273 +0x5c
+io.copyBuffer({0x1013d6c48, 0x13a769a8a248}, {0x1013d6b48, 0x13a7696900f0}, {0x0, 0x0, 0x0})
+	/usr/local/go/src/io/io.go:411 +0x98
+io.Copy(...)
+	/usr/local/go/src/io/io.go:388
+os/exec.(*Cmd).writerDescriptor.func1()
+	/usr/local/go/src/os/exec/exec.go:613 +0x40
+os/exec.(*Cmd).Start.func2(0x13a769344028?)
+	/usr/local/go/src/os/exec/exec.go:768 +0x30
+created by os/exec.(*Cmd).Start in goroutine 21768
+	/usr/local/go/src/os/exec/exec.go:767 +0x6d8
+
+goroutine 21768 [IO wait]:
+internal/poll.runtime_pollWait(0x12ef3c800, 0x72)
+	/usr/local/go/src/runtime/netpoll.go:351 +0xa0
+internal/poll.(*pollDesc).wait(0x13a76933c720?, 0x13a768d23000?, 0x1)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:84 +0x28
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0x13a76933c720, {0x13a768d23000, 0x1000, 0x1000})
+	/usr/local/go/src/internal/poll/fd_unix.go:170 +0x22c
+os.(*File).read(...)
+	/usr/local/go/src/os/file_posix.go:30
+os.(*File).Read(0x13a7696900e0, {0x13a768d23000?, 0x14c?, 0x6?})
+	/usr/local/go/src/os/file.go:144 +0x68
+bufio.(*Reader).fill(0x13a76933c7e0)
+	/usr/local/go/src/bufio/bufio.go:113 +0xdc
+bufio.(*Reader).ReadSlice(0x13a76933c7e0, 0xa)
+	/usr/local/go/src/bufio/bufio.go:377 +0x30
+bufio.(*Reader).collectFragments(0x13a76933c7e0, 0xa)
+	/usr/local/go/src/bufio/bufio.go:452 +0x78
+bufio.(*Reader).ReadString(0x1013d6ae8?, 0xd8?)
+	/usr/local/go/src/bufio/bufio.go:499 +0x20
+github.com/generalbusiness-ai/gitseq/internal/gitstore.(*AuditBatch).readObject(0x13a769a8a200, {0x13a769506ea0, 0x28}, {0x100953e58, 0x4}, 0xffffffffffffffff)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/gitstore/audit.go:145 +0x238
+github.com/generalbusiness-ai/gitseq/internal/gitstore.(*AuditBatch).readTree(0x13a769a8a200, {0x13a769506ea0?, 0x13a768f89888?})
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/gitstore/audit.go:508 +0x3c
+github.com/generalbusiness-ai/gitseq/internal/gitstore.(*AuditBatch).PayloadTree(0x13a769a8a200, {0x13a769506ea0?, 0x31?}, 0xffd36, 0x1)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/gitstore/audit.go:425 +0x34
+github.com/generalbusiness-ai/gitseq/internal/kernel.loadCommit(_, {{}, _, {_, _}, _, {_, _}, {_, _}, ...}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:1547 +0x5e0
+github.com/generalbusiness-ai/gitseq/internal/kernel.(*deltaScan).accept(0x13a768f8aac8, {{0x13a768e16930, 0x28}, {0x13a768e16960, 0x28}, {0x13a7696801b0, 0x1, 0x1}, 0x6a9ea7f1, {0x13a7692fc900, ...}})
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:1416 +0x48c
+github.com/generalbusiness-ai/gitseq/internal/gitstore.Store.walkRevListMetadata({{0x13a768da4989?, 0x13a769506480?}, {0x0?, 0x0?}}, {0x1013df438, 0x1014958e0}, {0x13a769062300?, 0x13a768f8a8be?}, 0x13a768f8aab8)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/gitstore/gitstore.go:493 +0x308
+github.com/generalbusiness-ai/gitseq/internal/gitstore.Store.WalkRevListMetadataAfter(...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/gitstore/gitstore.go:464
+github.com/generalbusiness-ai/gitseq/internal/kernel.scanAfter({0x1013df438, 0x1014958e0}, {{0x13a768da4989?, 0x7?}, {0x0?, 0x0?}}, {{{0x13a769f163f0, 0x28}, {0x13a769506480, 0x28}, ...}, ...}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:1318 +0x210
+github.com/generalbusiness-ai/gitseq/internal/kernel.(*logCache).advance(0x13a76953c6a8, {0x1013df438, 0x1014958e0}, {{0x13a768da4989?, 0x13a768f8b038?}, {0x0?, 0x0?}}, {0x13a769f163f0, 0x28}, 0x1, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:944 +0x310
+github.com/generalbusiness-ai/gitseq/internal/kernel.(*Reader).load(0x13a76953c680, {0x1013df438, 0x1014958e0}, {0x13a769f163f0, 0x28}, 0x0, 0x0)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:890 +0x120
+github.com/generalbusiness-ai/gitseq/internal/kernel.(*Reader).Load(...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/kernel/kernel.go:865
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).admissionWorldChecked(_, {_, _}, {_, _}, _)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/admission.go:382 +0x1ac
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).admissionWorld(...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/admission.go:373
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).AdmitState(0x13a769493448, {0x1013df438, 0x1014958e0}, {{0x1009555c7, 0x6}, 0x13a76987c570, {0x13a7693052a0, 0x1, 0x1}, 0x0})
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/admission.go:55 +0x1a0
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).buildAct(0x13a769493448, {0x1013df438, 0x1014958e0}, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, 0x8}, {{0x1009545f0, 0x5}, ...}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/app.go:1382 +0x408
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).buildActRequest(0x13a769493448, {0x1013df438, 0x1014958e0}, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, 0x8}, {{0x1009545f0, 0x5}, ...}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/app.go:1312 +0x1c8
+github.com/generalbusiness-ai/gitseq/internal/app.(*Workspace).BuildActRequest(...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/app/app.go:1276
+github.com/generalbusiness-ai/gitseq/cmd/gs.submitSigned({_, _}, _, {_, _}, {_, _}, {_, _, _}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/main.go:2130 +0x10c
+github.com/generalbusiness-ai/gitseq/cmd/gs.reconcilePublicationEntry({0x1013df438, 0x1014958e0}, 0x13a769493448, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, 0x8}, {0x0, 0x0}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication.go:829 +0x2c8
+github.com/generalbusiness-ai/gitseq/cmd/gs.reconcilePublicationOutbox({0x1013df438, 0x1014958e0}, 0x13a769493448, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, 0x8}, {0x0, 0x0}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication.go:719 +0x350
+github.com/generalbusiness-ai/gitseq/cmd/gs.publishLocked({0x1013df438, 0x1014958e0}, 0x13a769493448, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, 0x8}, {0x13a769720740, 0x40}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication.go:366 +0x14f0
+github.com/generalbusiness-ai/gitseq/cmd/gs.runPublication.func1()
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication.go:239 +0x50
+github.com/generalbusiness-ai/gitseq/internal/apphost.WithMetaLock[...]({0x13a769528870?, 0x8f}, {0x100961bb7, 0x11}, 0x13a769a2f780)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/internal/apphost/config.go:359 +0x98
+github.com/generalbusiness-ai/gitseq/cmd/gs.runPublication({0x1013df438, 0x1014958e0}, 0x13a769493448, {0x13a768eea3c0, 0x40, 0x40}, {0x100957fbb, _}, {_, _}, ...)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication.go:238 +0x4e4
+github.com/generalbusiness-ai/gitseq/cmd/gs.(*publicationFixture).tryPublish(0x6?)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication_test.go:1928 +0xd4
+github.com/generalbusiness-ai/gitseq/cmd/gs.(*publicationFixture).publish(0x13a76921efc0)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication_test.go:1920 +0x98
+github.com/generalbusiness-ai/gitseq/cmd/gs.TestPublishRefusesMoreThanTheBatchCeilingBeforeQueueing(0x13a768f3e488)
+	/Users/hughpyle/play/gitseq-worktrees/shared-work-population-counts/cmd/gs/publication_test.go:898 +0x51c
+testing.tRunner(0x13a768f3e488, 0x1013e4830)
+	/usr/local/go/src/testing/testing.go:2193 +0xc4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:2258 +0x3b8
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	603.620s
+ok  	github.com/generalbusiness-ai/gitseq/host	96.656s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	55.279s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	6.210s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	278.816s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	5.314s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	4.794s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	2.297s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	3.186s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	4.263s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	238.308s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	2.925s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	49.285s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	6.580s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	198.206s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	41.400s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	5.395s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	5.535s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	27.298s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	5.223s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	4.829s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+--- FAIL: TestExternalHeadChangeWakesAnOpenWait (15.06s)
+    headwatch_test.go:163: the wait woke after 3.7190745s; the clock is not noticing external progress
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/service	181.383s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	10.340s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	4.465s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	6.877s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	3.413s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	19.724s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	3.023s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	12.766s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	1.432s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	2.756s
+FAIL
+go test exit 1
