@@ -541,6 +541,33 @@ corrects this accounting when replaying existing signed receipts; it does not
 rewrite them or grant new retirement authority. The artifact's author or a
 ratifier still performs the cleanup.
 
+A live artifact the receipt neither retires nor classifies as left live is
+reported against the receipt as not classified by it. A file the merge deletes
+is not such an artifact. It has no successor at its old path, so the reviewed
+paths that bound cross-author retirement authority never reach it, but the
+receipt does name it in `merge_retirements` with the empty successor and its
+author does retire it afterwards. Fold profile `workroom-fold@23` reads that
+pair — the receipt's own signed plan entry mapping the artifact to the empty
+successor, and a standing retirement recorded by the artifact's author or by a
+ratifier — as the deletion being accounted for, and drops both the warning and
+the cleanup count it added.
+
+The explicit empty JSON string is the whole of the deletion shape, and it is
+read from the plan exactly as the receipt signed it, with its value type
+intact and no normalising or conversion. A plan entry mapping the artifact to
+any other string claims a surviving destination instead, so it is answerable
+at that destination's path and carries no authority when the review did not
+cover it, and an entry whose value is `null` names no successor at all: both
+stay reported as not classified by the receipt, however effective a retirement
+follows them. A plan carrying any other value type for an entry, a number, a
+boolean, an array or an object, is not a plan the fold can read, so the whole
+receipt is admitted with no retirement plan: it retires nothing, publishes no
+accounting and reports no entry at all. A named entry nobody retired, one whose
+supersession the fold refused, and one naming anything that is not a live
+covered artifact stay visible too, and so does a covered artifact the plan
+never named. The narrow authority map is unchanged: naming an artifact in a
+receipt still retires nothing on its own.
+
 ### Citations across a merge
 
 Documentation names the artifacts that vouch for the behaviour it describes, so
