@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c03b3eda048bb4f8a4372a48843ab4f164d40346","text":"Merge retired a covered predecessor; the successor is at internal/residentclient/client.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e04abacc11e5d41edfa005a96315a81ce36b1e0b","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
