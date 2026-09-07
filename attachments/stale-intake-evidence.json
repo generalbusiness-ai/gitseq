@@ -1,0 +1,242 @@
+{
+  "checked_utc": "2026-09-07T12:36:17.902466+00:00",
+  "scope": "Actor-involved active stale-flagged work only; not all work in the four rooms. Classification uses the recorded queue, completed design and ongoing implementation evidence. It does not establish that every queued task qualifies as ordinary staleness with unchanged authority.",
+  "frontiers": {
+    "gitseq": {
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "head": "9a3e03cb9b1ec60bb7b8d0b03ff1f87154dc8f57",
+      "depth": 20986
+    },
+    "tailapp": {
+      "genesis": "da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+      "head": "f9088a369fad57377e689b5e9be98453a7af27f9",
+      "depth": 4203
+    },
+    "chess": {
+      "genesis": "1b96687964cbba5a6089c526d7136b32ba9488a5",
+      "head": "ec4492f9f21e31cac348200f50a12b10f537ba28",
+      "depth": 842
+    },
+    "inventory": {
+      "genesis": "5abaa0f151cd76dcf02a7bd669358ce94b67f4a6",
+      "head": "5ab059d397140032a1b38570c2a98b196de3529e",
+      "depth": 513
+    }
+  },
+  "counts": {
+    "queued": 15,
+    "implementation-underway": 3,
+    "awaiting-Hugh-decision": 2,
+    "deployment-prerequisites": 1
+  },
+  "rows": [
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:88131f9715387bd51a9408482bb24a2915279d3e",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94ad9478b0eaf978de56a895a53c0212776743d9",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "codex"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0aeb727057a5b3b2b3642be8c70cde7c63865d1e",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4a12a00134069b072cf782934b5380e64014b84e",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58038428699af31607e2770581b748c71687dd0c",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d7c60ec40c143b49ba731319225aa3de50bb093",
+      "status": "awaiting-review",
+      "classification": "implementation-underway",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:67cc517e26ccb645123e8a390e86741667c90ce8",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5005efb22ea6bb7c1a2ac685051fd7e63f77eee",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4149f6e2b7b4112b15e36c28f8071f5732606965",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2f7d1b5d876c94f92aa4e783f68c373bb66ebb18",
+      "status": "awaiting-review",
+      "classification": "implementation-underway",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c0200765fc42a1bec9fc95d8b290f81b210e96af",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a3612df79bdf8cfe4c4127f4b1c30f8ed5fb0a",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "codex"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:852f2f757915951e869a855720413c7270572da7",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c69b384105418791d18dc912d49a12221f54650",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "codex"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e855a8cacf6e182447f2cdd0589a676266854301",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c47099ba9d050aacf0cffb3b3591f769dc5a98b8",
+      "status": "awaiting-review",
+      "classification": "awaiting-Hugh-decision",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b5fdd93443cedeef9dbc4ddf733d8c0b0bdd60d",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e33b09e4b20c3889b5344ac3da8c35a335715472",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:50cd7fd1f73451c37df62a7b92806b00fd72fa0e",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5458c6ead6b250b728fcac048ac617776c2aa3c7",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a18edda93c0c33185ae944093fbc7b997b583568",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e247087ae61416c3fc84c929fd41fd23a3ad4953",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "codex"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2407c51813e614b415de871f348ace081487049a",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bcfdd9f6a73e8a4f2448a8a7345eb92c496f0c38",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "claude"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e85d72c593a346540eafc8c812729f5f7580af1",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:08c46403688f05979325760b54c1e060e9c12b10",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "codex"
+    },
+    {
+      "room": "gitseq",
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5b4bb1309518ff0da35f3d4e0d00f54d524a6366",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8fe4d40bbe37269c7b7a0dd070116397eb4ac1e6",
+      "status": "awaiting-review",
+      "classification": "awaiting-Hugh-decision",
+      "performer": "codex"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:d6ebf40f57020c47958fa07add4065440d62ae25",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e4dc0eea43245728591212819e295c6001536e40",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "builder"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5915c80c79717f6ee62f405581357a5a276484ff",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0d7b7f21af90433b010ab3f9a6bbbc431f921613",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "builder"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:1d7b732fa175beb91b9edb198fc1363f0f3fa4a1",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9c8f444d16553529f6a30fd7b833249bb0768b39",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "builder"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7d7c19de54d911d3279e28cb3ac040f053884bbb",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2acacfc4c23c3c5c635469f103f841cc531bb7aa",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "builder"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:fb40b4d785efd416d1cb73fef138a02ad091f98a",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:12e9257d81a4067a3db163f5a583096eac561226",
+      "status": "stale",
+      "classification": "queued",
+      "performer": "builder"
+    },
+    {
+      "room": "tailapp",
+      "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:42c2ce37bf635f3fffa9b5109ec95ac513b92c49",
+      "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5cfedb59bc1285a0de3609b8dc7ae3221076fa2a",
+      "status": "stale",
+      "classification": "implementation-underway",
+      "performer": "builder"
+    },
+    {
+      "room": "chess",
+      "request": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:025a6e0168967478a876d5e6bb95afd36495d72c",
+      "promise": "git:sha1:1b96687964cbba5a6089c526d7136b32ba9488a5#git:sha1:975a1528a751f617e4e87ba4d006ee22c7b7f3aa",
+      "status": "stale",
+      "classification": "deployment-prerequisites",
+      "performer": "codex"
+    }
+  ],
+  "replacement_example": [
+    {
+      "frontier": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "b9606eae79f2aff3aa22b3b0bb75a59467e9dd77",
+        "depth": 20973
+      },
+      "sequence": 20918,
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:58295d54e94c6ad0a8c693fe858898d94521af8f",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c776efa3e861ac98fbd6c436680d5497903412fb",
+        "status": "cancelled"
+      }
+    },
+    {
+      "frontier": {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "9a3e03cb9b1ec60bb7b8d0b03ff1f87154dc8f57",
+        "depth": 20986
+      },
+      "sequence": 20921,
+      "commitment": {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7612631c673e319400ae2fadbb8f591d94fbddf",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:869878a699986c3d6bc88720b143c19471ea5945",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8459b22ab7997707a40b2e20abad3997cb3d1657",
+        "status": "satisfied",
+        "terminal": "reported"
+      }
+    }
+  ],
+  "additional_replacement_events": {
+    "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b7612631c673e319400ae2fadbb8f591d94fbddf",
+    "retirement": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52bb27d87aae1a6f14313aaccc003a6d22b6efb4",
+    "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:869878a699986c3d6bc88720b143c19471ea5945"
+  },
+  "validation": "Read actual actor work projections and inspect records; no throughput or time saving was measured. SKILL.md at current main is byte-identical to cited 33f69956167115d7cc3235b6b1864ed904f2802a."
+}
