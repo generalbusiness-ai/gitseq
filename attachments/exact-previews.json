@@ -1,0 +1,116 @@
+[
+  {
+    "path": "internal/service/headwatch.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "internal/service/headwatch_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "internal/service/headwatch_evidence_test.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "performance/head-wait-before.json",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "performance/head-wait-after.json",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/src/lib/rebuild.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/src/lib/api.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/src/lib/store.ts",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/src/components/TopBar.tsx",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/test/rebuild.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/test/store.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "ui/test/components.test.mjs",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "internal/service/uidist/index.html",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "internal/service/uidist/assets/index-CMnnB4kP.js",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "internal/service/server.go",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "performance/HEAD-WAIT.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "performance/README.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "docs/reference/performance.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  },
+  {
+    "path": "docs/reference/mcp/wait.md",
+    "status": "ready",
+    "byte_equal": true,
+    "commit": "bd6fb3831867a279539fd03d464ea482cb6e30eb"
+  }
+]

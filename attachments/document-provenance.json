@@ -1,0 +1,22 @@
+[
+  {
+    "path": "performance/HEAD-WAIT.md",
+    "server": true,
+    "clock": true
+  },
+  {
+    "path": "performance/README.md",
+    "server": true,
+    "clock": true
+  },
+  {
+    "path": "docs/reference/performance.md",
+    "server": true,
+    "clock": true
+  },
+  {
+    "path": "docs/reference/mcp/wait.md",
+    "server": true,
+    "clock": true
+  }
+]

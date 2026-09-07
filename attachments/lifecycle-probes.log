@@ -1,0 +1,14 @@
+late reply after newer status: new00000 undefined current
+✔ a rebuild reply from an old wait cannot relabel a newer status (1125.719709ms)
+unresolved actual /v0/rebuild fetches: 1
+✔ a slow rebuild endpoint cannot accumulate overlapping probes (568.862917ms)
+unresolved /v0/rebuild fetches across three completed waits: 0
+✔ pending probes cannot accumulate across successive waits (506.172959ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3405.19375

@@ -1,0 +1,5 @@
+=== RUN   TestCodexProfileRebuildProgressBoundary
+    codex_profile_rebuild_probe_test.go:19: profile rebuild is paused before publication at original frontier 4b68e6d4955c9ddb52ac3e511790c87d39b8bb70; progress={Started:false Verified:0 Total:0} running=false
+--- PASS: TestCodexProfileRebuildProgressBoundary (2.66s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	2.976s

@@ -1,0 +1,32 @@
+[
+  {
+    "mutation": "clock-transitive",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-clock-transitive.log"
+  },
+  {
+    "mutation": "probe-abort",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-probe-abort.log"
+  },
+  {
+    "mutation": "api-abort-signal",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-api-abort-signal.log"
+  },
+  {
+    "mutation": "probe-in-flight",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-probe-in-flight.log"
+  },
+  {
+    "mutation": "late-answer",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-late-answer.log"
+  },
+  {
+    "mutation": "failure-release",
+    "caught": true,
+    "log": "/tmp/git144-bd6-mutant-failure-release.log"
+  }
+]
