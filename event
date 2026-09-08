@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bbfc5e1876d9d30a49c64f7007b407b988d0b249","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/supersede.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c01f6d15f511c530b930afe5aca415f9013a28ab","text":"Merge retired a covered predecessor; the successor is at internal/eventref/eventref_test.go."}
