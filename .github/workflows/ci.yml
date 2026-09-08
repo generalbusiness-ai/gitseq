@@ -82,12 +82,31 @@ jobs:
       # describe adversarial security cases, so they are worth keeping long
       # enough to compare a repeat against its predecessor, and not worth
       # keeping indefinitely on a public runner.
+      #
+      # The two generated files are named one per line rather than uploading the
+      # directory. upload-artifact walks each search path and skips any entry
+      # whose own name begins with a dot unless include-hidden-files is on, so
+      # the directory form `spike/.spike/` was skipped as the first entry it
+      # looked at and every failed run stored nothing at all. A named file is
+      # itself the search path, so it is never that skipped entry, and naming
+      # the two files also bounds the upload to the evidence this step exists
+      # for: anything else that ever lands in that directory stays out of the
+      # artifact without needing a wider hidden-file opt-in.
+      #
+      # When the job fails before the evidence is written - a failure in an
+      # earlier step, or a runner that dies - neither file exists, this step
+      # finds nothing, warns, and uploads no artifact. It does not fail the job
+      # and does not alter the failing step's status: the run stays red for the
+      # reason it was already red, and a reader sees a red run carrying no
+      # evidence artifact rather than a green one.
       - name: Keep the adversarial evidence from a failed run
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: adversarial-evidence-${{ github.run_id }}-${{ github.run_attempt }}
-          path: spike/.spike/
+          path: |
+            spike/.spike/evidence.json
+            spike/.spike/SPIKE-RESULTS.md
           retention-days: 30
           if-no-files-found: warn
 
