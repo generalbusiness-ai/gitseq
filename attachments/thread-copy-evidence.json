@@ -1,0 +1,28 @@
+{
+  "claim": "Actual source-instrumented child-list spread element counts; no wall-clock speed claim.",
+  "rows": [
+    {
+      "children": 1000,
+      "actual_child_elements_yielded_during_repeated_spread": 499500,
+      "returned_descendants": 1000,
+      "outputs_equal_to_unmodified_source": true
+    },
+    {
+      "children": 2000,
+      "actual_child_elements_yielded_during_repeated_spread": 1999000,
+      "returned_descendants": 2000,
+      "outputs_equal_to_unmodified_source": true
+    },
+    {
+      "children": 4000,
+      "actual_child_elements_yielded_during_repeated_spread": 7998000,
+      "returned_descendants": 4000,
+      "outputs_equal_to_unmodified_source": true
+    }
+  ],
+  "checked_utc": "2026-09-08T03:36:29.626645+00:00",
+  "head": "98d63376d53fcbecf0afe3fbd98639587de1bfe7",
+  "source_sha256": "7636b5e7924ee314678aacb3b65da8360da316c43a871ebf89ce287a8ce21b57",
+  "instrumentation": "Temporary exact-source copy changes only the repeated child-list spread to count each element yielded; unmodified source is imported separately and all produced roots, root content, root summary and cycles match on the three star-shaped fixtures.",
+  "limits": "Synthetic fan-out work count only. Not browser latency, retained memory, all-input equivalence, full graph algorithm complexity or implementation approval. No repository source changed. Current graph calls this complete index before display limits."
+}
