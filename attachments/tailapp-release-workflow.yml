@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  release-dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.7'
+          cache-dependency-path: |
+            go.sum
+            jsonataddl/go.sum
+      - name: Verify root public dependency and paired workspace
+        run: ./scripts/check-root-module.sh
+      - name: Build unsigned release assets
+        run: scripts/release.sh v0.0.0-pr "${RUNNER_TEMP}/dist"
+      - name: Verify generated asset set
+        run: |
+          test -x "${RUNNER_TEMP}/dist/install.sh"
+          test -x "${RUNNER_TEMP}/dist/upgrade.sh"
+          test -f "${RUNNER_TEMP}/dist/checksums.txt"
+          test -f "${RUNNER_TEMP}/dist/SHA256SUMS"
+
+  release:
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the immutable tag
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Require a merged exact semantic-version tag
+        run: |
+          test "$(git describe --exact-match --tags HEAD)" = "$GITHUB_REF_NAME"
+          printf '%s\n' "${GITHUB_REF_NAME#v}" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.7'
+          cache-dependency-path: |
+            go.sum
+            jsonataddl/go.sum
+
+      - name: Verify source
+        run: |
+          go test ./...
+          go test -race ./...
+          go vet ./...
+          (cd jsonataddl && GOWORK=off go test ./...)
+          (cd jsonataddl && GOWORK=off go test -race ./...)
+          (cd jsonataddl && GOWORK=off go vet ./...)
+          test -z "$(git status --porcelain)"
+
+      - name: Verify root public dependency and paired workspace
+        run: ./scripts/check-root-module.sh
+
+      - name: Build release archives
+        run: scripts/release.sh "$GITHUB_REF_NAME" "${RUNNER_TEMP}/dist"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Keylessly sign release checksums
+        run: cosign sign-blob --yes --bundle "${RUNNER_TEMP}/dist/checksums.txt.bundle" --output-signature "${RUNNER_TEMP}/dist/checksums.txt.sig" "${RUNNER_TEMP}/dist/checksums.txt"
+
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: '${{ runner.temp }}/dist/*.tar.gz'
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "${RUNNER_TEMP}"/dist/* --title "Tailapps $GITHUB_REF_NAME" --generate-notes

@@ -1,0 +1,42 @@
+scripts/release_test.go at b583cdc4c3bcb1f6359f3298c067ae2298b02ca7, lines 120-159
+
+120: 	// Inspect the actual archive-installed binary: a workspace build loses the
+121: 	// public core version and checksum even when its source currently matches.
+122: 	info, err := buildinfo.ReadFile(wantTarget)
+123: 	if err != nil {
+124: 		t.Fatal(err)
+125: 	}
+126: 	foundCore := false
+127: 	for _, dep := range info.Deps {
+128: 		if dep.Replace != nil {
+129: 			t.Fatalf("release archive dependency has replacement: %+v", dep)
+130: 		}
+131: 		if dep.Path == jsonataddlModule {
+132: 			foundCore = true
+133: 			if dep.Version != "v0.2.0" || dep.Sum != "h1:rD0TyYRPHT+DapFEacbd+jLQKHo6I+mi2ufpcCd+eKY=" {
+134: 				t.Fatalf("release archive must name the public core version and checksum: %+v", dep)
+135: 			}
+136: 		}
+137: 	}
+138: 	if !foundCore {
+139: 		t.Fatal("release archive has no jsonataddl build information")
+140: 	}
+141: 	cosignArgs, err := os.ReadFile(cosignLog)
+142: 	if err != nil {
+143: 		t.Fatal(err)
+144: 	}
+145: 	if !strings.Contains(string(cosignArgs), "--bundle") || !strings.Contains(string(cosignArgs), "refs/tags/v"+testVersion+"$") {
+146: 		t.Fatalf("cosign verification = %q", cosignArgs)
+147: 	}
+148: 	output := run(t, root, nil, wantTarget, "version")
+149: 	var version map[string]any
+150: 	if err := json.Unmarshal(output, &version); err != nil {
+151: 		t.Fatalf("installed version JSON: %v; %s", err, output)
+152: 	}
+153: 	if version["version"] != testVersion {
+154: 		t.Fatalf("installed version = %#v", version)
+155: 	}
+156: 
+157: 	// A present-but-unusable host service manager must not discard the verified
+158: 	// binary or selected bundles. The release installer makes the persistence
+159: 	// gap explicit and returns nonzero unless --no-service was selected.
