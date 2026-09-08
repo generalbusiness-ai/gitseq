@@ -1,0 +1,332 @@
+{
+  "checked_utc": "2026-09-08T04:25:26.477870+00:00",
+  "scope": "Planner audit reuse, not delivery approval or full historical coverage.",
+  "metrics": [
+    {
+      "filename": "planner-tail-runtime-metrics-closed-audit-20260906.json",
+      "sha256": "d923ea79cd826d4723d2855eacc83801625ae3947e9ec001994328f2624ce54f",
+      "contents": {
+        "checked_utc": "2026-09-06T21:25:09.259343+00:00",
+        "main": "e3ad5f920d63274ac0998903e0399e413f9f848c",
+        "lifecycles": [
+          {
+            "number": 360,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:f1b5ca141b8eea8893a562b35be8c3ec2512029b",
+            "status": "cancelled"
+          },
+          {
+            "number": 360,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:db5d4b37d4c15b4c3694fe375c22932852c91b44",
+            "status": "cancelled"
+          },
+          {
+            "number": 360,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:241f0ba6478d70b849381295e94cabc345d3f3f3",
+            "status": "cancelled"
+          },
+          {
+            "number": 366,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7114cee83897f99582c3a67b4f2b85fe986d9164",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:cded37f0e35369e2171376a6b74cdf8a730dff97",
+            "status": "cancelled"
+          },
+          {
+            "number": 371,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:16512391e50bbb50665a299cfd958652eaf12fc5",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "addressed_to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "status": "withdrawn",
+            "stale": true
+          },
+          {
+            "number": 383,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e17b4e62c6a4b547ade0bcff5faf389fdaeac378",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "addressed_to": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "status": "withdrawn",
+            "stale": true
+          },
+          {
+            "number": 385,
+            "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:9b34d820d28b09eccb1ee04dba81314406373939",
+            "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:63821e4e8c610228ebfa4c3ec3b57c8cfa4b26ba",
+            "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0f6091cc3a811b10b6d9928507e578ee4116993b",
+            "status": "satisfied",
+            "stale": true,
+            "terminal": "reported"
+          }
+        ],
+        "retirements": [
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5143c1c9f12314f8ecbb4260b3704d867234d8b2",
+            "timestamp": 1787918772,
+            "actor": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+            "text": "Retire the stale duplicate metrics re-review request 47a67e92: its promise basis was corrupted by a redundant second checker promise, so it cannot receive its own guarded verdict. The same corrected head 0e3df616 / artifact 2b0e64de is approved by guarded review a6bede38 under request 7114cee8 (#366). This clears the duplicate from the awaiting-verdict queue.",
+            "verdict": "ineffective",
+            "reason": "actor may not supersede target"
+          },
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:d0bfd49dfeb9668bcb1c015701f2b0b37eb5d0d8",
+            "timestamp": 1787923562,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:7114cee83897f99582c3a67b4f2b85fe986d9164",
+            "text": "Retire completed repair request #366 because its response targeted #366 itself; corrective request #371 caused checker to promise the guarded verdict directly on original review request #360.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          },
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:d2f2a6505acece5aed68cdeddac08f578f69a5ea",
+            "timestamp": 1787923716,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+            "text": "Cancel tangled review request #360: it accumulated two checker promises, one ordinary report, and cannot admit the required guarded verdict. Replace it with one clean exact-head review request rather than preserve misleading in-progress or awaiting state.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          },
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:2efaee38b958b2df83d605d257118cee0969d5b1",
+            "timestamp": 1787923747,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e17b4e62c6a4b547ade0bcff5faf389fdaeac378",
+            "text": "Retire immediately stale replacement request #383; it cited the #360 cancellation act as a basis. Replace it using only the live current metrics artifact and operator direction.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          },
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c2663e0834fd4a6f25843ef60d657d3b3a029dab",
+            "timestamp": 1787927471,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:16512391e50bbb50665a299cfd958652eaf12fc5",
+            "text": "Retire stale repair request #371: fresh guarded request #385 was promised exactly once, approved at exact head 0e3df616530546eb160ad5a1758847b323a5f2ba, ratified, and merged by #389; no checker action remains on the retired review chain.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          }
+        ],
+        "source_candidate": "0e3df616530546eb160ad5a1758847b323a5f2ba",
+        "source_ancestor_main": true,
+        "review": "0f6091cc3a811b10b6d9928507e578ee4116993b exact0e3 artifact2b0e64;385satisfiedreported; allhistoricalmetricsrepairsresolveinonecurrenthead",
+        "source_verified": [
+          "internal/metrics/metrics.go histogram snapshot Count equals cumulative terminal bucket, ascending summation; noindependentcountatomic",
+          "internal/metrics/metrics_test.go concurrentobservationinvariantsandbucketboundaryprecisioncontrolsretained",
+          "internal/engine/engine.go fixedsignal/reasondimensionsallthreedetachsites anddeleteprocessingbound, wallElapsednegativeclampcounts, cancellationclassificationretained"
+        ],
+        "advisory": "Historicalreviewrecommendedsafeencodingofuint64countersbeforehighthroughput. Currentv1stillJSONnumbers. Notanassignedabandonedimplementation; no namedhighthroughputactivation shown. No newprotocolchangecommissioned.",
+        "result": "Cancelledmetricsreviewchain360/366/371/383hascompleted385verdictanddeliveredcandidatecurrentmain. No revival; nonewtestsorresidentoperations."
+      }
+    },
+    {
+      "filename": "planner-tail360-385-metrics-closed-audit-20260907.json",
+      "sha256": "d78f0bc0562f12e555ea4e3333b67cfd886ac4e6a4dec60840914b27e84dab6d",
+      "contents": {
+        "requests": {
+          "360": "47a67e92424a80a3d7eac3dc5d6f9e8825183d5f",
+          "366": "7114cee83897f99582c3a67b4f2b85fe986d9164",
+          "371": "16512391e50bbb50665a299cfd958652eaf12fc5",
+          "383": "e17b4e62c6a4b547ade0bcff5faf389fdaeac378"
+        },
+        "replacement_request385": "9b34d820d28b09eccb1ee04dba81314406373939",
+        "promise386": "63821e4e8c610228ebfa4c3ec3b57c8cfa4b26ba",
+        "guarded_approval387": "0f6091cc3a811b10b6d9928507e578ee4116993b",
+        "ratification": "b40c0c9363ec9b29c703a4489eb8d28e0536a442",
+        "receipt389": "bb8eff44a50270fb18cd3932462003d4a0a9492b",
+        "head": "0e3df616530546eb160ad5a1758847b323a5f2ba",
+        "merge": "3786ce69f21332ddfe407fc89a555e003cff82fc",
+        "historical_verification": "Guardedreview387 recognized independent/approved/ratified. Exactly23directartifactbases all at0e3. 3786merge has0e3directparent andcandidate ismainancestor. Requiredconcurrency/clock/lossdimension/cancellationcorrections explicitlychecked inhistoricalreview; request385replaced tangled360/366/371/383. No retroactiveverdict needed.",
+        "current_tests": {
+          "command": "go test -race ./internal/metrics ./internal/engine -run '^(TestHistogramSnapshotInvariantsUnderConcurrentObservation|TestHistogramDoesNotTruncateAcrossBucketBoundary|TestWallElapsedCountsClockRegression|TestUnroutedIntakeIsSplitBySignal|TestQueryMetricOutcomeDistinguishesCancellation)$' -count=1",
+          "exit": 0,
+          "metrics_seconds": 1.347,
+          "engine_seconds": 1.481,
+          "session": 23763
+        },
+        "residual_advisory": "Report387 explicitly left uint64JSONnumericprecision nonblocking and recommended decimalstrings/versionbump beforehighthroughputdeployment. Currentmetrics.go13 v1 andrawuint64JSONfields retainthatlimitation. This is not evidence of missingguardedreview and root doesnotclaimadvisorydelivered or highthroughputsuitability. No laterprecisionresolutionfound in targetedhistorysearch.",
+        "disposition": "Completed replacement review/delivery. No revival of obsolete reviewrequests. Preserve numericprecision as an explicitly outstanding conditionaladvisory, not as provenrequiredimplementationgap.",
+        "updated_utc": "2026-09-07T17:47:21.631548+00:00"
+      }
+    },
+    {
+      "filename": "planner-tail-metrics-audit-reuse-20260908.json",
+      "sha256": "7a1819433cfc0eae49b31f14f745f58de22c0e5fffca92a3e5a6621192621649",
+      "contents": {
+        "checked_utc": "2026-09-08T04:20:52.759831+00:00",
+        "main": "b583cdc4c3bcb1f6359f3298c067ae2298b02ca7",
+        "prior_audits": [
+          "/tmp/planner-tail-runtime-metrics-closed-audit-20260906.json",
+          "/tmp/planner-tail360-385-metrics-closed-audit-20260907.json"
+        ],
+        "comparison_base": "e3ad5f920d63274ac0998903e0399e413f9f848c",
+        "changed_paths_since_base": [
+          "notes/2026-08-31-url-reputation-stage-1-decisions.md",
+          "notes/2026-09-05-capability-context-contract.md",
+          "tailapps/url-reputation/README.md",
+          "tailapps/url-reputation/folds/normalize.jsonata",
+          "tailapps/url_reputation_test.go"
+        ],
+        "ancestors": {
+          "0e3df616530546eb160ad5a1758847b323a5f2ba": true,
+          "3786ce69f21332ddfe407fc89a555e003cff82fc": true
+        },
+        "scope": "Retired runtime-metrics review requests 360/366/371/383 and completed replacement385. Read both scoped prior audits in full; exact current Git comparison leaves metrics/engine implementation, tests and dependencies unchanged from Sep6 source inspection. Sep7 focused race-test results are historical; source main was not recorded in that audit, so they are not described as a newly reproduced current-head run.",
+        "disposition": "No revival. Effective Builder retirements and replacement385 guarded approval/ratification/receipt389 account for the implementation. Checker attempted retirement5143c1c9 was ineffective and is not counted as closure.",
+        "residual": "uint64 JSON precision remains an explicit conditional advisory before high-throughput deployment; no fresh deployment suitability or precision resolution claimed.",
+        "process": "Review-preparation churn is already addressed by existing Gitseq Hugh review19969; no duplicate note or request.",
+        "validation": "No tests rerun. Current comparison and ancestry checks only."
+      }
+    }
+  ],
+  "onboarding_lookup": {
+    "command": "python3 /tmp/planner-audit-lookup.py git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+    "observed_this_session_before_catalog_update": {
+      "reviewed_subjects": [],
+      "other_mention_files": [
+        "/tmp/planner-tail-onboarding-orientation-closed-audit-20260906.json"
+      ]
+    },
+    "prior_audit_checked_at": "2026-09-06T21:44:40.778077+00:00",
+    "prior_audit_main": "c9bdbd32792008e942727248c2cf9ecb30f7d2d8",
+    "examined_rows": [
+      {
+        "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+        "sequence": 178,
+        "conditions": "Review artifact 2934b9bdf14bd02f8d1ba6e9458794dfad6071fa at exact Git head e249f58ef55e4d6b2e6662742bd923727d038973. Assess the create-only app_install/tailapp_install/apps install boundary for validation-before-create, idempotency, non-replacement, activation and recovery semantics, source-directory safety, control/MCP size and schema compatibility, and concise CLI output. Review the first-time README path, help, visible three-signal demo, signal-counts custom example, canonical log/span/metric-point reference, and full CLI/MCP docs for accuracy and approachability. Re-run go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. Report concrete changes or approve the exact head. MCP 2026-07-28 dual-era migration is separate scope.",
+        "retirements": [
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a32192a62ec7da1f2e75d0c7077e1320d8b2ac36",
+            "timestamp": 1787914128,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+            "text": "Withdraw review request #178 before claim: it cites nonexistent Git head e249f58ef55e4d6b2e6662742bd923727d038973 rather than the actual commit e249f58e80ff8a7a5b196e62ff0b7518e26e7d71, so no exact-head verdict can be valid.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          }
+        ],
+        "successors": [
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:590660037d8b5f7461828b56161f5ce202c492ec",
+            "sequence": 235,
+            "lifecycles": [
+              {
+                "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:590660037d8b5f7461828b56161f5ce202c492ec",
+                "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+                "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+                "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:ae620662c9d73e307dd0afc791b035e0f12da005",
+                "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b425f6044c1d6ed70882271b68b14e1dd0b22c8c",
+                "status": "satisfied",
+                "stale": true,
+                "terminal": "reported"
+              }
+            ],
+            "verdict": "approved",
+            "review": "Approved exact Git head e593e4dfd86c279c8edf6e1e6be233182172a0a1 after independent review of all 24 successor artifacts. Its tree 06b1a713e10a11bfeef5164b732b365d073023b0 is byte-identical to substantively reviewed e249f58e80ff8a7a5b196e62ff0b7518e26e7d71; the successor changes only commit provenance by adding the Rests-On trailer to authority statement 635ed9f. The create-only install path compiles the complete source set before registry creation, refuses existing names, first-activates under the lifecycle lock, retains a validated draft on activation error, and is durably idempotent through the control ledger. CLI directory import selects only regular non-symlink application.sql and folds/*.jsonata sources, enforces element and aggregate limits, and remains compatible with the 1 MiB control and MCP envelopes. MCP selects exactly one of bundle or sources and uses standard base64. Concise CLI output, full-profile opt-in, README, help, authoring and harness guides, signal-counts example, canonical log/span/metric-point reference, and visible three-signal demo provide an accurate approachable first-time path. I examined and acknowledge the seven documentation successors ordinary staleness inherited from live predecessors; it predates this exact tree and does not invalidate the reviewed content. All required gates passed on this exact tree: go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. MCP 2026-07-28 dual-era migration remains correctly separate scope.",
+            "head": "e593e4dfd86c279c8edf6e1e6be233182172a0a1",
+            "ancestor_current_main": true
+          }
+        ]
+      },
+      {
+        "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:690cca675b4113fa16cf82c961c6061fe4bce8bf",
+        "sequence": 208,
+        "conditions": "Review the complete 24-artifact change set at exact Git head e249f58e80ff8a7a5b196e62ff0b7518e26e7d71, rooted at artifact a15f1ffe793659066377f891b4db976724b44366. Assess the create-only app_install/tailapp_install/apps install boundary for validation-before-create, durable idempotency, non-replacement, activation and recovery semantics, source-directory safety, control/MCP size and schema compatibility, and concise CLI output. Review the first-time README path, help, visible three-signal demo, signal-counts custom example, canonical log/span/metric-point reference, and full CLI/MCP docs for accuracy and approachability. Re-run go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. Report concrete changes or approve the exact head. Seven documentation artifacts carry only pre-existing ordinary staleness inherited from their live merged predecessors; acknowledge that as examined, not as changed code. MCP 2026-07-28 dual-era migration is separate scope.",
+        "retirements": [
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:18650053a6792a39cb4974a21d8acc5c3f3709f7",
+            "timestamp": 1787914423,
+            "actor": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+            "type": "supersede",
+            "target": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:690cca675b4113fa16cf82c961c6061fe4bce8bf",
+            "text": "Withdraw request #208 before checker claim. Although it cites the actual Git head, it omits body.artifact and body.head so the formal review gate does not recognize it, and the head still lacks the required Rests-On commit trailer or a current operator request/adopted decision. Preserve the corrected path artifacts as unreviewed pointers; do not ask checker for a verdict until operator authority produces a provenance-correct successor.",
+            "verdict": "effective",
+            "reason": "authorized supersession"
+          }
+        ],
+        "successors": [
+          {
+            "event": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:590660037d8b5f7461828b56161f5ce202c492ec",
+            "sequence": 235,
+            "lifecycles": [
+              {
+                "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:590660037d8b5f7461828b56161f5ce202c492ec",
+                "requester": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+                "performer": "d50369731a941ee752b3a07cd33b8c7e9b4dbf1ead69532463a3df851bf2bd2f",
+                "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:ae620662c9d73e307dd0afc791b035e0f12da005",
+                "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:b425f6044c1d6ed70882271b68b14e1dd0b22c8c",
+                "status": "satisfied",
+                "stale": true,
+                "terminal": "reported"
+              }
+            ],
+            "verdict": "approved",
+            "review": "Approved exact Git head e593e4dfd86c279c8edf6e1e6be233182172a0a1 after independent review of all 24 successor artifacts. Its tree 06b1a713e10a11bfeef5164b732b365d073023b0 is byte-identical to substantively reviewed e249f58e80ff8a7a5b196e62ff0b7518e26e7d71; the successor changes only commit provenance by adding the Rests-On trailer to authority statement 635ed9f. The create-only install path compiles the complete source set before registry creation, refuses existing names, first-activates under the lifecycle lock, retains a validated draft on activation error, and is durably idempotent through the control ledger. CLI directory import selects only regular non-symlink application.sql and folds/*.jsonata sources, enforces element and aggregate limits, and remains compatible with the 1 MiB control and MCP envelopes. MCP selects exactly one of bundle or sources and uses standard base64. Concise CLI output, full-profile opt-in, README, help, authoring and harness guides, signal-counts example, canonical log/span/metric-point reference, and visible three-signal demo provide an accurate approachable first-time path. I examined and acknowledge the seven documentation successors ordinary staleness inherited from live predecessors; it predates this exact tree and does not invalidate the reviewed content. All required gates passed on this exact tree: go test ./..., go test -race ./..., go vet ./..., and ./scripts/demo.sh. MCP 2026-07-28 dual-era migration remains correctly separate scope.",
+            "head": "e593e4dfd86c279c8edf6e1e6be233182172a0a1",
+            "ancestor_current_main": true
+          }
+        ]
+      }
+    ],
+    "refresh": {
+      "checked_utc": "2026-09-08T04:22:24.428232+00:00",
+      "main": "b583cdc4c3bcb1f6359f3298c067ae2298b02ca7",
+      "scope": "Historical onboarding reviews178/208 and Codex identity request1057. Selected full prior audit rows and reports read, not a re-review of the other onboarding audit subjects.",
+      "prior_audits": [
+        "/tmp/planner-tail-onboarding-orientation-closed-audit-20260906.json",
+        "/tmp/planner-tail-docs-normalizer-audit-20260906.json"
+      ],
+      "onboarding": {
+        "requests": [
+          "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c1b2507e889e3d5b4ae15b61a3c5021bc2981c0d",
+          "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:690cca675b4113fa16cf82c961c6061fe4bce8bf"
+        ],
+        "replacement235": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:590660037d8b5f7461828b56161f5ce202c492ec",
+        "approved_head": "e593e4dfd86c279c8edf6e1e6be233182172a0a1",
+        "ancestor_current_main": true,
+        "current_comparison": "Only notes/2026-09-05-capability-context-contract.md differs from prior source audit c9bdbd32792008e942727248c2cf9ecb30f7d2d8. Install behavior and existing probe source remain unchanged. No fresh probe/test execution.",
+        "disposition": "Keep historical reviews retired. Current install failure-description mismatch remains separately assigned by4129; do not mark it fixed or duplicate that recovery."
+      },
+      "normalizer": {
+        "old1057": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:94c31b6bc5f16616147e3991d9046e28984cd48c",
+        "replacement1061": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:5a4db4fe45944a4a5d388913ca78f62818fe36c5",
+        "approved_head": "1b2ab554d52e06c1760b2ed68182e5519836d7bc",
+        "ancestor_current_main": true,
+        "current_source": "All three named bundle folds preserve codex_cli_rs/codex_exec/codex-app-server mapping. Existing TestCodexServiceIdentitiesNormalizeAcrossBundles runs the 3-by-3 fixture-based assertion; source inspected, no rerun. Session-cost README154-165 preserves old materialized labels on compatible continuation and explicit reset/no-replay for changed stored runtime.",
+        "disposition": "1057 re-anchored identically to1061 and delivered; no revival. This does not claim every currently emitted external Codex identity is covered.",
+        "later_docs4045": {
+          "request": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:d56a8377f0554fa82608e21e83b06488274978a7",
+          "requester": "f7448db3afb12995a3b232dbaccbc4511d4c9e0fad25830d1f171ac4533bd673",
+          "performer": "00721374a520eabbbd4ded64dd018110f47545ff20112bee83c75f478e15f818",
+          "promise": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:0a4932121555f654b3c3b496c96a1696726df6a1",
+          "report": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:e8b2adf36c8b475d4f0a2a403bc39282beb3ddc7",
+          "status": "satisfied",
+          "target_repo": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f",
+          "target_ref": "refs/heads/main",
+          "approval": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:a5111933fa83034b42dcff95f3746d67f4ef5616",
+          "candidate": "d816892bb305f10194a7403427838f1d643e66b3",
+          "terminal": "landed",
+          "landing_receipt": "git:sha1:da732b0bdaad4426ed4ad666b892d8a7c68f625f#git:sha1:c91c84f12a0bfcd946b9da1a0314eaa33934d055"
+        },
+        "later_docs_candidate_ancestor": true
+      },
+      "limits": "Dated record/source reuse and current Git ancestry/difference checks. No fresh full suite, live resident installation, reset, telemetry capture, or current external harness compatibility audit. Other historical onboarding subjects and broad documentation980/1047 are outside this refresh."
+    }
+  },
+  "limits": "No quantified time/token saving; repeated audit documents are evidence of repeated investigation, not proof every repeated test was unnecessary. Current no-test reuse was already applied locally. An incomplete index cannot prove an absent task was never audited or that any task is complete."
+}
