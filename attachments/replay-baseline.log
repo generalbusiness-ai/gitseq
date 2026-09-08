@@ -1,0 +1,7 @@
+=== RUN   TestBatchResumesADurablePrefixAndReplaysTheCompletedChain
+    batch_prefix_recovery_test.go:83: seed landed=1; resume replayed=1 landed=1, depth 4 -> 5; complete replay retained both event IDs and unchanged head/depth
+--- PASS: TestBatchResumesADurablePrefixAndReplaysTheCompletedChain (3.23s)
+=== RUN   TestBatchPreflightRefusalThenFullLandingAndReplay
+--- PASS: TestBatchPreflightRefusalThenFullLandingAndReplay (2.71s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	6.377s

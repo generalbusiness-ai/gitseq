@@ -1,0 +1,29 @@
+{
+  "head": "03239a872ba339216780006622bbd0e8df0d7fa5",
+  "base": "98d63376d53fcbecf0afe3fbd98639587de1bfe7",
+  "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3d6d8c2cb7fbf5109b41fb365783ed7560d54276",
+  "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e211f789295a5f65a73501b5650112cbbe80881c",
+  "paths": [
+    "cmd/gs/main_test.go",
+    "cmd/gs/batch_prefix_recovery_test.go"
+  ],
+  "validation": {
+    "focused": "PASS6.228s",
+    "all_batch_race": "PASS26.499s; all 25 named test/subtest results recorded, no failures",
+    "documentation_gates": "PASS55.307s",
+    "vet_build": "PASS",
+    "executed_replay_script": "Exact-head baseline pass; actual compiled mixed-outcome fault fails the new proper-prefix test while the preserved current control passes; restored pass; production bytes unchanged"
+  },
+  "architecture": "Layer7 batch CLI tests exercise existing signed admission/storage, Workroom fold and projection contracts. Test-only, all contracts preserved; batch.md already states this recovery behavior.",
+  "security": "Uses the real batch fixture and signed append path; no live batch, crash machinery, runtime policy, signature or admission bypass. Exact original event, sole suffix provenance, one missing append, typed outcomes and final stable head/depth are asserted.",
+  "simplification": "One 84-line test reuses the existing batch fixture and the exact prefix bytes. Existing preflight/full-replay control is retained with an accurate name/comment; no production abstraction or new helper.",
+  "scope_limits": [
+    "Local validation is all batch tests under race, documentation gates and full-repository vet/build; not a claim of rerunning every repository test for this test-only patch.",
+    "Full repository CI, sealed delivery and cleanup still follow independent approval.",
+    "Original Planner evidence remains attributed to its original examined head; Codex current-main intake proof is separate."
+  ],
+  "source_sha256": {
+    "cmd/gs/main_test.go": "7a0c36e17b386b50d7f8efcdafe0d06ab3aae38fdf87c307161fdd0c8c82cbe9",
+    "cmd/gs/batch_prefix_recovery_test.go": "65fc9be2b64e23d77766d55a334142ffc8dd8eda1d6f12057415789a7aa38cf7"
+  }
+}

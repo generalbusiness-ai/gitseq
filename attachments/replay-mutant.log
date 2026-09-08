@@ -1,0 +1,8 @@
+=== RUN   TestBatchResumesADurablePrefixAndReplaysTheCompletedChain
+    batch_prefix_recovery_test.go:36: batch submit: mutation rejects mixed replay and newly landed suffix
+--- FAIL: TestBatchResumesADurablePrefixAndReplaysTheCompletedChain (2.48s)
+=== RUN   TestBatchPreflightRefusalThenFullLandingAndReplay
+--- PASS: TestBatchPreflightRefusalThenFullLandingAndReplay (2.78s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	5.627s
+FAIL
