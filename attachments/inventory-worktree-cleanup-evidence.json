@@ -1,0 +1,41 @@
+{
+  "checked_utc": "2026-09-08T01:29:07.255993+00:00",
+  "repository": "/Users/hughpyle/play/gitseq-inventory",
+  "paths": [
+    {
+      "path": "/Users/hughpyle/play/gitseq-inventory-worktrees/bootstrap-inventory-application",
+      "branch": "refs/heads/request/bootstrap-inventory-application",
+      "head": "a3ce0fc6d4150a05ec8655340509f06b96a4822f"
+    },
+    {
+      "path": "/Users/hughpyle/play/gitseq-inventory-worktrees/inventory-release-15602",
+      "branch": "refs/heads/merge/inventory-release-15602",
+      "head": "7cfdc271503f490a4f80b533bc64ec27b3ce9a49"
+    }
+  ],
+  "current_main_and_remote_main": "88c2d593dc3ff63f1c37152583d83cba32f7cb63",
+  "current_seq_and_remote_seq": "5ab059d397140032a1b38570c2a98b196de3529e",
+  "clean_ordinary_and_ignored_status": true,
+  "both_exact_heads_in_main_and_origin_main": true,
+  "lsof_cwd_matches": [],
+  "current_workroom_frontier": 513,
+  "receipt": {
+    "event": "git:sha1:5abaa0f151cd76dcf02a7bd669358ce94b67f4a6#git:sha1:6f15851a9b4ec7b6d6312438e4098f6fea0ea64c",
+    "sequence": 68,
+    "effective": true,
+    "merge_candidate": "a3ce0fc6d4150a05ec8655340509f06b96a4822f",
+    "merge_head": "7cfdc271503f490a4f80b533bc64ec27b3ce9a49"
+  },
+  "rules_basis": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1c15fb28f5df85b922f551195b7b736f2488138",
+    "path": "AGENTS.md",
+    "commit": "ce18ec8742ddd8665afa284a9cde1ce946213435",
+    "stale": true,
+    "retired": false,
+    "describes_superseded_world": false,
+    "stale_because_truncated": true
+  },
+  "rules_current_main_bytes_equal": true,
+  "retention_review": "Named historical records describe bootstrap branch and reviewed candidate, not a continuing retention requirement. The all-closed accounting at unchanged Inventory frontier513 finds no active implementation commitment. No normal or ignored local files were listed in either checkout. Current absence of cwd users is only an observation; performer must check active use and all local material again.",
+  "excluded": "All other worktrees, dirty Gitseq trees, Tailapp I7 work, resident reader builds/rollback material, actors, services, keys, telemetry and remote branches."
+}
