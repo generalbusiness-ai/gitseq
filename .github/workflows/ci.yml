@@ -61,6 +61,9 @@ jobs:
           fi
           make build
 
+      - name: Fixture failure after evidence (temporary)
+        run: exit 1
+
       # ui-check, not ui. Both rebuild the bundle, but only ui-check compares
       # the result against what is committed. The reproducibility gate below
       # cannot cover this: Vite emits content-hashed filenames, so a rebuilt
