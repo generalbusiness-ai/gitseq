@@ -1,0 +1,65 @@
+{
+  "utc": "2026-09-08T01:49:44.111884+00:00",
+  "refs": {
+    "argv": [
+      "git",
+      "-C",
+      "/Users/hughpyle/play/gitseq-inventory",
+      "show-ref"
+    ],
+    "exit": 0,
+    "stdout": "69e07217bb758ecbbc9c977ec3c2a29a10985460 refs/gitseq/checkpoints/5abaa0f151cd76dcf02a7bd669358ce94b67f4a6\nc86990f70e7404f3b4ce3b9a1144cc3497d422a9 refs/gitseq/merge-receipts/0eb0af21ad2de3e0b01d9ce331148b132757d55627f064dfe44d1f3fb3c8e0c7\n9741247531f3783087ead320391a01115fb7710a refs/gitseq/merge-receipts/19f185feebc113fe733ff9d37e3832c6622d20cbad752c8e22af62ba9bc05c57\n7cfdc271503f490a4f80b533bc64ec27b3ce9a49 refs/gitseq/merge-receipts/38b06a35a42e951e22642943eef064cd77a10559721f2795b31405ef79b705c1\n12c1687b55a04537ffe063ff50aa3238c9db3684 refs/gitseq/merge-receipts/481162f8c7e8661d3b1541d8f39fc71fb82141123342f9a5e949bee934698b5d\n88c2d593dc3ff63f1c37152583d83cba32f7cb63 refs/gitseq/merge-receipts/54d5830ba919b2f2a2c6fc4823902f70b7a197afe876f5564d2e45d7bc591510\n9c5d9dffc65090a990debe8e82e6864f85b9dc47 refs/gitseq/merge-receipts/d45de033e39a90ff569c0972ff10e5172931de3ffc3f1e2b08e4bc38cb69f4d3\n4edd9c98a8db2bb8e6913c73e17e89645f545a8f refs/gitseq/merge-receipts/ec714465e6a2ece7812829ce6e34607e2762c2b6fdfcb34bc911b6a5ad33c3a9\ncedf19e9e0c3a414da16147abd1b7a55cb30ed3b refs/gitseq/resident/5abaa0f151cd76dcf02a7bd669358ce94b67f4a6\n88c2d593dc3ff63f1c37152583d83cba32f7cb63 refs/heads/main\n88c2d593dc3ff63f1c37152583d83cba32f7cb63 refs/remotes/origin/HEAD\n88c2d593dc3ff63f1c37152583d83cba32f7cb63 refs/remotes/origin/main\na3ce0fc6d4150a05ec8655340509f06b96a4822f refs/remotes/origin/request/bootstrap-inventory-application\n5ab059d397140032a1b38570c2a98b196de3529e refs/seq/5abaa0f151cd76dcf02a7bd669358ce94b67f4a6\n",
+    "stderr": ""
+  },
+  "worktrees": {
+    "argv": [
+      "git",
+      "-C",
+      "/Users/hughpyle/play/gitseq-inventory",
+      "worktree",
+      "list",
+      "--porcelain"
+    ],
+    "exit": 0,
+    "stdout": "worktree /Users/hughpyle/play/gitseq-inventory\nHEAD 88c2d593dc3ff63f1c37152583d83cba32f7cb63\nbranch refs/heads/main\n\n",
+    "stderr": ""
+  },
+  "root_status": {
+    "argv": [
+      "git",
+      "-C",
+      "/Users/hughpyle/play/gitseq-inventory",
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=all",
+      "--ignored=matching"
+    ],
+    "exit": 0,
+    "stdout": "",
+    "stderr": ""
+  },
+  "remote": {
+    "argv": [
+      "git",
+      "-C",
+      "/Users/hughpyle/play/gitseq-inventory",
+      "ls-remote",
+      "origin",
+      "refs/heads/*",
+      "refs/seq/*"
+    ],
+    "exit": 0,
+    "stdout": "88c2d593dc3ff63f1c37152583d83cba32f7cb63\trefs/heads/main\na3ce0fc6d4150a05ec8655340509f06b96a4822f\trefs/heads/request/bootstrap-inventory-application\n5ab059d397140032a1b38570c2a98b196de3529e\trefs/seq/5abaa0f151cd76dcf02a7bd669358ce94b67f4a6\n",
+    "stderr": ""
+  },
+  "removed_paths": {
+    "/Users/hughpyle/play/gitseq-inventory-worktrees/bootstrap-inventory-application": true,
+    "/Users/hughpyle/play/gitseq-inventory-worktrees/inventory-release-15602": true
+  },
+  "removed_refs": {
+    "refs/heads/merge/inventory-release-15602": "7cfdc271503f490a4f80b533bc64ec27b3ce9a49",
+    "refs/heads/request/bootstrap-inventory-application": "a3ce0fc6d4150a05ec8655340509f06b96a4822f"
+  },
+  "all_other_local_refs_unchanged": true,
+  "remote_heads_and_sequence_unchanged": true
+}
