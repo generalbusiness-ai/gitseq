@@ -1,0 +1,88 @@
+{
+  "checked_utc": "2026-09-08T06:04:21.202757+00:00",
+  "main": "3ecb8b77d55cfe8ccb1d634649788a4ab629577b",
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "bdbf4b998e4e17345f56bbba0fe846241050b52a",
+    "depth": 21368
+  },
+  "scope": "Read the full ordered work-loop guide, full example runner, full20305 conditions and current native commitment; compared the selected live artifact bytes with main. No source changes.",
+  "findings": [
+    {
+      "path": "docs/how-to/run-a-work-loop.md",
+      "lines": [
+        62,
+        67
+      ],
+      "observed": "The first artifact says make test and make vet pass, but the disposable example creates only CHANGELOG.md and runs neither command. The immediately following prose correctly requires reporting tests actually met."
+    },
+    {
+      "path": "docs/how-to/run-a-work-loop.md",
+      "lines": [
+        118,
+        130,
+        135
+      ],
+      "observed": "The script seals the changelog merge, then creates a parser-rewrite promise resting on that same changelog request. The separate outcome was not requested; it also follows the closure rather than showing withdrawal of unfinished assigned work."
+    },
+    {
+      "path": "docs/how-to/run-a-work-loop.md",
+      "lines": [
+        146,
+        160
+      ],
+      "observed": "Work discovered halfway through is presented after the completed merge and withdrawal. The source-bearing child correctly inherits its target since82f612df; preserve that fix while making chronology and outstanding outcomes explicit."
+    }
+  ],
+  "validation": {
+    "prior_current_head_command_test": "The immediately preceding audit ran TestGateDocumentedCommandsRun/docs/how-to/run-a-work-loop.md: PASS14.694s overall,13.33s page. Reused from session checkpoint; not rerun in this audit.",
+    "runner_source": "internal/docset/examples_test.go33-48,96-144 concatenates all sh blocks in page order and checks shell command exit under set -euo pipefail. It has no independent assertion for this page that each promise text owes the named request outcome, the reported tests ran, or the final request states match the narrative.",
+    "limits": "This is an instructional semantic inconsistency, not a demonstrated runtime rejection, generic interpreter vulnerability or new merge-policy proposal."
+  },
+  "ownership": {
+    "20305": "Effective, already promised by Codex1c69b384. Its full conditions commission AGENTS/SKILL editorial preservation and walkthrough verification, not correction of this separate how-to page. A child request makes the extra deliverable explicit; it may share the editorial delivery if ownership and all commitments are accounted for.",
+    "existing_recoveries": "21365 record,21366 report references,21367 glossary/detach,21368 batch signer and cost guidance remain distinct. None names this remaining work-loop example correction.",
+    "historical_scope": "3029/4399/5017 migration remains partially audited; this finding is not evidence that every original first-publication condition is satisfied."
+  },
+  "bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b3a68c6256221f6cba88ff1ee5d392e305a5fe33",
+      "path": "SKILL.md",
+      "commit": "33f69956167115d7cc3235b6b1864ed904f2802a",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015",
+      "stale_because_path": "internal/workroom/fold.go",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d78d325052c8e2953172231632f6f974f61dadf9",
+      "path": "docs/how-to/run-a-work-loop.md",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "stale": false,
+      "retired": false,
+      "describes_superseded_world": false,
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1c15fb28f5df85b922f551195b7b736f2488138",
+      "path": "AGENTS.md",
+      "commit": "ce18ec8742ddd8665afa284a9cde1ce946213435",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because_truncated": true,
+      "ancestor_main": true,
+      "byte_equal_main": true
+    }
+  ],
+  "source_sha256": {
+    "docs/how-to/run-a-work-loop.md": "9794312efc5132e322f3baae8f4e35a045c9fa1de08b612ff38f0485ce602154",
+    "internal/docset/examples_test.go": "2ef4571ed15c2b3194af15272038ad6a5b255823198843dbb4466e6751a93b0c",
+    "AGENTS.md": "15f147f89c0df38b03b0a3a87ac4f32584463313dccc439123ad4fe023a9d4c7",
+    "SKILL.md": "16283b174ea69dde14ad31c6b7e383a94878da3db5c939f67236c712071f5a3c"
+  }
+}
