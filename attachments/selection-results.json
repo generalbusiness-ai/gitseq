@@ -1,0 +1,131 @@
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'true'
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::matchDirectories 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'true'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike'
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'false'
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::matchDirectories 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'false'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike'
+::debug::Removing /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike from rawSearchResults because it is a directory
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/.sentinel was found using the provided searchPath
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md was found using the provided searchPath
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json was found using the provided searchPath
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'true'
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::matchDirectories 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'true'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md'
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json was found using the provided searchPath
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md was found using the provided searchPath
+Multiple search paths detected. Calculating the least common ancestor of all paths
+::debug::Using search path /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json
+::debug::Using search path /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md
+The least common ancestor is /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike. This will be the root directory of the artifact
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'false'
+::debug::followSymbolicLinks 'true'
+::debug::implicitDescendants 'true'
+::debug::matchDirectories 'true'
+::debug::omitBrokenSymbolicLinks 'true'
+::debug::excludeHiddenFiles 'false'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json'
+::debug::Search path '/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md'
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json was found using the provided searchPath
+::debug::File:/private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md was found using the provided searchPath
+Multiple search paths detected. Calculating the least common ancestor of all paths
+::debug::Using search path /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/evidence.json
+::debug::Using search path /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike/SPIKE-RESULTS.md
+The least common ancestor is /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/21346/work/fixture/spike/.spike. This will be the root directory of the artifact
+[
+  {
+    "label": "old selector (current main): whole hidden directory, hidden files off",
+    "inputs": {
+      "path": "spike/.spike/",
+      "include-hidden-files": false
+    },
+    "rootDirectory": "spike/.spike",
+    "count": 0,
+    "selected": []
+  },
+  {
+    "label": "old path with hidden files ON (rejected alternative: unbounded)",
+    "inputs": {
+      "path": "spike/.spike/",
+      "include-hidden-files": true
+    },
+    "rootDirectory": "spike/.spike",
+    "count": 3,
+    "selected": [
+      {
+        "path": "spike/.spike/.sentinel",
+        "sha256": "675ae289b26d6ea9324b89de5dc95b5f41198658ef67a1c92401cbad79cdaa12"
+      },
+      {
+        "path": "spike/.spike/SPIKE-RESULTS.md",
+        "sha256": "4810fd67834d5d5288c29ab683a639c472d1b547fece26ba163fdec16eee2881"
+      },
+      {
+        "path": "spike/.spike/evidence.json",
+        "sha256": "60248523c18455cbe2731d65b1de774f90e741e598e940df36fb21f0b12f113a"
+      }
+    ]
+  },
+  {
+    "label": "corrected selector: explicit generated paths, hidden files off",
+    "inputs": {
+      "path": "spike/.spike/evidence.json\nspike/.spike/SPIKE-RESULTS.md",
+      "include-hidden-files": false
+    },
+    "rootDirectory": "spike/.spike",
+    "count": 2,
+    "selected": [
+      {
+        "path": "spike/.spike/SPIKE-RESULTS.md",
+        "sha256": "4810fd67834d5d5288c29ab683a639c472d1b547fece26ba163fdec16eee2881"
+      },
+      {
+        "path": "spike/.spike/evidence.json",
+        "sha256": "60248523c18455cbe2731d65b1de774f90e741e598e940df36fb21f0b12f113a"
+      }
+    ]
+  },
+  {
+    "label": "corrected selector with hidden files ON (bound is the same)",
+    "inputs": {
+      "path": "spike/.spike/evidence.json\nspike/.spike/SPIKE-RESULTS.md",
+      "include-hidden-files": true
+    },
+    "rootDirectory": "spike/.spike",
+    "count": 2,
+    "selected": [
+      {
+        "path": "spike/.spike/SPIKE-RESULTS.md",
+        "sha256": "4810fd67834d5d5288c29ab683a639c472d1b547fece26ba163fdec16eee2881"
+      },
+      {
+        "path": "spike/.spike/evidence.json",
+        "sha256": "60248523c18455cbe2731d65b1de774f90e741e598e940df36fb21f0b12f113a"
+      }
+    ]
+  }
+]
