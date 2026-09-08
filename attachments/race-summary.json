@@ -1,0 +1,485 @@
+{
+  "command": "go test -race -count=1 -json ./...",
+  "go": "go1.27.0 darwin/arm64",
+  "exit_code": 0,
+  "input_sha256": "781e6390fe35ac2b49bf42bd35e2dd1123149d228f06944811b9f05b4b3cb4cc",
+  "packages": [
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq",
+      "Elapsed": 1.306
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf",
+      "Elapsed": 2.321
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/custody",
+      "Elapsed": 3.906
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/connector/github",
+      "Elapsed": 3.985
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/intent",
+      "Elapsed": 4.055
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/domain",
+      "Elapsed": 4.247
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/ciguard",
+      "Elapsed": 4.314
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/apphost",
+      "Elapsed": 5.386
+    },
+    {
+      "Action": "skip",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/safetext",
+      "Elapsed": 0
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/boundary",
+      "Elapsed": 5.659
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/observe",
+      "Elapsed": 2.19
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/perflane",
+      "Elapsed": 2.401
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/residentclient",
+      "Elapsed": 3.056
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/reviewguard",
+      "Elapsed": 3.002
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/telemetry",
+      "Elapsed": 2.144
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/testgit",
+      "Elapsed": 2.751
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/wireparity",
+      "Elapsed": 1.959
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report",
+      "Elapsed": 1.279
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/spike/forge",
+      "Elapsed": 1.456
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/perfscenario",
+      "Elapsed": 8.415
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike",
+      "Elapsed": 4.029
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/gitstore",
+      "Elapsed": 13.785
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/mergeplan",
+      "Elapsed": 13.1
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/spike/querysandbox",
+      "Elapsed": 5.721
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/statusview",
+      "Elapsed": 12.121
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/host/live",
+      "Elapsed": 18.086
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/host/identity",
+      "Elapsed": 18.232
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/host",
+      "Elapsed": 43.046
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/workroom",
+      "Elapsed": 36.011
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gitseq-github",
+      "Elapsed": 58.314
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/service",
+      "Elapsed": 87.27
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/kernel",
+      "Elapsed": 106.979
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp",
+      "Elapsed": 155.448
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/app",
+      "Elapsed": 157.568
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/internal/docset",
+      "Elapsed": 225.463
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Elapsed": 498.263
+    }
+  ],
+  "selected_authority_and_resume_tests": [
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestSuccessionAdmissionAppliesResidentRequestCapWithoutAppending",
+      "Elapsed": 3.15
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestSuccessionAdmissionPreflightsEveryActWithoutAppending",
+      "Elapsed": 3.52
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesAHalfSealedTargetBinding",
+      "Elapsed": 7.56
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesADestinationTheCheckoutIsNotOn",
+      "Elapsed": 9.2
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesAnUnknownHoldWarningValue",
+      "Elapsed": 8.73
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesACheckoutFromAnotherRepository",
+      "Elapsed": 7.61
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumesALegacyReceiptWithNoTargetFields",
+      "Elapsed": 13.19
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumesAnUntamperedReceiptCarryingTheNewFields",
+      "Elapsed": 12.99
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact",
+      "Elapsed": 5.32
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesBlockingStaleness",
+      "Elapsed": 8.94
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationAcceptsLivePlanner",
+      "Elapsed": 20.38
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeGuardRefusesRatifiedChangesRequestedVerdict",
+      "Elapsed": 8.09
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesASignerWhoIsNotTheHoldOwner",
+      "Elapsed": 16.09
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRequiresRatificationAndPreReceiptOrdering",
+      "Elapsed": 10.86
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesIneffectiveRatification",
+      "Elapsed": 9.07
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeAppendsAHistoricalWiderReceiptWithoutReplanningOrRemerging",
+      "Elapsed": 29.26
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesOrdinaryParticipantsSelfAuthorizing",
+      "Elapsed": 14.65
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeGuardRefusesChangedCandidate",
+      "Elapsed": 8.54
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationAcceptsLiveRatifier",
+      "Elapsed": 22.73
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeGuardRefusesApprovalSignedByTheImplementer",
+      "Elapsed": 6.67
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeAppendsASealedExactPathReceiptWithoutReplanningOrRemerging",
+      "Elapsed": 21.26
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesNonAncestorRemeasure",
+      "Elapsed": 11.66
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesOverlappingTargetMovement",
+      "Elapsed": 11.54
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesALegacyReceiptOnAnotherBranch",
+      "Elapsed": 7.44
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeGuardRefusesUnratifiedApproval",
+      "Elapsed": 6.63
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRequiredModeRefusesAbsence",
+      "Elapsed": 6.62
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesMovedTargetWithoutRemeasure",
+      "Elapsed": 10.9
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/candidate_missing",
+      "Elapsed": 10.84
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRequiresExactlyOneAuthorizationLane/zero",
+      "Elapsed": 9
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRemeasuresDisjointTargetMovement",
+      "Elapsed": 18.99
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesANonAssignedApprovalOnItsOwn",
+      "Elapsed": 13.96
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers/target_repository",
+      "Elapsed": 9.84
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers/hold_warning",
+      "Elapsed": 9.71
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers/target_pre-head",
+      "Elapsed": 9.82
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers/target_ref",
+      "Elapsed": 9.77
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesADurableReceiptDisagreeingWithTheTrailers",
+      "Elapsed": 0.01
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRequiresExactlyOneAuthorizationLane/double",
+      "Elapsed": 8.95
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRequiresExactlyOneAuthorizationLane",
+      "Elapsed": 17.96
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesAReceiptSealedForAnotherDestination/another_repository",
+      "Elapsed": 6.94
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesAReceiptSealedForAnotherDestination/another_branch",
+      "Elapsed": 6.75
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeResumeRefusesAReceiptSealedForAnotherDestination",
+      "Elapsed": 0.01
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/candidate_wrong",
+      "Elapsed": 10.07
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/approval_missing",
+      "Elapsed": 3.77
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/approval_wrong",
+      "Elapsed": 2.88
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/request_missing",
+      "Elapsed": 2.82
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/request_wrong",
+      "Elapsed": 2.78
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/target_missing",
+      "Elapsed": 2.78
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding/remeasure_wrong",
+      "Elapsed": 2.82
+    },
+    {
+      "Action": "pass",
+      "Package": "github.com/generalbusiness-ai/gitseq/cmd/gs",
+      "Test": "TestMergeAuthorizationRefusesEveryWrongBinding",
+      "Elapsed": 38.76
+    }
+  ],
+  "failed_tests": []
+}

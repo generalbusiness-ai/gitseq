@@ -1,0 +1,31 @@
+{
+  "head": "fd6b4c278e105dca532b9eaa4e65337bc2d53e22",
+  "base": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d493516c602dae146a2bc82591ab236faad52702",
+  "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bc1c6981589d62c7d56f514b6dde6ce7ae168720",
+  "paths": [
+    "cmd/gs/legacy_receipt_resume_test.go",
+    "cmd/gs/main_test.go"
+  ],
+  "validation": {
+    "focused": "PASS 8.628s",
+    "compiled_fresh_guard": "Historical test FAIL; current-plan control PASS (7.148s combined)",
+    "race": "go test -race -count=1 -json ./...: 35 packages PASS, 1 no-test package SKIP, zero failures; cmd/gs 498.263s, internal/docset 225.463s",
+    "vet_build": "PASS",
+    "spike": "PASS from the captured full race JSON; tracked output unchanged",
+    "main_only_clone": "PASS exact candidate vet/build, only refs/heads/main and clean checkout",
+    "replay_script": "PASS baseline, expected mutant failure with surviving current-plan control, restored pass"
+  },
+  "architecture": "Layer 7 CLI/composition regression tests exercise layers 1/2 storage and signed admission, layer 5 Workroom fold, and layer 6 projection. All contracts are preserved; no runtime or behavior documentation changes.",
+  "security": "Retains actual signed fixture, ratified independent approval, existing target/hold/citation/fold admission checks. Full suite covers refusal paths; the synthetic historical seal grants no real-workroom authority.",
+  "simplification": "Distinct 119-line historical fixture; existing useful current-plan test is retained with corrected name/comments; no new production helper or recovery machinery.",
+  "limitations": [
+    "No live receipt recovery or resident operation.",
+    "No production change.",
+    "Original Planner evidence and current Codex execution remain separately attributed."
+  ],
+  "sha256": {
+    "cmd/gs/legacy_receipt_resume_test.go": "189c6d65acf73819f05bcb2f614340947407a3f566a7ffcf5bbfcacff1a98c1a",
+    "cmd/gs/main_test.go": "76a45ea6388f8ea99aff9d1a367260ce030e51d68e8c3a0c8eff235c1c199b35"
+  }
+}

@@ -1,0 +1,15 @@
+RUN ['git', 'rev-parse', 'HEAD']
+RUN ['git', 'init', '--bare', '--quiet', '/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/origin.git']
+RUN ['git', 'push', '--quiet', '/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/origin.git', 'fd6b4c278e105dca532b9eaa4e65337bc2d53e22:refs/heads/main']
+RUN ['git', '--git-dir=/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/origin.git', 'symbolic-ref', 'HEAD', 'refs/heads/main']
+RUN ['git', '--git-dir=/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/origin.git', 'for-each-ref', '--format=%(refname)']
+RUN ['git', 'clone', '--quiet', '/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/origin.git', '/Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/.tmp/public-preview-clone/checkout']
+RUN ['git', 'rev-parse', 'HEAD']
+RUN ['git', 'symbolic-ref', '--short', 'HEAD']
+RUN ['make', 'vet', 'build']
+/usr/local/go/bin/go vet ./...
+mkdir -p bin
+/usr/local/go/bin/go build -o bin/gs ./cmd/gs
+/usr/local/go/bin/go build -o bin/gitseq-mcp ./cmd/gitseq-mcp
+RUN ['git', 'status', '--porcelain', '--untracked-files=all']
+PASS exact candidate builds from a main-only clone; no removal commands used

@@ -1,0 +1,236 @@
+Candidate head: fd6b4c278e105dca532b9eaa4e65337bc2d53e22
+Path: cmd/gs/main_test.go
+Full-file SHA-256: 76a45ea6388f8ea99aff9d1a367260ce030e51d68e8c3a0c8eff235c1c199b35
+Exact source lines 2619-2850:
+2619: }
+2620: 
+2621: // adopt files a ratified proposal that adopts one artifact, the positive
+2622: // witness a self-initiated review names with --self-initiated.
+2623: func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
+2624: 	t.Helper()
+2625: 	proposal, err := f.workspace.Act(f.ctx, "operator", app.Act{
+2626: 		Verb: app.VerbState, Kind: workroom.KindPropose, Text: "adopt " + key,
+2627: 		RestsOn: []string{artifact}, IdempotencyKey: key + "-proposal",
+2628: 	})
+2629: 	if err != nil {
+2630: 		t.Fatal(err)
+2631: 	}
+2632: 	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{Verb: app.VerbRatify, Target: proposal.Record.ID, IdempotencyKey: key + "-adopt"}); err != nil {
+2633: 		t.Fatal(err)
+2634: 	}
+2635: 	return proposal.Record.ID
+2636: }
+2637: 
+2638: // buildNestedCrossAuthorApproval adds docs/how-to/x.md beside feature.txt and
+2639: // another actor's covering pointer at docs. Current planning carries that wider
+2640: // pointer; an older sealed plan can retire it under the fold's unchanged rule.
+2641: func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string, string, string) {
+2642: 	t.Helper()
+2643: 	f := newWorkflowFixture(t)
+2644: 	if err := os.MkdirAll(filepath.Join(f.feature, "docs", "how-to"), 0o755); err != nil {
+2645: 		t.Fatal(err)
+2646: 	}
+2647: 	if err := os.WriteFile(filepath.Join(f.feature, "docs", "how-to", "x.md"), []byte("nested page\n"), 0o644); err != nil {
+2648: 		t.Fatal(err)
+2649: 	}
+2650: 	testGit(t, f.feature, "add", ".")
+2651: 	testGit(t, f.feature, "commit", "-m", "add a nested page")
+2652: 	candidate := testGit(t, f.feature, "rev-parse", "HEAD")
+2653: 	stranger, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+2654: 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "another actor's covering pointer",
+2655: 		Body:    map[string]string{"path": "docs", "commit": testGit(t, f.repo, "rev-parse", "HEAD")},
+2656: 		RestsOn: []string{f.workspace.EventID(f.workspace.View().Genesis)}, IdempotencyKey: "stranger-covering-docs",
+2657: 	})
+2658: 	if err != nil {
+2659: 		t.Fatal(err)
+2660: 	}
+2661: 	nested, err := f.workspace.Act(f.ctx, "operator", app.Act{
+2662: 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "nested implementation under docs",
+2663: 		Body:    map[string]string{"path": "docs/how-to/x.md", "commit": candidate},
+2664: 		RestsOn: []string{f.ground}, IdempotencyKey: "nested-reviewed-artifact",
+2665: 	})
+2666: 	if err != nil {
+2667: 		t.Fatal(err)
+2668: 	}
+2669: 	decision := f.adopt(t, nested.Record.ID, "nested")
+2670: 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
+2671: 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested head",
+2672: 		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
+2673: 		RestsOn: []string{nested.Record.ID}, IdempotencyKey: "nested-review-request",
+2674: 	})
+2675: 	if err != nil {
+2676: 		t.Fatal(err)
+2677: 	}
+2678: 	promise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+2679: 		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "I will review the exact nested head",
+2680: 		RestsOn: []string{request.Record.ID}, IdempotencyKey: "nested-review-promise",
+2681: 	})
+2682: 	if err != nil {
+2683: 		t.Fatal(err)
+2684: 	}
+2685: 	if err := reviewCommand(f.ctx, []string{
+2686: 		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
+2687: 		"--artifact", nested.Record.ID, "--promise", promise.Record.ID,
+2688: 		"--self-initiated", decision,
+2689: 		"--verdict", "approved", "--text", "APPROVED exact head",
+2690: 	}); err != nil {
+2691: 		t.Fatal(err)
+2692: 	}
+2693: 	statements := f.snapshot(t).Projection.Statements
+2694: 	approval := statements[len(statements)-1].Event
+2695: 	f.ratify(t, approval)
+2696: 	return f, candidate, approval, stranger.Record.ID, nested.Record.ID
+2697: }
+2698: 
+2699: func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string) {
+2700: 	t.Helper()
+2701: 	f := newWorkflowFixture(t)
+2702: 	removedPath := filepath.Join("docs", "how-to", "x.md")
+2703: 	if err := os.MkdirAll(filepath.Join(f.repo, "docs", "how-to"), 0o755); err != nil {
+2704: 		t.Fatal(err)
+2705: 	}
+2706: 	if err := os.WriteFile(filepath.Join(f.repo, removedPath), []byte("remove me\n"), 0o644); err != nil {
+2707: 		t.Fatal(err)
+2708: 	}
+2709: 	testGit(t, f.repo, "add", removedPath)
+2710: 	testGit(t, f.repo, "commit", "-m", "add the page that the candidate removes")
+2711: 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2712: 	testGit(t, f.feature, "merge", "--no-edit", "main")
+2713: 	if err := os.Remove(filepath.Join(f.feature, removedPath)); err != nil {
+2714: 		t.Fatal(err)
+2715: 	}
+2716: 	testGit(t, f.feature, "add", "-u", "--", removedPath)
+2717: 	testGit(t, f.feature, "commit", "-m", "remove the nested page")
+2718: 	candidate := testGit(t, f.feature, "rev-parse", "HEAD")
+2719: 
+2720: 	if _, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+2721: 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "another actor's covering pointer",
+2722: 		Body:    map[string]string{"path": "docs", "commit": targetPreHead},
+2723: 		RestsOn: []string{f.workspace.EventID(f.workspace.View().Genesis)}, IdempotencyKey: "stranger-covering-removed-docs",
+2724: 	}); err != nil {
+2725: 		t.Fatal(err)
+2726: 	}
+2727: 	removed, err := f.workspace.Act(f.ctx, "operator", app.Act{
+2728: 		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "implementation removes the nested page",
+2729: 		Body:    map[string]string{"path": removedPath, "commit": candidate},
+2730: 		RestsOn: []string{f.ground}, IdempotencyKey: "removed-nested-reviewed-artifact",
+2731: 	})
+2732: 	if err != nil {
+2733: 		t.Fatal(err)
+2734: 	}
+2735: 	decision := f.adopt(t, removed.Record.ID, "removed-nested")
+2736: 	request, err := f.workspace.Act(f.ctx, "operator", app.Act{
+2737: 		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "review the nested deletion",
+2738: 		Body:    map[string]string{"to": f.workspace.View().Actors["reviewer"].Fingerprint, "conditions": "exact head", "no_git_artifact": "true"},
+2739: 		RestsOn: []string{removed.Record.ID}, IdempotencyKey: "removed-nested-review-request",
+2740: 	})
+2741: 	if err != nil {
+2742: 		t.Fatal(err)
+2743: 	}
+2744: 	promise, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+2745: 		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "I will review the exact nested deletion head",
+2746: 		RestsOn: []string{request.Record.ID}, IdempotencyKey: "removed-nested-review-promise",
+2747: 	})
+2748: 	if err != nil {
+2749: 		t.Fatal(err)
+2750: 	}
+2751: 	if err := reviewCommand(f.ctx, []string{
+2752: 		"--repo", f.repo, "--as", "reviewer", "--checkout", f.feature,
+2753: 		"--artifact", removed.Record.ID, "--promise", promise.Record.ID,
+2754: 		"--self-initiated", decision,
+2755: 		"--verdict", "approved", "--text", "APPROVED exact deletion head",
+2756: 	}); err != nil {
+2757: 		t.Fatal(err)
+2758: 	}
+2759: 	statements := f.snapshot(t).Projection.Statements
+2760: 	approval := statements[len(statements)-1].Event
+2761: 	f.ratify(t, approval)
+2762: 	return f, candidate, approval
+2763: }
+2764: 
+2765: // A receipt built by current exact-path planning resumes its recorded suffix.
+2766: // The separate historical-wider-receipt test covers a sealed plan that today's
+2767: // prospective reach guard would refuse.
+2768: func TestMergeResumeAppendsASealedExactPathReceiptWithoutReplanningOrRemerging(t *testing.T) {
+2769: 	t.Parallel()
+2770: 	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
+2771: 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2772: 	changes, err := mergeChangesBetween(f.ctx, f.repo, targetPreHead, candidate)
+2773: 	if err != nil {
+2774: 		t.Fatal(err)
+2775: 	}
+2776: 	snapshot := f.snapshot(t)
+2777: 	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+2778: 		mustClassify(t, f.ctx, f.repo, snapshot.Projection, changes, targetPreHead, candidate, nil))
+2779: 	sealed := sharedPlan
+2780: 	// The exact shape the receipt owes: one successor at each published path
+2781: 	// and a supersession only for the exact-path predecessor. The wider pointer
+2782: 	// above the reviewed leaf is carried rather than retired.
+2783: 	if !slices.Equal(sealed.Publish, []string{"docs/how-to/x.md", "feature.txt"}) {
+2784: 		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.Publish)
+2785: 	}
+2786: 	wantRetire := map[string]string{nested: "docs/how-to/x.md"}
+2787: 	if !maps.Equal(sealed.Retire, wantRetire) {
+2788: 		t.Fatalf("sealed retirements = %v, want %v", sealed.Retire, wantRetire)
+2789: 	}
+2790: 	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, mergeTestTarget(f.workspace, targetPreHead), "", false, sealed)
+2791: 	if err != nil {
+2792: 		t.Fatal(err)
+2793: 	}
+2794: 	testGit(t, f.repo, "merge", "--no-ff", "-m", message, candidate)
+2795: 	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2796: 	testGit(t, f.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
+2797: 
+2798: 	// This current plan is within today's prospective reach.
+2799: 	if err := mergeplan.ValidateReach(snapshot.Projection, sealed, approval,
+2800: 		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
+2801: 		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
+2802: 	}
+2803: 
+2804: 	before := f.snapshot(t).Depth
+2805: 	if err := mergeCommand(f.ctx, []string{
+2806: 		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+2807: 		"--candidate", candidate, "--approval", approval,
+2808: 		"--text", "Resume the sealed receipt without replanning or re-merging.",
+2809: 	}); err != nil {
+2810: 		t.Fatalf("resuming a receipt the unchanged fold authorized was refused: %v", err)
+2811: 	}
+2812: 	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got != mergeHead {
+2813: 		t.Fatalf("resume re-merged or moved HEAD to %s, want %s", got, mergeHead)
+2814: 	}
+2815: 	after := f.snapshot(t)
+2816: 	// One receipt assertion plus one durable act per publish and per
+2817: 	// retirement in the sealed suffix.
+2818: 	wantDepth := before + 1 + len(sealed.Publish) + len(sealed.Retire)
+2819: 	if after.Depth != wantDepth {
+2820: 		t.Fatalf("resume depth = %d, want %d: the sealed receipt plus its publish and retirement acts", after.Depth, wantDepth)
+2821: 	}
+2822: 	for target := range sealed.Retire {
+2823: 		if !artifactByEvent(t, after.Projection, target).Retired {
+2824: 			t.Fatalf("resume did not append the sealed retirement of %s", target)
+2825: 		}
+2826: 	}
+2827: 	for _, path := range sealed.Publish {
+2828: 		live := 0
+2829: 		for _, artifact := range after.Projection.Artifacts {
+2830: 			if artifact.Path == path && artifact.Commit == mergeHead && !artifact.Retired {
+2831: 				live++
+2832: 			}
+2833: 		}
+2834: 		if live != 1 {
+2835: 			t.Fatalf("resume left %d live successors at %s, want one", live, path)
+2836: 		}
+2837: 	}
+2838: }
+2839: 
+2840: // A wider pointer covering only a landed destination stays live and is sealed
+2841: // in the receipt. It is not a retirement, so the directional guard has no
+2842: // reason to refuse the merge.
+2843: func TestMergeFreshPreflightAllowsAWiderPointerAtALandedDestination(t *testing.T) {
+2844: 	t.Parallel()
+2845: 	f, candidate, approval, wider, _ := buildNestedCrossAuthorApproval(t)
+2846: 	beforeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2847: 	before := f.snapshot(t)
+2848: 
+2849: 	err := mergeCommand(f.ctx, []string{
+2850: 		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,

@@ -1,0 +1,2 @@
+/usr/local/go/bin/go run ./spike/cmd/gitseq-report -test-json "/tmp/git21317-full-race.jsonl"
+pass: wrote /Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/spike/.spike/evidence.json, /Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/spike/.spike/SPIKE-RESULTS.md, and /Users/hughpyle/play/gitseq-worktrees/legacy-receipt-resume-regression/spike/SPIKE-RESULTS.md
