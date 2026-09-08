@@ -1,0 +1,172 @@
+{
+  "root": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-batch-signing-proof-ds859ryn",
+  "head": "3ecb8b77d55cfe8ccb1d634649788a4ab629577b",
+  "binary": "Fresh go build ./cmd/gs from the recorded main; no source edits.",
+  "repo": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-batch-signing-proof-ds859ryn/repo",
+  "cases": [
+    {
+      "name": "state-env",
+      "GITSEQ_ACTOR": "probe-b",
+      "flags": [],
+      "exit": 0,
+      "stdout": "git:sha1:a25bcabf1234a90496b9a14d3ce656e831497264#git:sha1:0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4\n",
+      "stderr": "",
+      "before": "0ea823ea018d6d9486b94882e5482e320b9096ab",
+      "after": "0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4",
+      "appended": true
+    },
+    {
+      "name": "batch-env",
+      "GITSEQ_ACTOR": "probe-b",
+      "flags": [],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "gs: batch requires --as\n",
+      "before": "0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4",
+      "after": "0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4",
+      "appended": false
+    },
+    {
+      "name": "batch-explicit-over-env",
+      "GITSEQ_ACTOR": "probe-b",
+      "flags": [
+        "--as",
+        "probe-a"
+      ],
+      "exit": 0,
+      "stdout": "{\n  \"acts\": [\n    {\n      \"position\": 0,\n      \"event\": \"git:sha1:a25bcabf1234a90496b9a14d3ce656e831497264#git:sha1:2fd060444557308970d1fdd640428a2bf4dea665\",\n      \"outcome\": \"landed\"\n    }\n  ],\n  \"landed\": 1,\n  \"replayed\": 0\n}\n",
+      "stderr": "",
+      "before": "0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4",
+      "after": "2fd060444557308970d1fdd640428a2bf4dea665",
+      "appended": true
+    },
+    {
+      "name": "batch-missing",
+      "GITSEQ_ACTOR": null,
+      "flags": [],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "gs: batch requires --as\n",
+      "before": "2fd060444557308970d1fdd640428a2bf4dea665",
+      "after": "2fd060444557308970d1fdd640428a2bf4dea665",
+      "appended": false
+    },
+    {
+      "name": "batch-unknown-env",
+      "GITSEQ_ACTOR": "no-provisioned-key",
+      "flags": [],
+      "exit": 1,
+      "stdout": "",
+      "stderr": "gs: batch requires --as\n",
+      "before": "2fd060444557308970d1fdd640428a2bf4dea665",
+      "after": "2fd060444557308970d1fdd640428a2bf4dea665",
+      "appended": false
+    }
+  ],
+  "status_file": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-batch-signing-proof-ds859ryn/status.json",
+  "limits": "Disposable fixture actors and workroom only, local --server -; no resident, external account, real project append or full suite.",
+  "signed_actor_controls": [
+    {
+      "text": "state-env",
+      "event": "git:sha1:a25bcabf1234a90496b9a14d3ce656e831497264#git:sha1:0ef36e27d1abc1c2acd8faa7d9abebbb6f3600a4",
+      "actor": "61edca3d2d29ce4841a4e3f1fc4509f5f7fe0c58be65295d4333a0e815a60734",
+      "expected_actor": "61edca3d2d29ce4841a4e3f1fc4509f5f7fe0c58be65295d4333a0e815a60734",
+      "matches": true
+    },
+    {
+      "text": "batch-explicit-over-env",
+      "event": "git:sha1:a25bcabf1234a90496b9a14d3ce656e831497264#git:sha1:2fd060444557308970d1fdd640428a2bf4dea665",
+      "actor": "2747be572033b99b4df5e4bbf12531e24a117d7f30fdea4eb7c0b1eb4678e126",
+      "expected_actor": "2747be572033b99b4df5e4bbf12531e24a117d7f30fdea4eb7c0b1eb4678e126",
+      "matches": true
+    }
+  ],
+  "checked_utc": "2026-09-08T05:47:06.999524+00:00",
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "de2cce8d060cb50f9979ee53ecbc70481c711d54",
+    "depth": 21367
+  },
+  "selected_bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+      "path": "cmd/gs/main.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a68c92e8a2596e83d63eac498cf152fcbc6ca294",
+      "stale_because_path": "internal/service/uidist/assets/index-C99ie_gl.js",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:10c8c2614ee8dbaaefc0e573cfc46fdfcd2f446d",
+      "path": "internal/residentclient/client.go",
+      "commit": "a58bee46bebe8946d9a2b52ea9aeb145c2cf0d3e",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c03b3eda048bb4f8a4372a48843ab4f164d40346",
+      "stale_because_path": "internal/residentclient/client.go",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0c1f08bff46a3ce1e4cfca5ef4b108a72405bf4",
+      "path": "internal/app/app.go",
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7fca9d0875d6acab0fcbbb7bd5b57198f971055",
+      "path": "docs/reference/gs/batch.md",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "stale": false,
+      "retired": false,
+      "describes_superseded_world": false,
+      "ancestor_main": true,
+      "byte_equal_main": true
+    }
+  ],
+  "source_locations": {
+    "cmd/gs/main.go": [
+      1822,
+      1835,
+      1850,
+      1865
+    ],
+    "internal/residentclient/client.go": [
+      44
+    ],
+    "internal/app/app.go": [
+      2508,
+      2605
+    ],
+    "docs/reference/gs/batch.md": [
+      12,
+      22
+    ]
+  },
+  "candidate_check": "At existing21309 private67aca15f9ae799441cbdeef6e265884d5f753dbc, batch still refuses absent --as and batch.md retains both claims; no duplicate implementation found. Recheck when starting.",
+  "historical_scope": "Original565 and review1024 described instance identities broadly; later14147/14665 explicitly disposed of reverted remainder as satisfied-by-main-except-decided-against. That disposition is preserved. This finding concerns only existing flag/environment signer resolution currently shared by state and other commands. Historical docs carry2075/2078/2079 explicitly claims batch accepts GITSEQ_ACTOR. No whole565,2912 or novice14685 audit/closure is inferred.",
+  "checkpoint_test": {
+    "command": "go test ./internal/app -run '^TestSnapshotCheckpointIsGitBackedReusableAndRepairable$' -count=1",
+    "exit": 0,
+    "seconds": 2.274,
+    "scope": "Actual reopen returns signed checkpoint-tail source, same projection, then no-server append and corrupt-checkpoint cold fallback. Not a process timing benchmark or proof of constant work."
+  },
+  "documentation_execution": {
+    "command": "go test ./internal/docset -run '^TestGateDocumentedCommandsRun$/^docs$/^how-to$/^run-a-work-loop.md$' -count=1 -v",
+    "exit": 0,
+    "package_seconds": 14.694,
+    "walkthrough_seconds": 13.33,
+    "scope": "Current ordered script exits successfully. The prose promise for parser work on the changelog request remains a separate semantic-example lead; no runtime refusal found."
+  }
+}
