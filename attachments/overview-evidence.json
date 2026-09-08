@@ -1,0 +1,113 @@
+{
+  "checked_utc": "2026-09-08T06:35:09.965561+00:00",
+  "main": "3ecb8b77d55cfe8ccb1d634649788a4ab629577b",
+  "frontier": {
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "head": "9c7624ed1051446ad0c2c3bd902a99a976adfb8a",
+    "depth": 21420
+  },
+  "findings": [
+    {
+      "path": "docs/concepts/components.md",
+      "line": 95,
+      "claim": "One actor per adapter process.",
+      "actual": "Per-call repo/agent selectors choose existing accessible identity. Current configure-an-agent guide explains this correctly. Actual selected-actor test signs in the selected second repository and leaves the startup repository unchanged; refusal tests check missing/mismatched/unknown/retired identities."
+    },
+    {
+      "path": "docs/how-to/configure-an-agent.md",
+      "line": 124,
+      "claim": "Fourteen tools, with an exhaustive list omitting merge_plan.",
+      "actual": "The current real JSON-RPC tools/list test asserts fifteen tools, includes merge_plan and checks repo/agent selectors on every definition. Source tool table is main.go692-748."
+    },
+    {
+      "path": "docs/concepts/components.md",
+      "line": 56,
+      "claim": "Sixteen CLI subcommands.",
+      "actual": "Current command switch main.go102-162 contains more than sixteen distinct named cases. Do not replace one fragile overview tally with another; link to the maintained command reference/help."
+    },
+    {
+      "path": "docs/concepts/components.md",
+      "line": 117,
+      "claim": "Two screens and no more.",
+      "actual": "App.tsx264-299 has Requests and standalone Notes reading views, thread navigation and a Preview surface. Fresh source inspection only here; no new full browser journey executed."
+    }
+  ],
+  "actual_test": {
+    "command": "go test ./cmd/gitseq-mcp -run '^Test(PerCallSelectorsChooseRepositoryAndAccessibleAgent|SelectedAgentRefusesMissingMismatchedUnknownAndRetiredIdentity|StatelessDiscoverAndToolList)$' -count=1",
+    "exit": 0,
+    "seconds": 6.059,
+    "scope": "Three existing tests read in full. Real signed disposable workrooms through adapter call path; missing-key no-append and no fallback, mismatched/unknown/retired refusals; real JSON-RPC server.run with local httptest resident checks tool discovery. Not external-client interoperability or a full security audit."
+  },
+  "bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+      "path": "cmd/gs/main.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a68c92e8a2596e83d63eac498cf152fcbc6ca294",
+      "stale_because_path": "internal/service/uidist/assets/index-C99ie_gl.js",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:68fce5ef1c832368d54c3de12bc37471afbda627",
+      "path": "cmd/gitseq-mcp/main.go",
+      "commit": "07753351d69c05dedec58f4e2561a793054312a5",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f2c5ac05d9e834d7e824680eafa805e43a1c04d",
+      "stale_because_path": "cmd/gitseq-mcp/main.go",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1fe818cf716e6731b834d86c212f8e987a5853d5",
+      "path": "ui/src/App.tsx",
+      "commit": "b2ed92662464b9ca7670395fce26fe723fa069d1",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:29fb7cec3b2abc5e77ec1a5f4718ad8c0e8a41bc",
+      "stale_because_path": "internal/service/uidist/assets/index-CKo3y7kh.css",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:56d316b224a13fac5e4c745184e4515dc9ed0076",
+      "path": "docs/how-to/configure-an-agent.md",
+      "commit": "b883c2d9300743473f106529de305d39b2aa7726",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:594d1a9b524c7b79db4ed85bf97cf7a333b0d158",
+      "stale_because_path": "cmd/gitseq-mcp",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3d976a79fe41d4d3540b8c27f966fbd7d29bfdc7",
+      "path": "docs/concepts/components.md",
+      "commit": "95c2b1e33edff789a76e037bce144a898392899d",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e99471895700749bf1e0cff8a52c236fb19d3a6",
+      "stale_because_path": "docs/reference/architecture.md",
+      "ancestor_main": true,
+      "byte_equal_main": true
+    }
+  ],
+  "history_scope": "Exact architecture review head10a5a134, referenced by3025 on which3029 rests, reproduces46 anchored pages/20 comma-affected pages/26edges. Exact4399 main4f8d06a0 reproduces48/11/17. These are reconstructed source cohorts, not a claim that all their prose has been audited. No live request found specifically assigning these remaining two overview-page defects; previous15661 selector work and current21309/20305/21365-21369 have distinct scopes.",
+  "source_sha256": {
+    "docs/concepts/components.md": "708bc9ea6c04139fd54081bc614f775d2403e2986a252f768122a3562a47b93f",
+    "docs/how-to/configure-an-agent.md": "74a8abca3cc5488dfe92f8737240b4eb59c730eee36e5b43129dafe9e8fa3166",
+    "cmd/gitseq-mcp/main.go": "77ff3aa1691efa3e89caed15234903eab188e95eb5bc380a09e3fa61b361eb94",
+    "cmd/gitseq-mcp/selector_test.go": "14b4c7e6a53767c10cfec04fe45061d9946124b0b08da28e00bf4eec608f5b96",
+    "cmd/gitseq-mcp/main_test.go": "66f4fa0e375f82c583a765d7d0dc286cf1cd3de51b643ea5ffca1c3c4c693138",
+    "ui/src/App.tsx": "c39b4f967883d0f68261b2270aa7d1050633cac77bd15c7aa9d7031d76bd958b"
+  },
+  "limits": "No source edits, no source completion or independent review approval. Components and configure-an-agent read in full; broader nine-page combined output was truncated, so unexamined pages are not credited. Runtime remains unchanged; no source behavior or access-control change is proposed."
+}
