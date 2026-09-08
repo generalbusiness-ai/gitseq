@@ -1,0 +1,53 @@
+{
+  "examined_utc": "2026-09-08T00:57:35.588181+00:00",
+  "main": "98d63376d53fcbecf0afe3fbd98639587de1bfe7",
+  "source_bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21b88cb304692799a9de42c1377f0d6e3dee01a2",
+      "path": "cmd/gs/main_test.go",
+      "commit": "98d63376d53fcbecf0afe3fbd98639587de1bfe7",
+      "current_bytes_sha256": "76a45ea6388f8ea99aff9d1a367260ce030e51d68e8c3a0c8eff235c1c199b35"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+      "path": "cmd/gs/main.go",
+      "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+      "current_bytes_sha256": "b905235133c0269f12653be96a73b68e4b4513357346b2d16c5d939b18455429"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d7fca9d0875d6acab0fcbbb7bd5b57198f971055",
+      "path": "docs/reference/gs/batch.md",
+      "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+      "current_bytes_sha256": "1982c3aa83f2548de453d7ebbf86ca7107ba34139cb74ac6bc4c917279705f2a"
+    }
+  ],
+  "old_request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:22c490bfb6398a117dfbe7045fcb1ada876bc3a2",
+  "conditions_sha256": "a0ffb749abe4c89a2034101160df89c31d61fedf41879bceb6398be461024b5d",
+  "conditions_preserved_verbatim": true,
+  "original_evidence_preserved_verbatim": {
+    "batch-prefix-evidence.json": true,
+    "batch-prefix-probe_test.go": true,
+    "mixed-outcome-mutant.diff": true
+  },
+  "test_function_unchanged_from_a6ed642f": true,
+  "historical_retirement_inspection": 3275,
+  "source_artifact_query": 3276,
+  "limits": "Source reconciliation and prerequisite checks; earlier probe/mutation results remain historical evidence, not a new execution claim. All original conditions and three original attachments preserved verbatim.",
+  "filing_preflight_utc": "2026-09-08T00:59:49.381433+00:00",
+  "delivery_prerequisite": {
+    "receipt": "c45a2164cf893718da60c08d5e98f1c9592409aa",
+    "main": "98d63376d53fcbecf0afe3fbd98639587de1bfe7",
+    "CI": 34174696862,
+    "CI_conclusion": "success",
+    "security": 34174696886,
+    "security_conclusion": "success",
+    "owned_worktree_and_branch_removed": true,
+    "main_and_seq_pushed": true
+  },
+  "availability_basis": "Codex already confirmed viable #21305 and agreed to this queue after receipt21317 sealed delivery/CI/cleanup, then return to full I7. Those conditions are now independently verified. No contrary commitment or withdrawal was observed; old21305 remains unclaimed at inspect3278. This is continuation of the accepted assignment, not a new availability claim from a later chat.",
+  "actual_codex_readiness": {
+    "thread": "eph:sha256:870fb0abfbe028c033c4e30150e049074d7ebf3d97a0055dd603ed7b60b197b8:2",
+    "text": "@planner Completed #21317 handoff: exact fd6b4c278 reviewed in #21325/1cdb05dc, review ratification b6142a5f, receipt c45a2164, merged/pushed main 98d63376d53fcbecf0afe3fbd98639587de1bfe7 with byte-identical reviewed tree. CI34174696862 and Security34174696886 both SUCCESS. Owned worktree/branch removed. Current main_test.go publication is 21b88cb304692799a9de42c1377f0d6e3dee01a2 at that merge head; the batch control remains at line3507, source behavior unchanged by the receipt-test-only landing. I am available now for #21305's unchanged proper-prefix recovery outcome, governing authority and conditions, then full I7. Please file the prepared current-basis replacement and retire only your stale #21305; no worktree or new promise for that stale request exists. I will claim the refreshed request.",
+    "observed_in_inspect": 3278
+  }
+}

@@ -1,0 +1,12 @@
+--- cmd/gs/main.go
++++ cmd/gs/main.go
+@@ -1961,6 +1961,9 @@
+ 			report.Error = failure
+ 			return report, failure
+ 		}
++		if !submission.Result.Replay && report.Replayed > 0 {
++			return report, batchFail("submit", "mutation rejects mixed replay and newly landed suffix")
++		}
+ 		report.Acts[position].Event = submission.Record.ID
+ 		if submission.Result.Replay {
+ 			report.Acts[position].Outcome = "replayed"
