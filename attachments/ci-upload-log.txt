@@ -1,0 +1,16 @@
+verify	Check Go code and regenerate adversarial evidence	2026-09-07T02:30:17.1263488Z pass: wrote /home/runner/work/gitseq/gitseq/spike/.spike/evidence.json, /home/runner/work/gitseq/gitseq/spike/.spike/SPIKE-RESULTS.md, and /home/runner/work/gitseq/gitseq/spike/SPIKE-RESULTS.md
+verify	Check Go code and regenerate adversarial evidence	2026-09-07T02:30:17.1301139Z ##[error]Process completed with exit code 1.
+verify	Keep the adversarial evidence from a failed run	﻿2026-09-07T02:30:17.1396677Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1397126Z with:
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1397347Z   name: adversarial-evidence-34076230751-1
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1397647Z   path: spike/.spike/
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1397874Z   retention-days: 30
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1398095Z   if-no-files-found: warn
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1398660Z   compression-level: 6
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1398902Z   overwrite: false
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1399126Z   include-hidden-files: false
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1399373Z   archive: true
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1399564Z env:
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1399747Z   GOTOOLCHAIN: local
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.1399962Z ##[endgroup]
+verify	Keep the adversarial evidence from a failed run	2026-09-07T02:30:17.2879960Z ##[warning]No files were found with the provided path: spike/.spike/. No artifacts will be uploaded.
