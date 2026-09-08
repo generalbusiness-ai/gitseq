@@ -1,8 +1,0 @@
-=== RUN   TestPlannerMigrationQuietWavePostVerdict
-git:sha1:44be41c905b21a785406d0e22e37eaeca91d7510#git:sha1:5bae3a096d0e5216aa6aabdbf006be42549ef4aa
-warning: merge has no structured authorization; phase-one compatibility permits this merge
-9c7a0c7060d7307d5343c36588d669c197b0f8d2
-    main_test.go:5643: old runbook: awaiting=0 unresolved=0 selected-approved=0; candidate outside main was admitted by actual current merge
---- PASS: TestPlannerMigrationQuietWavePostVerdict (5.41s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	5.822s
