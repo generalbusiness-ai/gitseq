@@ -1,0 +1,19 @@
+=== RUN   TestPlannerEmptyCausalTrailer
+=== RUN   TestPlannerEmptyCausalTrailer/baseline
+    planner_empty_ref_test.go:17: signed refs=[]string(nil) trailers=[]string(nil) EqualRefs=true
+    planner_empty_ref_test.go:22: actual stored trailers=[]string(nil)
+    planner_empty_ref_test.go:25: actual Verify depth=1 error=<nil>
+    planner_empty_ref_test.go:28: checkpoint writer full=true checkpoint=false error=<nil>
+    planner_empty_ref_test.go:31: checkpoint reader full=true checkpoint=true error=<nil>
+=== RUN   TestPlannerEmptyCausalTrailer/empty-trailer
+    planner_empty_ref_test.go:17: signed refs=[]string(nil) trailers=[]string{""} EqualRefs=false
+    planner_empty_ref_test.go:22: actual stored trailers=[]string{""}
+    planner_empty_ref_test.go:25: actual Verify depth=0 error=causal trailers differ from signed intent
+--- PASS: TestPlannerEmptyCausalTrailer (0.65s)
+    --- PASS: TestPlannerEmptyCausalTrailer/baseline (0.44s)
+    --- PASS: TestPlannerEmptyCausalTrailer/empty-trailer (0.20s)
+=== RUN   TestPlannerCheckpointEmptyCausalTrailer
+    planner_empty_ref_test.go:47: checkpoint metadata empty-trailer error=event 0 causal trailers differ from signed intent
+--- PASS: TestPlannerCheckpointEmptyCausalTrailer (0.42s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	1.361s
