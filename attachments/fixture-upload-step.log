@@ -1,0 +1,29 @@
+verify	Keep the adversarial evidence from a failed run	﻿2026-09-08T09:11:56.9992152Z ##[group]Run actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9992580Z with:
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9992828Z   name: adversarial-evidence-34208177412-1
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9993224Z   path: spike/.spike/evidence.json
+verify	Keep the adversarial evidence from a failed run	spike/.spike/SPIKE-RESULTS.md
+verify	Keep the adversarial evidence from a failed run	
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9993602Z   retention-days: 30
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9993850Z   if-no-files-found: warn
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9994101Z   compression-level: 6
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9994339Z   overwrite: false
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9994577Z   include-hidden-files: false
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9994844Z   archive: true
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9995064Z env:
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9995264Z   GOTOOLCHAIN: local
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:56.9995492Z ##[endgroup]
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.1441044Z Multiple search paths detected. Calculating the least common ancestor of all paths
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.1443555Z The least common ancestor is /home/runner/work/gitseq/gitseq/spike/.spike. This will be the root directory of the artifact
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.1445058Z With the provided path, there will be 2 files uploaded
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.1446452Z Artifact name is valid!
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.1447110Z Root directory input is valid!
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.3546634Z Uploading artifact: adversarial-evidence-34208177412-1.zip
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.3589172Z Beginning upload of artifact content to blob storage
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.4376327Z Uploaded bytes 2632
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.4559156Z Finished uploading artifact content to blob storage!
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.4560507Z SHA256 digest of uploaded artifact is fd9fb3b07cb8f0a7ef7f4d2b0aad8d1147b76e2fc775065685fcccc37cc20f01
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.4561497Z Finalizing artifact upload
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.7314860Z Artifact adversarial-evidence-34208177412-1 successfully finalized. Artifact ID 10048836461
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.7316655Z Artifact adversarial-evidence-34208177412-1 has been successfully uploaded! Final size is 2632 bytes. Artifact ID is 10048836461
+verify	Keep the adversarial evidence from a failed run	2026-09-08T09:11:57.7319740Z Artifact download URL: https://github.com/generalbusiness-ai/gitseq/actions/runs/34208177412/artifacts/10048836461
