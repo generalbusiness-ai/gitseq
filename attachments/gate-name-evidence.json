@@ -1,0 +1,45 @@
+{
+  "main": "3ecb8b77d55cfe8ccb1d634649788a4ab629577b",
+  "scope": "Naming-only residual of3209/2251. Existing deliberate succeeded-retirement and staleness classification stays unchanged.",
+  "bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:140469c553778dad2fa943b3ace48cdc8cda7cd9",
+      "path": "internal/docset/docset.go",
+      "commit": "d51ac8f3fd4c9c7e6bbcf48954396923bc6bd3c2",
+      "stale": false,
+      "retired": false,
+      "describes_superseded_world": false,
+      "byte_equal_current": true,
+      "current_sha256": "cca53eecc9659144df8fc99a4197d3f6cd6d2dc08570b5e9ce6bcb442ce5e281",
+      "main_ancestor": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:24f36a8a700182626b86f0ef6a598b4a67572069",
+      "path": "internal/docset/citation_test.go",
+      "commit": "d51ac8f3fd4c9c7e6bbcf48954396923bc6bd3c2",
+      "stale": false,
+      "retired": false,
+      "describes_superseded_world": false,
+      "byte_equal_current": true,
+      "current_sha256": "2bb6cee56bd13d6ef4ee63b1fbdc01f38a3656e123c350184dc9da13dbcb805c",
+      "main_ancestor": true
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba0d918c1e2ebb7a8ecc1c72605126d7a887b8b7",
+      "path": "internal/docset/anchor_test.go",
+      "commit": "d51ac8f3fd4c9c7e6bbcf48954396923bc6bd3c2",
+      "stale": false,
+      "retired": false,
+      "describes_superseded_world": false,
+      "byte_equal_current": true,
+      "current_sha256": "c30df7ca01d009480bc417d4064caf6767843daa697c52126418c5d759a84403",
+      "main_ancestor": true
+    }
+  ],
+  "current_behavior": "ClassifyCitation reports retired+succeeded and stale nonfatally; missing/nonartifact/retired-without-successor remains fatal. Gate currently named TestGateEveryNamedActResolvesToALiveRecord. no_workroom_test.go invokes and matches that exact name.",
+  "validation": {
+    "command": "go test -count=1 ./internal/docset -run '^(TestGateWithoutWorkroomIsAnExplicitSkip|TestClassifyCitationSeparatesFatalFromReported|TestStaleNeverFailsOnAMaintainablePath)$'",
+    "result": "PASS0.351s on current main in preceding audit"
+  },
+  "limits": "No change to admission, authority, retirement or classification warranted by the naming mismatch. Not a claim that current documentation is semantically current."
+}
