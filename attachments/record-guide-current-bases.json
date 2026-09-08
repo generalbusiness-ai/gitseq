@@ -1,0 +1,48 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a0c1f08bff46a3ce1e4cfca5ef4b108a72405bf4",
+    "path": "internal/app/app.go",
+    "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+    "stale": true,
+    "retired": false,
+    "describes_superseded_world": false,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+    "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a60f7689221433c1d85948c2bbe7c3cd6258388",
+    "path": "internal/app/admission.go",
+    "commit": "449cdb0ea845146ca5fee7e5e4e064393128ec32",
+    "stale": true,
+    "retired": false,
+    "describes_superseded_world": false,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015",
+    "stale_because_path": "internal/workroom/fold.go"
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2198b8aaa2da6921f555c380d24385edaabcb787",
+    "path": "internal/kernel/kernel.go",
+    "commit": "80d4fbf79fb41f4eb675000a5d09a4df4ec9ba74",
+    "stale": false,
+    "retired": false,
+    "describes_superseded_world": false
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe",
+    "path": "internal/app",
+    "commit": "1e868103416fea2ca832e2e740b4197940cf5057",
+    "stale": false,
+    "retired": false,
+    "describes_superseded_world": false
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4febdd933de14fb3b72d711a585e4c04043a1306",
+    "path": "docs/concepts/record.md",
+    "commit": "95c2b1e33edff789a76e037bce144a898392899d",
+    "stale": true,
+    "retired": false,
+    "describes_superseded_world": false,
+    "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1e99471895700749bf1e0cff8a52c236fb19d3a6",
+    "stale_because_path": "docs/reference/architecture.md"
+  }
+]

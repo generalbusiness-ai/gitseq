@@ -1,0 +1,29 @@
+{
+  "head": "3ecb8b77d55cfe8ccb1d634649788a4ab629577b",
+  "checked_utc": "2026-09-08T04:48:23.060224+00:00",
+  "probe": "TestPlannerAdmissionProfileDoesNotSelectLiveSubmissionRules",
+  "command": [
+    "go",
+    "test",
+    "-overlay",
+    "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-admission-profile-proof-n1m6qitu/overlay.json",
+    "./internal/app",
+    "-run",
+    "^TestPlannerAdmissionProfileDoesNotSelectLiveSubmissionRules$",
+    "-count=1",
+    "-v"
+  ],
+  "exit": 0,
+  "package_seconds": 1.427,
+  "observation": "In a disposable Init workroom, a real admission-profile act naming unimplemented-audit-probe was ratified and the library resolver selected it. Real Act -> AcceptSubmission then appended one effective assertion; installed interpreter identity stayed unchanged.",
+  "limits": "Temporary source overlay and disposable test repository only; no project source mutation, no actual resident reconfiguration. This proves the specific governance-record/submission distinction at this head, not a general security verdict.",
+  "historical_scope": "Request739 commissioned governance kind, prefix selection, bootstrap and profile-unavailable library support. Deployment note1537-1547 and1788-1808 explicitly leave downstream lookup/drain/auditor integration unimplemented. Do not turn a guide correction into that speculative runtime implementation.",
+  "caller_inventory": "Repository-wide Go search: SelectAdmissionProfile and ResolveAdmissionProfile have no production caller beyond their own internal delegation; Folder.AdmissionProfile likewise called only by that library and tests. Actual submitter hooks are installed at internal/app/app.go2284; admitApplication is internal/app/admission.go316; open-time immutable interpreter selection internal/app/host.go93.",
+  "source_sha256": {
+    "docs/concepts/record.md": "f024999c5cd99c9bab41e9bcee9fe2542b08d2b0a3efe9c470773aa1620889cb",
+    "internal/workroom/admission_profile.go": "9042e4aa7b4a4c7df45c111dd3bdc3a29653eec705b4f88fd0b9ccbeeca5a3ae",
+    "internal/app/app.go": "6c6721a089432defc8827eb5882bfb8d7540eb2d5a151229c0343f851b79048b",
+    "internal/app/admission.go": "e94fc54c8aa82d11e6fa806d8b1bb829b33bb97c818a40993d28dd288874f9a6",
+    "internal/app/host.go": "a4388d9aa5dd576e0d191a7a7012d83a0c556162445a6a0d125bb78cbe59be8e"
+  }
+}
