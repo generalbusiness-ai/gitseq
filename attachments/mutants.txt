@@ -1,0 +1,456 @@
+=== 01-stores-the-prefix.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/resolver.go	2026-09-08 07:45:45
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/resolver.go	2026-09-08 07:51:08
+@@ -72,7 +72,7 @@
+ 		r.said[selector] = true
+ 		r.lines = append(r.lines, fmt.Sprintf("resolved %s -> %s", selector, resolved))
+ 	}
+-	return resolved, nil
++	return selector, nil
+ }
+ 
+ // Many resolves a list in order, keeping every entry in place. The first
+=== 01-stores-the-prefix.out
+# mutant: 01-stores-the-prefix
+# file:   internal/eventref/resolver.go
+# test:   go test -count=1 -run 'TestShortEventReferencesResolveInBothObjectFormats' ./cmd/gs/
+--- FAIL: TestShortEventReferencesResolveInBothObjectFormats (0.00s)
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256 (8.56s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/number (1.23s)
+            event_reference_test.go:226: signed rests_on = [#4], want [git:sha256:70f1ed61ffdfb8ffc45955185fc34776f63282a465952bccfaab29dcb74f4f9e#git:sha256:aec61dce0d952cd17f82d88aa0711b6bd9d23f9ddb4ddf713ca8db6fd2960100]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/short_prefix (0.67s)
+            event_reference_test.go:226: signed rests_on = [aec], want [git:sha256:70f1ed61ffdfb8ffc45955185fc34776f63282a465952bccfaab29dcb74f4f9e#git:sha256:aec61dce0d952cd17f82d88aa0711b6bd9d23f9ddb4ddf713ca8db6fd2960100]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/suffix (0.71s)
+            event_reference_test.go:226: signed rests_on = [d2960100], want [git:sha256:70f1ed61ffdfb8ffc45955185fc34776f63282a465952bccfaab29dcb74f4f9e#git:sha256:aec61dce0d952cd17f82d88aa0711b6bd9d23f9ddb4ddf713ca8db6fd2960100]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/whole_hash (0.68s)
+            event_reference_test.go:226: signed rests_on = [aec61dce0d952cd17f82d88aa0711b6bd9d23f9ddb4ddf713ca8db6fd2960100], want [git:sha256:70f1ed61ffdfb8ffc45955185fc34776f63282a465952bccfaab29dcb74f4f9e#git:sha256:aec61dce0d952cd17f82d88aa0711b6bd9d23f9ddb4ddf713ca8db6fd2960100]
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1 (8.79s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/number (1.49s)
+            event_reference_test.go:226: signed rests_on = [#4], want [git:sha1:9ce2b1f6778678ae7b996df98456326bb780c354#git:sha1:a9bcc31c3aa55ea80e2bd048113651856d7e656b]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/short_prefix (0.67s)
+            event_reference_test.go:226: signed rests_on = [a9], want [git:sha1:9ce2b1f6778678ae7b996df98456326bb780c354#git:sha1:a9bcc31c3aa55ea80e2bd048113651856d7e656b]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/suffix (0.70s)
+            event_reference_test.go:226: signed rests_on = [6d7e656b], want [git:sha1:9ce2b1f6778678ae7b996df98456326bb780c354#git:sha1:a9bcc31c3aa55ea80e2bd048113651856d7e656b]
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/whole_hash (0.67s)
+            event_reference_test.go:226: signed rests_on = [a9bcc31c3aa55ea80e2bd048113651856d7e656b], want [git:sha1:9ce2b1f6778678ae7b996df98456326bb780c354#git:sha1:a9bcc31c3aa55ea80e2bd048113651856d7e656b]
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	9.205s
+FAIL
+exit=1
+=== 02-first-match-wins.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/eventref.go	2026-09-08 01:24:00
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/eventref.go	2026-09-08 07:51:18
+@@ -276,12 +276,11 @@
+ 		}
+ 	}
+ 	switch len(matched) {
+-	case 1:
+-		return matched[0].ID, nil
+ 	case 0:
+ 		return "", &Refusal{Selector: selector,
+ 			Detail: "matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched"}
+ 	}
++	return matched[0].ID, nil
+ 	sort.Slice(matched, func(left, right int) bool { return matched[left].Sequence < matched[right].Sequence })
+ 	refusal := &Refusal{Selector: selector,
+ 		Detail:     fmt.Sprintf("matches %d events here; name one exactly", len(matched)),
+=== 02-first-match-wins.out
+# mutant: 02-first-match-wins
+# file:   internal/eventref/eventref.go
+# test:   go test -count=1 -run 'TestAmbiguousHashReferenceRefusesAndNamesCandidates' ./cmd/gs/
+--- FAIL: TestAmbiguousHashReferenceRefusesAndNamesCandidates (5.08s)
+    event_reference_test.go:303: an ambiguous reference was admitted: git:sha1:e3854c28578723f86162b60ec30bb4a108a6303e#git:sha1:4ba62fde7d732bbf0c368055cab7a006fe93568a
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	5.435s
+FAIL
+exit=1
+=== 03-room-identity-dropped.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/eventref.go	2026-09-08 01:24:00
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/eventref.go	2026-09-08 07:51:25
+@@ -74,7 +74,7 @@
+ // prefix is the workroom half of every canonical identifier of this room,
+ // including the separator.
+ func (r Room) prefix() string {
+-	return "git:" + r.ObjectFormat + ":" + r.Genesis + "#"
++	return "git:" + r.ObjectFormat + ":"
+ }
+ 
+ // GenesisEvent is the canonical identifier of this workroom's founding commit.
+=== 03-room-identity-dropped.out
+# mutant: 03-room-identity-dropped
+# file:   internal/eventref/eventref.go
+# test:   go test -count=1 -run 'TestAnotherWorkroomsEventIsNeverResolvedAndIsPreservedAsTyped|TestShortEventReferencesResolveInBothObjectFormats' ./cmd/gs/
+--- FAIL: TestShortEventReferencesResolveInBothObjectFormats (0.00s)
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256 (8.74s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/short_prefix (0.33s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "3d" matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched
+                  copy the number or the identifier a display shows, or the full identifier from `gs work --json`
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1 (8.97s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/short_prefix (0.32s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "d2" matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched
+                  copy the number or the identifier a display shows, or the full identifier from `gs work --json`
+--- FAIL: TestAnotherWorkroomsEventIsNeverResolvedAndIsPreservedAsTyped (11.55s)
+    event_reference_test.go:417: the external citation was not distinguished: "gs: warning: rests-on git:sha1:71cd6bcffd24117e0bc888dbdcff71a3f77d870b#git:sha1:c98ff29e87dd81969f20333de3857f2706afcecf names no event in this workroom; a citation claiming a position in this log that does not name one is refused before it is sequenced\n"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	11.917s
+FAIL
+exit=1
+=== 04-stderr-echo-removed.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gs/eventref.go	2026-09-08 07:45:59
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gs/eventref.go	2026-09-08 07:51:37
+@@ -46,9 +46,7 @@
+ // mis-resolution is visible while it can still be corrected, and it stays off
+ // standard output, which carries the new event's identifier and nothing else.
+ func showResolved(resolver *eventref.Resolver) {
+-	for _, line := range resolver.Lines() {
+-		fmt.Fprintln(os.Stderr, "gs:", line)
+-	}
++	_ = resolver.Lines()
+ }
+ 
+ // resolveRefs rewrites, in place, every event reference one command carries:
+=== 04-stderr-echo-removed.out
+# mutant: 04-stderr-echo-removed
+# file:   cmd/gs/eventref.go
+# test:   go test -count=1 -run 'TestShortEventReferencesResolveInBothObjectFormats|TestTargetsAcceptShortReferencesAndSignCanonicalIdentifiers' ./cmd/gs/
+--- FAIL: TestTargetsAcceptShortReferencesAndSignCanonicalIdentifiers (7.54s)
+    event_reference_test.go:450: ratify did not name what it resolved: ""
+--- FAIL: TestShortEventReferencesResolveInBothObjectFormats (0.00s)
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256 (9.13s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/number (1.28s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/short_prefix (0.71s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/suffix (0.71s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/whole_hash (0.69s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1 (9.36s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/number (1.55s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/short_prefix (0.71s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/suffix (0.71s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/whole_hash (0.66s)
+            event_reference_test.go:229: stderr does not name the resolution: ""
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	9.724s
+FAIL
+exit=1
+=== 05-basis-disclosure-removed.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gs/eventref.go	2026-09-08 07:45:59
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gs/eventref.go	2026-09-08 07:51:48
+@@ -99,9 +99,7 @@
+ 	if err != nil {
+ 		return
+ 	}
+-	for _, note := range eventref.BasisNotes(set, restsOn) {
+-		fmt.Fprintln(os.Stderr, "gs:", note)
+-	}
++	_ = set
+ }
+ 
+ // noteDeadRestsOn tells an author, on standard error, which citations of the
+=== 05-basis-disclosure-removed.out
+# mutant: 05-basis-disclosure-removed
+# file:   cmd/gs/eventref.go
+# test:   go test -count=1 -run 'TestFilingDisclosesItsBasesBeforeSigning' ./cmd/gs/
+--- FAIL: TestFilingDisclosesItsBasesBeforeSigning (8.83s)
+    --- FAIL: TestFilingDisclosesItsBasesBeforeSigning/malformed_basis_warns_and_lands (0.62s)
+        event_reference_test.go:566: stderr = ""
+    --- FAIL: TestFilingDisclosesItsBasesBeforeSigning/local_identifier_naming_no_event_is_warned_then_refused (0.52s)
+        event_reference_test.go:584: the author was not warned before signing: "gs: causal reference does not resolve in this log: git:sha1:1dd6b85a62295679d8680e3d1ab6254ee4ae8cee#git:sha1:ffffffffffffffffffffffffffffffffffffffff\n"
+    --- FAIL: TestFilingDisclosesItsBasesBeforeSigning/external_identifier_is_named_as_external_and_admitted (0.49s)
+        event_reference_test.go:601: stderr = ""
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	9.199s
+FAIL
+exit=1
+=== 06-external-treated-as-local.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/resolver.go	2026-09-08 07:45:45
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/resolver.go	2026-09-08 07:51:58
+@@ -189,7 +189,7 @@
+ 		case FormOpaque:
+ 			notes = append(notes, fmt.Sprintf("warning: rests-on %q is not an event identifier; nothing here resolves it, so this act will rest on nothing that can ever flare it", basis))
+ 		case FormExternal:
+-			notes = append(notes, fmt.Sprintf("note: rests-on %s is another workroom's event; this room cannot verify it and admits it as an external citation", basis))
++			notes = append(notes, fmt.Sprintf("warning: rests-on %s names no event in this workroom; a citation claiming a position in this log that does not name one is refused before it is sequenced", basis))
+ 		case FormCanonical:
+ 			if !set.Resolvable(basis) {
+ 				notes = append(notes, fmt.Sprintf("warning: rests-on %s names no event in this workroom; a citation claiming a position in this log that does not name one is refused before it is sequenced", basis))
+=== 06-external-treated-as-local.out
+# mutant: 06-external-treated-as-local
+# file:   internal/eventref/resolver.go
+# test:   go test -count=1 -run 'TestFilingDisclosesItsBasesBeforeSigning|TestAnotherWorkroomsEventIsNeverResolvedAndIsPreservedAsTyped' ./cmd/gs/
+--- FAIL: TestFilingDisclosesItsBasesBeforeSigning (9.78s)
+    --- FAIL: TestFilingDisclosesItsBasesBeforeSigning/external_identifier_is_named_as_external_and_admitted (0.48s)
+        event_reference_test.go:601: stderr = "gs: warning: rests-on git:sha1:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa#git:sha1:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb names no event in this workroom; a citation claiming a position in this log that does not name one is refused before it is sequenced\n"
+--- FAIL: TestAnotherWorkroomsEventIsNeverResolvedAndIsPreservedAsTyped (10.91s)
+    event_reference_test.go:417: the external citation was not distinguished: "gs: warning: rests-on git:sha1:3e23fe3574e5e44e7f4ff09a48c636f9e8446fae#git:sha1:91942dc2ce0ae24f52cb8505023792c0741d09e3 names no event in this workroom; a citation claiming a position in this log that does not name one is refused before it is sequenced\n"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	11.281s
+FAIL
+exit=1
+=== 07-suffix-matching-removed.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/eventref.go	2026-09-08 01:24:00
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/eventref.go	2026-09-08 07:52:10
+@@ -271,7 +271,7 @@
+ 		// One event, one entry. A fragment that is both a prefix and a suffix
+ 		// of the same hash names that event once; counting it twice would
+ 		// report a single event as an ambiguity.
+-		if strings.HasPrefix(event.hash, selector) || strings.HasSuffix(event.hash, selector) {
++		if strings.HasPrefix(event.hash, selector) {
+ 			matched = append(matched, event)
+ 		}
+ 	}
+=== 07-suffix-matching-removed.out
+# mutant: 07-suffix-matching-removed
+# file:   internal/eventref/eventref.go
+# test:   go test -count=1 -run 'TestShortEventReferencesResolveInBothObjectFormats|TestSuffixResolves|TestPrefixAndSuffixOfOneEventIsOneMatch' ./cmd/gs/ ./internal/eventref/
+--- FAIL: TestShortEventReferencesResolveInBothObjectFormats (0.00s)
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1 (7.96s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/suffix (0.31s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "b31aca3e" matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched
+                  copy the number or the identifier a display shows, or the full identifier from `gs work --json`
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256 (8.22s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/suffix (0.31s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "c5a1ed3b" matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched
+                  copy the number or the identifier a display shows, or the full identifier from `gs work --json`
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	8.609s
+--- FAIL: TestSuffixResolves (0.00s)
+    eventref_test.go:147: suffix = "" event reference "deadbeef" matches no event hash in this workroom; a hash reference is a prefix or suffix of one event hash, and only this room's durable events are searched
+          copy the number or the identifier a display shows, or the full identifier from `gs work --json`
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/eventref	0.602s
+FAIL
+exit=1
+=== 08-prefix-suffix-dedup-removed.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/eventref.go	2026-09-08 01:24:00
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/eventref.go	2026-09-08 07:52:19
+@@ -271,9 +271,12 @@
+ 		// One event, one entry. A fragment that is both a prefix and a suffix
+ 		// of the same hash names that event once; counting it twice would
+ 		// report a single event as an ambiguity.
+-		if strings.HasPrefix(event.hash, selector) || strings.HasSuffix(event.hash, selector) {
++		if strings.HasPrefix(event.hash, selector) {
+ 			matched = append(matched, event)
+ 		}
++		if strings.HasSuffix(event.hash, selector) {
++			matched = append(matched, event)
++		}
+ 	}
+ 	switch len(matched) {
+ 	case 1:
+=== 08-prefix-suffix-dedup-removed.out
+# mutant: 08-prefix-suffix-dedup-removed
+# file:   internal/eventref/eventref.go
+# test:   go test -count=1 -run 'TestShortEventReferencesResolveInBothObjectFormats|TestPrefixAndSuffixOfOneEventIsOneMatch' ./cmd/gs/ ./internal/eventref/
+--- FAIL: TestShortEventReferencesResolveInBothObjectFormats (0.00s)
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1 (8.01s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha1/whole_hash (0.30s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "e585295d9a7c44a3fee5b4205048b5cdff705daf" matches 2 events here; name one exactly
+                  #4 git:sha1:492a2ba580ef869e236e6a2684249fecd2e4ceb5#git:sha1:e585295d9a7c44a3fee5b4205048b5cdff705daf
+                  #4 git:sha1:492a2ba580ef869e236e6a2684249fecd2e4ceb5#git:sha1:e585295d9a7c44a3fee5b4205048b5cdff705daf
+    --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256 (8.23s)
+        --- FAIL: TestShortEventReferencesResolveInBothObjectFormats/sha256/whole_hash (0.31s)
+            event_reference_test.go:216: exit 1
+                gs: event reference "b64a2782d8419488a33df1e4f44bc08e3d2ca5e28fafe2614fba788e372219e9" matches 2 events here; name one exactly
+                  #4 git:sha256:868b9b4911741b218a6bb66ae54d3952b85d62095d7367ff7f502596a807c8d7#git:sha256:b64a2782d8419488a33df1e4f44bc08e3d2ca5e28fafe2614fba788e372219e9
+                  #4 git:sha256:868b9b4911741b218a6bb66ae54d3952b85d62095d7367ff7f502596a807c8d7#git:sha256:b64a2782d8419488a33df1e4f44bc08e3d2ca5e28fafe2614fba788e372219e9
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	8.609s
+--- FAIL: TestPrefixAndSuffixOfOneEventIsOneMatch (0.00s)
+    eventref_test.go:128: a fragment matching one event both ways was refused: event reference "ab" matches 2 events here; name one exactly
+          #1 git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abccccccccccccccccccccccccccccccccccccab
+          #1 git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abccccccccccccccccccccccccccccccccccccab
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/eventref	0.591s
+FAIL
+exit=1
+=== 09-refusal-swallowed.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gs/eventref.go	2026-09-08 07:45:59
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gs/eventref.go	2026-09-08 07:52:29
+@@ -67,7 +67,7 @@
+ 		}
+ 		resolved, err := resolver.One(*reference)
+ 		if err != nil {
+-			return err
++			continue
+ 		}
+ 		*reference = resolved
+ 	}
+@@ -77,7 +77,7 @@
+ 		}
+ 		resolved, err := resolver.Many(*list)
+ 		if err != nil {
+-			return err
++			continue
+ 		}
+ 		*list = resolved
+ 	}
+=== 09-refusal-swallowed.out
+# mutant: 09-refusal-swallowed
+# file:   cmd/gs/eventref.go
+# test:   go test -count=1 -run 'TestRecordNumberBoundariesRefuseWithoutAppending|TestAmbiguousHashReferenceRefusesAndNamesCandidates|TestHashOfAnUnrelatedGitObjectNamesNoEvent' ./cmd/gs/
+--- FAIL: TestAmbiguousHashReferenceRefusesAndNamesCandidates (6.75s)
+    event_reference_test.go:303: an ambiguous reference was admitted: git:sha1:b54ebd1806cf64e928f0a368dadb5d48827be645#git:sha1:722a5bd7add58a744f1076595f5ff55fa4a82338
+--- FAIL: TestHashOfAnUnrelatedGitObjectNamesNoEvent (6.99s)
+    event_reference_test.go:353: a blob prefix was admitted as an event: git:sha1:2e06fc2557384cbb2bead834e4cf633407f9be17#git:sha1:12d257a389b715d8ad50ed6e040ee169793b2f8d
+--- FAIL: TestRecordNumberBoundariesRefuseWithoutAppending (7.79s)
+    event_reference_test.go:277: padded (#01) was admitted: git:sha1:cc2a592d5410f07d2e5d4b7925c078b0cae34430#git:sha1:1c0f0fbcfb867e87564d4f532d1a7dda995b161b
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	8.169s
+FAIL
+exit=1
+=== 10-tool-dropped-from-inventory.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gitseq-mcp/eventref.go	2026-09-08 07:46:28
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gitseq-mcp/eventref.go	2026-09-08 07:52:38
+@@ -32,7 +32,6 @@
+ 	"merge_plan":            {Single: []string{"approval"}},
+ 	"state":                 {Lists: []string{"rests_on"}, Bases: []string{"rests_on"}, Bodies: []string{"body"}},
+ 	"review":                {Single: []string{"promise", "self_initiated"}, Lists: []string{"artifacts", "ack_head_news", "implementations"}},
+-	"ratify":                {Single: []string{"target"}},
+ 	"supersede":             {Single: []string{"target"}, Lists: []string{"rests_on"}, Bases: []string{"rests_on"}},
+ 	"reassign_if_unclaimed": {Single: []string{"old_request"}, Lists: []string{"rests_on"}, Bases: []string{"rests_on"}, Bodies: []string{"body"}},
+ }
+=== 10-tool-dropped-from-inventory.out
+# mutant: 10-tool-dropped-from-inventory
+# file:   cmd/gitseq-mcp/eventref.go
+# test:   go test -count=1 -run 'TestToolsResolveWhatTheDisplaysShow' ./cmd/gitseq-mcp/
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+--- FAIL: TestToolsResolveWhatTheDisplaysShow (4.40s)
+    event_reference_test.go:210: signed target = "#22", want "git:sha1:651a8311abf833e172dfb81f59c2815b0702b820#git:sha1:8ff6fade37e5b5f98eb0a69ef9b0aaca55902e07"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	4.723s
+FAIL
+exit=1
+=== 11-publish-basis-bypasses-the-resolver.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gs/main.go	2026-09-08 07:45:59
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gs/main.go	2026-09-08 07:52:43
+@@ -230,12 +230,6 @@
+ 	// and is resolved and described before anything is signed. Everything
+ 	// else this command names — the remote, the ref, the accepted head — is
+ 	// ordinary Git and is not an event.
+-	resolver := newResolver(ctx, workspace)
+-	if err := resolveRefs(resolver, []*string{basis}); err != nil {
+-		return err
+-	}
+-	showResolved(resolver)
+-	discloseBases(resolver, []string{*basis})
+ 	report, publishErr := runPublication(ctx, workspace, private, actorName, actor.Fingerprint, serverURL, *remote, *ref, *basis)
+ 	if printErr := printJSON(report); printErr != nil && publishErr == nil {
+ 		publishErr = printErr
+=== 11-publish-basis-bypasses-the-resolver.out
+# mutant: 11-publish-basis-bypasses-the-resolver
+# file:   cmd/gs/main.go
+# test:   go test -count=1 -run 'TestPublishResolvesItsGoverningBasis' ./cmd/gs/
+{
+  "remote": "origin",
+  "ref": "refs/heads/main",
+  "head": "579af6fc18e0ef69197587cc21a6c1fa5b940c3c",
+  "basis": "#2",
+  "published": [
+    {
+      "path": "notes/one.md",
+      "event": "git:sha1:1d874625fadf7ea8729dff4248442f1084b7cde8#git:sha1:46a93553c445e8db6140ff612a93d2aeeafa633a",
+      "outcome": "landed"
+    }
+  ]
+}
+--- FAIL: TestPublishResolvesItsGoverningBasis (1.51s)
+    event_reference_test.go:689: the published fact signed [#2], want the canonical [git:sha1:1d874625fadf7ea8729dff4248442f1084b7cde8#git:sha1:0fd090134b16affb3e61cb6313420ef88a68e64e]
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	1.885s
+FAIL
+exit=1
+=== 12-labels-warned-about-again.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gs/main.go	2026-09-08 07:45:59
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gs/main.go	2026-09-08 07:52:46
+@@ -2143,9 +2143,6 @@
+ 	citations := make([]string, 0, len(acts))
+ 	for _, entry := range acts {
+ 		for _, basis := range entry.RestsOn {
+-			if isBatchLabel(basis) {
+-				continue
+-			}
+ 			citations = append(citations, basis)
+ 		}
+ 	}
+=== 12-labels-warned-about-again.out
+# mutant: 12-labels-warned-about-again
+# file:   cmd/gs/main.go
+# test:   go test -count=1 -run 'TestBatchLabelsEarnNoBasisWarning|TestChainCitationsKeepsEverythingButLabels' ./cmd/gs/
+--- FAIL: TestChainCitationsKeepsEverythingButLabels (0.00s)
+    event_reference_test.go:775: chainCitations = ["git:sha1:g#git:sha1:a" "$one" "$two" "not-an-event" "git:sha1:g#git:sha1:b"], want ["git:sha1:g#git:sha1:a" "not-an-event" "git:sha1:g#git:sha1:b"]
+--- FAIL: TestBatchLabelsEarnNoBasisWarning (5.65s)
+    event_reference_test.go:739: a batch label was warned about: "gs: resolved #2 -> git:sha1:4b4690f2a6b945b6f4575e55e7aa9615e549637e#git:sha1:3d5eb7bf27f43ba5cc90c485812a2bc27aeab905\ngs: warning: rests-on \"$claim\" is not an event identifier; nothing here resolves it, so this act will rest on nothing that can ever flare it\n"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	6.019s
+FAIL
+exit=1
+=== 13-typed-body-field-bypasses-the-resolver.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/internal/eventref/resolver.go	2026-09-08 07:45:45
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/internal/eventref/resolver.go	2026-09-08 07:52:53
+@@ -140,7 +140,7 @@
+ 	if len(body) == 0 {
+ 		return nil
+ 	}
+-	for _, field := range EventBodyFields {
++	for _, field := range []string(nil) {
+ 		value, set := body[field]
+ 		if !set || value == "" {
+ 			continue
+=== 13-typed-body-field-bypasses-the-resolver.out
+# mutant: 13-typed-body-field-bypasses-the-resolver
+# file:   internal/eventref/resolver.go
+# test:   go test -count=1 -run 'TestRecognizedBodyFieldsResolveAndSignCanonicalIdentifiers|TestBatchEntryBodiesResolveTheirRecognizedFields|TestStateToolResolvesRecognizedBodyFields' ./cmd/gs/ ./cmd/gitseq-mcp/
+--- FAIL: TestBatchEntryBodiesResolveTheirRecognizedFields (6.41s)
+    event_reference_test.go:869: signed body.authorizes_request = "#4", want "git:sha1:3ed3473874d207f08904ff3f0608e44c20dcf945#git:sha1:5c110c939226b742029f563f9e6b44f03fbb052b"
+--- FAIL: TestRecognizedBodyFieldsResolveAndSignCanonicalIdentifiers (6.72s)
+    event_reference_test.go:813: signed body.authorizes_approval = "24", want "git:sha1:ec01587c675d41d895984c6859b08b235c7f531e#git:sha1:240bb11ea65d51447cdf805d0dbb3fdef3c40c18"
+    event_reference_test.go:813: signed body.artifact = "309c19b7bee708e02acbde54fff555ac2958f894", want "git:sha1:ec01587c675d41d895984c6859b08b235c7f531e#git:sha1:309c19b7bee708e02acbde54fff555ac2958f894"
+    event_reference_test.go:813: signed body.authorizes_request = "#3", want "git:sha1:ec01587c675d41d895984c6859b08b235c7f531e#git:sha1:b2a694ba16a3a99d269a49c3d2c54184c7287d95"
+    event_reference_test.go:827: no match body field was admitted: git:sha1:ec01587c675d41d895984c6859b08b235c7f531e#git:sha1:e2c002463ab28995d14f6a83890dec4b3b7df2f7
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	7.133s
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+--- FAIL: TestStateToolResolvesRecognizedBodyFields (5.03s)
+    event_reference_test.go:259: signed body.authorizes_approval = "6a", want "git:sha1:5669c6b2662a164f4e81da40f314073d29421298#git:sha1:6a890e899e14c6f0f247aa58e123a52579467705"
+    event_reference_test.go:259: signed body.authorizes_request = "#3", want "git:sha1:5669c6b2662a164f4e81da40f314073d29421298#git:sha1:c37529a815b4c79e8599c160a25d724eb3a20eb7"
+    event_reference_test.go:269: a body field naming no record was admitted
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	5.709s
+FAIL
+exit=1
+=== 14-refusal-path-drops-the-notes.diff
+--- /Users/hughpyle/play/gitseq-worktrees/event-reference-inputs/cmd/gitseq-mcp/main.go	2026-09-08 07:46:39
++++ /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/cmd/gitseq-mcp/main.go	2026-09-08 07:53:01
+@@ -1173,7 +1173,7 @@
+ 		// A refused call carries no structured content, so the sentences ride
+ 		// on the error itself. They are the same ones a success returns, and
+ 		// the refusal is unchanged underneath them.
+-		return nil, withDisclosure(err, resolver.Lines(), notes)
++		return nil, err
+ 	}
+ 	return annotateReferences(resolver, notes, value), nil
+ }
+=== 14-refusal-path-drops-the-notes.out
+# mutant: 14-refusal-path-drops-the-notes
+# file:   cmd/gitseq-mcp/main.go
+# test:   go test -count=1 -run 'TestStateToolDisclosesItsBases' ./cmd/gitseq-mcp/
+gitseq-mcp: shared-identity check skipped; the resident service is unavailable: no resident service is published for this workroom; run `gs serve` in it for presence and conversation
+--- FAIL: TestStateToolDisclosesItsBases (4.53s)
+    event_reference_test.go:399: the refusal dropped the disclosure:
+          got  causal reference does not resolve in this log: git:sha1:03b1293a67e7cb9f1754bd5c83b1df42892eb45d#git:sha1:ffffffffffffffffffffffffffffffffffffffff
+          want it to carry "warning: rests-on git:sha1:03b1293a67e7cb9f1754bd5c83b1df42892eb45d#git:sha1:ffffffffffffffffffffffffffffffffffffffff names no event in this workroom"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	4.846s
+FAIL
+exit=1

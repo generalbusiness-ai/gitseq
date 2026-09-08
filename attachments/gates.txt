@@ -1,0 +1,72 @@
+# Gates at the final head 920e8a5f2c4330c7e3671293d6e78cdb11ee613e
+# Run sequentially, after the disposable mutant copy was removed.
+
+## go build ./...
+exit=0
+
+## go vet ./...
+exit=0
+
+## gofmt -l .
+exit=0
+
+## git diff --check
+exit=0
+
+## Base and mergeability
+squashed over a6ed642f2ecf6ac454d3672606c9538f725c1a90 as instructed;
+git rev-list --count a6ed642f2..HEAD = 1
+
+main is now 3ecb8b77d55cfe8ccb1d634649788a4ab629577b. It has three test-only
+commits over a6ed642f (cmd/gs/batch_prefix_recovery_test.go,
+cmd/gs/legacy_receipt_resume_test.go, cmd/gs/main_test.go) and none of the
+three files is touched by this change.
+git merge-tree --write-tree 3ecb8b77d HEAD -> exit=0, tree
+58d42bea1086241c952e847d0d3671e092de3286, no conflict.
+
+## go test -count=1 ./...
+36 packages ok, 0 failed
+exit=0  (full output in go-test-all.txt)
+
+## go test -count=1 ./internal/docset/...
+exit=0  (full output in go-test-docset.txt)
+
+## go test -count=1 ./... (full)
+ok  	github.com/generalbusiness-ai/gitseq	0.252s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	36.989s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	146.530s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.408s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	434.969s
+ok  	github.com/generalbusiness-ai/gitseq/host	33.506s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	23.153s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	2.074s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	140.155s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	3.425s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	3.902s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	2.494s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	1.952s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	2.719s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	103.772s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.280s
+ok  	github.com/generalbusiness-ai/gitseq/internal/eventref	3.926s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	20.636s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	4.361s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	85.103s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	16.711s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.141s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.257s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	11.995s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.383s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	2.888s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	82.941s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	5.082s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	3.165s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.710s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	2.368s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	12.352s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.805s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.408s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.976s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	1.023s
+exit=0
