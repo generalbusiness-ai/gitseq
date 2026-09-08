@@ -1,0 +1,45 @@
+{
+  "checked_utc": "2026-09-08T00:29:19.008126+00:00",
+  "head": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "main_source_unchanged": true,
+  "source_hashes": {
+    "head": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+    "main_test_sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+    "runbook_sha256": "cb6c0f8b306ea25e670798d47426e701375a8557ffb3b4a0525b0f081b9af523",
+    "queries_extracted_verbatim": true,
+    "scope": "Isolated Go test fixture with real signed workflow and actual current merge. No live workroom migration; repository source unchanged."
+  },
+  "closing_measurement": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dbacc8d8faac6400dce2681bc47b564baa7ba727",
+    "sequence": 6698,
+    "effective": true,
+    "retired": false,
+    "text": "Closing measurement for the whole-repository dot-artifact migration, taken 2026-08-19 at depth 6696 after hugh ran the operator retirement batches (55 dot artifacts and 5 absolute-path artifacts, all supersessions effective) and the documentation re-anchoring merged at 0ba86570. The step-6 gate, which the runbook designates as the proof: live dot artifacts 0, live artifacts anchored to a dot artifact along artifact provenance 0 \u2014 the migration is complete. The wave, which the runbook says to report and never gate on: 3650 of 6696 records reach a dot artifact along fold edges, and 53 of 116 live artifacts reach one \u2014 honest history whose bases moved after the acts were over, needing nothing. The spike/internal straggler was retired in the same wave. No merge will ever supersede at \".\" or at an absolute path again; per-area currency now lives entirely in the per-path artifacts."
+  },
+  "historical_merge": "0ba86570ee2fa10b99542eb688c7d90f6a4c1028",
+  "historical_merge_ancestor_main": true,
+  "current_dot_query": {
+    "result": 3245,
+    "frontier": {
+      "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "head": "f0e2631c49ae19c06137bf8ec93c7991f4c8e7a5",
+      "depth": 21321
+    },
+    "paths": [
+      "."
+    ],
+    "artifacts": [],
+    "matching_total": 0,
+    "returned": 0,
+    "before": 0,
+    "remaining": 0
+  },
+  "probe": {
+    "command": "go test -overlay /tmp/planner-migration-quiet-wave-proof/overlay.json ./cmd/gs -run ^TestPlannerMigrationQuietWavePostVerdict$ -count=1 -v",
+    "result": "PASS 5.822s",
+    "controls": "Before world movement, verbatim approved-head selector selects fixture candidate; after movement it selects none and first-verdict/unresolved counts both zero. Candidate is demonstrably outside fixture main; actual current merge admits it and moves fixture HEAD.",
+    "limits": "Real signed workflow fixture exercises the existing legacy phase-one compatibility path, including its warning. It does not prove modern held-request authorization. No real workroom migration or source change. Initial local query extraction bug was corrected before this passing run; its failed jq parse is not a product finding."
+  },
+  "assessment": "Preserve the old completed runbook as history, label completion and applicability, and require a current scoped plan before any newly assigned migration. Do not revive the completed migration or copy its old derived checks as current policy.",
+  "verification_limits": "Fresh direct live-dot count is zero; the historical full artifact-provenance zero gate is attributed to closing measurement6698, not rerun. Current merge incorporation was checked. No historical timing/CI suite rerun."
+}

@@ -1,0 +1,33 @@
+
+func TestPlannerMigrationQuietWavePostVerdict(t *testing.T) {
+    fixture := newWorkflowFixture(t)
+    approval := fixture.review(t)
+    fixture.ratify(t, approval)
+    query := func(program string) string {
+        data, err := json.Marshal(map[string]any{"projection": fixture.snapshot(t).Projection})
+        if err != nil { t.Fatal(err) }
+        command := exec.Command("jq", "-r", program)
+        command.Stdin = bytes.NewReader(data)
+        output, err := command.CombinedOutput()
+        if err != nil { t.Fatalf("runbook jq: %v: %s", err, output) }
+        return strings.TrimSpace(string(output))
+    }
+    approvedQuery := ".projection as $p\n     | ([$p.statements[]\n          | select(.describes_superseded_world // false)\n          | .event] | map({key: ., value: true}) | from_entries) as $world\n     | [$p.reviews[]?\n           | select(.verdict == \"approved\" and (.ratified // false))\n           | select((($world[.report] // false) or\n                     ($world[(.artifact // \"\")] // false)) | not)\n           | select((.retired // false) | not)\n           | .head] | unique | .[]"
+    if got := query(approvedQuery); got != fixture.candidate {
+        t.Fatalf("fresh positive control = %q, want %q", got, fixture.candidate)
+    }
+    fixture.moveTheWorld(t)
+    artifact := artifactByEvent(t, fixture.snapshot(t).Projection, fixture.artifact)
+    if !artifact.DescribesSupersededWorld || artifact.WorldSupersededAt == 0 { t.Fatal("fixture lacks dated world movement") }
+    if got := query(approvedQuery); got != "" { t.Fatalf("expected existing runbook to omit post-verdict candidate, got %q", got) }
+    var counts struct { Awaiting int `json:"awaiting"`; Unresolved int `json:"unresolved"`; Named int `json:"named"` }
+    if err := json.Unmarshal([]byte(query(".projection as $p\n     | ([$p.artifacts[] | select(.retired | not) | .event]\n        | map({key: ., value: true}) | from_entries) as $live\n     | ([$p.reviews[]? | .report] | map({key: ., value: true}) | from_entries) as $effective\n     | ([$p.commitments[]\n          | select((.report // null) != null and ($effective[.report] // false))\n          | .request] | map({key: ., value: true}) | from_entries) as $settled\n     | ([$p.statements[]\n          | select((.retired | not) and .kind == \"request\")\n          | select((.body.artifact // \"\") != \"\")]) as $named\n     | {awaiting: [$named[] | select(($settled[.event] // false) | not)] | length,\n        unresolved: [$named[] | select((($live[.body.artifact] // false) | not))] | length,\n        named: ($named | length)}")), &counts); err != nil { t.Fatal(err) }
+    if counts.Awaiting != 0 || counts.Unresolved != 0 { t.Fatalf("other quiet counts = %+v", counts) }
+    check := exec.Command("git", "merge-base", "--is-ancestor", fixture.candidate, "main")
+    check.Dir = fixture.repo
+    if err := check.Run(); err == nil { t.Fatal("candidate already in main") } else if exit, ok := err.(*exec.ExitError); !ok || exit.ExitCode()!=1 { t.Fatalf("ancestry check: %v",err) }
+    before := testGit(t, fixture.repo, "rev-parse", "HEAD")
+    if err := mergeCommand(fixture.ctx, []string{"--repo",fixture.repo,"--as","operator","--checkout",fixture.repo,"--candidate",fixture.candidate,"--approval",approval,"--text","Merge the approved fixture and record its post-verdict world movement."}); err != nil { t.Fatalf("current merge refused: %v",err) }
+    if after := testGit(t, fixture.repo,"rev-parse","HEAD"); after==before { t.Fatal("merge did not move fixture HEAD") }
+    t.Logf("old runbook: awaiting=%d unresolved=%d selected-approved=0; candidate outside main was admitted by actual current merge",counts.Awaiting,counts.Unresolved)
+}
