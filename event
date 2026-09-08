@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9ef41f4fa7560a1f134c648086117781553ba4d5","text":"Merge retired a covered predecessor; the successor is at cmd/gs/query_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a6512173b3bedbe95801039d536a54aba1e82cf1","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/provenance.md."}
