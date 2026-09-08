@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:90f367c295f69aebc40b91cd9ed80f2932f77c6b","text":"Merge retired a covered predecessor; the successor is at docs/reference/architecture.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:911377ea3c1bd0db30f0e17adc40bbae5a8b1707","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/reassign-if-unclaimed.md."}
