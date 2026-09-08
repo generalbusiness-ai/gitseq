@@ -30,6 +30,18 @@ resumable batch.
 
 It takes no positional arguments.
 
+`--approval` and `--authorization` name durable events and each takes a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier, resolved and named on standard error before the
+receipt is built. `--candidate` names an ordinary Git commit, not an event, and
+is never resolved.
+
+A merge receipt's `merge_approval`, `merge_authorization` and
+`merge_authorization_ratification` are event identifiers, and this command
+composes them from values already canonical. Written by hand into a body they
+are resolved like any other recognized field; see
+[Body fields](../event-identifiers.md#body-fields-and-why-only-some-of-them).
+
 ## Example
 
 ```sh

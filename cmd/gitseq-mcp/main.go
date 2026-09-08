@@ -24,6 +24,7 @@ import (
 	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/eventref"
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
@@ -534,7 +535,16 @@ func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) 
 			attention := s.liveAttention(ctx, acted, call, value)
 			text := attentionSummary(attention)
 			if err != nil {
-				content := []map[string]string{{"type": "text", "text": err.Error()}}
+				// The refusal first, then anything the reference boundary had
+				// already worked out, each as its own block rather than as one
+				// run-on message.
+				content := []map[string]string{{"type": "text", "text": refusalText(err)}}
+				var disclosure *referenceDisclosure
+				if errors.As(err, &disclosure) {
+					for _, line := range disclosure.disclosed() {
+						content = append(content, map[string]string{"type": "text", "text": line})
+					}
+				}
 				if text != "" {
 					content = append(content, map[string]string{"type": "text", "text": text})
 				}
@@ -1128,6 +1138,16 @@ func (s *mcpServer) call(ctx context.Context, call toolCall) (any, *room, error)
 	return value, current, err
 }
 
+// refusalText is the reason a call failed, without the boundary's sentences
+// appended: those travel as their own content blocks beside it.
+func refusalText(err error) string {
+	var disclosure *referenceDisclosure
+	if errors.As(err, &disclosure) {
+		return disclosure.Unwrap().Error()
+	}
+	return err.Error()
+}
+
 func durableTool(name string) bool {
 	switch name {
 	case "state", "review", "ratify", "supersede", "reassign_if_unclaimed":
@@ -1137,7 +1157,28 @@ func durableTool(name string) bool {
 	}
 }
 
+// dispatch answers one tool call. Every event reference the call carries is
+// resolved first, against one verified event set, so the whole of one act is
+// judged against one world and only full canonical identifiers reach the
+// signing path. The resolutions and the pre-signing citation notes travel back
+// in the result, in the same words the command line writes to standard error.
 func (s *mcpServer) dispatch(ctx context.Context, call toolCall, current *room, identity *selectedIdentity) (any, error) {
+	resolver := newResolver(ctx, identity.workspace)
+	notes, err := resolveToolReferences(resolver, &call)
+	if err != nil {
+		return nil, err
+	}
+	value, err := s.dispatchResolved(ctx, call, current, identity)
+	if err != nil {
+		// A refused call carries no structured content, so the sentences ride
+		// on the error itself. They are the same ones a success returns, and
+		// the refusal is unchanged underneath them.
+		return nil, withDisclosure(err, resolver.Lines(), notes)
+	}
+	return annotateReferences(resolver, notes, value), nil
+}
+
+func (s *mcpServer) dispatchResolved(ctx context.Context, call toolCall, current *room, identity *selectedIdentity) (any, error) {
 	switch call.Name {
 	case "whoami":
 		return s.whoami(ctx, current, identity)
@@ -1725,6 +1766,7 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	if event == "" {
 		return nil
 	}
+	held := eventref.NewMembership(projection)
 	notes := map[string]any{}
 
 	// A target naming no event in this workroom. `supersede` and `ratify` carry
@@ -1733,7 +1775,7 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	// record comes back, and the fold rules it ineffective for a target it has
 	// never seen. This is not hypothetical — an act of exactly this shape was
 	// filed against this workroom while this change sat in review.
-	if act.Target != "" && !resolves(projection, act.Target) {
+	if act.Target != "" && !held.Has(act.Target) {
 		notes["unresolved_target"] = act.Target
 	}
 
@@ -1753,13 +1795,7 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 	// identifier is skipped in silence by validateBasis unless the kind's own
 	// basis constraints happen to need it, so the act connects to nothing and
 	// says so nowhere.
-	var unresolved []string
-	for _, reference := range act.RestsOn {
-		if !resolves(projection, reference) {
-			unresolved = append(unresolved, reference)
-		}
-	}
-	if len(unresolved) > 0 {
+	if unresolved := held.Unresolved(act.RestsOn); len(unresolved) > 0 {
 		notes["unresolved_rests_on"] = unresolved
 	}
 
@@ -1801,25 +1837,6 @@ func projectionNotes(projection workroom.Projection, act app.Act, event string) 
 		}
 	}
 	return notes
-}
-
-// resolves reports whether an identifier names an event this workroom holds.
-// A wrong one is indistinguishable from a right one until something asks.
-//
-// Decisions, not statements. There is exactly one decision per durable record,
-// while statements hold only utterances — so ratify and supersede are events
-// with no statement, and the fold explicitly allows superseding a supersession.
-// Searching statements would have called those citations unresolved: a check
-// written to catch fabricated identifiers, reporting real ones as fabricated,
-// which is worse than not checking at all because it teaches readers to ignore
-// it.
-func resolves(projection workroom.Projection, event string) bool {
-	for _, decision := range projection.Decisions {
-		if decision.Event == event {
-			return true
-		}
-	}
-	return false
 }
 
 func reviewOf(projection workroom.Projection, event string) (workroom.Review, bool) {

@@ -18,12 +18,15 @@ standing, with a pointer to what replaced it.
 
 | argument | required | meaning |
 |---|---|---|
-| `target` | required | The event identifier to retire. |
+| `target` | required | The event to retire. |
 | `text` | required | Why. This is what a later reader gets. |
-| `rests_on` | optional | Additional event identifiers. The target is placed first automatically. |
+| `rests_on` | optional | Additional event references. The target is placed first automatically. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 | `agent` | optional | The actor whose existing accessible key signs this retirement; defaults to startup `--actor`. |
+
+`target` and `rests_on` take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
+identifier. The result names what it resolved in a `resolved` field.
 
 `text` is required for a reason: a retirement with no stated cause tells
 the next reader that something changed and nothing about what.

@@ -182,10 +182,14 @@ func TestReviewToolRefusesUnacknowledgedHeadNewsAndTakesExactAcks(t *testing.T) 
 		t.Fatalf("duplicate acknowledgment error = %v", err)
 	}
 
+	// An acknowledgment naming a real event that is not head news is
+	// extraneous, and the news still goes unacknowledged. The artifact is the
+	// nearest such event: it is sequenced before the review request, so it can
+	// never be news about the head this verdict judges.
 	_, _, err = server.call(ctx, toolCall{Name: "review", Arguments: map[string]any{
 		"artifacts": []any{artifact}, "promise": promise,
 		"verdict": "approved", "text": "must not be signed",
-		"ack_head_news": []any{genesisOf(t, workspace)},
+		"ack_head_news": []any{artifact},
 	}})
 	if err == nil || !strings.Contains(err.Error(), "extraneous") || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("extraneous acknowledgment error = %v", err)

@@ -57,6 +57,14 @@ command records.
 
 It takes no positional arguments.
 
+`--basis` is an event reference and takes a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier. It is signed into the `rests_on` of every fact this
+command derives, so it is resolved and described before the remote frontier is
+read; a value naming no event, or more than one, refuses with nothing appended
+and the frontier unmoved. `--remote`, `--ref` and the accepted head are
+ordinary Git and are never resolved.
+
 `--basis` is a flag rather than a line in the tracked configuration on purpose.
 The configuration is read out of the head a remote accepted, so a pushed commit
 would otherwise choose the durable citation of an act signed by whoever runs

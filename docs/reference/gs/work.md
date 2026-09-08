@@ -105,9 +105,13 @@ and so carries it. Its JSON row carries `successor_request`, the exact child;
 request that status explicitly to read the historical transfer. A supersession
 that declared the approved head dropped reads `abandoned` instead.
 
-The human view prints the request's full canonical event ID. `#N` remains a
-useful display index in one workroom, but it is not accepted in `--rests-on`,
-targets, or `Rests-On:` trailers. `--json` also carries every event ID in full.
+The human view prints the request's full canonical event ID beside its `#N`
+record number, and `--json` carries every event ID in full. Either can be
+typed back: `--rests-on` and the target of every command that takes one accept
+the number as well as the identifier, and resolve it before signing. A
+`Rests-On:` trailer is the exception and takes the full identifier only, since
+a commit message is not a boundary anything resolves at. See
+[Event identifiers](../event-identifiers.md#typing-one-at-a-boundary).
 
 `--stale summary`, which is what a call naming no policy receives, answers
 *what is still owed*. A superseded, satisfied, withdrawn or abandoned commitment carrying only

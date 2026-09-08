@@ -16,7 +16,10 @@ those rest on, and so down to the seed.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 
-The event is a **positional argument**, and exactly one is required.
+The event is a **positional argument**, and exactly one is required. It takes
+a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well
+as the canonical identifier, resolved against the projection this command has
+already folded. This command records nothing.
 
 ## Example
 

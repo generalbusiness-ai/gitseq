@@ -24,9 +24,14 @@ to read one event.
 
 | argument | required | meaning |
 |---|---|---|
-| `event` | required | One full canonical event ID. An unknown ID fails instead of producing an inferred match. |
+| `event` | required | One event reference. An unknown one fails instead of producing an inferred match. |
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
+
+`event` takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical identifier. A canonical
+identifier reaches the resident as it stands; a short one is resolved against
+this checkout's own verified events first, so a very recent event this
+checkout has not fetched will not resolve here. This tool records nothing.
 
 ## What comes back
 

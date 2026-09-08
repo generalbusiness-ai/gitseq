@@ -36,6 +36,12 @@ review of nothing in particular, because the branch can move afterwards.
 
 It takes no positional arguments.
 
+`--artifact`, `--promise`, `--ack-head-news`, `--implementation` and
+`--self-initiated` each take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
+identifier. The whole citation set of one verdict is resolved against one
+verified event set, so every reference this command signs was read from one
+world, and the verdict signs canonical identifiers.
+
 ## Example
 
 ```sh
