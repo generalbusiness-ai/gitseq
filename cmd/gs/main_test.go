@@ -3500,15 +3500,11 @@ func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
 	})
 }
 
-// TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix is the recovery
-// case: the first run stops mid-chain, so only a prefix is durable. The second
-// run of the same file replays that prefix under its idempotency key, resolves
-// the label to the event already minted, and lands only the suffix.
-func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) {
+// Preflight refusal appends nothing. Once the missing actor exists, the whole
+// batch lands; rerunning it replays both events. A separate test covers recovery
+// when only a proper prefix is already durable.
+func TestBatchPreflightRefusalThenFullLandingAndReplay(t *testing.T) {
 	fixture := newBatchFixture(t)
-	// An act the application boundary cannot build now stops the whole batch
-	// before the first append, so the prefix is durable only once the chain
-	// can land cleanly; the idempotency keys keep every later rerun cheap.
 	acts := fmt.Sprintf(`[
 	  {"label": "note", "verb": "state", "kind": "assert", "text": "the prefix is durable",
 	   "rests_on": [%q], "idempotency_key": "partial-assert"},
