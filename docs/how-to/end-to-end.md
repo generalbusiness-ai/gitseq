@@ -72,8 +72,11 @@ echo "$REQUEST"
 ```
 
 Every durable command prints the **event identifier**, and that is what
-later acts cite. Copy it whole — see
-[Event identifiers](../reference/event-identifiers.md).
+later acts cite. Capture it as above, or type back what a display shows
+you: `gs` and the MCP tools also take the `#N` record number and an
+unambiguous prefix or suffix of an event hash, and resolve either to the
+full identifier before signing. See
+[Event identifiers](../reference/event-identifiers.md#typing-one-at-a-boundary).
 
 `bot` claims it:
 

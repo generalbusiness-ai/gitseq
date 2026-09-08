@@ -29,6 +29,11 @@ Prefer supersession to contradiction.
 The target is a **positional argument**, and flag parsing stops at the
 first positional. Put every flag before it.
 
+The target and every `--rests-on` value take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the
+canonical identifier. The act signs the canonical identifier either way, and
+before it signs, the command says what each `--rests-on` value means here,
+exactly as [`gs state`](state.md#citing) does.
+
 ## Example
 
 ```sh

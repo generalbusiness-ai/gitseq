@@ -27,6 +27,11 @@ configuration, verified-frontier witness, or checkpoint state.
 
 It takes no positional arguments.
 
+`--approval` names a durable event and takes a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier. `--candidate` names an ordinary Git commit, not an
+event, and is never resolved. This command records nothing.
+
 Structured merge authorization is outside this read-only surface. There is no
 `--authorization` flag: an allowed plan says that approval, succession, reach,
 and admission checks passed without authorization fields in the prospective

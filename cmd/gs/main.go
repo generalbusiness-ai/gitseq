@@ -225,6 +225,17 @@ func publishCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// The governing basis is signed into the rests_on of every publication
+	// fact this command derives, so it is an event reference like any other
+	// and is resolved and described before anything is signed. Everything
+	// else this command names — the remote, the ref, the accepted head — is
+	// ordinary Git and is not an event.
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{basis}); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	discloseBases(resolver, []string{*basis})
 	report, publishErr := runPublication(ctx, workspace, private, actorName, actor.Fingerprint, serverURL, *remote, *ref, *basis)
 	if printErr := printJSON(report); printErr != nil && publishErr == nil {
 		publishErr = printErr
@@ -522,6 +533,26 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// Every reference this act carries is answered from one verified event set
+	// before anything is signed, and what the act signs is always the full
+	// canonical identifier the resolver returned. The resolutions are named on
+	// standard error so a mis-resolution is caught while it is still
+	// correctable, and the citations are described there too, so an author
+	// learns what their bases mean here before the act becomes durable rather
+	// than after.
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, nil, (*[]string)(&rests)); err != nil {
+		return err
+	}
+	// A handful of body fields are read by a consumer as one durable event
+	// identifier, and they are resolved with the rest of the act rather than
+	// signed as typed. Every other body value is application prose and is
+	// carried exactly as it was written.
+	if err := resolveBody(resolver, body); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	discloseBases(resolver, rests)
 	// An authorization or release report says which commit its target ref held
 	// when the signer looked. Re-resolving that ref here is the act-time half
 	// of the landing obligation's two re-resolutions: a report measured against
@@ -578,15 +609,6 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" || (!*prepare && *message == "") {
 		return errors.New("review requires --checkout, --artifact, --promise, and --text")
 	}
-	selection := reviewguard.Selection{Implementations: implementations, Decision: *decision, EvidenceOnly: *evidenceOnly}
-	// The first citation is the primary the verdict names; every citation is a
-	// basis of the report. What a receipt may later retire is read from those
-	// bases and nowhere else, so this list is the reviewer signing a set rather
-	// than the implementer asserting one.
-	cited, err := reviewguard.CheckCitations(artifactsFlag)
-	if err != nil {
-		return err
-	}
 	reviewer, err := signingActor(*as)
 	if err != nil {
 		return err
@@ -596,6 +618,24 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 		return err
 	}
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	// Every event this verdict names is resolved against one verified event
+	// set before the guard reads any of them, so the whole citation set of one
+	// review is judged against one world and signed as canonical identifiers.
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{promise, decision},
+		(*[]string)(&artifactsFlag), (*[]string)(&headNews), (*[]string)(&implementations)); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	selection := reviewguard.Selection{Implementations: implementations, Decision: *decision, EvidenceOnly: *evidenceOnly}
+	// The first citation is the primary the verdict names; every citation is a
+	// basis of the report. What a receipt may later retire is read from those
+	// bases and nowhere else, so this list is the reviewer signing a set rather
+	// than the implementer asserting one.
+	cited, err := reviewguard.CheckCitations(artifactsFlag)
 	if err != nil {
 		return err
 	}
@@ -681,6 +721,14 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// The approval and the authorization name durable events; --candidate
+	// names an ordinary Git commit, which is not an event reference and is
+	// never resolved here.
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{approval, authorization}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
@@ -978,6 +1026,11 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{approval}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	actor, err := signingActor(*as)
 	if err != nil {
 		return err
@@ -1598,6 +1651,11 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{&target}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
 	if err != nil {
 		return err
@@ -1634,6 +1692,12 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{&target}, (*[]string)(&rests)); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	discloseBases(resolver, rests)
 	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK})
 	if err != nil {
 		return err
@@ -1700,6 +1764,15 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	}
 	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{&oldRequest}, (*[]string)(&rests)); err != nil {
+		return err
+	}
+	if err := resolveBody(resolver, body); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	discloseBases(resolver, rests)
 	// The pair is retirement then replacement, so a replacement refused for
 	// something its own body already said would leave the old request withdrawn
 	// with no successor. Everything knowable about it now is judged now,
@@ -1733,6 +1806,11 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 
 // batchAct is one entry of a batch file. Field names and meanings follow
 // app.Act; label is local to the batch and never leaves it.
+// batchLabelPrefix marks a reference to an act of the same chain, which the
+// batch mints as it goes. It is not an event identifier and no boundary
+// resolves it as one.
+const batchLabelPrefix = "$"
+
 type batchAct struct {
 	Label          string            `json:"label,omitempty"`
 	Verb           app.Verb          `json:"verb"`
@@ -1841,6 +1919,23 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// The whole chain is resolved against one verified event set before the
+	// first append, for the same reason readBatch reads the whole file first:
+	// a chain that cannot resolve should land nothing. A "$label" names an act
+	// this batch has yet to mint, so it is not an event reference this
+	// boundary reads and passes through to the label resolver untouched.
+	resolver := newResolver(ctx, workspace)
+	for position := range acts {
+		entry := &acts[position]
+		if err := resolveRefs(resolver, []*string{&entry.Target, &entry.Retirement}, &entry.RestsOn); err != nil {
+			return fmt.Errorf("act %d: %w", position, err)
+		}
+		if err := resolveBody(resolver, entry.Body); err != nil {
+			return fmt.Errorf("act %d: %w", position, err)
+		}
+	}
+	showResolved(resolver)
+	discloseBases(resolver, chainCitations(acts))
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
@@ -2037,6 +2132,29 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 	return 0, nil
 }
 
+// chainCitations is every basis of a chain that names something outside it.
+//
+// A "$label" names an act this batch has yet to mint, and runBatch replaces it
+// with that act's real identifier before it is signed. It is therefore not a
+// citation the pre-signing disclosure can say anything true about: calling it
+// an identifier that resolves to nothing would be a warning on the ordinary
+// path, about the one reference in a batch file that is always correct.
+func chainCitations(acts []batchAct) []string {
+	citations := make([]string, 0, len(acts))
+	for _, entry := range acts {
+		for _, basis := range entry.RestsOn {
+			if isBatchLabel(basis) {
+				continue
+			}
+			citations = append(citations, basis)
+		}
+	}
+	return citations
+}
+
+// isBatchLabel reports whether a reference names an act of the same chain.
+func isBatchLabel(reference string) bool { return strings.HasPrefix(reference, batchLabelPrefix) }
+
 func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app.Act {
 	act := app.Act{
 		Verb: entry.Verb, Kind: entry.Kind, Text: entry.Text, Body: entry.Body,
@@ -2106,7 +2224,7 @@ func checkBatch(acts []batchAct) (int, *batchError) {
 // has proved the label belongs to an earlier act, and the batch stops at the
 // first failure, so every label reached here has been minted.
 func resolveLabel(reference string, minted map[string]string) string {
-	if name, cited := strings.CutPrefix(reference, "$"); cited {
+	if name, cited := strings.CutPrefix(reference, batchLabelPrefix); cited {
 		return minted[name]
 	}
 	return reference
@@ -2170,26 +2288,6 @@ func explainLifecycleRefusal(err error) error {
 func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
 	if warning := residentclient.UndefinedKindWarning(ctx, workspace, kind); warning != "" {
 		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
-	}
-}
-
-// noteDeadRestsOn tells an author, on standard error, which citations of the
-// act they just filed were already dead when it landed — retired, stale, or
-// themselves effective supersessions. The act stays either way: the note
-// describes, it does not refuse, and an author may cite a dead event for
-// reasons of their own that a refusal would overrule. Each line names the
-// event id as written so it can be found again in a transcript.
-func noteDeadRestsOn(projection workroom.Projection, restsOn []string) {
-	dead := workroom.DeadBases(projection, restsOn)
-	if len(dead) == 0 {
-		return
-	}
-	said := make(map[string]bool, len(dead))
-	for _, id := range restsOn {
-		if reason, isDead := dead[id]; isDead && !said[id] {
-			said[id] = true
-			fmt.Fprintf(os.Stderr, "note: rests-on %s is already dead (%s)\n", id, reason)
-		}
 	}
 }
 
@@ -2660,6 +2758,15 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// A canonical identifier reaches the resident untouched, so this command
+	// stays exactly as cheap as it was for the form it always accepted. A
+	// record number or a hash fragment is resolved here first, against this
+	// checkout's own verified event set.
+	resolver := newResolver(ctx, workspace)
+	if err := resolveRefs(resolver, []*string{&event}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
@@ -2677,7 +2784,7 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 		inspection, err = statusview.BuildItemInspection(snapshot, event, serverURL != "")
 		if err != nil {
 			if err.Error() == "event is not in the durable projection" {
-				return fmt.Errorf("%w. Event IDs must use the full git:sha1:<genesis>#git:sha1:<event> form (or this repository's object format); #N is a display index only and does not resolve. Copy the full ID from `gs work --json` or other --json output", err)
+				return fmt.Errorf("%w. Name it as the full git:sha1:<genesis>#git:sha1:<event> identifier (or this repository's object format), as the #N record number a display prints, or as an unambiguous prefix or suffix of its event hash. See docs/reference/event-identifiers.md", err)
 			}
 			return err
 		}
@@ -2795,7 +2902,15 @@ func provenanceCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	_, err = os.Stdout.Write(workroom.RenderProvenance(snapshot.Projection, set.Arg(0)))
+	event := set.Arg(0)
+	// The snapshot this command already folded is the event set, so the
+	// resolver reads nothing a second time.
+	resolver := newResolverFrom(workspace, snapshot)
+	if err := resolveRefs(resolver, []*string{&event}); err != nil {
+		return err
+	}
+	showResolved(resolver)
+	_, err = os.Stdout.Write(workroom.RenderProvenance(snapshot.Projection, event))
 	return err
 }
 

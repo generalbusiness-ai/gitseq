@@ -16,11 +16,15 @@ from status rows or maintain a second set of merge rules.
 
 | argument | required | meaning |
 |---|---|---|
-| `candidate` | required | The full lowercase approved commit object ID. |
+| `candidate` | required | The full lowercase approved commit object ID. This names an ordinary Git commit, not an event, and is never resolved. |
 | `approval` | required | The ratified approval report event. |
 | `checkout` | optional | The checkout that would receive the merge. Defaults to `repo`. |
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
+
+`approval` takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical identifier.
+`candidate` names an ordinary Git commit, not an event, and is never resolved.
+This tool records nothing.
 
 The tool deliberately has no `authorization` argument. Structured merge
 authorization belongs to the mutating `gs merge` boundary. An allowed result

@@ -24,6 +24,10 @@ The target event is a **positional argument**, and flag parsing stops at
 the first positional. Put every flag before it, or the flags after it are
 read as further arguments and the command fails.
 
+The target takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary): the `#N` record number a display prints, or
+an unambiguous prefix or suffix of the event hash, as well as the canonical
+identifier. The ratification signs the canonical identifier either way.
+
 ## Example
 
 ```sh

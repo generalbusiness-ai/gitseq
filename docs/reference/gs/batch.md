@@ -46,11 +46,20 @@ fields are refused.
 ]
 ```
 
+`rests_on`, `target`, `retirement` and the recognized event fields of an
+entry's `body` each take a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier. The whole chain is resolved against one verified
+event set before the first append, so a chain carrying a reference that names
+no event lands nothing at all; every resolution is named on standard error,
+leaving the report on standard output unchanged.
+
 A later act cites an earlier act of the same chain as `$label`, in
-`rests_on`, `target`, or `retirement`, and the label resolves to the identifier
-minted for that act. The whole file is parsed and every reference checked
-before the first append, so a malformed entry, a duplicate label, or a
-label that is unknown or defined later lands nothing.
+`rests_on`, `target`, or `retirement`. A label names an act the batch has yet
+to mint, so it is not an event reference: it passes the resolver untouched and
+resolves to the identifier minted for that act. The whole file is parsed and
+every reference checked before the first append, so a malformed entry, a
+duplicate label, or a label that is unknown or defined later lands nothing.
 
 The array must be the whole input. Anything after it other than
 whitespace — a stray `]`, a second value — is refused before the first

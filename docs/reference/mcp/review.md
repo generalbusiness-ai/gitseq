@@ -37,6 +37,12 @@ admission refuses it and names this tool.
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The reviewer whose existing accessible key signs this verdict; defaults to startup `--actor`. |
 
+`artifacts`, `promise`, `ack_head_news`, `implementations` and
+`self_initiated` each take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
+identifier. The whole citation set of one verdict is resolved against one
+verified event set, and the result names what it resolved in a `resolved`
+field.
+
 ## Implementation binding
 
 The tool resolves the same binding as [`gs review`](../gs/review.md) from the
