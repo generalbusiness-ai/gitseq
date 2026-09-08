@@ -1,4 +1,0 @@
-/usr/local/go/bin/go vet ./...
-mkdir -p bin
-/usr/local/go/bin/go build -o bin/gs ./cmd/gs
-/usr/local/go/bin/go build -o bin/gitseq-mcp ./cmd/gitseq-mcp
