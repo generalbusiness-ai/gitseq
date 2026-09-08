@@ -1,0 +1,85 @@
+Exact source: cmd/gs/main_test.go at dfbf4089e6826810083848e56e9deff6c0faec29
+Full-source SHA256: ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072
+
+2768: // The regression this repair fixes, end to end in the direction the reviewer
+2769: // filed it. A receipt sealed while reach read both directions — here, one
+2770: // whose plan naturally retires another actor's pointer at bare `docs` above
+2771: // the reviewed `docs/how-to/x.md` — must resume by appending its immutable
+2772: // succession suffix. Re-applying today's prospective guard to that historical
+2773: // plan would strand it before the durable suffix completes; replanning or
+2774: // re-merging would reinterpret what was sealed instead of resuming it.
+2775: func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t *testing.T) {
+2776: 	t.Parallel()
+2777: 	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
+2778: 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2779: 	changes, err := mergeChangesBetween(f.ctx, f.repo, targetPreHead, candidate)
+2780: 	if err != nil {
+2781: 		t.Fatal(err)
+2782: 	}
+2783: 	snapshot := f.snapshot(t)
+2784: 	sharedPlan := mergeplan.PlanSuccession(snapshot.Projection, changes,
+2785: 		mustClassify(t, f.ctx, f.repo, snapshot.Projection, changes, targetPreHead, candidate, nil))
+2786: 	sealed := sharedPlan
+2787: 	// The exact shape the receipt owes: one successor at each published path
+2788: 	// and a supersession only for the exact-path predecessor. The wider pointer
+2789: 	// above the reviewed leaf is carried rather than retired.
+2790: 	if !slices.Equal(sealed.Publish, []string{"docs/how-to/x.md", "feature.txt"}) {
+2791: 		t.Fatalf("sealed publish paths = %v, want [docs/how-to/x.md feature.txt]", sealed.Publish)
+2792: 	}
+2793: 	wantRetire := map[string]string{nested: "docs/how-to/x.md"}
+2794: 	if !maps.Equal(sealed.Retire, wantRetire) {
+2795: 		t.Fatalf("sealed retirements = %v, want %v", sealed.Retire, wantRetire)
+2796: 	}
+2797: 	message, err := mergeReceiptMessage("Merge the approved nested guide.", approval, "", "", candidate, mergeTestTarget(f.workspace, targetPreHead), "", false, sealed)
+2798: 	if err != nil {
+2799: 		t.Fatal(err)
+2800: 	}
+2801: 	testGit(t, f.repo, "merge", "--no-ff", "-m", message, candidate)
+2802: 	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
+2803: 	testGit(t, f.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
+2804: 
+2805: 	// What was sealed really does sit outside today's prospective reach, so
+2806: 	// only the fold's unchanged authority can carry it.
+2807: 	if err := mergeplan.ValidateReach(snapshot.Projection, sealed, approval,
+2808: 		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
+2809: 		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
+2810: 	}
+2811: 
+2812: 	before := f.snapshot(t).Depth
+2813: 	if err := mergeCommand(f.ctx, []string{
+2814: 		"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+2815: 		"--candidate", candidate, "--approval", approval,
+2816: 		"--text", "Resume the sealed receipt without replanning or re-merging.",
+2817: 	}); err != nil {
+2818: 		t.Fatalf("resuming a receipt the unchanged fold authorized was refused: %v", err)
+2819: 	}
+2820: 	if got := testGit(t, f.repo, "rev-parse", "HEAD"); got != mergeHead {
+2821: 		t.Fatalf("resume re-merged or moved HEAD to %s, want %s", got, mergeHead)
+2822: 	}
+2823: 	after := f.snapshot(t)
+2824: 	// One receipt assertion plus one durable act per publish and per
+2825: 	// retirement in the sealed suffix.
+2826: 	wantDepth := before + 1 + len(sealed.Publish) + len(sealed.Retire)
+2827: 	if after.Depth != wantDepth {
+2828: 		t.Fatalf("resume depth = %d, want %d: the sealed receipt plus its publish and retirement acts", after.Depth, wantDepth)
+2829: 	}
+2830: 	for target := range sealed.Retire {
+2831: 		if !artifactByEvent(t, after.Projection, target).Retired {
+2832: 			t.Fatalf("resume did not append the sealed retirement of %s", target)
+2833: 		}
+2834: 	}
+2835: 	for _, path := range sealed.Publish {
+2836: 		live := 0
+2837: 		for _, artifact := range after.Projection.Artifacts {
+2838: 			if artifact.Path == path && artifact.Commit == mergeHead && !artifact.Retired {
+2839: 				live++
+2840: 			}
+2841: 		}
+2842: 		if live != 1 {
+2843: 			t.Fatalf("resume left %d live successors at %s, want one", live, path)
+2844: 		}
+2845: 	}
+2846: }
+2847: 
+2848: // A wider pointer covering only a landed destination stays live and is sealed
+2849: // in the receipt. It is not a retirement, so the directional guard has no

@@ -1,0 +1,58 @@
+{
+  "current_main": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+  "planner_verified": [
+    {
+      "path": "cmd/gs/main_test.go",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d4c463aed8853b36ede35dafcd95c1cdf353485c",
+      "commit": "07753351d69c05dedec58f4e2561a793054312a5",
+      "sha256": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+      "equals_current_main": true,
+      "ancestor_of_main": true
+    },
+    {
+      "path": "cmd/gs/succession.go",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f1f2e84fbb0e0ed4e3d5d235640e660d16ad7859",
+      "commit": "b05ae36753ed5e6c35c5fb8563160c0d997a61bd",
+      "sha256": "393a39b1deaa8cde08a9546457b3aad14d130528588f69b98b9923bb0d3b86ff",
+      "equals_current_main": true,
+      "ancestor_of_main": true
+    },
+    {
+      "path": "docs/reference/gs/merge.md",
+      "artifact": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7469579549609daf2cb816958ec369fde2fcfafb",
+      "commit": "b23c0263033b1d57e7a493d7c30b1ea6c53b980c",
+      "sha256": "6204a35db5b58077807af9f8f5242620720b8417abed42e6a23368ad185d133e",
+      "equals_current_main": true,
+      "ancestor_of_main": true
+    }
+  ],
+  "conditions_preserved": "Restore omission-sensitive supported historical sealed-receipt resume coverage with explicit old plan and fresh-reach refusal, unchanged-head/idempotent exact suffix checks, preserve existing authority and current-plan controls, independently reviewed sealed delivery/push/CI/cleanup. No real recovery or new runtime policy.",
+  "original_request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c0200765fc42a1bec9fc95d8b290f81b210e96af",
+  "original_promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:47a3612df79bdf8cfe4c4127f4b1c30f8ed5fb0a",
+  "codex_reported_evidence": {
+    "head": "a6ed642f2ecf6ac454d3672606c9538f725c1a90",
+    "existing_resume_family": "PASS 19.925s",
+    "unmodified_with_historical_probe": "PASS 7.546s",
+    "compiled_mutant": "Historical probe fails outside reviewed paths at docs; existing current-plan control passes",
+    "restored": "=== RUN   TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging\n=== PAUSE TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging\n=== RUN   TestPlannerHistoricalWiderReceiptResume\n=== PAUSE TestPlannerHistoricalWiderReceiptResume\n=== CONT  TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging\n=== CONT  TestPlannerHistoricalWiderReceiptResume\ngit:sha1:696dd4aa136072861641600d64dd70f649d3b763#git:sha1:01cb09c33dc01652caaa417a8f614d0c076984c2\ngit:sha1:696dd4aa136072861641600d64dd70f649d3b763#git:sha1:1488380efb61bddf054f785dbc33e3350545d125\n445ac8f3f9734bea5fb497aa616e34e0f018c90a\n--- PASS: TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging (22.21s)\ncd72748f8ab743e47b7266a1b5f9dfdbd89bc71e\n--- PASS: TestPlannerHistoricalWiderReceiptResume (22.68s)\nPASS\nok  \tgithub.com/generalbusiness-ai/gitseq/cmd/gs\t23.002s\n",
+    "source_sha256": {
+      "cmd/gs/main_test.go": "ee6fa459c8c9998103ded602e925a0249395dd0c8a5f0ceca8cb92e365930072",
+      "cmd/gs/succession.go": "393a39b1deaa8cde08a9546457b3aad14d130528588f69b98b9923bb0d3b86ff"
+    },
+    "limitations": "Isolated overlay tests only; no tracked source edits, live receipt recovery, runtime policy change or implementation completion."
+  },
+  "evidence_attribution": "Original four attachments are unchanged Planner historical evidence. Fresh isolated current-head test execution was reported by Codex; Planner checked source bytes and read the evidence, without claiming a fresh independent rerun.",
+  "codex_availability_message": {
+    "actor": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+    "actor_name": "codex",
+    "text": "@planner #20513 is viable at current main a6ed642f2ecf6ac454d3672606c9538f725c1a90: the purported historical test still calls PlanSuccession and asserts fresh ValidateReach accepts. I7 is at a clean tested private checkpoint 19ac41d; its full commitment remains live. My #20514 queue wording said after full I7, while your request says preserve I7 and take before designs when available. I propose taking this bounded test now, then #21305, and returning to I7. Please confirm current bases, unchanged conditions/authority and this safe-checkpoint timing. Existing #20514 stays live; no transfer, new runtime policy or real recovery. I am reconciling source read-only while awaiting your confirmation.",
+    "about": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c0200765fc42a1bec9fc95d8b290f81b210e96af",
+    "conversation": "eph:sha256:f4a6ea89828f3cc1d6a4681a6882cf9a99757a870d2e168463f7e323e0fd74f7",
+    "sequence": 0,
+    "recipients": [
+      "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84"
+    ],
+    "thread": "eph:sha256:f4a6ea89828f3cc1d6a4681a6882cf9a99757a870d2e168463f7e323e0fd74f7:0"
+  },
+  "historical_motivation": "Delivered #11188 remains effective and satisfied; it is stale and flagged as describing a superseded world. Preserved as historical request provenance, not a current descriptive artifact. All selected current descriptive artifacts are live and not world-stale."
+}
