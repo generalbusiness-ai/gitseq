@@ -2618,12 +2618,6 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	}
 }
 
-// buildNestedCrossAuthorApproval creates the shape the directional reach rule
-// decides. The approved head adds `docs/how-to/x.md` beside the reviewed
-// `feature.txt`, and another actor holds a pointer at bare `docs`, so planning
-// the merge retires a cross-author pointer above the reviewed path: reach that
-// the fold's symmetric lineage authorizes and the command's prospective
-// direction refuses.
 // adopt files a ratified proposal that adopts one artifact, the positive
 // witness a self-initiated review names with --self-initiated.
 func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
@@ -2641,6 +2635,9 @@ func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
 	return proposal.Record.ID
 }
 
+// buildNestedCrossAuthorApproval adds docs/how-to/x.md beside feature.txt and
+// another actor's covering pointer at docs. Current planning carries that wider
+// pointer; an older sealed plan can retire it under the fold's unchanged rule.
 func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string, string, string) {
 	t.Helper()
 	f := newWorkflowFixture(t)
@@ -2765,14 +2762,10 @@ func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, strin
 	return f, candidate, approval
 }
 
-// The regression this repair fixes, end to end in the direction the reviewer
-// filed it. A receipt sealed while reach read both directions — here, one
-// whose plan naturally retires another actor's pointer at bare `docs` above
-// the reviewed `docs/how-to/x.md` — must resume by appending its immutable
-// succession suffix. Re-applying today's prospective guard to that historical
-// plan would strand it before the durable suffix completes; replanning or
-// re-merging would reinterpret what was sealed instead of resuming it.
-func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t *testing.T) {
+// A receipt built by current exact-path planning resumes its recorded suffix.
+// The separate historical-wider-receipt test covers a sealed plan that today's
+// prospective reach guard would refuse.
+func TestMergeResumeAppendsASealedExactPathReceiptWithoutReplanningOrRemerging(t *testing.T) {
 	t.Parallel()
 	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
@@ -2802,8 +2795,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	testGit(t, f.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
 
-	// What was sealed really does sit outside today's prospective reach, so
-	// only the fold's unchanged authority can carry it.
+	// This current plan is within today's prospective reach.
 	if err := mergeplan.ValidateReach(snapshot.Projection, sealed, approval,
 		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
 		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
