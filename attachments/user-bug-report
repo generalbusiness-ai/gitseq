@@ -1,0 +1,24 @@
+User bug report supplied by Hugh, 2026-09-09 (case numbers and abbreviated hashes below belong to the user's workroom; they have not been resolved in this repository's workroom).
+
+A merge that correctly leaves its reporting artifact live can never discharge its commitment.
+
+Causal chain:
+1. internal/app/landing.go:88 sets state "no_receipt" for an empty input.MergeHead. The label describes a missing supplied head, not necessarily an absent receipt.
+2. internal/app/worktree_landing.go:104 fills MergeHead only when the projected commitment has LandingReceipt.
+3. LandingReceipt's write in internal/workroom/fold.go:3760 is fed by mergedArtifacts().
+4. mergedArtifacts() at fold.go:3894 accepts an approved artifact only if its ID is in receipt.mergePlan.
+5. validateMergeReceiptNow at fold.go:1665-1681 builds that plan exclusively from merge_retirements.
+
+Thus discharge is keyed on retirement, although succession discipline may correctly leave the reporting artifact live and classify it in merge_left_live as carried, verified: true.
+
+Reported cases:
+- #543: merge_retirements keys 05c4ffbb and 6165f9d9; approved reporting artifact 7efa8896 is absent and is carried/verified in merge_left_live.
+- #599: merge_retirements is {}; first artifact at the path, no predecessor, empty non-nil mergePlan. Minimal reproduction shape.
+- Twelve commitments with landing_receipt succeed incidentally. Example receipt 7c80e7f0, #545, retires 79a2e46a and bb30bbe9; 79a2e46a is the commitment's reporting artifact at merge_candidate, replaced by a wider successor at scratchpad/model.
+- dischargedBy at internal/workroom/landing.go:832 compares repo/ref and is not implicated in #543: merge_target_ref is refs/heads/model/hpyle/model-types, matching the request.
+
+Suggested direction, explicitly not implemented or tested by the reporter: distinguish discharge from cross-author retirement authority. A non-nil validateMergeReceiptNow already validates the ratified independent exact-candidate approval. Match the receipt's merge_approval and merge_candidate to the commitment's approved candidate, without retirement-plan membership. Indexing by merge_approval is one possibility. Preserve the multi-path requirement in the comment at fold.go:3872: include every artifact the approval signs at that candidate, not just the verdict's primary artifact.
+
+Secondary reports:
+- gs merge-plan returns mode=resume, allowed=true, resume_allowed ("only the recorded durable succession suffix remains") even when the durable assertion and succession artifacts already exist. Following this advice produces "idempotency key reused with different intent". docs/reference/gs/merge.md around line 481 tells operators to run the same command again in the checkout at that merge head, so planner and documented recovery jointly mislead.
+- internal/app/landing.go computes RemoteContains before the inner switch and RefIncorporated only in its default branch. With empty MergeHead both are null. The reporter questions whether the resulting state distinguishes unavailable measurement from measured false as LandingMeasurement promises. Investigate carefully: without a candidate head, ancestry is unknown, so do not turn null into false merely to populate the booleans.
