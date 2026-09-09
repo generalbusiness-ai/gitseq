@@ -1,0 +1,128 @@
+Gates for gitseq #22093, commit 1 (code and tests)
+Worktree: /Users/hughpyle/play/gitseq-worktrees/oversized-attachment-disposition
+Head: 84289545a761d9a65855870c06a7fbe3a076e77c (commit 1 of 2 over d1ae6ade).
+Every gate below was run on the tree that became that commit.
+Run on 2026-09-09T20:14:11Z
+
+== gofmt -l ./internal ./cmd
+   $ gofmt -l ./internal ./cmd
+   rc=0
+   | 
+
+== go vet ./...
+   $ go vet ./...
+   rc=0
+   | 
+
+== go build ./...
+   $ go build ./...
+   rc=0
+   | 
+
+== go test -count=1 (affected packages)
+   $ go test -count=1 ./internal/kernel/... ./internal/intent/... ./internal/app/... ./internal/service/... ./cmd/gs/... ./cmd/gitseq-mcp/...
+   rc=0
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	49.845s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/intent	0.253s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/app	101.103s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/service	49.336s
+   | ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	543.599s
+   | ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	115.914s
+
+== go test -race -count=1 (kernel, app, service)
+   $ go test -race -count=1 ./internal/kernel/... ./internal/app/... ./internal/service/...
+   rc=0
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	62.716s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/app	93.837s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/service	48.904s
+
+== go test -count=1 ./internal/docset/...
+   $ go test -count=1 ./internal/docset/...
+   rc=1
+   | --- FAIL: TestGateEveryNamedActResolvesToALiveRecord (17.83s)
+   |     anchor_test.go:51: refuse verified frontier rollback: depth 22331 is shorter than previously verified depth 22332
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/docset	71.584s
+   | FAIL
+
+== git diff --check
+   $ git diff --check
+   rc=0
+   | 
+
+== go test -count=1 ./internal/docset/... (second run)
+   rc=0
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/docset	77.623s
+
+== go test -count=1 ./... (whole module)
+   rc=1
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:5e356342b1b3e7ce6104cfaf94aeebb45fbb8667
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:cdc5dfdfa2197160a41c6d38d8140980b32d4dbe
+   | git:sha1:8459bf157ca070b03cca1030a1f4f5d9031602b4#git:sha1:9f4fa1ff0e3f296aa9b52a70b318f5c0fe033ef5
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:80ea5dadf50f03f33af36c7a94ab074d1d95ef27
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:b8b6095fe56dce76183f196b95df327d3a55347c
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:afc67a0c55230212d04ce7993705b2a9c448d269
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:1f6544b017d9baf45ea31091b879e23885f56095
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:e99b5cfcdd22cc36be2ff1799d50613ab175322c
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:6232eb1d31af78a2bfe56f6e00d8e9e43409906e
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:402c1304473c24af4f678a7dbc1f929745f5a19d
+   | git:sha1:2916713dcf2317e953c2442fe8f21dc1bcc9d138#git:sha1:6721effc96c3a4ba3a7d3eef49696f1b1c1ab4fe
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	555.718s
+   | ok  	github.com/generalbusiness-ai/gitseq/host	34.200s
+   | ok  	github.com/generalbusiness-ai/gitseq/host/identity	21.403s
+   | ok  	github.com/generalbusiness-ai/gitseq/host/live	2.211s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/app	154.060s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	3.513s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	3.418s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	1.289s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	2.625s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/custody	3.479s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/docset	128.279s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/domain	4.126s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/eventref	3.945s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	20.603s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/intent	4.320s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	86.325s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	17.939s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.399s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.371s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	11.840s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.581s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.536s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/service	82.792s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.930s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	3.440s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.575s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	2.365s
+   | ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	12.800s
+   | ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.790s
+   | ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.698s
+   | ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.972s
+   | ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	1.269s
+   | FAIL
+
+== go test -count=1 ./cmd/gs/ (repeat, machine otherwise idle)
+   rc=0
+   | ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	382.583s
+
+== notes on two transient failures, neither caused by this change
+   1. `go test ./internal/docset/...` failed once with "refuse verified
+      frontier rollback: depth 22331 is shorter than previously verified depth
+      22332". This workroom is live and other actors append to it while the
+      gates run, so a verified read can observe the local frontier marker one
+      position ahead of the head it just read. The second run above passed and
+      so did the whole-module run. Nothing in this change touches verification
+      or the frontier marker.
+
+   2. `TestBatchProcessReadsItsFileAndReportsFailures/positional file` failed
+      once inside the whole-module run. The test runs the built `gs` binary
+      with exec.CombinedOutput and parses the result as JSON. Under load the
+      snapshot load passes one second, and cmd/gs/main.go:2491 prints
+      "gs: verifying the durable log; this may take a while" to the progress
+      stream, which CombinedOutput merges into the JSON the test parses. It is
+      a pre-existing timing sensitivity in that test: cmd/gs/main.go is byte
+      for byte identical to the base commit in this head, and `git diff base --
+      cmd/gs/main.go` is empty. The repeat run of ./cmd/gs/ above, with the
+      machine otherwise idle, passed.
+
