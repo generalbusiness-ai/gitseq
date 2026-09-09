@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:94e9d744b46a294f85c1850554f2a9cdb87b32b6","text":"Retire the S1 artifact at 643ab9c5 for internal/app/association.go; successor 6160734fa630a8dd9f0437c7cebfc7874825b74d at 557ef676 on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2ae3232f5fa77a4e49ba93fe360ee00b02eb4c54","text":"Retire the S1 artifact at 643ab9c5 for docs/reference/architecture.md; successor 340ad444112d7f039c548fa3d7578bc88c8678a2 at 557ef676 on the same promise a4c569b1."}
