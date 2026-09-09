@@ -1,2 +1,0 @@
-func (f *Folder) Projection() Projection { identical 6 lines
-func (f *foldState) project() Projection { identical 275 lines
