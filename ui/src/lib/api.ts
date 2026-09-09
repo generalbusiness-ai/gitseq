@@ -101,14 +101,14 @@ export interface Commitment {
   terminal?: string;
   // The validated merge receipt witnessing delivery to this target.
   landing_receipt?: string;
-  // Artifact landing audit, independent of commitment closure. A carried
-  // approved artifact can keep this flag on an already landed commitment.
+  // Artifact landing audit for the selected approval at the resolved target.
+  // Receipt delivery does not depend on retiring the approved artifact.
   approved_not_landed?: boolean;
 }
 
 export interface LandingMeasurement {
   measured_at: number;
-  state: "incorporated" | "landed-then-removed" | "target_gone" | "no_receipt" | "unknown";
+  state: "incorporated" | "landed-then-removed" | "target_gone" | "unknown";
   target_head?: string;
   ref_incorporated: boolean | null;
   remote?: string;

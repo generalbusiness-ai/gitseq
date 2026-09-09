@@ -162,6 +162,8 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		return err
 	}
 	if len(pending) == 0 {
+		// Delivery is already complete. Current live-path counts may have
+		// changed since then; checking them would reopen historical work.
 		return nil
 	}
 	acts := batchSuccessionActs(pending)

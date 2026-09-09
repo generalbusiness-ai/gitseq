@@ -887,6 +887,10 @@ test("landing distinguishes sealed delivery from current target observations", (
   const observed = (state) => ({ landing: { git: { state, measured_at: NOW, ref_incorporated: null, remote_contains: null } } });
   assert.match(station(observed("unknown"), "git").what, /unknown/);
   assert.doesNotMatch(station(observed("unknown"), "git").what, /no longer|does not contain/);
+  const missingHead = observed("unknown");
+  missingHead.landing.git.reason = "no witnessed merge head was supplied; ancestry is unknown";
+  assert.match(station(missingHead, "git").what, /no witnessed merge head was supplied; ancestry is unknown/);
+  assert.doesNotMatch(station(missingHead, "git").what, /no sealed merge to measure/);
   assert.match(station(observed("target_gone"), "git").what, /release-2 no longer exists/);
   assert.equal(station(observed("incorporated"), "merge").present, false,
     "current Git membership cannot manufacture a sealed receipt");

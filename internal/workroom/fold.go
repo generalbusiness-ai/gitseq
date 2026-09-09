@@ -3623,7 +3623,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Report = completion.record.ID
 					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, completion.record.Actor)
 					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
-					if receipt := mergedArtifacts.at(completion.record.ID, result); f.dischargedBy(receipt, result) && entry.Status != "satisfied" {
+					if receipt := mergedArtifacts.at(completion.record.ID, result); receipt != nil && entry.Status != "satisfied" {
 						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 					}
 				case stale[requestRecord.record.ID]:
@@ -3671,7 +3671,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Report = completion.record.ID
 					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, performer)
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
-					if receipt := mergedArtifacts.at(completion.record.ID, result); f.dischargedBy(receipt, result) && entry.Status != "satisfied" {
+					if receipt := mergedArtifacts.at(completion.record.ID, result); receipt != nil && entry.Status != "satisfied" {
 						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 						entry.Stale = entry.Stale || stale[receipt.record.ID]
 					}
@@ -3755,16 +3755,16 @@ func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResul
 	// Completion and newest approval are different facts. Preserve the receipt
 	// which closed the row even if a later artifact acquired another approval.
 	receipt := mergedArtifacts.at(entry.Report, result)
-	if !f.dischargedBy(receipt, result) && approved != nil {
+	if receipt == nil && approved != nil {
 		receipt = mergedArtifacts.at(approved.record.ID, result)
 	}
-	if f.dischargedBy(receipt, result) {
+	if receipt != nil {
 		entry.LandingReceipt = receipt.record.ID
 	}
 	if approved == nil || !result.landing || entry.Status == "abandoned" {
 		return
 	}
-	entry.ApprovedNotLanded = !f.dischargedBy(mergedArtifacts.at(approved.record.ID, result), result)
+	entry.ApprovedNotLanded = mergedArtifacts.at(approved.record.ID, result) == nil
 }
 
 // latestCompletion returns the promise's live completion record. A sealed
@@ -3823,7 +3823,7 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 		if f.retired(record.record.ID) && (!isArtifactReport || !mergedArtifacts.has(record.record.ID)) {
 			continue
 		}
-		if receipt := mergedArtifacts.at(record.record.ID, result); f.dischargedBy(receipt, result) {
+		if receipt := mergedArtifacts.at(record.record.ID, result); receipt != nil {
 			if merged == nil || receipt.index > mergedArtifacts.at(merged.record.ID, result).index ||
 				(receipt.index == mergedArtifacts.at(merged.record.ID, result).index && record.index > merged.index) {
 				merged = record
