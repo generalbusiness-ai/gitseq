@@ -1,9 +1,0 @@
-{
-  "checked_utc": "2026-09-09T22:24:50.692078+00:00",
-  "exact_head": "af599ecf55ca3adf0c9d806821c1bd5354010c4c",
-  "toolchain": "go1.26.7",
-  "exit_code": 1,
-  "expected": "Positive ordinary Git test passes; two acceptance-style successful Git trace subtests fail on exact candidate. Failure is counterexample evidence, not acceptance.",
-  "owned_archive": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-perf-git-output-qcv1u759",
-  "archive_removed": true
-}
