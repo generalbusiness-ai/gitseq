@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:795cd70b9d69801e8661b303afd1de38e65622be","text":"Merge retired a covered predecessor; the successor is at performance/retained/envelope-20260909-0b689fe2/samples.jsonl."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e0dc82bc03cf747449304e63fb027cd053fe520","text":"Merge retired a covered predecessor; the successor is at internal/perfscenario/run.go."}
