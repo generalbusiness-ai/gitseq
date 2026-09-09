@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76b1c04a55d87a5148c9084118111d09cb8f0526","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/verify.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9db942406aaf48efcf0a010d1ccfdde8e06ac4be","text":"Merge retired a covered predecessor; the successor is at internal/app/sign_ceiling_test.go."}
