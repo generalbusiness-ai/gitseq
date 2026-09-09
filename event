@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:decda8784b87ab60729beaba95e84a9334a2106a","text":"Retire the #22093 artifact for internal/kernel/kernel_test.go at the withdrawn head; successor e77a2dacfcd355ab3130665c1e3715de099a3be7 on the same promise c2c18651."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b6d586fe32096974eed18d61599692eb0122a1a","text":"Retire the #22093 artifact for internal/kernel/request_size_test.go at the withdrawn head; successor 9fdb95db046c826f91d3630736f64a9a78bab538 on the same promise c2c18651."}
