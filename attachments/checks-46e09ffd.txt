@@ -1,0 +1,39 @@
+# Checks rerun at exact head 46e09ffde115d8d44088053a456ba97eff0e694d (2026-09-08, after verdict 90fdae58)
+== git diff --check main..HEAD
+clean
+== go build ./...
+build ok
+== go test -count=1 ./internal/ciguard/... ./spike/cmd/gitseq-report/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	0.312s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	0.536s
+rc=0
+== go test -count=1 -run TestPublicRepositorySurface|TestLocalMarkdownLinks|TestPerformanceWorkflowResolvesManualRefs ./...
+ok  	github.com/generalbusiness-ai/gitseq	0.267s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	0.295s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	0.308s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	0.571s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	3.100s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/host	0.362s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	1.222s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/host/live	1.458s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	0.617s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	2.490s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	0.834s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	4.159s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	4.420s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	4.056s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	3.585s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	1.716s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/eventref	3.326s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	2.186s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	3.816s [no tests to run]
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	1.950s [no tests to run]
+rc=0
+== go test -count=1 ./internal/docset/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	58.685s
+rc=0
+== .github/scripts/scan-secrets_test.sh
+ok   this repository              pass
+
+all scanner cases behaved as required
+rc=0
