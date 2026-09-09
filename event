@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c45ef4f389c2bd1a8dfaec2ab65c41bbfd3bad2c","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-07-previous-frontier-readers.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0c4dc406e63dc0709e82c130e552c8309e20256f","text":"Retire abandoned candidate 0c4dc406 (note at 06f474c3, rested on the ineffective promise ec8bc512; classified abandoned by merge receipt of d6981d91); no successor, the path landed at d6981d91 via 25e64920."}
