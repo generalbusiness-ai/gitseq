@@ -1,0 +1,108 @@
+{
+  "checked_utc": "2026-09-09T17:17:19.253745+00:00",
+  "head": "9fbc913e3fcc6bb2b28938fd8f189135dfe6c12e",
+  "samples": {
+    "before": [
+      {
+        "depth": 1,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 160,
+        "git_processes": 160,
+        "mean_wait_ms": 5002.0345
+      },
+      {
+        "depth": 31,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 160,
+        "git_processes": 160,
+        "mean_wait_ms": 5001.59425
+      },
+      {
+        "depth": 300,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 160,
+        "git_processes": 160,
+        "mean_wait_ms": 5001.078125
+      }
+    ],
+    "after": [
+      {
+        "depth": 1,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 29,
+        "git_processes": 29,
+        "mean_wait_ms": 5001.738625
+      },
+      {
+        "depth": 31,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 29,
+        "git_processes": 29,
+        "mean_wait_ms": 5001.806375
+      },
+      {
+        "depth": 300,
+        "scenario": "timeout/eight-staggered-idle-5s",
+        "waiters": 8,
+        "stagger_ms": 23,
+        "repeat": 1,
+        "ref_processes": 29,
+        "git_processes": 29,
+        "mean_wait_ms": 5001.681375
+      }
+    ]
+  },
+  "source_bases": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:259b5de114b07be8531850d52a6bd4d6bfacf67e",
+      "path": "performance/head-wait-after.json",
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74aaa73be420bb88aa63dbf7bf3d8770c426a67f",
+      "path": "performance/HEAD-WAIT.md",
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:dac77019c9aec640a9c32f9eec7c6edb4063ee45",
+      "path": "docs/reference/performance.md",
+      "commit": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+      "stale": true,
+      "retired": false,
+      "describes_superseded_world": false,
+      "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6bff4e6cb81981fae4adbc5235cc95338a2f25df",
+      "stale_because_path": "internal/service/uidist/assets/index-hIXoPEGS.js"
+    }
+  ],
+  "files_sha256": {
+    "performance/head-wait-after.json": "38437551b8fe223480833ab390d15216651f6955668acc598d98beb274f212b7",
+    "performance/HEAD-WAIT.md": "39c844aab6b0a444b4b73eb0557c71618ba104d0e752cdae0ba4c883d34e8670",
+    "docs/reference/performance.md": "0965f342e88ed225174f0276cb602267e04842d49fdd94112a3bb0e8adaf0a12"
+  },
+  "scope": "Read existing source and retained samples; no new timing run. The existing measured page attributes 29 reads to eight initial snapshots, twenty clock ticks and one clock baseline. This is a documentation discrepancy, not a new runtime defect or adopted limit."
+}
