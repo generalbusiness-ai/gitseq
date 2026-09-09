@@ -1,8 +1,0 @@
-{
-  "directory": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-perf-stderr-nj_e4t7i",
-  "source_head": "0afa98aa26be6756682f28defb081043ecc8efa2",
-  "binary": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-perf-stderr-nj_e4t7i/gitseq-perf",
-  "overlay": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-perf-stderr-nj_e4t7i/overlay.json",
-  "test": "TestPlannerWorkerDiagnosticStderrViability",
-  "scope": "Diagnostic overlay only, source files unchanged; no measured lane performance claim."
-}
