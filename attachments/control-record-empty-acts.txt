@@ -1,0 +1,11 @@
+go test -overlay /tmp/git21944-correction-mutants/record-empty-acts.json -count=1 -run TestMergeRecoveryRefusesUnrepresentableSuccession ./cmd/gs
+git:sha1:463015552d83730391b4b9e0e6db422a26dab3cc#git:sha1:c2b07d3b75ea7a7a48dba058d207d59a7e6d30d9
+git:sha1:463015552d83730391b4b9e0e6db422a26dab3cc#git:sha1:5c2757681fdc632d5c4dbd5f49eeef9db1f88826
+--- FAIL: TestMergeRecoveryRefusesUnrepresentableSuccession (0.00s)
+    --- FAIL: TestMergeRecoveryRefusesUnrepresentableSuccession/Gitseq-Authorization-Ratification: (3.89s)
+        merge_completion_test.go:113: unrepresentable succession recording: <nil>, want "sealed merge succession is not representable"
+    --- FAIL: TestMergeRecoveryRefusesUnrepresentableSuccession/Gitseq-Authorization: (3.89s)
+        merge_completion_test.go:113: unrepresentable succession recording: <nil>, want "sealed merge succession is not representable"
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	4.251s
+FAIL

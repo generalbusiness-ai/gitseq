@@ -1,0 +1,27 @@
+[
+  {
+    "name": "preview-half-target",
+    "overlay": "/tmp/git21944-correction-mutants/preview-half-target.json",
+    "test": "TestMergePlanRecoveryRefusesAnInvalidDestination/missing"
+  },
+  {
+    "name": "preview-target-resolution",
+    "overlay": "/tmp/git21944-correction-mutants/preview-target-resolution.json",
+    "test": "TestMergePlanRecoveryRefusesAnInvalidDestination/detached"
+  },
+  {
+    "name": "preview-target-match",
+    "overlay": "/tmp/git21944-correction-mutants/preview-target-match.json",
+    "test": "TestMergePlanRecoveryRefusesAnInvalidDestination/wrong"
+  },
+  {
+    "name": "preview-empty-acts",
+    "overlay": "/tmp/git21944-correction-mutants/preview-empty-acts.json",
+    "test": "TestMergeRecoveryRefusesUnrepresentableSuccession"
+  },
+  {
+    "name": "record-empty-acts",
+    "overlay": "/tmp/git21944-correction-mutants/record-empty-acts.json",
+    "test": "TestMergeRecoveryRefusesUnrepresentableSuccession"
+  }
+]

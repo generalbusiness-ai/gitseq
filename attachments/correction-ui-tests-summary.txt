@@ -1,0 +1,11 @@
+Actual full npm test log SHA256 55012c552b753867a43ded399256839030eb711f5928716b9777b02fbcb23342; summary excerpt below, full own log retained at /tmp/git21944-correction-ui-tests.txt.
+✔ an act awaiting ratification is counted beside the commitments, never inside them (76.48525ms)
+✔ a search scopes the counts and the screen says so (241.440458ms)
+ℹ tests 236
+ℹ suites 0
+ℹ pass 236
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 7025.098042

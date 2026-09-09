@@ -1,0 +1,153 @@
+{
+  "base": "9fbc913e3fcc6bb2b28938fd8f189135dfe6c12e",
+  "code_checkpoint": "a6c7b6f5f9da6aec629a308dfc35cac0c6195076",
+  "review_head": "04196681b1ce81020cb669ad998f83b4fba33046",
+  "toolchain": "go1.27.0 darwin/arm64",
+  "recorded_at": "2026-09-09T17:24:24.062579+00:00",
+  "files": {
+    "cmd/gs/main_test.go": "3abc9c2c38e09802c539cf5d413894759db00dcbf2837fc2b56fc3397b2aeb60",
+    "cmd/gs/merge_completion_test.go": "e1152d257da8cf1011467fb25ebe4da15fd992b4aa1d986fce11fe182db404ef",
+    "cmd/gs/succession.go": "582e19d740a4433026eefc12683915a18c1e925f88dc439d74055adeaed83a04",
+    "docs/reference/architecture.md": "ec26bda43b359a3c3d3d49328f62529e79eb619151b7bf900d3eaf34a3259058",
+    "docs/reference/gs/merge-plan.md": "26fc270f317f1b5483c35f0c0864c8c8b2a30d4afc2981e7bd2c4422338d48e7",
+    "docs/reference/gs/merge.md": "525f375546e7f901daf57654ab738a5cef1757204aad833f8a4d02752a445518",
+    "docs/reference/landing-observations.md": "d930a4b3dcbbdda35d3cc3c3dc69202247d883879e96784a3e19d62b50a92240",
+    "docs/reference/mcp/merge_plan.md": "bbc4d2f6b4560452fac8d20374caaf5ac6584ac359906951e30e62876137a5b2",
+    "internal/app/app_test.go": "779e9a136b979fca6dde368ff14fab27373e8a738775317cf61181a91719e86a",
+    "internal/app/landing.go": "c82d0b8d44486792a8819888b2da9d51989660c74c69fa638ec4ace1a7413666",
+    "internal/app/landing_test.go": "aaad3d60691270fd418fab417c4e60415a09fa9f09443c205a9f8afb8a11cbaa",
+    "internal/app/receipt_profile_test.go": "038dba7f17fb7e9bc59392ae79a55b96fe2473e56cf8805e7dfb935905a2c4ec",
+    "internal/mergeplan/mergeplan.go": "d1c11b81a4483f78fbdfb777f242bf3b5a48a930d7abd38cad34ea8348a23f88",
+    "internal/mergeplan/succession_progress.go": "8e9deb3e73b173c29ad8d813f73dd09f0466c7e954a0f0dab8c7c03ad33c9ddb",
+    "internal/mergeplan/succession_progress_test.go": "423f512187d4e2d623f78a550231962fba470420d28299e7fee907c15769ce2c",
+    "internal/workroom/fold.go": "8371ffd9f880acbb6ee9904900530ddda600855f7b5c26bc7242c154ea6b0679",
+    "internal/workroom/merge_discharge_test.go": "4351e45f1fdcee4940a9c3038b37624306a2454c8b5d2ff6c267fcac625661f8",
+    "internal/workroom/schema.go": "ea91ed9092c2dccae40c96bbfabcccfed6f792681e1b94f9904e41716364a7f0"
+  },
+  "full_run_input_hashes": {
+    "cmd/gs/main_test.go": "3abc9c2c38e09802c539cf5d413894759db00dcbf2837fc2b56fc3397b2aeb60",
+    "cmd/gs/succession.go": "582e19d740a4433026eefc12683915a18c1e925f88dc439d74055adeaed83a04",
+    "cmd/gs/merge_completion_test.go": "e1152d257da8cf1011467fb25ebe4da15fd992b4aa1d986fce11fe182db404ef",
+    "internal/app/landing.go": "c82d0b8d44486792a8819888b2da9d51989660c74c69fa638ec4ace1a7413666",
+    "internal/app/landing_test.go": "aaad3d60691270fd418fab417c4e60415a09fa9f09443c205a9f8afb8a11cbaa",
+    "internal/mergeplan/mergeplan.go": "d1c11b81a4483f78fbdfb777f242bf3b5a48a930d7abd38cad34ea8348a23f88",
+    "internal/mergeplan/succession_progress.go": "8e9deb3e73b173c29ad8d813f73dd09f0466c7e954a0f0dab8c7c03ad33c9ddb",
+    "internal/mergeplan/succession_progress_test.go": "423f512187d4e2d623f78a550231962fba470420d28299e7fee907c15769ce2c",
+    "internal/workroom/fold.go": "8371ffd9f880acbb6ee9904900530ddda600855f7b5c26bc7242c154ea6b0679",
+    "internal/workroom/schema.go": "ea91ed9092c2dccae40c96bbfabcccfed6f792681e1b94f9904e41716364a7f0",
+    "internal/workroom/merge_discharge_test.go": "4351e45f1fdcee4940a9c3038b37624306a2454c8b5d2ff6c267fcac625661f8"
+  },
+  "full_run_input_matches_final_files": true,
+  "attribution": "Full suite, vet/build and original-code controls ran before code checkpoint commit with these identical 11 file inputs. Full suite exit1: only five hardcoded profile expectations failed; two test files were then corrected and full app passed60.253s, plus five focused cache tests5.709s. Code checkpoint has all13 source/test changes. Full workroom/mergeplan race ran at code checkpoint9.141s/4.990s. App selected race16.873s and CLI selected recovery/authority race50.708s ran with code checkpoint HEAD and final documentation already on disk. Docset67.915s likewise ran against final doc bytes before their commit. Review head adds only those five documentation files; no execution is relabelled as having run at the later commit. All packages now have a passing actual run on their final inputs; the initial full-suite exit1 is retained, not relabelled pass.",
+  "checks": [
+    {
+      "name": "code-tests",
+      "sha256": "e6d08a2d09b8328a2ac2e2391f5e926c8a69e67baa989a9b2dc18ab58c79bca0",
+      "exit": 1
+    },
+    {
+      "name": "code-vet-build",
+      "sha256": "4ad5c4174b35dcd15a21fe4c8bb8dd168f82c18d4b925a12686b6d8c1bd7d374",
+      "exit": 0
+    },
+    {
+      "name": "final-app",
+      "sha256": "62e8715b801d48793be43d086c0379d325e6d9ac8a8317373c8b7a196848d162",
+      "exit": 0
+    },
+    {
+      "name": "final-race",
+      "sha256": "ded3b18e9f7c31448a149de7a3ab4497c932662fbfb5c28b3f930ece031474ee",
+      "exit": 0
+    },
+    {
+      "name": "final-docset",
+      "sha256": "906a2221b12d03db89d6ce56803e188e58483c5a6a84395557d4c4b57cc2ff57",
+      "exit": 0
+    },
+    {
+      "name": "final-cli-race",
+      "sha256": "4880002f65fa1de47171059a24c62265800c7b3a6fddf9ecad44786ba49b6013",
+      "exit": 0
+    },
+    {
+      "name": "final-app-race",
+      "sha256": "16c8847d30fab6580231513055d0597e264232f53b794ab83ee2718e7c158d3f",
+      "exit": 0
+    }
+  ],
+  "original_code_controls": [
+    {
+      "name": "retirement-coupled-fold",
+      "command": [
+        "go",
+        "test",
+        "-overlay",
+        "/tmp/git21944-mutants/retirement-coupled-fold.json",
+        "-count=1",
+        "-run",
+        "TestMergeDischargesReviewedArtifactOutsideRetirementPlan|TestMergeDischargesEveryEligibleReviewedDeliveryWithoutRetiringIt",
+        "./internal/workroom"
+      ],
+      "exit": 1,
+      "log": "/tmp/git21944-mutants/retirement-coupled-fold.txt",
+      "named_test_failure": true,
+      "compile_failure": false,
+      "original_source_sha256": "63fce7d712fbd37bf14abc80f7e1d219f9df4610936ffc7510fc807646244d64"
+    },
+    {
+      "name": "receipt-rebuilt-after-staleness",
+      "command": [
+        "go",
+        "test",
+        "-overlay",
+        "/tmp/git21944-mutants/receipt-rebuilt-after-staleness.json",
+        "-count=1",
+        "-run",
+        "TestCompletedMergeRetryKeepsItsDurableSuffix",
+        "./cmd/gs"
+      ],
+      "exit": 1,
+      "log": "/tmp/git21944-mutants/receipt-rebuilt-after-staleness.txt",
+      "named_test_failure": true,
+      "compile_failure": false,
+      "original_source_sha256": "393a39b1deaa8cde08a9546457b3aad14d130528588f69b98b9923bb0d3b86ff"
+    },
+    {
+      "name": "complete-labelled-resume",
+      "command": [
+        "go",
+        "test",
+        "-overlay",
+        "/tmp/git21944-mutants/complete-labelled-resume.json",
+        "-count=1",
+        "-run",
+        "TestCompletedMergeRetryKeepsItsDurableSuffix",
+        "./cmd/gs"
+      ],
+      "exit": 1,
+      "log": "/tmp/git21944-mutants/complete-labelled-resume.txt",
+      "named_test_failure": true,
+      "compile_failure": false,
+      "original_source_sha256": "d57af50c640cf94cb6df7dafe27ff455ed2367cb436ed25fce92c030fcf44a86"
+    },
+    {
+      "name": "missing-head-labelled-no-receipt",
+      "command": [
+        "go",
+        "test",
+        "-overlay",
+        "/tmp/git21944-mutants/missing-head-labelled-no-receipt.json",
+        "-count=1",
+        "-run",
+        "TestLandingMeasurementsFollowTargetAndPreserveUnknown",
+        "./internal/app"
+      ],
+      "exit": 1,
+      "log": "/tmp/git21944-mutants/missing-head-labelled-no-receipt.txt",
+      "named_test_failure": true,
+      "compile_failure": false,
+      "original_source_sha256": "c41973d3511bf78733cbd4ddd691799ccad12a2d4981579a63b8e5b5044d1b04"
+    }
+  ]
+}

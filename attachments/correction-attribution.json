@@ -1,0 +1,31 @@
+{
+  "head": "463ec7b9d48f32835dcbc5034892171b27ccd9a4",
+  "original_review": "22fb5fb6649d5c26c5b79163ff2085c9ea8ab0ce",
+  "files": {
+    "cmd/gs/main_test.go": "3abc9c2c38e09802c539cf5d413894759db00dcbf2837fc2b56fc3397b2aeb60",
+    "cmd/gs/merge_completion_test.go": "0985dfb8f0478df0d679d2b891cd706e57544eecd23164d0e61733fe47714575",
+    "cmd/gs/succession.go": "f815e55a618a62b9bb2de2c61ed219b23a2d3ed9d007f8e7369d3095b6385b51",
+    "docs/reference/architecture.md": "ec26bda43b359a3c3d3d49328f62529e79eb619151b7bf900d3eaf34a3259058",
+    "docs/reference/gs/merge-plan.md": "26fc270f317f1b5483c35f0c0864c8c8b2a30d4afc2981e7bd2c4422338d48e7",
+    "docs/reference/gs/merge.md": "525f375546e7f901daf57654ab738a5cef1757204aad833f8a4d02752a445518",
+    "docs/reference/landing-observations.md": "d930a4b3dcbbdda35d3cc3c3dc69202247d883879e96784a3e19d62b50a92240",
+    "docs/reference/mcp/merge_plan.md": "bbc4d2f6b4560452fac8d20374caaf5ac6584ac359906951e30e62876137a5b2",
+    "internal/app/app_test.go": "779e9a136b979fca6dde368ff14fab27373e8a738775317cf61181a91719e86a",
+    "internal/app/landing.go": "c82d0b8d44486792a8819888b2da9d51989660c74c69fa638ec4ace1a7413666",
+    "internal/app/landing_test.go": "aaad3d60691270fd418fab417c4e60415a09fa9f09443c205a9f8afb8a11cbaa",
+    "internal/app/receipt_profile_test.go": "038dba7f17fb7e9bc59392ae79a55b96fe2473e56cf8805e7dfb935905a2c4ec",
+    "internal/mergeplan/mergeplan.go": "d1c11b81a4483f78fbdfb777f242bf3b5a48a930d7abd38cad34ea8348a23f88",
+    "internal/mergeplan/succession_progress.go": "8e9deb3e73b173c29ad8d813f73dd09f0466c7e954a0f0dab8c7c03ad33c9ddb",
+    "internal/mergeplan/succession_progress_test.go": "423f512187d4e2d623f78a550231962fba470420d28299e7fee907c15769ce2c",
+    "internal/service/uidist/assets/index-BtXL2bAC.js": "7d8477e13887b5197508e39608e0cdc1764111671ac2700c215592179abe57f4",
+    "internal/service/uidist/index.html": "b84a1cf1da3739ac83eb1f3cdc46d293c485eb4b00dbb3c7018a91f53f093cd3",
+    "internal/workroom/fold.go": "8a45e8b939d2b75f1ca2488723940f05b923da351046802db71c64f6e88e55d1",
+    "internal/workroom/landing.go": "364e3f874cff9f135b9285f27d54633b55d02c6b441754d0298c7da2293afd74",
+    "internal/workroom/merge_discharge_test.go": "4351e45f1fdcee4940a9c3038b37624306a2454c8b5d2ff6c267fcac625661f8",
+    "internal/workroom/schema.go": "ea91ed9092c2dccae40c96bbfabcccfed6f792681e1b94f9904e41716364a7f0",
+    "ui/src/lib/api.ts": "67df640fd32864202fa1c177b8a87a3efa5b5c66af96e126b1bec0b8367e48e1",
+    "ui/src/lib/spine.ts": "ba272474e7dacb543f93844dd29a3754542e330fa01a3ff1c48b1fdf19ec5531",
+    "ui/test/interaction.test.mjs": "b1ef9d89a7fc2cf69d8ca3552a98b45251f172954bbd6471026e030d2ba75aa2"
+  },
+  "attribution": "Correction tests began over041966 with uncommitted source now committed byte-identically at463ec7b9. Docset and race selected checks began after463ec7b9 commit. Original gates and original four mutant controls remain attributed to their earlier source checkpoints; no repeated full go test ./... at463ec7b9 is claimed."
+}

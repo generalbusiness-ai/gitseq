@@ -1,0 +1,28 @@
+cd ui && npm run build
+
+> gitseq-workroom-ui@0.1.0 build
+> tsc -b && vite build
+
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 1846 modules transformed.
+rendering chunks...
+computing gzip size...
+../internal/service/uidist/index.html                                                       0.45 kB │ gzip:   0.29 kB
+../internal/service/uidist/assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2              10.25 kB
+../internal/service/uidist/assets/inter-greek-ext-wght-normal-DlzME5K_.woff2               11.23 kB
+../internal/service/uidist/assets/source-serif-4-vietnamese-wght-normal-D-yuW59g.woff2     13.44 kB
+../internal/service/uidist/assets/source-serif-4-cyrillic-ext-wght-normal-cHuGMAiY.woff2   18.06 kB
+../internal/service/uidist/assets/inter-cyrillic-wght-normal-DqGufNeO.woff2                18.74 kB
+../internal/service/uidist/assets/inter-greek-wght-normal-CkhJZR-_.woff2                   18.99 kB
+../internal/service/uidist/assets/source-serif-4-greek-wght-normal-ece1310W.woff2          20.22 kB
+../internal/service/uidist/assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2            25.96 kB
+../internal/service/uidist/assets/source-serif-4-cyrillic-wght-normal-DwHjdM4S.woff2       36.46 kB
+../internal/service/uidist/assets/source-serif-4-latin-ext-wght-normal-CxNHBx-q.woff2      42.04 kB
+../internal/service/uidist/assets/inter-latin-wght-normal-Dx4kXJAl.woff2                   48.25 kB
+../internal/service/uidist/assets/source-serif-4-latin-wght-normal-D9elroTD.woff2          50.82 kB
+../internal/service/uidist/assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2               85.06 kB
+../internal/service/uidist/assets/index-DUUWuxG-.css                                       37.34 kB │ gzip:   7.71 kB
+../internal/service/uidist/assets/index-BtXL2bAC.js                                       341.37 kB │ gzip: 106.39 kB
+
+✓ built in 100ms

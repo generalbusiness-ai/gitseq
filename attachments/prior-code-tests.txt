@@ -1,0 +1,55 @@
+Base 9fbc913e; uncommitted code candidate before documentation, 2026-09-09T17:01:27.755639+00:00
+ok  	github.com/generalbusiness-ai/gitseq	0.314s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	36.058s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	143.091s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	0.822s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	429.572s
+ok  	github.com/generalbusiness-ai/gitseq/host	32.537s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	18.824s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	4.528s
+--- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches (3.43s)
+    --- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches/workroom-fold@20 (1.19s)
+        receipt_profile_test.go:39: rebuilt profile = "workroom\x00workroom-fold@24"
+    --- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches/workroom-fold@21 (1.12s)
+        receipt_profile_test.go:39: rebuilt profile = "workroom\x00workroom-fold@24"
+    --- FAIL: TestReceiptAccountingRejectsPriorProjectionCaches/workroom-fold@22 (1.11s)
+        receipt_profile_test.go:39: rebuilt profile = "workroom\x00workroom-fold@24"
+--- FAIL: TestReplacementSchemaRebuildsATwentyOneProfileCache (9.43s)
+    app_test.go:2709: cache profile = "workroom\x00workroom-fold@24", want "workroom\x00workroom-fold@23"
+--- FAIL: TestAwaitingReviewStatusRebuildsAnOlderProfileCache (7.43s)
+    app_test.go:2574: cache profile = "workroom\x00workroom-fold@24", want "workroom\x00workroom-fold@23"
+--- FAIL: TestReassignSchemasRebuildAnOlderProfileCache (9.14s)
+    app_test.go:2633: cache profile = "workroom\x00workroom-fold@24", want "workroom\x00workroom-fold@23"
+--- FAIL: TestAnOlderProfileCacheIsRebuiltUnderTheNewRules (10.33s)
+    app_test.go:2504: cache profile = "workroom\x00workroom-fold@24", want "workroom\x00workroom-fold@23": the older profile was not replaced
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	133.216s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	3.277s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	1.320s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.978s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	2.070s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	2.298s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	101.380s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	2.143s
+ok  	github.com/generalbusiness-ai/gitseq/internal/eventref	1.495s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	18.321s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	2.753s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	86.390s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	16.855s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.225s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.170s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	11.810s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.746s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.292s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	79.355s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.437s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.619s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.662s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	2.369s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	10.442s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	2.055s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.461s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.983s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	0.989s
+FAIL
