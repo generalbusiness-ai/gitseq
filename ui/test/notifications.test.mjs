@@ -183,3 +183,132 @@ test("the panel closes on Escape and on a click outside it", async () => {
     assert.equal(document.querySelector('[role="menu"]'), null, "a click outside did not close the panel");
   });
 });
+
+// The read position is browser-local, so only storage can say whether it
+// survives a reload. Everything above clears storage before mounting and never
+// looks at it again, which leaves four separate ways for the feature to stop
+// working with every test still green: the mount never loads, reading never
+// saves, and the key forgets either the actor or the room. The two tests below
+// close those four. They name the key and the stored shape here rather than
+// calling `loadForYouRead`/`saveForYouRead`, so a change to either side of the
+// storage contract has to be made twice, on purpose.
+//
+// From `src/lib/memory.ts`: the key is `workroom.foryou.<genesis>.<fingerprint>`
+// and the value is JSON `{"watermark": <number>, "read": [<ticket>, ...]}` —
+// everything up to the watermark read, plus the tickets read out of order
+// above it.
+const forYouKey = (genesis, fingerprint) => `workroom.foryou.${genesis}.${fingerprint}`;
+const storedPosition = (genesis, fingerprint) => {
+  const raw = localStorage.getItem(forYouKey(genesis, fingerprint));
+  return raw === null ? null : JSON.parse(raw);
+};
+
+// Four acts, tickets in log order. #1 is codex asking claude, so each identity
+// has something of its own; #2 to #4 are addressed to codex.
+const bothAddressed = () => [
+  { event: "for-claude", actor: "codex-fingerprint", kind: "request", text: "Second the merge receipt", body: { to: "claude-fingerprint" }, timestamp: 10 },
+  { event: "asked", actor: "claude-fingerprint", kind: "request", text: "Repair the citation anchors", body: { to: "codex-fingerprint" }, timestamp: 20 },
+  { event: "mentioned", actor: "claude-fingerprint", kind: "assert", text: "Mentioning you about the gate", body: { mentions: "codex-fingerprint" }, timestamp: 30 },
+  { event: "mentioned-again", actor: "claude-fingerprint", kind: "assert", text: "Sealing the review head", body: { mentions: "codex-fingerprint" }, timestamp: 40 },
+];
+
+// Mounts the real component repeatedly against the one real localStorage, so a
+// remount is the only way a saved position can be seen again.
+async function withRemounts(run) {
+  const vite = await createServer({ root: uiRoot, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  let root;
+  try {
+    const { TopBar } = await vite.ssrLoadModule("/src/components/TopBar.tsx");
+    const mount = async (actor, genesis = "genesis") => {
+      if (root) await act(async () => root.unmount());
+      const workroom = room(bothAddressed());
+      workroom.status.durable.genesis = genesis;
+      root = createRoot(document.getElementById("root"));
+      await act(async () => {
+        root.render(
+          React.createElement(TopBar, {
+            workroom,
+            session: { actor, activity: { status: "available", focus: [] }, setActivity() {} },
+            onJumpEvent() {},
+            onPublish() {},
+          }),
+        );
+      });
+    };
+    await run(mount);
+  } finally {
+    if (root) await act(async () => root.unmount());
+    await vite.close();
+  }
+}
+
+const chip = () => document.querySelector('button[aria-haspopup="menu"]');
+const menuRows = () => [...document.querySelectorAll('[role="menuitem"]')];
+
+test("a saved read position decides what is unread at mount and every reading is written back", async () => {
+  localStorage.clear();
+  // Read as far as #2 and no further: a position no fresh mount would invent.
+  localStorage.setItem(forYouKey("genesis", "codex-fingerprint"), '{"watermark":2,"read":[]}');
+  await withRemounts(async (mount) => {
+    await mount("codex");
+    assert.match(chip().getAttribute("title"), /2 for you/, "the mount did not load the saved read position");
+    await click(chip());
+    assert.equal(menuRows().length, 2, "the list did not honour the saved watermark");
+    assert.doesNotMatch(document.querySelector('[role="menu"]').textContent, /Repair the citation anchors/, "an act below the saved watermark was listed as unread");
+
+    // Read the newest row, leaving an older one unread: the out-of-order case
+    // the stored shape exists for.
+    await click(menuRows()[0]);
+    assert.deepEqual(storedPosition("genesis", "codex-fingerprint"), { watermark: 2, read: [4] }, "reading one row out of order was not persisted");
+    await click(chip());
+    assert.equal(menuRows().length, 1, "reading one row did not leave exactly one unread");
+    assert.match(menuRows()[0].textContent, /Mentioning you about the gate/, "the surviving row is not the older unread one");
+
+    await click(buttonByText((text) => text === "mark all read"));
+    assert.deepEqual(storedPosition("genesis", "codex-fingerprint"), { watermark: 4, read: [] }, "mark all read was not persisted");
+
+    // A fresh mount, reading only what storage holds.
+    await mount("codex");
+    assert.match(chip().getAttribute("title"), /nothing for you/, "the remount did not apply the saved read position");
+    await click(chip());
+    assert.match(document.querySelector('[role="menu"]').textContent, /Nothing addressed to you is unread/);
+  });
+});
+
+test("read positions stay apart by room and by actor", async () => {
+  localStorage.clear();
+  await withRemounts(async (mount) => {
+    // Every position here is established through the component, so a key that
+    // has forgotten a scope cannot hide behind a seed it would never read.
+    await mount("codex");
+    await click(chip());
+    await click(buttonByText((text) => text === "mark all read"));
+
+    await mount("codex", "other-genesis");
+    assert.match(chip().getAttribute("title"), /3 for you/, "another room inherited this room's read position");
+    await click(chip());
+    await click(buttonByText((text) => text === "mark all read"));
+
+    await mount("claude");
+    assert.match(chip().getAttribute("title"), /1 for you/, "another actor inherited this actor's read position");
+    await click(chip());
+    assert.match(menuRows()[0].textContent, /Second the merge receipt/, "the other actor was shown somebody else's notification");
+    await click(buttonByText((text) => text === "mark all read"));
+
+    // Three scopes, three stored positions, each written where only its own
+    // mount will look for it.
+    assert.deepEqual(
+      {
+        codexHere: storedPosition("genesis", "codex-fingerprint"),
+        codexElsewhere: storedPosition("other-genesis", "codex-fingerprint"),
+        claudeHere: storedPosition("genesis", "claude-fingerprint"),
+      },
+      {
+        codexHere: { watermark: 4, read: [] },
+        codexElsewhere: { watermark: 4, read: [] },
+        claudeHere: { watermark: 1, read: [] },
+      },
+      "the three scopes did not each keep their own stored position",
+    );
+  });
+});
