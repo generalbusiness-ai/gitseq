@@ -2,6 +2,9 @@
 title: gs merge
 summary: Merge an approved exact head and publish its artifact succession.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0581948abafe7fda01c7e4bcafaae5337297c601
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df626b67d31ee72ba4f7af7d29c8ed4246fc04ec
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
@@ -479,7 +482,13 @@ The assertion and every successor and retirement use deterministic
 idempotency keys. If submission stops part-way, run the same command again in
 the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
-successor it already published.
+successor it already published. Effective acts already recorded are matched by
+merger, words, body and ordered citations. Their historical staleness testimony
+is retained; current staleness does not turn a completed act into a different
+idempotent request. Missing acts still pass normal admission. When the complete
+suffix is present, the command returns without changing Git or the durable log,
+and `merge-plan` reports `complete`. This retry does not recreate a successor
+that was retired after delivery.
 
 Before creating the merge commit, the command builds the signed request for
 every act in that succession batch. It checks each request with the kernel's
@@ -491,8 +500,11 @@ the workroom log, and the receipt reservation are still unchanged.
 
 When the reviewed candidate artifact rests on its implementer's promise, that
 artifact already serves as the implementation report. The sealed receipt
-closes that commitment; no implementation ratification follows the merge. The
-review approval remains separate and must still be explicitly ratified before
+closes that commitment at its resolved destination; no implementation ratification
+follows the merge. Delivery includes every eligible reporting artifact named by
+the exact-head approval, not only the primary artifact. It does not depend on
+retiring those artifacts: an empty retirement cut or a carried report still
+counts as delivery. The review approval remains separate and must still be explicitly ratified before
 this command accepts it.
 
 ## Artifact succession

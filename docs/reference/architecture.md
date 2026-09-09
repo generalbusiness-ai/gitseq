@@ -2,6 +2,12 @@
 title: Architecture layers
 summary: The boundary between Gitseq's semantic-free kernel and replaceable application profiles.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0581948abafe7fda01c7e4bcafaae5337297c601
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65e932f9ddd81331c355d7c87def2de9210300ef
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b1f8e0ec38eadfc3fbd798a222d3e310426a1be
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df626b67d31ee72ba4f7af7d29c8ed4246fc04ec
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1912b37f7f0668c7512f9281c6513d2043f69f6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a51bf9c28f8fc0c4b0669a80d10d3e7ed9f698e0
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa1fb7103f0466394a55535fcd34687358e7a08e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d43258e62f3d48b8a226c084d693237cee1ec5b
@@ -1184,6 +1190,17 @@ application projection bytes and lifecycle meaning, so each advanced the
 profile: `@14` to `@15`, then `@15` to `workroom-fold@16`; a cache written
 under an older profile is rejected and history is replayed.
 
+A validated merge receipt records delivery for every eligible artifact named
+by its exact-head approval, including reporting companions. That delivery is
+independent of the receipt's retirement cut: an empty cut or a carried reporting
+artifact still closes its implementation commitment. The existing review,
+signer, ratification, candidate and temporal checks select these artifacts when
+the receipt is admitted; retirement authority remains a separate check.
+Delivery and the exposed receipt witness both match the commitment's resolved
+repository and ref. A later receipt for another destination cannot replace that
+matching witness or satisfy work addressed elsewhere. This correction advances
+the profile to `workroom-fold@24`; earlier cached projections are rebuilt.
+
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
 The fold recognizes that transfer only from an explicit supersession of the old
@@ -1696,7 +1713,10 @@ files, and evidence](reading-view.md) specifies the read limits and navigation.
 Landing observations are layer-7 Git facts, separate from the layer-6 receipt
 witness. A bounded batch captures immutable ref heads and computes local and
 remote-tracking ancestry; unavailable objects, shallow history or inspection
-limits yield unknown, never absence. No fetch runs and no observation changes
+limits yield unknown, never absence. When no witnessed merge head was supplied,
+the observation also says `unknown` and gives that reason: the read has not
+established that no receipt exists. Both ancestry booleans remain nullable;
+measured non-membership alone yields false. No fetch runs and no observation changes
 the fold's satisfied state. The worktree endpoint maps all named commitment
 heads, protects unsettled and approved-not-landed rows, refreshes cached branch
 tips, and publishes conservative deletion advice without deleting anything.
@@ -1940,8 +1960,17 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   witness, and checkpoint remain unchanged.
 
   Succession recording never re-applies that guard. Resuming an already-sealed
-  receipt appends its recorded suffix without replanning, so the symmetric
-  lineage rule of layer 5 keeps judging everything already admitted.
+  receipt appends only the missing acts in its sealed suffix without replanning,
+  so the symmetric lineage rule of layer 5 keeps judging everything already
+  admitted. The shared evaluator matches effective acts by merger, words, body
+  and ordered citations, resolving earlier batch labels to their recorded event
+  identifiers. Automatic historical staleness testimony is not recomputed for
+  acts already recorded. Missing acts retain their deterministic keys and pass
+  ordinary admission. A retired receipt or ambiguous matching acts refuse.
+  The plan reports `resume` only while acts remain, and `complete` when all are
+  recorded; repeating a completed merge at its sealed target and head changes
+  neither Git nor the durable log. A successor retired after delivery is not
+  recreated by that retry.
 
   A mutating merge holds `.merge.lock` in the repository-shared metadata
   directory before it looks for an existing receipt or validates and plans a
