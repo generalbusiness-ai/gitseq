@@ -1,28 +1,48 @@
-=== MUTANT 1: old empty-stderr assertion restored in TestQuietFilingToleratesSlowAuditProgress ===
-=== RUN   TestQuietFilingToleratesSlowAuditProgress
-=== PAUSE TestQuietFilingToleratesSlowAuditProgress
-=== CONT  TestQuietFilingToleratesSlowAuditProgress
-=== RUN   TestQuietFilingToleratesSlowAuditProgress/a_live_basis_is_quiet_under_progress
-    event_reference_test.go:693: an ordinary filing said something: "gs: verifying the durable log; this may take a while\n"
-=== RUN   TestQuietFilingToleratesSlowAuditProgress/a_basis_warning_under_progress_is_not_tolerated
---- FAIL: TestQuietFilingToleratesSlowAuditProgress (5.55s)
-    --- FAIL: TestQuietFilingToleratesSlowAuditProgress/a_live_basis_is_quiet_under_progress (0.75s)
-    --- PASS: TestQuietFilingToleratesSlowAuditProgress/a_basis_warning_under_progress_is_not_tolerated (0.56s)
+=== MUTANT (a): worker timeout removed (context.WithTimeout -> context.WithCancel) ===
+=== RUN   TestWorkerProcessRetainsTimeout
+=== RUN   TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== PAUSE TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== RUN   TestWorkerProcessRetainsTimeout/silent_worker
+=== PAUSE TestWorkerProcessRetainsTimeout/silent_worker
+=== CONT  TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== CONT  TestWorkerProcessRetainsTimeout/silent_worker
+    worker_process_test.go:115: the worker was not stopped by its timeout: decode worker result: EOF; stdout: ; stderr: 
+=== NAME  TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+    worker_process_test.go:115: the worker was not stopped by its timeout: decode worker result: EOF; stdout: ; stderr: worker waiting
+--- FAIL: TestWorkerProcessRetainsTimeout (0.00s)
+    --- FAIL: TestWorkerProcessRetainsTimeout/silent_worker (30.10s)
+    --- FAIL: TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep (30.20s)
+=== RUN   TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+=== PAUSE TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+=== CONT  TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+--- PASS: TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting (0.00s)
 FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	5.900s
-FAIL
-rc=1
-=== MUTANT 2: tolerance widened to accept any stderr once the notice appears ===
-=== RUN   TestQuietFilingToleratesSlowAuditProgress
-=== PAUSE TestQuietFilingToleratesSlowAuditProgress
-=== CONT  TestQuietFilingToleratesSlowAuditProgress
-=== RUN   TestQuietFilingToleratesSlowAuditProgress/a_live_basis_is_quiet_under_progress
-=== RUN   TestQuietFilingToleratesSlowAuditProgress/a_basis_warning_under_progress_is_not_tolerated
-    event_reference_test.go:714: the basis warning was tolerated away with the notice: "" (whole stderr "gs: verifying the durable log; this may take a while\ngs: warning: rests-on \"not-an-event\" is not an event identifier; nothing here resolves it, so this act will rest on nothing that can ever flare it\n")
---- FAIL: TestQuietFilingToleratesSlowAuditProgress (5.36s)
-    --- PASS: TestQuietFilingToleratesSlowAuditProgress/a_live_basis_is_quiet_under_progress (0.79s)
-    --- FAIL: TestQuietFilingToleratesSlowAuditProgress/a_basis_warning_under_progress_is_not_tolerated (0.53s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	5.735s
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	30.540s
 FAIL
 rc=1
+
+=== MUTANT (b): the pre-start control given a live context instead of an expired one ===
+=== RUN   TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+=== PAUSE TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+=== CONT  TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting
+    worker_process_test.go:138: an expired deadline did not stop the worker: <nil>
+--- FAIL: TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting (0.22s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	0.630s
+FAIL
+rc=1
+
+=== MUTANT (c): timeout removed AND the assertion weakened to accept any error ===
+=== RUN   TestWorkerProcessRetainsTimeout
+=== RUN   TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== PAUSE TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== RUN   TestWorkerProcessRetainsTimeout/silent_worker
+=== PAUSE TestWorkerProcessRetainsTimeout/silent_worker
+=== CONT  TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep
+=== CONT  TestWorkerProcessRetainsTimeout/silent_worker
+--- PASS: TestWorkerProcessRetainsTimeout (0.00s)
+    --- PASS: TestWorkerProcessRetainsTimeout/diagnostic_before_the_sleep (30.12s)
+    --- PASS: TestWorkerProcessRetainsTimeout/silent_worker (30.21s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	30.536s
+rc=0
