@@ -1,0 +1,310 @@
+Omission controls for gitseq #22093 (oversized-attachment narrowing).
+Scratch copy of the worktree outside the repository: /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/22093/mutants/copy
+Each mutant neutralises one guard, runs the test that is supposed to hold
+it, and records the outcome. A guard whose test still passes is not a guard,
+so every rc below must be non-zero.
+Run on 2026-09-09T19:02:21Z
+
+== kernel diagnostic replaced by the old bare refusal
+   mutation: internal/kernel/kernel.go
+   test:     TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (0.10s)
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/payload_over_the_remainder (0.03s)
+   |         request_size_test.go:96: refusal =
+   |               event exceeds genesis ceiling
+   |             want
+   |               event exceeds genesis ceiling: 4499 bytes against a ceiling of 4498 (envelope 403, payload 4096, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/envelope_alone (0.03s)
+   |         request_size_test.go:96: refusal =
+   |               event exceeds genesis ceiling
+   |             want
+   |               event exceeds genesis ceiling: 386 bytes against a ceiling of 385 (envelope 386, payload 0, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/one_attachment_over_the_remainder (0.05s)
+   |         request_size_test.go:96: refusal =
+   |               event exceeds genesis ceiling
+
+== gs state preflight neutralised (ceiling raised to the maximum)
+   mutation: cmd/gs/main.go
+   test:     TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gs/)
+   rc=1
+   | --- FAIL: TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.78s)
+   |     oversized_evidence_test.go:63: the refused act was sent to the sequencer 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	1.186s
+   | FAIL
+
+== MCP state preflight neutralised (ceiling raised to the maximum)
+   mutation: cmd/gitseq-mcp/main.go
+   test:     TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gitseq-mcp/)
+   rc=1
+   | --- FAIL: TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (1.22s)
+   |     oversized_evidence_test.go:44: the refused act was sent to the resident 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	1.545s
+   | FAIL
+
+== resident /v0/act preflight neutralised (ceiling raised to the maximum)
+   mutation: internal/service/ui.go
+   test:     TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (./internal/service/)
+   rc=1
+   | --- FAIL: TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.84s)
+   |     oversized_evidence_test.go:49: the refused act entered the submission path 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/service	1.168s
+   | FAIL
+
+== largest-attachment tie-break removed from the diagnostic
+   mutation: internal/kernel/kernel.go
+   test:     TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (0.10s)
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/several_attachments_in_aggregate (0.08s)
+   |         request_size_test.go:96: refusal =
+   |               event exceeds genesis ceiling: 8415 bytes against a ceiling of 8414 (envelope 411, payload 4, attachments 8000 in 3 files, largest "b.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   |             want
+   |               event exceeds genesis ceiling: 8415 bytes against a ceiling of 8414 (envelope 411, payload 4, attachments 8000 in 3 files, largest "a.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.486s
+   | FAIL
+
+
+== largest-attachment tie-break removed, against the repeat control
+   mutation: internal/kernel/kernel.go (drop the name comparison for equal sizes)
+   test:     TestCeilingRefusalNamesTheSameLargestAttachmentEveryTime (./internal/kernel/)
+   repeated 5 times, 5 failed
+   | --- FAIL: TestCeilingRefusalNamesTheSameLargestAttachmentEveryTime (0.17s)
+   |     request_size_test.go:160: the same request produced 6 different refusals: map[event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "a.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:31 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "b.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:9 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "c.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:6 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "d.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:9 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "e.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:6 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "f.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:3]
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.368s
+   | FAIL
+
+
+================================================================
+Second round, after the planner's review acf2c640 (#22166): the
+check moved into internal/app signRequest, in front of the signature,
+and the three per-surface preflights were removed. Re-run of the
+earlier controls plus the new boundary controls.
+Run on 2026-09-09T20:11:44Z
+
+== kernel diagnostic replaced by the old bare refusal
+   mutation: internal/kernel/kernel.go
+   test:     TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary (0.10s)
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/envelope_alone (0.03s)
+   |         request_size_test.go:114: refusal =
+   |               event exceeds genesis ceiling
+   |             want
+   |               event exceeds genesis ceiling: 386 bytes against a ceiling of 385 (envelope 386, payload 0, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   |     --- FAIL: TestCeilingRefusalNamesTheMeasuredSplitAtEveryBoundary/payload_over_the_remainder (0.03s)
+   |         request_size_test.go:114: refusal =
+   |               event exceeds genesis ceiling
+   |             want
+
+== largest-attachment tie-break removed
+   mutation: internal/kernel/kernel.go
+   test:     TestCeilingRefusalNamesTheSameLargestAttachmentEveryTime (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestCeilingRefusalNamesTheSameLargestAttachmentEveryTime (0.18s)
+   |     request_size_test.go:178: the same request produced 6 different refusals: map[event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "a.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:23 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "b.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:6 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "c.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:10 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "d.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:11 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "e.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:7 event exceeds genesis ceiling: 18377 bytes against a ceiling of 1 (envelope 374, payload 3, attachments 18000 in 6 files, largest "f.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes:7]
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.467s
+   | FAIL
+
+== untrusted attachment name no longer bounded
+   mutation: internal/kernel/kernel.go
+   test:     TestRefusalBoundsAnOverlongAttachmentName (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestRefusalBoundsAnOverlongAttachmentName (0.14s)
+   |     request_size_test.go:391: refusal is 4194558 bytes long; an untrusted name reached it whole
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.407s
+   | FAIL
+
+== saturating attachment total no longer refused (first attempt, guard not yet pinned)
+   mutation: internal/kernel/kernel.go
+   test:     TestSummedAccountingRefusesExactlyWhatTheStepwiseAccountingRefused (./internal/kernel/)
+   rc=0 -- SURVIVED. The remaining-budget arithmetic already refused every case
+   the table then held, so the recorded-saturation clause was doing nothing
+   observable. One case was added, a saturated attachment total against a
+   ceiling still wholly unspent, which is the only shape where the arithmetic
+   cannot tell. Re-run below.
+
+== unsigned measurement uses a zero-length placeholder signature
+   mutation: internal/kernel/kernel.go
+   test:     TestUnsignedMeasurementEqualsTheSignedMeasurement (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestUnsignedMeasurementEqualsTheSignedMeasurement (0.09s)
+   |     --- FAIL: TestUnsignedMeasurementEqualsTheSignedMeasurement/envelope_alone (0.03s)
+   |         request_size_test.go:259: at ceiling 385 the signed verdict was event exceeds genesis ceiling: 386 bytes against a ceiling of 385 (envelope 386, payload 0, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes and the unsigned verdict was <nil>
+   |     --- FAIL: TestUnsignedMeasurementEqualsTheSignedMeasurement/payload_only (0.03s)
+   |         request_size_test.go:259: at ceiling 4478 the signed verdict was event exceeds genesis ceiling: 4479 bytes against a ceiling of 4478 (envelope 383, payload 4096, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes and the unsigned verdict was <nil>
+   |     --- FAIL: TestUnsignedMeasurementEqualsTheSignedMeasurement/one_attachment (0.05s)
+   |         request_size_test.go:259: at ceiling 8579 the signed verdict was event exceeds genesis ceiling: 8580 bytes against a ceiling of 8579 (envelope 386, payload 2, attachments 8192 in 1 file, largest "evidence.json" at 8192 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes and the unsigned verdict was <nil>
+   |     --- FAIL: TestUnsignedMeasurementEqualsTheSignedMeasurement/several_attachments_and_causal_references (0.07s)
+   |         request_size_test.go:259: at ceiling 8915 the signed verdict was event exceeds genesis ceiling: 8916 bytes against a ceiling of 8915 (envelope 912, payload 4, attachments 8000 in 3 files, largest "a.log" at 3000 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes and the unsigned verdict was <nil>
+   | FAIL
+
+== unsigned measurement stops checking the actor key length
+   mutation: internal/kernel/kernel.go
+   test:     TestUnsignedMeasurementRefusesAnActorKeyOfTheWrongLength (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestUnsignedMeasurementRefusesAnActorKeyOfTheWrongLength (0.09s)
+   |     request_size_test.go:284: short actor key error = <nil>
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.355s
+   | FAIL
+
+== saturating attachment total no longer refused (re-run against the pinning case)
+   mutation: internal/kernel/kernel.go
+   test:     TestSummedAccountingRefusesExactlyWhatTheStepwiseAccountingRefused (./internal/kernel/)
+   rc=1
+   | --- FAIL: TestSummedAccountingRefusesExactlyWhatTheStepwiseAccountingRefused (0.00s)
+   |     --- FAIL: TestSummedAccountingRefusesExactlyWhatTheStepwiseAccountingRefused/a_saturating_sum_against_an_unspent_maximum_ceiling (0.00s)
+   |         request_size_test.go:350: summed accounting refused = false, stepwise accounting refused = true
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.268s
+   | FAIL
+
+== signing check moved behind the signature (first attempt, seam not yet inside sign)
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=0 -- SURVIVED. The measurement was a statement beside the signing call,
+   so reordering the check in front of it skipped the record as well and the
+   counter stayed at zero. The record moved inside a `sign` helper, so signing
+   and observing signing cannot be separated. Re-run below.
+
+(The four "signing check removed" runs below were repeated after the seam moved
+inside `sign`, so every outcome recorded here is against the delivered source.)
+
+== signing check removed: gs state
+   mutation: internal/app/app.go
+   test:     TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gs/)
+   rc=1
+   | --- FAIL: TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.79s)
+   |     oversized_evidence_test.go:64: the refused act was sent to the sequencer 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	1.172s
+   | FAIL
+
+== signing check removed: MCP state
+   mutation: internal/app/app.go
+   test:     TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gitseq-mcp/)
+   rc=1
+   | --- FAIL: TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (1.36s)
+   |     oversized_evidence_test.go:45: the refused act was sent to the resident 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	1.674s
+   | FAIL
+
+== signing check removed: resident /v0/act
+   mutation: internal/app/app.go
+   test:     TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (./internal/service/)
+   rc=1
+   | --- FAIL: TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.89s)
+   |     oversized_evidence_test.go:50: the refused act entered the submission path 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/service	1.266s
+   | FAIL
+
+== signing check removed: application boundary
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestRefusesOverCeilingBeforeSigning (0.63s)
+   |     sign_ceiling_test.go:51: the refused act was signed 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.915s
+   | FAIL
+
+== zero-ceiling guard removed, so a workroom recording no ceiling refuses everything
+   mutation: internal/app/app.go
+   test:     TestSignRequestStillSignsWhenTheLocalRecordCarriesNoCeiling (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestStillSignsWhenTheLocalRecordCarriesNoCeiling (0.40s)
+   |     sign_ceiling_test.go:99: an ordinary act was refused for want of a local ceiling: event exceeds genesis ceiling: 697 bytes against a ceiling of 0 (envelope 633, payload 64, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.686s
+   | FAIL
+
+== signature measurement never recorded, so the boundary cannot be observed
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestRefusesOverCeilingBeforeSigning (0.75s)
+   |     sign_ceiling_test.go:72: the admitted act was signed 0 time(s), want 1
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	1.020s
+   | FAIL
+
+== signing check moved behind the signature (re-run with the seam inside sign)
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestRefusesOverCeilingBeforeSigning (0.67s)
+   |     sign_ceiling_test.go:51: the refused act was signed 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.949s
+   | FAIL
+
+== signing check removed (repeat): application boundary
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestRefusesOverCeilingBeforeSigning (0.64s)
+   |     sign_ceiling_test.go:51: the refused act was signed 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.936s
+   | FAIL
+
+== signing check removed (repeat): gs state
+   mutation: internal/app/app.go
+   test:     TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gs/)
+   rc=1
+   | --- FAIL: TestStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.78s)
+   |     oversized_evidence_test.go:64: the refused act was sent to the sequencer 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	1.165s
+   | FAIL
+
+== signing check removed (repeat): MCP state
+   mutation: internal/app/app.go
+   test:     TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (./cmd/gitseq-mcp/)
+   rc=1
+   | --- FAIL: TestMCPStateEvidenceOverTheCeilingIsRefusedBeforeSubmission (1.21s)
+   |     oversized_evidence_test.go:45: the refused act was sent to the resident 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	1.535s
+   | FAIL
+
+== signing check removed (repeat): resident /v0/act
+   mutation: internal/app/app.go
+   test:     TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (./internal/service/)
+   rc=1
+   | --- FAIL: TestActEvidenceOverTheCeilingIsRefusedBeforeSubmission (0.90s)
+   |     oversized_evidence_test.go:50: the refused act entered the submission path 1 time(s)
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/service	1.240s
+   | FAIL
+
+== zero-ceiling guard removed (repeat)
+   mutation: internal/app/app.go
+   test:     TestSignRequestStillSignsWhenTheLocalRecordCarriesNoCeiling (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestStillSignsWhenTheLocalRecordCarriesNoCeiling (0.40s)
+   |     sign_ceiling_test.go:99: an ordinary act was refused for want of a local ceiling: event exceeds genesis ceiling: 697 bytes against a ceiling of 0 (envelope 633, payload 64, no attachments); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	0.667s
+   | FAIL
+
+== signature measurement never recorded (repeat)
+   mutation: internal/app/app.go
+   test:     TestSignRequestRefusesOverCeilingBeforeSigning (./internal/app/)
+   rc=1
+   | --- FAIL: TestSignRequestRefusesOverCeilingBeforeSigning (0.78s)
+   |     sign_ceiling_test.go:72: the admitted act was signed 0 time(s), want 1
+   | FAIL
+   | FAIL	github.com/generalbusiness-ai/gitseq/internal/app	1.073s
+   | FAIL
+
