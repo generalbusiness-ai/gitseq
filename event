@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui/test/interaction.test.mjs","body":{"commit":"359b211cfe94e758db592d6e4e78c2f85c6c9c30","path":"ui/test/interaction.test.mjs"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:005460183c819676fead7d19fdd20633b48dc16c","text":"Merge retired a covered predecessor; the successor is at internal/mergeplan/succession_progress_test.go."}
