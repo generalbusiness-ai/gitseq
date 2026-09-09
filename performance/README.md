@@ -50,6 +50,49 @@ This tier keeps the depth range consecutive and excludes the other scenarios,
 actor counts, projection shapes, and checkpoint cases. It exists so the 500k
 resident bound can be measured without running the much larger full contract.
 
+Run the bounded two-envelope tier with:
+
+```sh
+make perf PERF_ARGS='run --contract performance/contract-v3.json --tier envelope'
+```
+
+Contract v3 differs from contract v2 in three places: an `envelope_cases`
+list, a `checkpoint_bytes` metric, and longer per-scenario worker timeouts.
+Contract v2 is unchanged and stays the default, so runs retained against v2
+keep comparing against the file they were measured with. The timeouts have to
+move because v2's are sized for the depths v2 reaches with those scenarios: a
+`warm_status` sample pays a full cold status read in setup, which the resident
+memory lane measured at about 134 seconds at 500,000 records, so v2's
+120-second `warm_status` ceiling would abort the tier's first case. v3 allows
+600 seconds for `warm_status` and 900 for `cold_status`, `honest_fallback` and
+`checkpoint_restart`.
+
+Its two cells, 50,000 records with 8 actors and 500,000 records with 50, are
+the explicit exception to keeping the scale axes independent: separate axes do
+not prove a joint envelope, so a claimed joint verdict needs the joint cell.
+The PREVIEW depth of 50,000 is off the frozen depth axis and is named by a
+checkpoint case, so its cell also supplies the cold verify, the warm read and
+the one-actor cold read there.
+
+The tier runs ten cases: the near-head checkpoint restart with a 255-event
+tail, the cold verify with no checkpoint, and the warm status read at each
+envelope depth, plus, at each envelope depth, both cold reads the actor-count
+cost is measured from — the one-actor read and the joint cell. At 50,000 those
+two run adjacent, because the cell emits them together; at 500,000 the
+one-actor read is the ordinary depth-axis case and runs in its own place.
+The tier takes two primary samples and one diagnostic rerun per case, the same
+population as the memory tier. At that count p95 and p99 stay unavailable and
+the tier reports bounded samples, a median and every raw observation rather
+than a distribution.
+
+Every sample carries `checkpoint_bytes`. On a checkpoint restart it is the
+serialized size of the checkpoint object that sample actually restored, read
+from the object store rather than re-encoded, which is the size the 256 MiB
+checkpoint ceiling in the limits reference bounds. Every other scenario records
+zero, which for the cold verify is the fact itself: it restored no checkpoint.
+The lane parent reads that size from the fixture, not the worker, so a `compare`
+run can still build a base worker from a tree that predates the metric.
+
 ## Retained runs
 
 A run writes into `evidence/`, which is untracked working space and is deleted
@@ -64,7 +107,10 @@ review, and that copy is exactly three files:
 - `evidence.json` — the harness evidence document, which carries the contract,
   the environment, the fixture and contract digests, the exact head, and the
   harness's own latency distributions and axis summary;
-- `samples.jsonl` — every raw sample, one record per line;
+- `samples.jsonl` — every raw sample, one record per line. Rows carry
+  `gitseq.performance-sample.v2`, which adds `checkpoint_bytes` to the v1 row;
+  nothing reads that identifier, so it is a label for a reader comparing rows
+  across runs rather than a decoder switch;
 - `candidate.bench` — the primary samples in Go benchmark format.
 
 No separate derived file is retained. The harness's own summaries travel inside

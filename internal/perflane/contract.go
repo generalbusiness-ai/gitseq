@@ -12,7 +12,13 @@ import (
 	"slices"
 )
 
-const SchemaVersion = "gitseq.performance/v2"
+const (
+	SchemaVersion = "gitseq.performance/v2"
+	// SchemaVersionV3 adds the joint envelope cells and the serialized
+	// checkpoint-size metric. A v2 file stays valid and keeps its digest, so
+	// runs retained against v2 remain comparable.
+	SchemaVersionV3 = "gitseq.performance/v3"
+)
 
 const (
 	maxAxisValues     = 1_000
@@ -68,6 +74,9 @@ var (
 		"response_bytes",
 		"correctness_digest",
 	}
+	// requiredMetricsV3 adds the serialized checkpoint size, which only the
+	// checkpoint cases record and only a v3 contract names.
+	requiredMetricsV3 = append(slices.Clone(requiredMetrics), "checkpoint_bytes")
 )
 
 // RequiredDepths returns the contract's required fixture depths.
@@ -88,8 +97,11 @@ func RequiredProjectionShapes() []string { return slices.Clone(requiredProjectio
 // RequiredScenarios returns the required scenarios in stable order.
 func RequiredScenarios() []string { return slices.Clone(requiredScenarios) }
 
-// RequiredMetrics returns the required metrics in stable order.
+// RequiredMetrics returns the required v2 metrics in stable order.
 func RequiredMetrics() []string { return slices.Clone(requiredMetrics) }
+
+// RequiredMetricsV3 returns the required v3 metrics in stable order.
+func RequiredMetricsV3() []string { return slices.Clone(requiredMetricsV3) }
 
 // Contract is the complete versioned input to an evidence run. Slices use
 // contract order, while scenario maps must contain exactly one value for each
@@ -113,6 +125,7 @@ type Contract struct {
 	SoakOperations     int                `json:"soak_operations"`
 	SoakSeconds        int                `json:"soak_seconds"`
 	CheckpointCases    []CheckpointCase   `json:"checkpoint_cases"`
+	EnvelopeCases      []EnvelopeCase     `json:"envelope_cases,omitempty"`
 	PercentileMinimums PercentileMinimums `json:"percentile_minimums"`
 }
 
@@ -130,6 +143,14 @@ type FanoutAxis struct {
 type CheckpointCase struct {
 	Depth int `json:"depth"`
 	Tail  int `json:"tail"`
+}
+
+// EnvelopeCase names one joint depth-and-actor cell. The case matrix keeps its
+// scale axes independent at the smallest depth, so a joint cell exists only
+// where a v3 contract names it here.
+type EnvelopeCase struct {
+	Depth  int `json:"depth"`
+	Actors int `json:"actors"`
 }
 
 type PercentileMinimums struct {
@@ -170,8 +191,8 @@ func ParseContract(data []byte) (Contract, error) {
 
 // Validate rejects incomplete contracts and unsafe run bounds.
 func (c Contract) Validate() error {
-	if c.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("schema_version must be %q", SchemaVersion)
+	if c.SchemaVersion != SchemaVersion && c.SchemaVersion != SchemaVersionV3 {
+		return fmt.Errorf("schema_version must be %q or %q", SchemaVersion, SchemaVersionV3)
 	}
 	if c.GeneratorVersion == "" {
 		return errors.New("generator_version must not be empty")
@@ -212,8 +233,12 @@ func (c Contract) Validate() error {
 	if !slices.Equal(c.Scenarios, requiredScenarios) {
 		return fmt.Errorf("scenarios must be %v in that order", requiredScenarios)
 	}
-	if !slices.Equal(c.Metrics, requiredMetrics) {
-		return fmt.Errorf("metrics must be %v in that order", requiredMetrics)
+	metrics := requiredMetrics
+	if c.SchemaVersion == SchemaVersionV3 {
+		metrics = requiredMetricsV3
+	}
+	if !slices.Equal(c.Metrics, metrics) {
+		return fmt.Errorf("metrics must be %v in that order", metrics)
 	}
 	if err := validateIncreasingPositive("payload_buckets", c.PayloadBuckets); err != nil {
 		return err
@@ -239,11 +264,66 @@ func (c Contract) Validate() error {
 	if err := validateCheckpointCases(c.CheckpointCases); err != nil {
 		return err
 	}
+	if err := c.validateEnvelopeCases(); err != nil {
+		return err
+	}
 	if c.PercentileMinimums.P95 < 1 || c.PercentileMinimums.P95 > maxRepetitions {
 		return fmt.Errorf("percentile_minimums.p95 must be between 1 and %d", maxRepetitions)
 	}
 	if c.PercentileMinimums.P99 < c.PercentileMinimums.P95 || c.PercentileMinimums.P99 > maxRepetitions {
 		return fmt.Errorf("percentile_minimums.p99 must be between p95 and %d", maxRepetitions)
+	}
+	return nil
+}
+
+// reachesDepth reports whether the contract already measures a log of this
+// depth. The envelope's PREVIEW depth of 50,000 is named by a checkpoint case
+// rather than by the frozen depth axis, so a cell may select either.
+func (c Contract) reachesDepth(depth int) bool {
+	if slices.Contains(c.Depths, depth) {
+		return true
+	}
+	for _, checkpoint := range c.CheckpointCases {
+		if checkpoint.Depth == depth {
+			return true
+		}
+	}
+	return false
+}
+
+// validateEnvelopeCases checks the joint cells against the axes the contract
+// already carries. Only a v3 contract may name them, each cell must select an
+// existing depth and actor count, and one depth carries at most one cell. Two
+// refusals keep case names distinct: the smallest depth already carries the
+// independent actor axis, and the smallest actor count is the cell's own
+// one-actor denominator rather than a joint cell, so either would emit a name
+// the matrix already has and the two would merge in one latency series.
+func (c Contract) validateEnvelopeCases() error {
+	if len(c.EnvelopeCases) == 0 {
+		return nil
+	}
+	if c.SchemaVersion != SchemaVersionV3 {
+		return fmt.Errorf("envelope_cases requires schema_version %q", SchemaVersionV3)
+	}
+	if len(c.EnvelopeCases) > maxAxisValues {
+		return fmt.Errorf("envelope_cases must contain at most %d cells", maxAxisValues)
+	}
+	for index, envelope := range c.EnvelopeCases {
+		if !c.reachesDepth(envelope.Depth) {
+			return fmt.Errorf("envelope_cases[%d] depth must be one the contract already reaches", index)
+		}
+		if envelope.Depth == c.Depths[0] {
+			return fmt.Errorf("envelope_cases[%d] depth must not be the smallest depth, where the independent actor axis already runs", index)
+		}
+		if !slices.Contains(c.ActorCounts, envelope.Actors) {
+			return fmt.Errorf("envelope_cases[%d] actors must be one of actor_counts", index)
+		}
+		if envelope.Actors <= c.ActorCounts[0] {
+			return fmt.Errorf("envelope_cases[%d] actors must exceed the smallest actor count, which is the cell's own denominator", index)
+		}
+		if index > 0 && c.EnvelopeCases[index-1].Depth >= envelope.Depth {
+			return errors.New("envelope_cases must be unique and ordered by depth")
+		}
 	}
 	return nil
 }

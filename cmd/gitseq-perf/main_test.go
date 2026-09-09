@@ -2,10 +2,15 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -208,6 +213,190 @@ func TestMemoryTierIsOnlyTheLinearColdDepthAxis(t *testing.T) {
 	}
 	if warmups, repetitions := tierCounts(contract, "memory", "cold_status"); warmups != 0 || repetitions != 2 {
 		t.Fatalf("memory population = %d warmups / %d repetitions, want 0 / 2", warmups, repetitions)
+	}
+}
+
+func TestEnvelopeTierIsTheBoundedTwoEnvelopeBlock(t *testing.T) {
+	contract, err := perflane.LoadContract(filepath.Join("..", "..", "performance", "contract-v3.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, err := casesForTier(contract, "envelope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"cold_status/shape-linear/depth-500000",
+		"warm_status/shape-linear/depth-500000",
+		"checkpoint_restart/shape-linear/depth-050000/tail-0255",
+		"checkpoint_restart/shape-linear/depth-500000/tail-0255",
+		"honest_fallback/shape-linear/depth-500000",
+		"cold_status/shape-linear/depth-050000",
+		"cold_status/shape-linear/depth-050000/actors-008",
+		"warm_status/shape-linear/depth-050000",
+		"honest_fallback/shape-linear/depth-050000",
+		"cold_status/shape-linear/depth-500000/actors-050",
+	}
+	var got []string
+	for _, selected := range cases {
+		got = append(got, selected.name())
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("envelope tier = %v, want %v", got, want)
+	}
+	for _, scenario := range []string{"checkpoint_restart", "honest_fallback", "warm_status", "cold_status"} {
+		if warmups, repetitions := tierCounts(contract, "envelope", scenario); warmups != 0 || repetitions != 2 {
+			t.Fatalf("envelope %s population = %d warmups / %d repetitions, want 0 / 2", scenario, warmups, repetitions)
+		}
+	}
+	// Each envelope depth must carry both cold reads the actor-count cost is
+	// measured from, and at 50,000 they must be adjacent.
+	for _, envelope := range contract.EnvelopeCases {
+		var reads []int
+		for _, selected := range cases {
+			if selected.Scenario == "cold_status" && selected.Depth == envelope.Depth {
+				reads = append(reads, selected.ActorCount)
+			}
+		}
+		if !reflect.DeepEqual(reads, []int{1, envelope.Actors}) {
+			t.Fatalf("cold reads at depth %d = %v, want [1 %d]", envelope.Depth, reads, envelope.Actors)
+		}
+	}
+	if got[5] != "cold_status/shape-linear/depth-050000" || got[6] != "cold_status/shape-linear/depth-050000/actors-008" {
+		t.Fatalf("the 50,000 cold reads are not adjacent: %q then %q", got[5], got[6])
+	}
+
+	// The tier must be selection only: the v2 contract names no cells, so it
+	// selects nothing rather than falling back to a depth-bounded matrix.
+	empty, err := casesForTier(testContract(t), "envelope")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("envelope tier on contract v2 = %d cases, %v", len(empty), err)
+	}
+}
+
+// TestEnvelopeTierTakesOnlyTheNearHeadCheckpointTail pins the tier against a
+// contract that names a second checkpoint case at an envelope depth: the
+// envelope claims a near-head restart, not every tail the contract carries.
+func TestEnvelopeTierTakesOnlyTheNearHeadCheckpointTail(t *testing.T) {
+	contract, err := perflane.LoadContract(filepath.Join("..", "..", "performance", "contract-v3.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := slices.IndexFunc(contract.CheckpointCases, func(c perflane.CheckpointCase) bool {
+		return c.Depth == 50_000 && c.Tail == envelopeCheckpointTail
+	})
+	if index < 0 {
+		t.Fatal("contract v3 has no tail-255 checkpoint case at 50,000")
+	}
+	contract.CheckpointCases = slices.Insert(contract.CheckpointCases, index+1, perflane.CheckpointCase{Depth: 50_000, Tail: 1_000})
+	cases, err := casesForTier(contract, "envelope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tails []int
+	for _, selected := range cases {
+		if selected.Scenario == "checkpoint_restart" && selected.Depth == 50_000 {
+			tails = append(tails, selected.Tail)
+		}
+	}
+	if !reflect.DeepEqual(tails, []int{envelopeCheckpointTail}) {
+		t.Fatalf("checkpoint tails at 50,000 = %v, want [%d]", tails, envelopeCheckpointTail)
+	}
+}
+
+// TestFailedSampleStillPublishesEvidence pins the recovery a lost sample used
+// to destroy: the run exits non-zero, but the contract, environment and the
+// samples that did complete survive in evidence.json.
+func TestFailedSampleStillPublishesEvidence(t *testing.T) {
+	output := t.TempDir()
+	evidence := runEvidence{
+		Schema: evidenceSchema, ContractDigest: "digest", HarnessCommit: "head", Tier: "envelope",
+		Outcome: "pass",
+		Samples: []sampleEnvelope{{
+			Case: "cold_status/shape-linear/depth-500000", Revision: perflane.CandidateRevision,
+			Round: 1, Position: 1, Error: "worker: signal: killed",
+		}},
+	}
+	cause := errors.New("sample candidate cold_status/shape-linear/depth-500000: worker: signal: killed")
+	returned := failRun(output, evidence, cause)
+	if !errors.Is(returned, cause) {
+		t.Fatalf("failRun returned %v, want the original cause", returned)
+	}
+	content, err := os.ReadFile(filepath.Join(output, "evidence.json"))
+	if err != nil {
+		t.Fatalf("failed run published no evidence: %v", err)
+	}
+	var published runEvidence
+	if err := json.Unmarshal(content, &published); err != nil {
+		t.Fatal(err)
+	}
+	if published.Outcome != "error" {
+		t.Fatalf("published outcome = %q, want error", published.Outcome)
+	}
+	if published.ContractDigest != "digest" || published.HarnessCommit != "head" || len(published.Samples) != 1 {
+		t.Fatalf("published evidence lost the run: %+v", published)
+	}
+	if published.Samples[0].Error != "worker: signal: killed" {
+		t.Fatalf("published sample error = %q", published.Samples[0].Error)
+	}
+	if evidence.Outcome != "pass" {
+		t.Fatal("failRun mutated its caller's evidence")
+	}
+}
+
+// TestRecordCheckpointBytesReadsTheRestoredObject pins the metric the lane
+// parent adds. It reads the fixture's own checkpoint blob, so the figure is
+// the stored object's size and a compared base worker needs no accessor.
+func TestRecordCheckpointBytesReadsTheRestoredObject(t *testing.T) {
+	ctx := context.Background()
+	fixture := filepath.Join(t.TempDir(), "fixture")
+	manifest, err := perfscenario.Prepare(ctx, fixture, perfscenario.FixturePlan{
+		GeneratorVersion: "checkpoint-bytes-test.v1", Seed: 632, Depth: 267, Shape: "linear",
+		PayloadBuckets: []int{8}, CheckpointDepths: []int{257}, ActorCount: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := manifest.Checkpoints["257"]
+	// Ask Git for the size directly, so the expectation does not travel
+	// through the code under test.
+	sized := exec.CommandContext(ctx, "git", "cat-file", "-s", checkpoint+":checkpoint")
+	sized.Dir = fixture
+	sizeOutput, err := sized.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git cat-file -s: %v: %s", err, sizeOutput)
+	}
+	want, err := strconv.ParseInt(strings.TrimSpace(string(sizeOutput)), 10, 64)
+	if err != nil || want <= 0 {
+		t.Fatalf("checkpoint blob size = %q: %v", sizeOutput, err)
+	}
+
+	restored := perfscenario.Result{Fixture: perfscenario.FixtureEvidence{Checkpoint: checkpoint}}
+	restart := runCase{Scenario: "checkpoint_restart", Shape: "linear", Depth: 267, Tail: 10, ActorCount: 1}
+	if err := recordCheckpointBytes(ctx, fixture, restart, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.CheckpointBytes != want {
+		t.Fatalf("checkpoint_bytes = %d, want the restored object's %d", restored.CheckpointBytes, want)
+	}
+
+	verify := perfscenario.Result{}
+	fallback := runCase{Scenario: "honest_fallback", Shape: "linear", Depth: 267, Tail: -1, ActorCount: 1}
+	if err := recordCheckpointBytes(ctx, fixture, fallback, &verify); err != nil {
+		t.Fatal(err)
+	}
+	if verify.CheckpointBytes != 0 {
+		t.Fatalf("cold verify recorded %d checkpoint bytes with no checkpoint", verify.CheckpointBytes)
+	}
+	// A checkpoint identifier is concatenated into a revision expression and
+	// handed to Git, so anything that is not a bare object name must be
+	// refused here, by name, before Git runs.
+	for _, hostile := range []string{"", "--output=/tmp/escape", "-c", checkpoint + ":extra", "HEAD"} {
+		hostileResult := perfscenario.Result{Fixture: perfscenario.FixtureEvidence{Checkpoint: hostile}}
+		err := recordCheckpointBytes(ctx, fixture, restart, &hostileResult)
+		if err == nil || !strings.Contains(err.Error(), "checkpoint_restart/shape-linear/depth-000267/tail-0010 recorded no usable checkpoint object") {
+			t.Fatalf("checkpoint object %q error = %v", hostile, err)
+		}
 	}
 }
 
