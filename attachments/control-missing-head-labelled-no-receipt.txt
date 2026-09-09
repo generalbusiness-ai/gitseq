@@ -1,7 +1,0 @@
-Original file from base 9fbc913e, over uncommitted current code inputs.
-go test -overlay /tmp/git21944-mutants/missing-head-labelled-no-receipt.json -count=1 -run TestLandingMeasurementsFollowTargetAndPreserveUnknown ./internal/app
---- FAIL: TestLandingMeasurementsFollowTargetAndPreserveUnknown (0.77s)
-    landing_test.go:118: missing supplied head claimed a missing receipt or measured false: {MeasuredAt:1788973749 State:no_receipt TargetHead:92299f95f9f39efa9289069549e68045de8785f5 RefIncorporated:<nil> Remote:origin RemoteRef:refs/remotes/origin/release RemoteHead:92299f95f9f39efa9289069549e68045de8785f5 RemoteContains:<nil> Reason:}
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/internal/app	1.046s
-FAIL
