@@ -1,0 +1,42 @@
+{
+  "source_base": "0afa98aa26be6756682f28defb081043ecc8efa2",
+  "checkout_sync_commit": "fc7ebaf80aeb5ba8093d76bdc6b208edb4189ac8",
+  "toolchain": "go1.26.7",
+  "steps": [
+    {
+      "command": [
+        "git",
+        "clone",
+        "--quiet",
+        "--bare",
+        "--shared",
+        "/Users/hughpyle/play/gitseq",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/git22329-frozen-qg648l4k/frozen.git"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/git22329-frozen-qg648l4k/frozen.git",
+        "update-ref",
+        "refs/seq/5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "24b6353f5b41ef95a7d8737bc7e138fbaeda2520"
+      ],
+      "exit": 0
+    },
+    {
+      "command": [
+        "go",
+        "run",
+        "./.tmp/current-attention",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/git22329-frozen-qg648l4k/frozen.git"
+      ],
+      "exit": 0,
+      "seconds": 16.3401132079307
+    }
+  ],
+  "custody": "new bare object-only shared fixture; no actor/sequencer config or keys copied; fixed seq ref created only in fixture; no original refs/checkpoints touched",
+  "fixture_removed_on_exit": true
+}

@@ -1,0 +1,67 @@
+{
+  "root": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-staleness19659-docs-0x7atrg1",
+  "base": "ee7bf5e36f822cab482306f043af4cea900ef527",
+  "overlay": null,
+  "steps": [
+    {
+      "command": [
+        "git",
+        "clone",
+        "--shared",
+        "--no-checkout",
+        "/Users/hughpyle/play/gitseq-worktrees/staleness-plan-recovery",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-staleness19659-docs-0x7atrg1/checkout"
+      ],
+      "exit": 0,
+      "seconds": 0.03
+    },
+    {
+      "command": [
+        "git",
+        "-C",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-staleness19659-docs-0x7atrg1/checkout",
+        "checkout",
+        "--detach",
+        "ee7bf5e36f822cab482306f043af4cea900ef527"
+      ],
+      "exit": 0,
+      "seconds": 0.07
+    },
+    {
+      "command": [
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-reader-39c7-cfk01_w4/gs",
+        "attach",
+        "--repo",
+        "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/gitseq-staleness19659-docs-0x7atrg1/checkout",
+        "--genesis",
+        "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8"
+      ],
+      "exit": 0,
+      "seconds": 3.03
+    },
+    {
+      "command": [
+        "go",
+        "test",
+        "-count=1",
+        "-v",
+        "./internal/docset/..."
+      ],
+      "exit": 0,
+      "seconds": 54.72
+    }
+  ],
+  "custody": {
+    "read_only": true,
+    "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "verified_frontier": {
+      "head": "d14cee0ee97712eafbcac9bc512a6e3a1fb729d3",
+      "depth": 19935
+    },
+    "actor_count": 0,
+    "has_sequencer_key": false
+  },
+  "passed": true,
+  "root_markdown_check": "PASS0.346s",
+  "source_line_pointers": 16
+}

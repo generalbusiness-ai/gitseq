@@ -1,0 +1,106 @@
+[
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ebabce8ff6f39781c14a16378ffe3f06588d80f2",
+    "path": "ui/src/lib/api.ts",
+    "commit": "359b211cfe94e758db592d6e4e78c2f85c6c9c30",
+    "stale": false,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2b0f9c2b5cc9d2c68cbe8e3f401a57c5bed42a4",
+    "path": "internal/workroom/schema.go",
+    "commit": "359b211cfe94e758db592d6e4e78c2f85c6c9c30",
+    "stale": false,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3f96b40f6ab49cf2de503c92db1787d8271b9669",
+    "path": "internal/workroom/fold.go",
+    "commit": "359b211cfe94e758db592d6e4e78c2f85c6c9c30",
+    "stale": false,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14f7a0a63a7462223746bfd82d35e5790b7fcfe5",
+    "path": "cmd/gs/main.go",
+    "commit": "5cc098a8ecf9e7c460c08a458ed2baa069d7803b",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea22065bd87c36e8aed84e03552cfcbb12c0893d",
+    "path": "cmd/gitseq-mcp/main.go",
+    "commit": "5cc098a8ecf9e7c460c08a458ed2baa069d7803b",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5127d61121a2845e41e909ed88e8a75374dd6bea",
+    "path": "SKILL.md",
+    "commit": "5cc098a8ecf9e7c460c08a458ed2baa069d7803b",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bce39c253ab8f654cd788f5c152463dd0b6bfd11",
+    "path": "internal/statusview/view.go",
+    "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c93b4d4577389c55898a93b307f1f951d645fb8",
+    "path": "internal/statusview/actor.go",
+    "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ea4ae86b6807b16474e5dc5ae7dfa485d2836fe",
+    "path": "internal/service/server.go",
+    "commit": "8ae7bd8fe684c55b404aaab28fc7e96ecd1d1b55",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a60f7689221433c1d85948c2bbe7c3cd6258388",
+    "path": "internal/app/admission.go",
+    "commit": "449cdb0ea845146ca5fee7e5e4e064393128ec32",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f5ca1c3b34c09a4a1a5f26ac366b94c748e3ca9",
+    "path": "ui/src/lib/rows.ts",
+    "commit": "39c7a0e74f4a828ba8223acbacc3f2c82eb58016",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177",
+    "path": "internal/statusview/query.go",
+    "commit": "2348ebe66e226a889f08a1b90ccc3d6a45f437e4",
+    "stale": false,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  },
+  {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a1c15fb28f5df85b922f551195b7b736f2488138",
+    "path": "AGENTS.md",
+    "commit": "ce18ec8742ddd8665afa284a9cde1ce946213435",
+    "stale": true,
+    "ancestor_of_main": true,
+    "same_blob_as_main": true
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "observed_utc": "2026-09-09T20:13:11.852008+00:00",
+  "method": "GET /v0/rebuild; read-only process-reported profile, not binary/source attestation",
+  "readers": [
+    {
+      "room": "gitseq",
+      "port": 7777,
+      "report": {
+        "running": false,
+        "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760"
+      }
+    },
+    {
+      "room": "tailapp",
+      "port": 7778,
+      "report": {
+        "running": false,
+        "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760"
+      }
+    },
+    {
+      "room": "gitseq-chess",
+      "port": 7779,
+      "report": {
+        "running": false,
+        "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760"
+      }
+    },
+    {
+      "room": "gitseq-inventory",
+      "port": 7780,
+      "report": {
+        "running": false,
+        "profile": "profile:34fc8b15d9640d9198eaa3b0f408f760"
+      }
+    }
+  ]
+}
