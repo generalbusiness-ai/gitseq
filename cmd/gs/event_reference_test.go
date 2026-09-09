@@ -63,8 +63,29 @@ func newRefRoom(t *testing.T, objectFormat string) *refRoom {
 // commands take one.
 func (r *refRoom) run(arguments ...string) (stdout, stderr string, code int) {
 	r.t.Helper()
-	full := append([]string{arguments[0], "--repo", r.repo}, arguments[1:]...)
-	command := exec.Command(r.binary, full...)
+	return r.capture(exec.Command(r.binary, r.commandLine(arguments)...), arguments)
+}
+
+// runUnderSlowAudit types the same command at the same binary, behind a shell
+// that writes the slow-audit progress notice to standard error and then execs
+// gs in its own place. A loaded machine adds exactly that: the same line, on
+// the same stream, ahead of whatever the command says about the act it was
+// given. Injecting it here makes that arrival deterministic, with no timing
+// race, no production delay hook and no shell code built out of paths.
+func (r *refRoom) runUnderSlowAudit(arguments ...string) (stdout, stderr string, code int) {
+	r.t.Helper()
+	full := append([]string{r.binary}, r.commandLine(arguments)...)
+	shell := append([]string{"-c", `printf '%s\n' "$1" >&2; shift; exec "$@"`, "slow-audit", slowAuditNotice}, full...)
+	return r.capture(exec.Command("sh", shell...), arguments)
+}
+
+// commandLine puts the repository flag in front of the positional argument.
+func (r *refRoom) commandLine(arguments []string) []string {
+	return append([]string{arguments[0], "--repo", r.repo}, arguments[1:]...)
+}
+
+func (r *refRoom) capture(command *exec.Cmd, arguments []string) (stdout, stderr string, code int) {
+	r.t.Helper()
 	var out, stderrBuffer strings.Builder
 	command.Stdout, command.Stderr = &out, &stderrBuffer
 	if err := command.Run(); err != nil {
@@ -516,10 +537,27 @@ func TestBatchResolvesShortReferencesAndKeepsItsLabels(t *testing.T) {
 	}
 }
 
+// beyondSlowAuditNotice returns everything a command said on standard error
+// other than the slow-audit progress notice. The ordinary path owes its author
+// silence about the act being filed — no basis warning, no resolution note, no
+// disclosure — but the notice says only that the local audit was slow, so it
+// is tolerated line by line and nothing else is. A command that says anything
+// more leaves it in the result and fails the check.
+func beyondSlowAuditNotice(stderr string) string {
+	var unexpected []string
+	for _, line := range strings.Split(stderr, "\n") {
+		if line == "" || line == slowAuditNotice {
+			continue
+		}
+		unexpected = append(unexpected, line)
+	}
+	return strings.Join(unexpected, "\n")
+}
+
 // The three things an author is told before their act is signed, and the
-// silence they are owed on the ordinary path. A canonical identifier of this
-// workroom that names no event is refused by the sequencer, and the warning
-// arrives before that refusal rather than instead of it.
+// silence about the act itself they are owed on the ordinary path. A canonical
+// identifier of this workroom that names no event is refused by the sequencer,
+// and the warning arrives before that refusal rather than instead of it.
 func TestFilingDisclosesItsBasesBeforeSigning(t *testing.T) {
 	t.Parallel()
 	room := newRefRoom(t, "sha1")
@@ -534,8 +572,8 @@ func TestFilingDisclosesItsBasesBeforeSigning(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit %d: %s", code, stderr)
 		}
-		if stderr != "" {
-			t.Fatalf("an ordinary filing said something: %q", stderr)
+		if unexpected := beyondSlowAuditNotice(stderr); unexpected != "" {
+			t.Fatalf("an ordinary filing said something: %q (whole stderr %q)", unexpected, stderr)
 		}
 	})
 
@@ -550,8 +588,8 @@ func TestFilingDisclosesItsBasesBeforeSigning(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("the genesis basis was refused: %s", stderr)
 		}
-		if stderr != "" {
-			t.Fatalf("the genesis basis was warned about: %q", stderr)
+		if unexpected := beyondSlowAuditNotice(stderr); unexpected != "" {
+			t.Fatalf("the genesis basis was warned about: %q (whole stderr %q)", unexpected, stderr)
 		}
 	})
 
@@ -625,6 +663,55 @@ func TestFilingDisclosesItsBasesBeforeSigning(t *testing.T) {
 		}
 		if !strings.Contains(stderr, "note: rests-on "+basis+" is already dead (retired)") {
 			t.Fatalf("the dead-basis disclosure was lost: %q", stderr)
+		}
+	})
+}
+
+// What the quiet subtests above tolerate, decided deterministically rather
+// than left to how loaded the machine happens to be. A loaded machine writes
+// the slow-audit progress notice to standard error during an ordinary filing;
+// the shell wrapper writes exactly that line and then execs gs in its place.
+// The filing must still land on its stated basis and say nothing of its own,
+// and the tolerance must not swallow a basis warning that arrives on the same
+// stream.
+func TestQuietFilingToleratesSlowAuditProgress(t *testing.T) {
+	t.Parallel()
+	room := newRefRoom(t, "sha1")
+	ids, _ := room.events()
+
+	t.Run("a live basis is quiet under progress", func(t *testing.T) {
+		before := room.depth()
+		stdout, stderr, code := room.runUnderSlowAudit("state", "--as", "alice", "--kind", "assert",
+			"--text", "ordinary under a slow audit", "--rests-on", ids[1], "--idempotency-key", "quiet-progress")
+		if code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr)
+		}
+		if !strings.Contains(stderr, slowAuditNotice) {
+			t.Fatalf("the fixture injected no progress notice, so nothing was tolerated: %q", stderr)
+		}
+		if unexpected := beyondSlowAuditNotice(stderr); unexpected != "" {
+			t.Fatalf("a filing under progress said something: %q (whole stderr %q)", unexpected, stderr)
+		}
+		if got := room.signedBases(strings.TrimSpace(stdout)); len(got) != 1 || got[0] != ids[1] {
+			t.Fatalf("signed rests_on = %v", got)
+		}
+		if after := room.depth(); after != before+1 {
+			t.Fatalf("depth %d -> %d", before, after)
+		}
+	})
+
+	t.Run("a basis warning under progress is not tolerated", func(t *testing.T) {
+		_, stderr, code := room.runUnderSlowAudit("state", "--as", "alice", "--kind", "assert",
+			"--text", "malformed under a slow audit", "--rests-on", "not-an-event", "--idempotency-key", "malformed-progress")
+		if code != 0 {
+			t.Fatalf("a malformed basis was refused rather than warned: %s", stderr)
+		}
+		if !strings.Contains(stderr, slowAuditNotice) {
+			t.Fatalf("the fixture injected no progress notice: %q", stderr)
+		}
+		unexpected := beyondSlowAuditNotice(stderr)
+		if !strings.Contains(unexpected, `warning: rests-on "not-an-event" is not an event identifier`) {
+			t.Fatalf("the basis warning was tolerated away with the notice: %q (whole stderr %q)", unexpected, stderr)
 		}
 	})
 }
