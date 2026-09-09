@@ -1,0 +1,7 @@
+head 4e4c78af0bbcb05056efca0ad0b802f868bf3643
+go build ./... rc=0
+go test -count=1 ./internal/docset/... rc=1
+git diff --check rc=0
+go test -count=1 ./internal/docset/... rerun rc=0
+note: first docset run failed with a transient kernel rollback refusal (depth 22185 shorter than previously verified 22186) while other actors were appending; the same gate passed alone and the whole suite passed on rerun at the same head
+git push rc=0
