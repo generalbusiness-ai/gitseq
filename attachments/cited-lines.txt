@@ -1,0 +1,40 @@
+internal/service/server.go:570 blob base=7a518290 d1ae6ade=7a518290 worktree=7a518290 same=True
+    func (s *Server) handleRebuild(writer http.ResponseWriter, _ *http.Request) {
+internal/app/app.go:2387 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    func (w *Workspace) RebuildProgress() (progress kernel.Progress, running bool) {
+internal/kernel/kernel.go:797 blob base=b0622dd5 d1ae6ade=b0622dd5 worktree=b0622dd5 same=True
+    // Started becomes true only when checkpoint lookup has fallen back to a full
+internal/kernel/kernel.go:869 blob base=b0622dd5 d1ae6ade=b0622dd5 worktree=b0622dd5 same=True
+    // A checkpoint hit or incremental read leaves the fresh tracker unstarted.
+internal/app/app.go:2508 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, 
+internal/app/app.go:2629 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    w.snapshotFolder = folder
+internal/app/app.go:2643 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    w.snapshotCache = &snapshot
+internal/app/app.go:2575 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotProfile == profile && w.snap
+internal/app/app.go:2584 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if !loaded.Full && (w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotProfile != profile || start
+internal/app/app.go:2584 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if !loaded.Full && (w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotProfile != profile || start
+internal/app/app.go:2575 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotProfile == profile && w.snap
+internal/app/app.go:2316 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if err != nil || w.snapshotCache == nil || w.snapshotFolder == nil || w.snapshotProfile != selected.projection
+internal/app/app.go:2568 blob base=6fa9db73 d1ae6ade=6fa9db73 worktree=6fa9db73 same=True
+    if err := w.rememberVerifiedFrontier(ctx, loaded.Verification); err != nil {
+internal/workroom/fold.go:536 blob base=423a9078 d1ae6ade=34e81586 worktree=423a9078 same=False
+    }
+internal/workroom/fold.go:3169 blob base=423a9078 d1ae6ade=34e81586 worktree=423a9078 same=False
+    }
+ui/src/lib/store.ts:45 blob base=1e3f0f29 d1ae6ade=1e3f0f29 worktree=1e3f0f29 same=True
+    let retained = false;
+ui/src/lib/store.ts:47 blob base=1e3f0f29 d1ae6ade=1e3f0f29 worktree=1e3f0f29 same=True
+    const apply = (next: Status) => {
+ui/src/lib/store.ts:78 blob base=1e3f0f29 d1ae6ade=1e3f0f29 worktree=1e3f0f29 same=True
+    stopProbe = probeRebuild(api.rebuild, (next) => {
+ui/src/lib/store.ts:91 blob base=1e3f0f29 d1ae6ade=1e3f0f29 worktree=1e3f0f29 same=True
+    const compatible = Boolean(next.profile) && next.profile === retainedProfile;
+ui/src/components/RebuildNotice.tsx:13 blob base=f270f6f2 d1ae6ade=f270f6f2 worktree=f270f6f2 same=True
+    export function RebuildNotice({ poll = 1000 }: { poll?: number }) {
