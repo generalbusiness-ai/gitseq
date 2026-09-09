@@ -1,0 +1,1 @@
+PASS: 18 resident windows:17 exact clicked source lines and complete committed note

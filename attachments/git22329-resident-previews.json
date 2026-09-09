@@ -1,0 +1,348 @@
+{
+  "method": "Actual targets clicked from the committed note renderer, with only the now-published owning event substituted; no path normalization. Resident admitted exact head and returned matching source lines.",
+  "results": [
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/workroom/fold.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 3629
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/workroom/fold.go",
+      "window": {
+        "start": 3601,
+        "end": 4000,
+        "total": 4073,
+        "partial": true,
+        "previous": 3201,
+        "next": 4001
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/workroom/fold.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 3679
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/workroom/fold.go",
+      "window": {
+        "start": 3601,
+        "end": 4000,
+        "total": 4073,
+        "partial": true,
+        "previous": 3201,
+        "next": 4001
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/statusview/query.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 220
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/statusview/query.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 625,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/workroom/fold.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 127
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/workroom/fold.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 4073,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/workroom/schema.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 13
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/workroom/schema.go",
+      "window": {
+        "start": 1,
+        "end": 348,
+        "total": 348,
+        "partial": false
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/statusview/view.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 129
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/statusview/view.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 615,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/statusview/actor.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 257
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/statusview/actor.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 656,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/statusview/query.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 270
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/statusview/query.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 625,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "cmd/gs/main.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 2510
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "cmd/gs/main.go",
+      "window": {
+        "start": 2401,
+        "end": 2800,
+        "total": 3340,
+        "partial": true,
+        "previous": 2001,
+        "next": 2801
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "cmd/gitseq-mcp/main.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 710
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "cmd/gitseq-mcp/main.go",
+      "window": {
+        "start": 401,
+        "end": 800,
+        "total": 2469,
+        "partial": true,
+        "previous": 1,
+        "next": 801
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/service/server.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 302
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/service/server.go",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 994,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "ui/src/lib/api.ts",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 68
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "ui/src/lib/api.ts",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 562,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "ui/src/lib/rows.ts",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 48
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "ui/src/lib/rows.ts",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 440,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "SKILL.md",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 367
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "SKILL.md",
+      "window": {
+        "start": 1,
+        "end": 400,
+        "total": 546,
+        "partial": true,
+        "next": 401
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "SKILL.md",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 463
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "SKILL.md",
+      "window": {
+        "start": 401,
+        "end": 546,
+        "total": 546,
+        "partial": true,
+        "previous": 1
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "AGENTS.md",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 19
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "AGENTS.md",
+      "window": {
+        "start": 1,
+        "end": 162,
+        "total": 162,
+        "partial": false
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "path": "internal/workroom/fold.go",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "line": 2911
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "internal/workroom/fold.go",
+      "window": {
+        "start": 2801,
+        "end": 3200,
+        "total": 4073,
+        "partial": true,
+        "previous": 2401,
+        "next": 3201
+      },
+      "source_match": true
+    },
+    {
+      "input": {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:327c1bec9355a828bf9f546bbdec70be6ee09e93",
+        "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+        "path": "notes/2026-09-06-staleness-plan-recovery.md"
+      },
+      "status": "ready",
+      "commit": "3a4fc60cc3c31bed3915c3491c58f37cc3523aab",
+      "path": "notes/2026-09-06-staleness-plan-recovery.md",
+      "window": {
+        "start": 1,
+        "end": 186,
+        "total": 186,
+        "partial": false
+      },
+      "source_match": true
+    }
+  ]
+}
