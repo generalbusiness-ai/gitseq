@@ -1,0 +1,34 @@
+package main
+import (
+ "context"
+ "os"
+ "os/exec"
+ "path/filepath"
+ "strings"
+ "testing"
+ "github.com/generalbusiness-ai/gitseq/internal/perfscenario"
+)
+func TestPlannerGitOutputDiagnosticBoundary(t *testing.T) {
+ ctx:=context.Background(); root:=t.TempDir()
+ t.Setenv("GIT_TRACE", "0")
+ git:=func(args ...string) string { t.Helper(); c:=exec.Command("git",args...); c.Dir=root; b,e:=c.Output();if e!=nil{t.Fatalf("fixture git %v: %v",args,e)};return strings.TrimSpace(string(b)) }
+ git("init", "--quiet")
+ if e:=os.WriteFile(filepath.Join(root,"checkpoint"),[]byte("checkpoint fixture\n"),0600);e!=nil{t.Fatal(e)}
+ git("add","checkpoint")
+ git("-c","user.name=Fixture","-c","user.email=fixture@example.invalid","-c","commit.gpgsign=false","commit","--quiet","-m","Synthetic fixture")
+ want:=git("rev-parse","HEAD")
+ selected:=runCase{Scenario:"checkpoint_restart"}
+ t.Run("positive_without_diagnostics",func(t *testing.T){
+  got,e:=resolveCommit(ctx,root,"HEAD");if e!=nil||got!=want{t.Fatalf("resolve %q %v",got,e)}
+  r:=perfscenario.Result{Fixture:perfscenario.FixtureEvidence{Checkpoint:want}}
+  if e:=recordCheckpointBytes(ctx,root,selected,&r);e!=nil||r.CheckpointBytes!=19{t.Fatalf("size %d %v",r.CheckpointBytes,e)}
+ })
+ t.Setenv("GIT_TRACE","1")
+ t.Run("successful_git_stderr_does_not_corrupt_commit",func(t *testing.T){
+  got,e:=resolveCommit(ctx,root,"HEAD");if e!=nil||got!=want{t.Fatalf("resolveCommit must return exact ID despite successful Git trace: got=%q want=%q err=%v",got,want,e)}
+ })
+ t.Run("successful_git_stderr_does_not_corrupt_size",func(t *testing.T){
+  r:=perfscenario.Result{Fixture:perfscenario.FixtureEvidence{Checkpoint:want}}
+  if e:=recordCheckpointBytes(ctx,root,selected,&r);e!=nil||r.CheckpointBytes!=19{t.Fatalf("recordCheckpointBytes must accept successful Git trace: bytes=%d err=%v",r.CheckpointBytes,e)}
+ })
+}
