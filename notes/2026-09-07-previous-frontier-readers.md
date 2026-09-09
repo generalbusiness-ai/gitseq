@@ -3,10 +3,16 @@
 Status: adopted: declined, 2026-09-09, proposal 7493bb29.
 
 Request e855a8ca (#20301), the case-C child of #20008, continued by the
-current-basis successor 4fe7a689 (#22186). The source references below carry
-no revision, so each one opens at this note's own exact commit. Those files
-were re-read against main `d1ae6ade996af7167f22a2170dfaa6a200e004e1`, the
-parent of this commit, and hold the same bytes at both. This note replaces
+current-basis successor 4fe7a689 (#22186). Each source citation below
+links the cited line at main `0afa98aa26be6756682f28defb081043ecc8efa2`,
+the source context of this revision, and names the repository path with the
+line, which the Gitseq reading view opens at this note's own exact commit.
+The cited files hold the same bytes at that main and at this commit. They
+were first re-read against main `d1ae6ade996af7167f22a2170dfaa6a200e004e1`,
+the parent of the commit that introduced this note; every cited file except
+`internal/workroom/fold.go` is byte-identical there too, and fold.go's two
+cited functions moved down by three and two lines under #21944 (463ec7b9)
+without changing, so those two citations follow them. This note replaces
 proposal 0b8a9ff5 (#20195), whose ancestry check and header-copy argument did
 not survive the review recorded in the request, and corrects its own first
 draft (7628c518) after the planner's finding 01386505 (#20633). The decision
@@ -27,25 +33,25 @@ during that window, under an explicit read contract. The answer, adopted on
 
 **When "rebuild running" is true.** `/v0/rebuild` reports
 `Workspace.RebuildProgress`
-([server.go:570](internal/service/server.go:570),
-[app.go:2387](internal/app/app.go:2387)),
+([server.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/service/server.go#L570), `internal/service/server.go:570`,
+[app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2387), `internal/app/app.go:2387`),
 and `running` is the kernel tracker's `Started`, which "becomes true only
 when checkpoint lookup has fallen back to a full audit"
-([kernel.go:797](internal/kernel/kernel.go:797));
+([kernel.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/kernel/kernel.go#L797), `internal/kernel/kernel.go:797`);
 "a checkpoint hit or incremental read leaves the fresh tracker unstarted"
-([kernel.go:869](internal/kernel/kernel.go:869)).
+([kernel.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/kernel/kernel.go#L869), `internal/kernel/kernel.go:869`).
 So the rebuild notice, and the whole case-C window, is the full cold audit
 and nothing else. A long incremental tail is verified without a running
 report.
 
 **When a retained snapshot exists.** `snapshotWithSource` holds
 `snapshotMu` for the whole read
-([app.go:2508](internal/app/app.go:2508)).
+([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2508), `internal/app/app.go:2508`).
 It keeps `snapshotCache`, `snapshotFolder` and `snapshotProfile` from the
 previous publication and replaces them only after a complete successful
 audit
-([app.go:2629](internal/app/app.go:2629),
-[app.go:2643](internal/app/app.go:2643)).
+([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2629), `internal/app/app.go:2629`,
+[app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2643), `internal/app/app.go:2643`).
 The full audit runs in exactly these situations:
 
 1. First read of a process: `w.reader == nil`, no cache. After a restart
@@ -54,27 +60,27 @@ The full audit runs in exactly these situations:
 2. Cache present under the same profile, but the verified tail does not
    contain the cached head (`start < 0`): the reader is replaced and a full
    audit runs
-   ([app.go:2575](internal/app/app.go:2575),
-   [app.go:2584](internal/app/app.go:2584)).
+   ([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2575), `internal/app/app.go:2575`,
+   [app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2584), `internal/app/app.go:2584`).
    This is the rewind or replaced-ref case. The retained snapshot describes
    a head that is no longer on the ref.
 3. Profile differs from the cache's: the cold path is taken and the old
    projection is never re-published
-   ([app.go:2584](internal/app/app.go:2584)).
+   ([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2584), `internal/app/app.go:2584`).
    The parent request forbids exposing it.
 
 When the cache head is the verified base of the new tail (`start >= 0`)
 the read is incremental, the tracker never starts, and no rebuild is
 reported
-([app.go:2575](internal/app/app.go:2575)).
+([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2575), `internal/app/app.go:2575`).
 The act path extends the cache in place only when the cache head equals the
 commit's base
-([app.go:2316](internal/app/app.go:2316)).
+([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2316), `internal/app/app.go:2316`).
 
 There is a fourth situation, and an earlier draft of this note wrongly
 said there was none. The kernel reader advances before the witness is
 persisted: `rememberVerifiedFrontier` runs after the load
-([app.go:2568](internal/app/app.go:2568)),
+([app.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/app/app.go#L2568), `internal/app/app.go:2568`),
 so a storage failure there leaves the reader at the new head B while the
 retained snapshot and persisted witness stay at A. If the ref is then moved
 back to A and a valid C is appended on it, and no signed checkpoint is
@@ -102,10 +108,10 @@ verification finishes that C will verify, and Git ancestry confers no
 verification of the history between A and C.
 
 **Immutability.** `Folder.Projection()`
-([fold.go:536](internal/workroom/fold.go:536))
+([fold.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/workroom/fold.go#L539), `internal/workroom/fold.go:539`)
 runs `foldState.project()`, which builds a new `Projection` with fresh
 slices and maps on every call
-([fold.go:3169](internal/workroom/fold.go:3169)).
+([fold.go](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/internal/workroom/fold.go#L3171), `internal/workroom/fold.go:3171`).
 A `Snapshot` value therefore does not alias the folder's later appends; the
 strings and record-level slices it shares are never mutated after the
 record is folded. The earlier proposal's worry that a copy of the struct
@@ -120,15 +126,15 @@ with the local ref and falls back to a local verified read on mismatch; the
 MCP adapter refuses an orientation whose frontier is not the local head
 read before and after the call. The browser tracks whether the page is
 showing a status and under which profile
-([store.ts:45](ui/src/lib/store.ts:45)),
+([store.ts](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/ui/src/lib/store.ts#L45), `ui/src/lib/store.ts:45`),
 sets both from whatever `/v0/status` and `/v0/wait` return
-([store.ts:47](ui/src/lib/store.ts:47)),
+([store.ts](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/ui/src/lib/store.ts#L47), `ui/src/lib/store.ts:47`),
 and, while a wait is outstanding, probes `/v0/rebuild` and drops a retained
 status whose profile differs from the answering process's
-([store.ts:78](ui/src/lib/store.ts:78),
-[store.ts:91](ui/src/lib/store.ts:91)).
+([store.ts](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/ui/src/lib/store.ts#L78), `ui/src/lib/store.ts:78`,
+[store.ts](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/ui/src/lib/store.ts#L91), `ui/src/lib/store.ts:91`).
 A reader with no status renders the rebuild notice
-([RebuildNotice.tsx:13](ui/src/components/RebuildNotice.tsx:13)).
+([RebuildNotice.tsx](https://github.com/generalbusiness-ai/gitseq/blob/0afa98aa26be6756682f28defb081043ecc8efa2/ui/src/components/RebuildNotice.tsx#L13), `ui/src/components/RebuildNotice.tsx:13`).
 The browser is the only consumer that could use a historical surface; the
 CLI and MCP adapters would discard it by their own contracts.
 
