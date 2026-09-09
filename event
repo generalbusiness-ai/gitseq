@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ff1e2628cb10667a58f652db89f6b3755a928","text":"Merge retired a covered predecessor; the successor is at cmd/gs/succession.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1c55088ebbf994f323d82a54af48169092614b96","text":"Merge retired a covered predecessor; the successor is at internal/service/uidist/index.html."}
