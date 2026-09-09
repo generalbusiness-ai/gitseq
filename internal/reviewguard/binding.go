@@ -220,12 +220,18 @@ func commitmentOf(projection workroom.Projection, request string) (workroom.Comm
 	return workroom.Commitment{}, false
 }
 
-// ownedEdge follows the artifact's own direct bases one step: a promise the
+// OwnedEdge follows the artifact's own direct bases one step: a promise the
 // artifact's author made, or a request addressed to that author. It returns
 // the request that edge leads to, the promise if one was crossed, and whether
 // an edge existed at all. This is the only provenance the resolver reads, and
 // it reads exactly one hop.
-func ownedEdge(projection workroom.Projection, artifact workroom.Statement) (request, promise string, found bool) {
+//
+// It is exported because it is also the edge that promotes a source commit's
+// unsigned claim to corroborated evidence: the actor an event signature names,
+// tied to the governing record by durable provenance. That reader must use
+// this rule and not a second one, or the two would disagree about who a
+// signed artifact answers for.
+func OwnedEdge(projection workroom.Projection, artifact workroom.Statement) (request, promise string, found bool) {
 	for _, basis := range projection.Provenance[artifact.Event] {
 		if statement, err := StandingStatement(projection, basis, workroom.KindPromise); err == nil && statement.Actor == artifact.Actor {
 			if owner, err := UniqueStandingBasis(projection, basis, workroom.KindRequest); err == nil {
@@ -377,7 +383,7 @@ func missingPrimary(projection workroom.Projection, reports map[string][]workroo
 	if err != nil {
 		return err
 	}
-	request, _, found := ownedEdge(projection, statement)
+	request, _, found := OwnedEdge(projection, statement)
 	if !found {
 		return fmt.Errorf("primary %s reports no implementation commitment and rests on no request or promise of its author; name the implementation with --implementation, the adopted decision with --self-initiated, or review it as --evidence-only", quoted(primary))
 	}
@@ -407,7 +413,7 @@ func resolveSelfInitiated(projection workroom.Projection, reports map[string][]w
 	if err != nil {
 		return Binding{}, err
 	}
-	if request, _, found := ownedEdge(projection, statement); found {
+	if request, _, found := OwnedEdge(projection, statement); found {
 		return Binding{}, fmt.Errorf("primary %s was filed for request %s; a broken or evidence-only assignment does not become self-initiated by selecting a mode", quoted(binding.Primary), quoted(request))
 	}
 	// The witness is one direct edge in either direction: the primary rests
@@ -416,7 +422,7 @@ func resolveSelfInitiated(projection workroom.Projection, reports map[string][]w
 	if !slices.Contains(projection.Provenance[binding.Primary], decision) && !slices.Contains(projection.Provenance[decision], binding.Primary) {
 		return Binding{}, fmt.Errorf("primary %s and adopted decision %s do not rest directly on each other", quoted(binding.Primary), quoted(decision))
 	}
-	if err := adoptedDecision(projection, decision); err != nil {
+	if err := AdoptedDecision(projection, decision); err != nil {
 		return Binding{}, err
 	}
 	for _, event := range binding.Examined[1:] {
@@ -429,11 +435,16 @@ func resolveSelfInitiated(projection workroom.Projection, reports map[string][]w
 	return binding, nil
 }
 
-// adoptedDecision accepts the two authority shapes SKILL.md names: a ratified
+// AdoptedDecision accepts the two authority shapes SKILL.md names: a ratified
 // proposal, or an authority-bearing request whose commitment is satisfied.
 // Whether the four authority facts hold is the reviewer's duty; this checks
 // only that the witness exists, took force, and stands.
-func adoptedDecision(projection workroom.Projection, decision string) error {
+//
+// Exported alongside OwnedEdge, and for the same reason: self-initiated work
+// files no request, so the record its implementing commits name is the adopted
+// decision, and a reader corroborating such a claim must recognise adoption by
+// this rule rather than by a private copy of it.
+func AdoptedDecision(projection workroom.Projection, decision string) error {
 	if statement, err := StandingStatement(projection, decision, workroom.KindPropose); err == nil {
 		if !statement.Ratified {
 			return fmt.Errorf("decision %s is a proposal that is not ratified", quoted(decision))
@@ -462,7 +473,7 @@ func resolveEvidence(projection workroom.Projection, reports map[string][]workro
 	if err != nil {
 		return Binding{}, err
 	}
-	request, _, found := ownedEdge(projection, statement)
+	request, _, found := OwnedEdge(projection, statement)
 	if !found {
 		return Binding{}, fmt.Errorf("primary %s rests on no request or promise of its author; evidence-only review needs the request it is evidence for", quoted(binding.Primary))
 	}

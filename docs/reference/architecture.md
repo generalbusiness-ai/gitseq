@@ -1685,6 +1685,29 @@ the absence as "after the verdict", because a projection it cannot date is not
 a projection it may merge on. This carries the fold profile to
 `workroom-fold@10`, since the published projection bytes change.
 
+#### The pending-decision read adds no projected field
+
+The checkout cleanup advice in layer 7 reads two facts from this layer that
+nothing read before: a proposal's structural `rests_on` edge to an artifact,
+and the lifecycle of the commitment for the request that artifact was filed
+under. Both are already projected. This layer gains no field, no statement
+kind, no admission rule and no fold profile advance, and the projection bytes
+are unchanged.
+
+What the read holds is that four lifecycle facts stay distinct. Request
+lifecycle, candidate retirement, decision adoption and checkout removal are
+four separate things: none is evidence for another and none substitutes for
+another. So a retired artifact statement is still the subject of a proposal
+that cites it, an unratified proposal is still a decision waiting to be taken,
+and a request the fold has marked stale is still a request whose work is owed.
+Staleness qualifies a status here as it does everywhere else in this layer; it
+never settles a commitment, and a bounded actionable page that omits a row is
+a page, not the record.
+
+The settled word list this read uses is the deny list layer 7 already applies
+to checkouts, so a lifecycle word this client has never heard of protects
+rather than settles.
+
 ### 7. CLI, MCP, skills, connectors, and UI
 
 The reading UI includes a Notes view selected from declared `render: note`
@@ -1731,6 +1754,103 @@ represented. Object inputs are deduplicated before the Git batch. Cancellation o
 all deletion advice and clears partial results to unknown.
 [Landing observations](landing-observations.md) states the
 wire fields, limits, remote-selection policy and cleanup preconditions.
+
+The worktree endpoint also reports a bounded read-only reverse association:
+which durable record the implementing commits on each branch tip and each
+unbranched checkout head claim, and whether authenticated durable evidence
+corroborates the claim. It derives the table from Git and the verified
+projection and writes nothing, anywhere.
+
+A claim is graded, never believed. An implementing source commit's `Rests-On:`
+is ordinary message text that nobody signs and nothing verifies, unlike the
+kernel's own event envelope trailer, which the sequencer compares byte for
+byte with the signed intent. A source trailer naming a record this workroom
+holds is `claimed`. It becomes `corroborated` only when a standing artifact
+statement names that exact commit and the review guard's own owned edge ties
+the actor its signature names to the same governing record, or, for
+self-initiated work, to the adopted decision recognised by the same rule. A
+trailer naming no record here, or more than one, is `unresolved` and carries
+the resolver's typed refusal and its candidate list verbatim; a canonical
+identifier of another genesis is `foreign` and is never resolved locally. No
+Git author ident is read, matched or mapped, and no second actor identity
+system exists: an author ident is committer-controlled, so a forged trailer
+under a copied ident stays `claimed`. Corroboration attaches to a commit and
+never to a branch, so a tip past the commit somebody signed for is claimed and
+the corroborated commit is named beside it.
+
+The association bounds are the ref inventory, tip and object limits, the
+shared 65,536-step budget and the three-second deadline that already bound
+classification, plus 512 first-parent commits per tip and the existing
+one-mebibyte cap on a commit object. Every commit it reads a trailer from is
+re-verified against its own hash by the same NUL-framed scan the railway uses.
+Results cache under the captured read: the durable frontier, a digest of the
+captured ref inventory and a digest of the captured checkout listing. All three
+are inputs the table is derived from: a branch that moves, is renamed or is
+deleted, and a checkout that is added, removed, renamed or moved to another
+detached head, each change the answer without any of the others changing, and
+a cache keyed on less than its inputs stays wrong rather than going stale.
+
+Every bound reports incomplete rather than a shorter answer that looks
+finished. More branches and unbranched checkout heads than the tip limit
+reads, a first-parent lineage longer than the per-tip limit reads, a captured
+tip whose object this repository does not hold, budget exhaustion, a cancelled
+read and an unavailable ref inventory all discard the whole table, give a
+reason and leave every checkout unknown. An unborn repository, which holds no
+commits at all, stays a complete answer of nothing and is not confused with a
+tip that has gone. Completion is decided in one place and the annotation step
+refuses to run on an incomplete table, so an early unknown cannot be
+overwritten to blank; unknown never proves a negative.
+
+One captured read answers the whole request. The endpoint captures the
+checkout listing once, reads the bounded ref inventory once, resolves the
+remote once, and opens one three-second deadline and one 65,536-step budget;
+both the cleanup classification and the reverse association then read and spend
+from that single capture. Reading the refs or the listing a second time would
+answer about a different repository whenever a branch or a checkout moved in
+between, and two budgets would each bound their own judgment while saying
+nothing about what the request costs. The bound is therefore on the request:
+whichever judgment spends the budget spends it for the other, and the other
+reports unknown rather than answering from an allowance nobody counted.
+
+One question is then asked of the pair: did either judgment finish under the
+conditions it was given. The answer is no when the shared budget or deadline is
+spent, and equally when the association stopped at a bound of its own, whether
+that is the tip limit, the per-tip depth limit or a captured tip this
+repository does not hold. All of those are the same kind of fact, a read that
+did not finish, so all of them withhold the whole response rather than the
+judgment that happened to notice: no candidate is offered, every checkout reads
+unknown for both its classification and its grade, and both carry the reason
+that names the bound. A classification computed before the bound was reached is
+still an answer derived from a read that never finished. The step can only turn
+an answer into unknown. It is the one response-disposition step, and the
+worktrees endpoint obtains its pair only through it; the two judgments stay
+separately callable for tests.
+
+What is shared is the observation and the bound, never the conclusion. The two
+judgments stay two: the classifier reads no association and no grade, and the
+association reads no classification. Which durable record a checkout claims and
+whether that work is finished are different questions, and an unsigned source
+trailer is not something a deletion decision may stand on. The checkout listing
+keeps its own eight-second cache; the association keeps its own, keyed on the
+captured read.
+
+Cleanup advice gains four reports over that captured read. Two checkouts at
+one head are reported at inventory time and nothing is refused for it. A head
+no ref in this repository points at is reported and
+protects. A checkout whose resolved path is outside the checkout root, or whose
+registered entry is itself a symbolic link, is reported and protects. A
+checkout still holding the commit an artifact names, while a live unratified
+proposal rests on that artifact by a structural provenance edge and the
+artifact's own parent request is unsettled, is protected and names the
+proposal. The checkout root is derived as the directory holding the served
+checkout, because no configured root exists in this source; a root that is too
+narrow can only protect a checkout that did not need it.
+
+What this does not add: no `gs worktree` command, no per-checkout record, no
+`refs/gitseq/lanes` ref, and no `branch` field on any durable kind. Nothing
+here widens the deletable set, authorises a signature, moves a merge or
+licenses a deletion, and the association is not an input to any admission
+decision.
 
 **What it owns:** presenting one application to people and programs.
 

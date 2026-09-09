@@ -16,10 +16,10 @@ import (
 // This deliberately retains the original exhaustive matching and ordering
 // algorithm as a differential oracle, with a generous test-only step budget.
 // Production still uses the unchanged worktreeInspectionLimit.
-func exhaustiveWorktreeRows(rows []worktreeLandingInput, views []WorktreeView, g *landingGraph, repository, remote string, tracking map[string]string, targetRefs map[string]bool) []string {
+func exhaustiveWorktreeRows(rows []worktreeLandingInput, pending map[string]string, views []WorktreeView, g *landingGraph, repository, remote string, tracking map[string]string, targetRefs map[string]bool) []string {
 	deletable := []string{}
 	budget := &worktreeInspectionBudget{ctx: context.Background(), remaining: 1000000}
-	unknown := func() []string { return unknownWorktrees(views) }
+	unknown := func() []string { return unknownWorktrees(views, exhaustedRead) }
 	measuredAt := time.Now().Unix()
 	for i := range rows {
 		if !budget.take(1) {
@@ -38,6 +38,29 @@ func exhaustiveWorktreeRows(rows []worktreeLandingInput, views []WorktreeView, g
 		view := &views[i]
 		view.Classification = "unmapped"
 		uncertain, protected, tipSettled := !g.refsKnown || view.Head == "", false, false
+		// The three new protections, worked out pairwise rather than through
+		// the propagated masks and the ref-value set the bounded index builds.
+		view.ReflessHead = false
+		if g.refsKnown && view.Head != "" {
+			view.ReflessHead = true
+			for _, oid := range g.refs {
+				if oid == view.Head {
+					view.ReflessHead = false
+					break
+				}
+			}
+		}
+		view.PendingDecision = ""
+		for commit, proposal := range pending {
+			if !g.objects[commit] {
+				continue
+			}
+			if contains := g.contains(view.Head, commit); contains != nil && *contains {
+				if view.PendingDecision == "" || proposal < view.PendingDecision {
+					view.PendingDecision = proposal
+				}
+			}
+		}
 		type match struct{ index, rank int }
 		var matches []match
 		for j, input := range rows {
@@ -120,6 +143,15 @@ func exhaustiveWorktreeRows(rows []worktreeLandingInput, views []WorktreeView, g
 		case view.Current || view.Detached || view.State != "clean" || targetRefs["refs/heads/"+view.Branch]:
 			view.Classification = "protected"
 			view.ClassificationReason = "current, detached, non-clean or target checkout"
+		case view.OutsideRoot || view.SymlinkedPath:
+			view.Classification = "protected"
+			view.ClassificationReason = "checkout path is outside the checkout root or reached through a symbolic link"
+		case view.ReflessHead:
+			view.Classification = "protected"
+			view.ClassificationReason = "no ref in this repository points at this head"
+		case view.PendingDecision != "":
+			view.Classification = "protected"
+			view.ClassificationReason = "a live proposal cites work this checkout holds"
 		case protected:
 			view.Classification = "protected"
 			view.ClassificationReason = "unsettled or approved-not-landed commitment"
@@ -205,7 +237,7 @@ func compareWorktreeIndex(t *testing.T, f worktreeCapturedFixture) int {
 	if _, _, _, ok = reference.gitInputs(expected, f.graph(), f.Repository, &worktreeInspectionBudget{ctx: context.Background(), remaining: 1000000}); !ok {
 		t.Fatal("reference refs")
 	}
-	want := exhaustiveWorktreeRows(reference.rows, expected, f.graph(), f.Repository, f.Remote, f.Tracking, reference.targets[f.Repository])
+	want := exhaustiveWorktreeRows(reference.rows, reference.pending, expected, f.graph(), f.Repository, f.Remote, f.Tracking, reference.targets[f.Repository])
 	for _, vs := range [][]WorktreeView{actual, expected} {
 		for i := range vs {
 			for j := range vs[i].Rows {

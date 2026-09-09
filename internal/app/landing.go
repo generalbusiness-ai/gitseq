@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// MainlineRefs is the mainline, in the order a repository is likely to name
+// it. Resolved rather than configured: the question it answers is "did it
+// ship", and shipping means reaching the branch the repository publishes. It
+// is one list because two surfaces ask that question — the landed endpoint and
+// the association's lineage boundary — and a second copy of it would let them
+// disagree about which branch this repository publishes.
+var MainlineRefs = []string{"refs/heads/main", "refs/heads/master"}
+
 // LandingInput contains already projected receipt facts, never an assertion
 // discovered by searching body text. Git measurements cannot close a promise.
 type LandingInput struct {

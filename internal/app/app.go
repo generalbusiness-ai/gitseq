@@ -130,6 +130,21 @@ type Workspace struct {
 	repoPathCached    string
 	repoRemoteCached  string
 	worktreesCachedAt time.Time
+
+	// The reverse association caches under all three inputs it is derived
+	// from: the durable frontier, a digest of the ref inventory, and a digest
+	// of the captured checkout inventory. Each is needed on its own. A branch
+	// that moves, is renamed or is deleted changes the answer with no durable
+	// record moving; a checkout that is added, removed, renamed or moved to
+	// another detached head changes it with no ref moving, because the rows
+	// carry checkout labels and rows built for those heads. The Grade and
+	// Governing this pass writes back onto the views are outputs and are never
+	// part of the key. It is deliberately not the eight-second checkout cache
+	// above: that one is a wall-clock convenience, and a cache keyed on less
+	// than its inputs does not go stale, it stays wrong.
+	associationsMu     sync.Mutex
+	associationsKey    associationCacheKey
+	associationsCached AssociationTable
 }
 
 // snapshotFlight is one shared resident read. Its work outlives any individual
@@ -545,6 +560,42 @@ type WorktreeView struct {
 	RowsOmitted          int           `json:"rows_omitted,omitempty"`
 	Classification       string        `json:"classification,omitempty"`
 	ClassificationReason string        `json:"classification_reason,omitempty"`
+	// Governing and Grade are this checkout's row of the reverse association:
+	// the durable record its own head claims, and how well that claim is
+	// evidenced. A claim is never permission — see association.go.
+	Governing string `json:"governing,omitempty"`
+	Grade     string `json:"grade,omitempty"`
+	// DuplicateHead says another checkout of this repository sits at the same
+	// head. It is reported, not refused: a second checkout at the target ref's
+	// own head is ordinary, and this repository has one.
+	DuplicateHead bool `json:"duplicate_head,omitempty"`
+	// ReflessHead says no ref in this repository points at this checkout's
+	// head. Such a head is reachable only through the checkout that holds it,
+	// so it is reported and it protects. A detached checkout part-way along a
+	// branch reads as refless too, and is already protected for being
+	// detached.
+	ReflessHead bool `json:"refless_head,omitempty"`
+	// OutsideRoot and SymlinkedPath are the two containment facts. The first
+	// says the resolved path is not under the checkout root; the second says
+	// the registered path reaches its contents through a symbolic link, so the
+	// name a person would delete is not the directory they would delete. Both
+	// protect and neither deletes.
+	OutsideRoot   bool `json:"outside_checkout_root,omitempty"`
+	SymlinkedPath bool `json:"symlinked_path,omitempty"`
+	// PendingDecision names the live proposal that protects this checkout: it
+	// rests by a structural provenance edge on an artifact whose commit this
+	// checkout still holds, and that artifact's own parent request is
+	// unsettled. Request lifecycle, candidate retirement, decision adoption
+	// and checkout removal stay four distinct facts; this is only the third
+	// one speaking, and it protects rather than settles.
+	PendingDecision string `json:"pending_decision,omitempty"`
+
+	// path is the checkout's registered path and resolved is what it resolves
+	// to after symbolic links. Neither leaves this boundary: the wider host
+	// layout has no reader who needs it, and the endpoint discloses only the
+	// served checkout's own path.
+	path     string
+	resolved string
 }
 
 type Verb string
@@ -683,17 +734,42 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		selectedPath = strings.TrimSpace(string(top))
 	}
 	selected := canonicalPath(selectedPath)
+	// The checkout root is the directory holding the served checkout. Git
+	// records where every linked checkout of this repository is, and a
+	// checkout registered somewhere else entirely is a fact worth reporting
+	// even though nothing here removes one. The derivation takes no
+	// configuration because there is none to take: the design note names a
+	// "configured checkout root", and no such key exists in this source. A
+	// root that is too narrow can only protect a checkout that did not need
+	// it, never expose one that did, so the conservative direction is the one
+	// taken until the key exists.
+	root := filepath.Dir(selected)
 	views := make([]WorktreeView, 0, len(entries))
 	inspectionCtx, cancelInspection := context.WithTimeout(ctx, 3*time.Second)
 	defer cancelInspection()
 	for _, item := range entries {
+		resolved := canonicalPath(item.path)
+		registered := filepath.Clean(item.path)
+		if absolute, err := filepath.Abs(registered); err == nil {
+			registered = absolute
+		}
 		view := WorktreeView{
 			Checkout: filepath.Base(filepath.Clean(item.path)),
 			Branch:   item.branch,
 			Head:     item.head,
 			State:    "unavailable",
-			Current:  canonicalPath(item.path) == selected,
+			Current:  resolved == selected,
 			Detached: item.detached,
+			// The registered checkout entry is itself a symbolic link, so what
+			// a person deletes by that name and what the name currently points
+			// at are two different directories. Only the final component is
+			// asked about: an ambient symbolic link above it, which on some
+			// hosts covers the temporary directory of every process, moves the
+			// root as much as the checkout and is answered by containment.
+			SymlinkedPath: isSymbolicLink(registered),
+			OutsideRoot:   !withinRoot(root, resolved),
+			path:          registered,
+			resolved:      resolved,
 		}
 		switch {
 		case item.bare:
@@ -715,6 +791,18 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		}
 		views = append(views, view)
 	}
+	// Two checkouts at one head are reported here, at inventory time, and
+	// nothing is refused for it. A second checkout at the target ref's own
+	// head is ordinary.
+	atHead := map[string]int{}
+	for _, view := range views {
+		if view.Head != "" {
+			atHead[view.Head]++
+		}
+	}
+	for i := range views {
+		views[i].DuplicateHead = views[i].Head != "" && atHead[views[i].Head] > 1
+	}
 	sort.SliceStable(views, func(i, j int) bool {
 		if views[i].Current != views[j].Current {
 			return views[i].Current
@@ -730,6 +818,29 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 	w.repoRemoteCached = remote
 	w.worktreesCachedAt = time.Now()
 	return LocalRepo{Path: selected, Remote: remote, Worktrees: append([]WorktreeView(nil), views...)}, nil
+}
+
+// isSymbolicLink reports whether the final component of this path is a
+// symbolic link. An unreadable entry answers false: a path this process cannot
+// stat is not evidence of anything, and the checkout's own state already says
+// unavailable.
+func isSymbolicLink(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode()&os.ModeSymlink != 0
+}
+
+// withinRoot reports whether a resolved path is the root or is under it. It
+// compares path elements rather than string prefixes: "/a/bc" starts with
+// "/a/b" as a string and is not inside it as a directory.
+func withinRoot(root, path string) bool {
+	if root == "" || path == "" {
+		return false
+	}
+	relative, err := filepath.Rel(root, path)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func Open(ctx context.Context, repo string) (*Workspace, error) {

@@ -101,6 +101,30 @@ tip was explicitly abandoned. Current, detached, non-clean and target
 checkouts stay protected. Unknown evidence protects rather than enlarges the
 deletable set; an unmapped checkout is not deletable.
 
+Staleness is not settlement. A stale request is one whose reasoning moved and
+whose work is still owed, so a stale commitment protects its checkout, and so
+does a lifecycle word this client does not know.
+
+Four further reports protect and never delete:
+
+- `duplicate_head` says another checkout of this repository sits at the same
+  head. It is reported at inventory time and refuses nothing: a second
+  checkout at the target ref's own head is ordinary.
+- `refless_head` says no ref in this repository points at this checkout's
+  head, so nothing but the checkout can reach it. A detached checkout part-way
+  along a branch reads as refless too, and is already protected for being
+  detached.
+- `outside_checkout_root` says the resolved path is not under the checkout
+  root, and `symlinked_path` says the registered checkout entry is itself a
+  symbolic link, so the name a person would delete and the directory they
+  would delete are two different things. The root is the directory holding the
+  served checkout.
+- `pending_decision` names a live unratified proposal that rests, by a
+  structural `rests_on` edge, on an artifact whose commit this checkout still
+  holds, while that artifact's own parent request is unsettled. A retired
+  artifact still counts: retirement withdraws a pointer, it does not decide
+  the proposal that cites it. Where two apply, the earlier proposal is named.
+
 The ordinary checkout listing keeps its existing eight-second cache. The
 classification refreshes attached branch tips from current refs before making
 its decision. Cleanliness is still an advisory observation: W1 or the actor
@@ -126,6 +150,91 @@ deduplicated before allocating the Git batch. Cancellation or exhaustion discard
 advice and clears partial classifications to `unknown`, preserving every
 potential unsettled obligation. Output collectors have byte ceilings.
 Crossing a bound reports unknown or omitted rows; it never proves a negative.
+
+## Checkout and branch association
+
+One captured read answers the whole request. `GET /v0/worktrees` takes the
+checkout listing once, reads the bounded ref inventory once, resolves the
+remote once, and opens one three-second deadline and one 65,536-step budget;
+the cleanup classification above and the association below both read and spend
+from that one capture. The budget bounds the request, not each judgment: when
+one spends it the other reports unknown rather than starting a fresh
+allowance. Reaching any bound withholds the whole response: whenever the read
+is exhausted or cancelled, or the association stops at its tip limit, its
+per-tip depth limit or a captured tip this repository does not hold,
+`deletable` is empty, every checkout reads `classification` and `grade` of
+`unknown` with the reason that names the bound, and `associations.complete` is
+false with the same `reason`. An answer one judgment finished before the bound
+was reached is still an answer from a read that never finished. The endpoint
+obtains its pair only through that one disposition step.
+
+Neither judgment reads the other's result, so an unsigned claim never reaches
+a deletion decision. The checkout listing keeps its own eight-second cache;
+the association keeps its own, keyed as below.
+
+`GET /v0/worktrees` also carries `associations`, a read-only reverse
+association of checkouts and branches to durable work. It has one row for
+every branch tip in the bounded ref inventory and one for every checkout head
+no branch covers, each with its `head`, the `checkouts`
+that sit on it, the `governing` durable record its implementing commits claim,
+a `grade`, and up to 20 per-commit `claims`. Each checkout row repeats its own
+`governing` and `grade`. The pass derives everything from Git and the verified
+projection and writes nothing, anywhere.
+
+The grades are:
+
+- `claimed`: a `Rests-On:` trailer on a commit of this tip's first-parent
+  lineage names a durable record this workroom holds. It is a claim and
+  nothing more. That trailer is ordinary commit message text that nobody signs
+  and nothing verifies, unlike the kernel's own event envelope trailer.
+- `corroborated`: a standing artifact statement names that exact commit, and
+  the review guard's owned edge ties the actor its signature names to the same
+  governing record, or for self-initiated work to the adopted decision. The
+  claim carries the `artifact`, `actor`, and `request`, `promise` or
+  `decision` it was promoted by. No Git author ident is read: an author ident
+  is committer-controlled, so a forged trailer under a copied ident stays
+  `claimed`.
+- `unresolved`: the trailer names no record here, or more than one. The claim
+  carries the resolver's own `reason`, its `candidates` and
+  `candidates_omitted` verbatim, and picks no winner.
+- `foreign`: a canonical identifier of another genesis, carried as typed and
+  never resolved locally.
+- `unknown`: the pass did not finish.
+
+Corroboration attaches to a commit and never to a branch. A tip past the
+commit somebody signed for grades `claimed` and names the signed commit in
+`corroborated_at`, because the later commits are not the head anyone signed
+for.
+
+Bounds are the ref, tip and object limits above, the same 65,536-step budget
+and three-second deadline, 512 first-parent commits per tip and one mebibyte
+per commit object. Each commit is re-verified against its own hash before any
+trailer on it is read.
+
+Results cache under the captured read: the durable frontier, a digest of the
+captured ref inventory, and a digest of the captured checkout listing (each
+checkout's label, branch, head and detached flag, in order). All three
+matter. A branch that moves, is renamed or is deleted changes the answer with
+no durable record moving, and a checkout that is added, removed, renamed or
+moved to another detached head changes it with no ref moving. A cache keyed on
+less than its inputs does not go stale; it stays wrong until something
+unrelated happens to move.
+
+Every bound reports incomplete rather than a shorter answer. `complete` is
+false, with a `reason`, empty `rows` and every checkout `unknown`, when there
+are more branches and unbranched checkout heads than the tip limit reads, when
+a first-parent lineage is longer than the per-tip limit reads, when a captured
+tip names an object this repository does not hold, when the step budget is
+exhausted, when the read is cancelled, and when the ref inventory is
+unavailable. A repository that genuinely holds no commits is a complete answer
+of nothing and stays `complete`. The annotation step that copies grades onto
+checkouts does not run on an incomplete table, so an unknown grade cannot be
+cleared to blank on the way out.
+
+Nothing in this table widens the deletable set, authorises a signature, moves a
+merge or licenses a deletion. There is no `gs worktree` command, no
+per-checkout record, no `refs/gitseq/lanes` ref and no `branch` field on any
+durable kind.
 
 ## See also
 

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 // /v0/worktrees is the only path by which a remote reaches the browser, so the
@@ -242,4 +243,87 @@ func seededRepo(t *testing.T, name, remote string) string {
 		t.Fatalf("set remote on %s: %v: %s", name, err, output)
 	}
 	return repo
+}
+
+// The association reaches the browser through this endpoint and nowhere else,
+// so the wiring is pinned here rather than inferred from the app-layer value.
+// Every proof that the grading is right lives in internal/app; what this holds
+// is that the endpoint asks for it at all, and that a degraded durable read
+// still answers with an empty table rather than a missing key.
+func TestWorktreesResponseCarriesTheCheckoutAssociation(t *testing.T) {
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	if output, err := exec.Command("git", "init", "-q", "-b", "main", repo).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, output)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		output, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, output)
+		}
+		return strings.TrimSpace(string(output))
+	}
+	git("commit", "--allow-empty", "-qm", "seed")
+	workspace, seed, err := app.Init(ctx, repo, "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, _, err := workspace.AddActor(ctx, "human", "agent", "agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := workspace.Act(ctx, "human", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "implement it",
+		Body:    map[string]string{"to": actor.Fingerprint, "conditions": "an approved head lands", "target_ref": "refs/heads/main"},
+		RestsOn: []string{seed.ID}, IdempotencyKey: "endpoint-request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	git("checkout", "-qb", "request/endpoint")
+	git("commit", "--allow-empty", "-qm", "work\n\nRests-On: "+request.Record.ID)
+	git("checkout", "-q", "main")
+
+	server, err := New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	httpServer := httptest.NewServer(server.Handler())
+	defer httpServer.Close()
+	response, err := http.Get(httpServer.URL + "/v0/worktrees")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"associations"`) {
+		t.Fatalf("the response has no associations key: %s", body)
+	}
+	var local worktreesResponse
+	if err := json.Unmarshal(body, &local); err != nil {
+		t.Fatalf("decode %s: %v", body, err)
+	}
+	if !local.Associations.Complete {
+		t.Fatalf("the association did not finish: %+v", local.Associations)
+	}
+	found := false
+	for _, row := range local.Associations.Rows {
+		if row.Branch != "request/endpoint" {
+			continue
+		}
+		found = true
+		if row.Governing != request.Record.ID || row.Grade != app.GradeClaimed {
+			t.Fatalf("the branch row does not carry its claim: %+v", row)
+		}
+	}
+	if !found {
+		t.Fatalf("no row for the implementing branch: %+v", local.Associations.Rows)
+	}
+	if len(local.Worktrees) != 1 || local.Worktrees[0].Grade == "" {
+		t.Fatalf("the served checkout carries no grade: %+v", local.Worktrees)
+	}
 }
