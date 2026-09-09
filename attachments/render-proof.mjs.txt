@@ -1,0 +1,24 @@
+import {createRequire} from 'node:module';
+import {execFileSync} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
+const repo='/Users/hughpyle/play/gitseq';
+const req=createRequire(repo+'/ui/package.json');
+const React=req('react');
+const {renderToStaticMarkup}=req('react-dom/server');
+const {createServer}=await import(req.resolve('vite'));
+const head='c8c29c6983f31330dd214c344f7b94f806bf70b1';
+const event='git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25336e8e9f390d0538d69aceefbb98805b02faaf';
+const path='docs/reference/reading-view.md';
+const text=execFileSync('git',['show',head+':'+path],{cwd:repo,encoding:'utf8'});
+const uiPaths=['ui/src/components/Preview.tsx','ui/src/lib/fileReferences.ts','ui/src/lib/address.ts'];
+for(const p of uiPaths){const actual=execFileSync('git',['hash-object',p],{cwd:repo,encoding:'utf8'}).trim();const expected=execFileSync('git',['rev-parse',head+':'+p],{cwd:repo,encoding:'utf8'}).trim();if(actual!==expected)throw Error('UI source differs: '+p);}
+const vite=await createServer({root:repo+'/ui',appType:'custom',logLevel:'silent',server:{middlewareMode:true}});
+try{
+ const {MarkdownPreview,PreviewContext}=await vite.ssrLoadModule('/src/components/Preview.tsx');
+ const html=renderToStaticMarkup(React.createElement(PreviewContext.Provider,{value:{address:{kind:'notes',event},open(){}}},React.createElement(MarkdownPreview,{event,commit:'0afa98aa26be6756682f28defb081043ecc8efa2',path,text})));
+ const label='Previous-frontier readers during a rebuild';
+ const result={source_head:head,event,document_path:path,ui_source_blobs_match_head:true,scope:'Actual MarkdownPreview SSR, not native-browser clicking or preview-endpoint call',target:'../../notes/2026-09-07-previous-frontier-readers.md',target_exists_at_source_head:true,unavailable_markers:(html.match(/link unavailable/g)||[]).length,label_is_unavailable:html.includes(label+' <span class="text-muted">(link unavailable)</span>'),label_anchor_present:[...html.matchAll(/<a\b[^>]*>(.*?)<\/a>/g)].some(m=>m[1].includes(label)),rendered_fragment:html.slice(Math.max(0,html.indexOf(label)-20),html.indexOf(label)+label.length+100)};
+ execFileSync('git',['cat-file','-e',head+':notes/2026-09-07-previous-frontier-readers.md'],{cwd:repo});
+ writeFileSync('/tmp/planner-reading-view-navigation-proof.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result));
+ if(!result.label_is_unavailable||result.label_anchor_present)process.exitCode=1;
+}finally{await vite.close();}

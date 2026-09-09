@@ -1,0 +1,13 @@
+{
+  "source_head": "c8c29c6983f31330dd214c344f7b94f806bf70b1",
+  "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:25336e8e9f390d0538d69aceefbb98805b02faaf",
+  "document_path": "docs/reference/reading-view.md",
+  "ui_source_blobs_match_head": true,
+  "scope": "Actual MarkdownPreview SSR, not native-browser clicking or preview-endpoint call",
+  "target": "../../notes/2026-09-07-previous-frontier-readers.md",
+  "target_exists_at_source_head": true,
+  "unavailable_markers": 1,
+  "label_is_unavailable": true,
+  "label_anchor_present": false,
+  "rendered_fragment": "ing-relaxed \"><span>Previous-frontier readers during a rebuild <span class=\"text-muted\">(link unavailable)</span></span>.</p><div class=\"h-2\"></div><div role=\"hea"
+}
