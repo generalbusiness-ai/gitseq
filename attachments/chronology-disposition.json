@@ -1,0 +1,9 @@
+{
+  "scope": "Requester disposition of an admitted chronology gap. Author timings and provenance are attributed to the signed statement; Planner did not inspect private session transcripts or rerun the large campaign.",
+  "original_request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0b5fdd93443cedeef9dbc4ddf733d8c0b0bdd60d",
+  "review": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4bd740742bf0b3b3dfaed8338baf76d085dff33a",
+  "chronology": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f74306a5fd9b2e5dc447f21f6ca34a71107137b",
+  "changed_condition": "The completed campaign may be retained with explicitly retrospective table/rules publication and verified pre-existing target attribution. The original before-timing condition is not claimed met.",
+  "unchanged": "Five residual dimensions, complete data retention, existing targets/limits/authority, independent review and source delivery, assigned performer and main destination.",
+  "rerun_policy": "No large rerun solely to replace missing pre-publication chronology. A new execution is still required if a substantive source/workload/evidence defect makes it necessary to support a claim."
+}
