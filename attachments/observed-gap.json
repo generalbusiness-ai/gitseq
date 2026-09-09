@@ -1,0 +1,213 @@
+{
+  "checked_utc": "2026-09-09T20:01:42.396819+00:00",
+  "scope": "Observed native wait response plus retained accepted event payloads; no new load test or signature audit. Independent native follow-up verified the receipt and the correction reply.",
+  "from": {
+    "frontier": [
+      {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "ed87935e289f7f8a45ef9267c06cf5ad0a048f5d",
+        "depth": 22214
+      }
+    ],
+    "live": {
+      "generation": "generation:3d768d29126b7de6cd1a48c0de53be40",
+      "position": 2094
+    }
+  },
+  "to": {
+    "frontier": [
+      {
+        "genesis": "5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "head": "c9d6de7fabc7bdeb1ee433d8a98a9cd3263ce1fb",
+        "depth": 22296
+      }
+    ],
+    "live": {
+      "generation": "generation:3d768d29126b7de6cd1a48c0de53be40",
+      "position": 2104
+    }
+  },
+  "event_count": 82,
+  "returned_count": 50,
+  "durable_skipped": 32,
+  "returned_kind_counts": {
+    "supersede": 50
+  },
+  "omitted_kind_counts": {
+    "assert": 2,
+    "artifact": 25,
+    "supersede": 5
+  },
+  "omitted": [
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2faeb98f21cb457e6799e89f1161e2cb62efe535",
+      "kind": "assert",
+      "text": "approved candidate merged"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:12ac9d0ef70a77cb79f0d19b4749b0f555753840",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at cmd/gs/main_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ada9a9118541b87d72fccdd18047d2a9348e6d0d",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at cmd/gs/merge_completion_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1cd36d3dce9f3ff3a19d9155f147b44077207d75",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at cmd/gs/succession.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc233a7f42fe7d3b95e7cee69d2a049e9d327d73",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at docs/reference/architecture.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d2da4be02a5d51db2b53d86565d1c44e084d1de",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at docs/reference/gs/merge-plan.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6fbfee20565595e0363361cba2d886c2ed75074b",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at docs/reference/gs/merge.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:517a9686965fa377f15e0d45b8c4906081e09571",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at docs/reference/landing-observations.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad45de5344428512116916f5e54380f8cd5d4edf",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at docs/reference/mcp/merge_plan.md"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:532bd0618140aab65c65a519ddf47061e46c558b",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/app/app_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e40ba50eb2e8ea4245f6a79e40971740644340d2",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/app/landing.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:72234ddf63f710a5ea8a814c35b08bfa85efb2a9",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/app/landing_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f344a003416282e0a64fb0d86f55743b087a2ac4",
+      "kind": "assert",
+      "text": "Answers under promise c2c18651 (#22093) to the planner's review acf2c640 (#22166), the adoption reconciliation 68e00316 and the independent census 0a048f5d; the adopted narrowing ddaf3197 governs and its conditions are kept. (1) Signing bou"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3370168628434ca064ad2698704a8a3720fdee8",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/app/receipt_profile_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ddf8126ad6ec73965cec52f5cda0f5c1d6c8a47f",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/mergeplan/mergeplan.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ea01b8cd96403db0a941c48b701c3e95674818a6",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/mergeplan/succession_progress.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76e8b1dd62d2251a04cc495e3c92038dd7eec88c",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/mergeplan/succession_progress_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:093195fa7bb615682560ddf71e489b6d6761f6ce",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/service"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:78e9227a59f16a05b8f43b9e225b29bafe4c851d",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/service/uidist/assets/index-BtXL2bAC.js"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7e9d72b82c67862a84272eecec8275c533088828",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/service/uidist/index.html"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3f96b40f6ab49cf2de503c92db1787d8271b9669",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/workroom/fold.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:597eb686d6a09cf620f6eb0b8820dba214b1eaea",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/workroom/landing.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a691b1bb43616263a949a9b3867e8330b9ca474",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/workroom/merge_discharge_test.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f2b0f9c2b5cc9d2c68cbe8e3f401a57c5bed42a4",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at internal/workroom/schema.go"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ebabce8ff6f39781c14a16378ffe3f06588d80f2",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at ui/src/lib/api.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b173edb2deb62a53166bd7c47fa907d2bcbcc71",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at ui/src/lib/spine.ts"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4ba2a0745f46b7ea0016bfee1ff2686e644ac90e",
+      "kind": "artifact",
+      "text": "Merge published the current artifact at ui/test/interaction.test.mjs"
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e0c4ca626b8cb353186c25684dc3fbf9eb3af069",
+      "kind": "supersede",
+      "text": "Merge retired a covered predecessor; the successor is at internal/mergeplan/succession_progress_test.go."
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2442bac8dd2f7581ddb44c67bacc53822618cd07",
+      "kind": "supersede",
+      "text": "Merge retired a covered predecessor; the successor is at internal/workroom/schema.go."
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ec59342497610e005915850503941adcbf12ced4",
+      "kind": "supersede",
+      "text": "Merge retired a covered predecessor; the successor is at internal/mergeplan/mergeplan.go."
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6a3e5746287fc856efd4d6c68e3ed6e15a0e4745",
+      "kind": "supersede",
+      "text": "Merge retired a covered predecessor; the successor is at docs/reference/mcp/merge_plan.md."
+    },
+    {
+      "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9cdabf33319df40eb1df2dbf08687f5f9a609f1f",
+      "kind": "supersede",
+      "text": "Merge retired a covered predecessor; the successor is at cmd/gs/succession.go."
+    }
+  ],
+  "recovered_substantive_events": [
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2faeb98f21cb457e6799e89f1161e2cb62efe535",
+    "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f344a003416282e0a64fb0d86f55743b087a2ac4"
+  ],
+  "limitations": [
+    "No accepted history was deleted.",
+    "Current actor request/proposal lanes and priority chat have separate repeat-until-action rules.",
+    "This does not establish a lost assignment or incorrect approval.",
+    "The omission affected a coordinator reading a substantive assertion outside those repeating lanes."
+  ]
+}
