@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d039290ff27ecd191be47c24d98b763acfad352","text":"Retire the #22093 artifact for notes/2026-08-05-gitseq-design.md at the withdrawn head; successor c7063d1f84adc763a4c8e74a857110bd50b8a17c on the same promise c2c18651."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e875ebfa22e5ae8bb92c1f8c7c6a1ab2c584e640","text":"Retire the #22093 artifact for docs/reference/gs/verify.md at the withdrawn head; successor 3f46d12c955576be9d37add6628af574e08b0de7 on the same promise c2c18651."}
