@@ -64,6 +64,7 @@ printf '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"status",
 | `not_actionable` | Commitments involving you that nobody can currently advance. |
 | `needs_your_attention` | Your own acts that did not take force, and events that concern you. |
 | `totals` | Depth, commitment counts by status with a stale count beside each, artifact counts split into stale, retired and superseded-world, and ineffective and disputed acts. |
+| `totals.work` | The named commitment populations for the whole workroom — open, completed, closed-not-completed and stale, with the open lifecycle breakdown and the commitment total. The lists above are yours; these counts are the board's, and `scope` says so. See [the Work summary](../gs/status.md#the-work-summary). |
 | `live` | Presence and the live generation, or `degraded`. |
 | `priority_ephemeral_chat` | This exact session's bounded, unacknowledged addressed frames. `available` is false when the resident is unavailable; `skipped` counts additional pending frames behind the current page. |
 | `cursor` | The composite cursor. Pass it back to `wait`. |

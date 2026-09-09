@@ -32,6 +32,12 @@ or completed it.
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key signs both guarded acts; defaults to startup `--actor`. |
 
+`old_request`, `rests_on` and the recognized event fields of `body` take a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier. Both acts of the pair are resolved against one
+verified event set before either is signed, and the result names what it
+resolved.
+
 ## Example
 
 ```json

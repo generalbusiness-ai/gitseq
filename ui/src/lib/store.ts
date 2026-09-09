@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { api, type Actor, type Cursor, type Projection, type Status } from "./api";
+import { api, type Actor, type Cursor, type Projection, type Rebuild, type Status } from "./api";
+import { probeRebuild } from "./rebuild";
 import { projectName } from "./title";
 export { buildThreadIndex, threadChildren } from "./threads";
 export type { ThreadContent, ThreadIndex, ThreadSummary } from "./threads";
@@ -11,6 +12,11 @@ export interface Workroom {
   repoRemote?: string; // that repository's remote, when one is safe to link
   actors: Actor[];
   offline: boolean;
+  // rebuilding is the resident's own report that it is verifying durable
+  // history while this page's wait is outstanding. It is set only while a
+  // wait has been open long enough for the probe to fire, so a retained
+  // status can be qualified on screen instead of read as current.
+  rebuilding?: Rebuild;
 }
 
 // One wait-loop drives the whole page: the composite cursor is the only
@@ -28,13 +34,20 @@ export function useWorkroom(): Workroom {
   const [repoRemote, setRepoRemote] = useState<string>();
   const [actors, setActors] = useState<Actor[]>([]);
   const [offline, setOffline] = useState(false);
+  const [rebuilding, setRebuilding] = useState<Rebuild>();
 
   useEffect(() => {
     let stopped = false;
     let cursor: Cursor | undefined;
+    let stopProbe: () => void = () => {};
 
+    // Whether the page is showing a status, and the profile it named.
+    let retained = false;
+    let retainedProfile: string | undefined;
     const apply = (next: Status) => {
       if (stopped) return;
+      retained = true;
+      retainedProfile = next.profile;
       setStatus(next);
       setOffline(false);
       cursor = next.cursor;
@@ -56,8 +69,39 @@ export function useWorkroom(): Workroom {
           if (!cursor) {
             apply(await api.status());
           } else {
-            const wait = await api.wait(cursor);
-            apply(wait.status);
+            // While the wait is outstanding, ask the non-blocking rebuild
+            // endpoint whether the resident is verifying from cold. A wait
+            // that returns within the second never fires the probe. Stopping
+            // the probe before the status is applied is what keeps a late
+            // answer from qualifying the newer status; the cleanup below
+            // stops it too.
+            stopProbe = probeRebuild(api.rebuild, (next) => {
+              if (stopped) return;
+              setRebuilding(next.running ? next : undefined);
+              // The retained status stays only while it can be shown to be
+              // interpretable by the process answering: both name a fold
+              // profile and the two are equal. A different profile is a
+              // binary whose contract the retained status does not meet,
+              // whether it is auditing from cold or re-interpreting a signed
+              // checkpoint with nothing "running"; a missing profile on
+              // either side is unverifiable and treated the same way. Drop
+              // the status: the page then shows the rebuild notice, as a new
+              // reader would, until the wait answers with one this process
+              // produced.
+              const compatible = Boolean(next.profile) && next.profile === retainedProfile;
+              if (!compatible && retained) {
+                retained = false;
+                setStatus(undefined);
+              }
+            });
+            try {
+              const wait = await api.wait(cursor);
+              stopProbe();
+              apply(wait.status);
+            } finally {
+              stopProbe();
+              if (!stopped) setRebuilding(undefined);
+            }
           }
         } catch {
           if (!stopped) setOffline(true);
@@ -68,10 +112,11 @@ export function useWorkroom(): Workroom {
     void loop();
     return () => {
       stopped = true;
+      stopProbe();
     };
   }, []);
 
-  return { status, repo, project, repoRemote, actors, offline };
+  return { status, repo, project, repoRemote, actors, offline, rebuilding };
 }
 
 // Ticket numbers: every durable event's 1-based position in log order.

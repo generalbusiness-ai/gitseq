@@ -2510,6 +2510,16 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	if err != nil || partial.Landed != 2 {
 		t.Fatalf("partial succession = %+v, %v", partial, err)
 	}
+	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{Verb: app.VerbSupersede,
+		Target: fixture.ground, Text: "Evidence moved while succession was interrupted.",
+		RestsOn: []string{fixture.ground}, IdempotencyKey: "partial-succession-ground"}); err != nil {
+		t.Fatal(err)
+	}
+	prospective := mergeplan.Build(fixture.ctx, fixture.workspace, fixture.repo, fixture.candidate, approval,
+		fixture.workspace.View().Actors["operator"].Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	if !prospective.Allowed || prospective.Mode != "resume" {
+		t.Fatalf("partial succession plan = %+v, want resume", prospective)
+	}
 	beforeRetry := fixture.snapshot(t).Depth
 	if err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,
@@ -2618,12 +2628,6 @@ func TestMergeRetryBeforeDurableReceiptUsesTheSealedGitPlan(t *testing.T) {
 	}
 }
 
-// buildNestedCrossAuthorApproval creates the shape the directional reach rule
-// decides. The approved head adds `docs/how-to/x.md` beside the reviewed
-// `feature.txt`, and another actor holds a pointer at bare `docs`, so planning
-// the merge retires a cross-author pointer above the reviewed path: reach that
-// the fold's symmetric lineage authorizes and the command's prospective
-// direction refuses.
 // adopt files a ratified proposal that adopts one artifact, the positive
 // witness a self-initiated review names with --self-initiated.
 func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
@@ -2641,6 +2645,9 @@ func (f workflowFixture) adopt(t *testing.T, artifact, key string) string {
 	return proposal.Record.ID
 }
 
+// buildNestedCrossAuthorApproval adds docs/how-to/x.md beside feature.txt and
+// another actor's covering pointer at docs. Current planning carries that wider
+// pointer; an older sealed plan can retire it under the fold's unchanged rule.
 func buildNestedCrossAuthorApproval(t *testing.T) (workflowFixture, string, string, string, string) {
 	t.Helper()
 	f := newWorkflowFixture(t)
@@ -2765,14 +2772,10 @@ func buildRemovedNestedCrossAuthorApproval(t *testing.T) (workflowFixture, strin
 	return f, candidate, approval
 }
 
-// The regression this repair fixes, end to end in the direction the reviewer
-// filed it. A receipt sealed while reach read both directions — here, one
-// whose plan naturally retires another actor's pointer at bare `docs` above
-// the reviewed `docs/how-to/x.md` — must resume by appending its immutable
-// succession suffix. Re-applying today's prospective guard to that historical
-// plan would strand it before the durable suffix completes; replanning or
-// re-merging would reinterpret what was sealed instead of resuming it.
-func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t *testing.T) {
+// A receipt built by current exact-path planning resumes its recorded suffix.
+// The separate historical-wider-receipt test covers a sealed plan that today's
+// prospective reach guard would refuse.
+func TestMergeResumeAppendsASealedExactPathReceiptWithoutReplanningOrRemerging(t *testing.T) {
 	t.Parallel()
 	f, candidate, approval, _, nested := buildNestedCrossAuthorApproval(t)
 	targetPreHead := testGit(t, f.repo, "rev-parse", "HEAD")
@@ -2802,8 +2805,7 @@ func TestMergeResumeAppendsASealedSymmetricReceiptWithoutReplanningOrRemerging(t
 	mergeHead := testGit(t, f.repo, "rev-parse", "HEAD")
 	testGit(t, f.repo, "update-ref", mergeReceiptRef(approval), mergeHead, "")
 
-	// What was sealed really does sit outside today's prospective reach, so
-	// only the fold's unchanged authority can carry it.
+	// This current plan is within today's prospective reach.
 	if err := mergeplan.ValidateReach(snapshot.Projection, sealed, approval,
 		f.workspace.View().Actors["operator"].Fingerprint); err != nil {
 		t.Fatalf("sealed exact-path plan against the current guard: %v", err)
@@ -3508,15 +3510,11 @@ func TestBatchRefusesTrailingInputWithoutLanding(t *testing.T) {
 	})
 }
 
-// TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix is the recovery
-// case: the first run stops mid-chain, so only a prefix is durable. The second
-// run of the same file replays that prefix under its idempotency key, resolves
-// the label to the event already minted, and lands only the suffix.
-func TestBatchRetryAfterPartialLandingReplaysPrefixAndLandsSuffix(t *testing.T) {
+// Preflight refusal appends nothing. Once the missing actor exists, the whole
+// batch lands; rerunning it replays both events. A separate test covers recovery
+// when only a proper prefix is already durable.
+func TestBatchPreflightRefusalThenFullLandingAndReplay(t *testing.T) {
 	fixture := newBatchFixture(t)
-	// An act the application boundary cannot build now stops the whole batch
-	// before the first append, so the prefix is durable only once the chain
-	// can land cleanly; the idempotency keys keep every later rerun cheap.
 	acts := fmt.Sprintf(`[
 	  {"label": "note", "verb": "state", "kind": "assert", "text": "the prefix is durable",
 	   "rests_on": [%q], "idempotency_key": "partial-assert"},

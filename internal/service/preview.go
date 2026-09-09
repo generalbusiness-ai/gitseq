@@ -21,6 +21,11 @@ type previewRequest struct {
 	Path       string `json:"path,omitempty"`
 	Commit     string `json:"commit,omitempty"`
 	Attachment string `json:"attachment,omitempty"`
+	// Line is the cited line; the answer is the window containing it.
+	Line int `json:"line,omitempty"`
+	// Start names a window by its first line, for previous/next navigation,
+	// and takes precedence over Line for choosing the window.
+	Start int `json:"start,omitempty"`
 }
 
 type previewResponse struct {
@@ -35,7 +40,12 @@ type previewResponse struct {
 	Attachments []string `json:"attachments,omitempty"`
 	Omitted     int      `json:"omitted,omitempty"`
 	Heads       []string `json:"heads,omitempty"`
-	Limit       int      `json:"limit"`
+	// Limit is the Git read budget: the largest file the reader verifies.
+	Limit int `json:"limit"`
+	// Size is the verified blob's length in bytes; Window says which of its
+	// lines Content carries.
+	Size   int            `json:"size,omitempty"`
+	Window *previewWindow `json:"window,omitempty"`
 }
 
 func (s *Server) handlePreview(writer http.ResponseWriter, request *http.Request) {
@@ -60,7 +70,7 @@ func (s *Server) handlePreview(writer http.ResponseWriter, request *http.Request
 		write(writer, nil, errors.New("workroom unavailable"))
 		return
 	}
-	result := previewResponse{Repo: s.workspace.Repo, Event: input.Event, Status: "ready", Limit: gitstore.PreviewContentLimit}
+	result := previewResponse{Repo: s.workspace.Repo, Event: input.Event, Status: "ready", Limit: gitstore.PreviewReadBudget}
 	fail := func(status, message string) {
 		result.Status = status
 		result.Message = message
@@ -87,6 +97,10 @@ func (s *Server) handlePreview(writer http.ResponseWriter, request *http.Request
 	result.Heads = previewHeads(snapshot.Projection, input.Event, config.ObjectFormat)
 	if input.Path != "" && input.Attachment != "" || input.Path == "" && input.Commit != "" {
 		fail("invalid", "Choose one cited file or evidence attachment.")
+		return
+	}
+	if input.Line < 0 || input.Line > previewLineCeiling || input.Start < 0 || input.Start > previewLineCeiling || (input.Line > 0 || input.Start > 0) && input.Path == "" && input.Attachment == "" {
+		fail("invalid", "A line or window start must be a positive line number of one cited file or attachment.")
 		return
 	}
 	var object gitstore.PreviewObject
@@ -152,7 +166,7 @@ func (s *Server) handlePreview(writer http.ResponseWriter, request *http.Request
 		case errors.Is(err, gitstore.ErrPreviewMissing):
 			fail("missing", "The file is absent at this exact revision.")
 		case errors.Is(err, gitstore.ErrPreviewLimit):
-			fail("oversize", "This file or its Git metadata exceeds the bounded preview limit.")
+			fail("oversize", "This file or its Git metadata exceeds the 4 MiB preview read budget.")
 		case errors.Is(err, gitstore.ErrPreviewType):
 			fail("unsupported", "Symbolic links and submodules are not previewed.")
 		default:
@@ -171,11 +185,11 @@ func (s *Server) handlePreview(writer http.ResponseWriter, request *http.Request
 		fail("binary", "This file is not readable UTF-8 text.")
 		return
 	}
-	if bytes.Count(object.Content, []byte{'\n'}) >= 5000 {
-		fail("oversize", "This file exceeds the 5,000-line preview limit.")
-		return
-	}
-	result.Content = string(object.Content)
+	content, window, message := windowFor(object.Content, input.Line, input.Start)
+	result.Content = content
+	result.Size = len(object.Content)
+	result.Window = &window
+	result.Message = message
 	write(writer, result, nil)
 }
 

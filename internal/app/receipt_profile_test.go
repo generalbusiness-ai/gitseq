@@ -6,10 +6,11 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 func TestReceiptAccountingRejectsPriorProjectionCaches(t *testing.T) {
-	for _, prior := range []string{"workroom-fold@20", "workroom-fold@21"} {
+	for _, prior := range []string{"workroom-fold@20", "workroom-fold@21", "workroom-fold@22", "workroom-fold@23"} {
 		t.Run(prior, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)
@@ -35,7 +36,7 @@ func TestReceiptAccountingRejectsPriorProjectionCaches(t *testing.T) {
 			if !reflect.DeepEqual(got.Snapshot, want) || got.Source != SnapshotSourceSignedCheckpointTail {
 				t.Fatalf("old projection was not rebuilt from its kernel checkpoint: source=%q debt=%d", got.Source, got.Snapshot.Projection.OmittedSupersessions)
 			}
-			if workspace.snapshotProfile != apphost.DefaultApplication+"\x00workroom-fold@22" {
+			if workspace.snapshotProfile != apphost.DefaultApplication+"\x00"+workroom.ProfileVersion {
 				t.Fatalf("rebuilt profile = %q", workspace.snapshotProfile)
 			}
 		})

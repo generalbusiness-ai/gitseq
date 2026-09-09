@@ -1,9 +1,9 @@
 package intent
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -71,6 +71,10 @@ func ParseEnvelope(message string, maxBytes uint64) (Signed, []string, error) {
 	return Signed{Intent: encoded, ActorKey: actor, Signature: sig}, rests, nil
 }
 
+// EqualRefs reports whether two causal-reference lists are the same ordered
+// sequence of elements. No references and an empty list are equal; order and
+// duplicates are significant; each element is compared whole, so no separator
+// inside a reference can make different lists look alike.
 func EqualRefs(a, b []string) bool {
-	return bytes.Equal([]byte(strings.Join(a, "\x00")), []byte(strings.Join(b, "\x00")))
+	return slices.Equal(a, b)
 }

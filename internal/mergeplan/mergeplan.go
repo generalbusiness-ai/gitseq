@@ -993,6 +993,7 @@ func provenanceClosure(provenance map[string][]string, effective map[string]bool
 }
 
 type sealedReceipt struct {
+	raw           Receipt
 	Approval      string
 	Candidate     string
 	TargetRepo    string
@@ -1143,6 +1144,7 @@ func ReadReceipt(ctx context.Context, checkout, head string) (Receipt, bool, err
 
 func decodeReceipt(receipt Receipt) (sealedReceipt, error) {
 	decoded := sealedReceipt{
+		raw:      receipt,
 		Approval: receipt.Approval, Candidate: receipt.Candidate,
 		TargetRepo: receipt.TargetRepo, TargetRef: receipt.TargetRef,
 		TargetPreHead: receipt.TargetPreHead, MergeHead: receipt.MergeHead,
@@ -1423,6 +1425,35 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		}
 		if strings.TrimSpace(head) != receipt.MergeHead {
 			return fail("approval_use", fmt.Errorf("approval was already used by merge %s, but checkout is at another head", receipt.MergeHead))
+		}
+		// Fresh approval checks would reject the reporting artifact retired by
+		// this very succession. Recovery keeps the sealed receipt's checks.
+		if _, coherent := receipt.raw.TargetPairPresent(); !coherent {
+			return fail("target", errors.New("merge receipt must carry target repository and ref together"))
+		}
+		target, err := ResolveTarget(ctx, workspace, checkout)
+		if err != nil {
+			return fail("target", err)
+		}
+		sealed := receipt.raw.SealedTarget(WorkroomRepo(workspace))
+		if target.Repo != sealed.Repo || target.Ref != sealed.Ref {
+			return fail("target", errors.New("checkout destination does not match the sealed merge receipt"))
+		}
+		acts := SuccessionActs(receipt.Approval, receipt.raw.Authorization, receipt.raw.AuthorizationRatification,
+			receipt.Candidate, Target{Repo: receipt.TargetRepo, Ref: receipt.TargetRef, PreHead: receipt.TargetPreHead},
+			receipt.MergeHead, receipt.raw.Staleness, receipt.raw.HoldWarning == "true",
+			Succession{Publish: receipt.Publish, Retire: receipt.Retire, LeftLive: receipt.LeftLive, ChangedPaths: receipt.ChangedPaths})
+		if len(acts) == 0 {
+			return fail("succession", errors.New("sealed merge succession is not representable"))
+		}
+		pending, err := PendingSuccession(snapshot.Projection, merger, acts)
+		if err != nil {
+			return fail("succession", err)
+		}
+		if len(pending) == 0 {
+			result.Mode, result.Allowed = "complete", true
+			result.Reasons = append(result.Reasons, Reason{Code: "complete", Check: "approval_use", Allowed: true, Reason: "the sealed merge receipt and its entire durable succession are already recorded; nothing remains to append"})
+			return result
 		}
 		result.Mode = "resume"
 		result.Allowed = true

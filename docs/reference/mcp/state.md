@@ -23,13 +23,21 @@ against the ref as it stands now.
 |---|---|---|
 | `kind` | required | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
 | `text` | required | The statement, in plain language. |
-| `rests_on` | required | Array of event identifiers. What this act bears on. |
+| `rests_on` | required | Array of event references. What this act bears on. |
 | `body` | optional | String map of structured fields. |
 | `evidence` | optional | String map of `name` to content, embedded as attachments. |
-| `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. |
+| `allow_dead_basis` | optional | Rest on a retired basis anyway, signing `dead_basis_override=true`. Testimony that you saw it, not a repair of it. A merely stale basis needs no argument; see below. Citing a record the fold refused stays advisory. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 | `agent` | optional | The actor whose existing accessible key signs this statement; defaults to startup `--actor`. |
+
+`rests_on` takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary)
+as well as the canonical identifier, and so do the `body` fields a consumer
+reads as one durable event — `artifact`, `authorizes_request`,
+`authorizes_approval` and the three `merge_` receipt bindings. Every other body
+value is carried exactly as given. The result names what it resolved in a
+`resolved` field; on a refusal the same sentences arrive as content blocks
+beside the reason.
 
 `rests_on` is required by the schema — an act citing nothing is almost
 always a mistake, and requiring the field makes that a decision rather
@@ -118,6 +126,14 @@ whose signed `body.stale_bases` differs, or that carries the field at all on
 fresh ground. If your world moved between signing and sequencing, call the
 tool again to sign the current note.
 
+A basis the fold **refused** is neither: nothing was withdrawn and nothing
+underneath it can move. The act is admitted, and the result's `dead_rests_on`
+note classifies the citation `ineffective`, beside `retired`, `stale` and
+`supersede`, so a caller sees at filing time that part of what the act rests
+on never took force. The landed statement, and its artifact row when it is
+one, then carry `ineffective_bases` in the projection. See
+[staleness](../../concepts/staleness.md#ineffective-bases).
+
 ## Reserved fields you cannot write
 
 Five body keys are reserved for the admission boundary, and a plain
@@ -161,15 +177,40 @@ the [payload ceiling](../limits.md).
 Pass `idempotency_key` when you might retry. A replay reports that your
 act already landed; do not then submit a variant.
 
+## What your bases mean here, before it signs
+
+Before the act is signed, the call says what each `rests_on` value means in
+this workroom, in a `basis_notes` field of the result: the same sentences
+[`gs state`](../gs/state.md#citing) writes to standard error. A basis that is
+a live event of this workroom earns silence. The other three each earn one
+line:
+
+| The basis | What you are told |
+|---|---|
+| A string that is no identifier | `warning: ... is not an event identifier` — the act will rest on nothing that can flare it |
+| This workroom's identifier naming no event | `warning: ... names no event in this workroom` — the sequencer refuses the act, and this says why |
+| Another workroom's identifier | `note: ... is another workroom's event` — admitted as an external citation this room cannot verify |
+
+The warnings describe; they refuse nothing and grant nothing. Only the
+sequencer's own rule, unchanged, refuses. [`supersede`](supersede.md) and
+[`reassign_if_unclaimed`](reassign_if_unclaimed.md) carry the same field for
+the same reason.
+
 ## What the fold made of it
 
 A successful append tells you the act landed. It does not tell you the
-act became what you meant, and those are different questions. A report
-whose body sets `status` instead of `verdict` reads as a review to every
-human and is no review to the fold. An approval that does not cite the
-artifact cannot authorise the merge it was written to authorise. A
-citation naming no event in this workroom is skipped in silence. All
-three return a record, are ruled effective, and move the commitment.
+act became what you meant, and those are different questions. Admission
+refuses two shapes outright, before anything lands: a citation that is
+this workroom's identifier naming no event here (the sequencer's own
+rule, which the warning above announces), and a report whose `verdict`
+or `status` is `approved` or `changes-requested`, which is a review
+verdict and must be filed with the [`review`](review.md) tool so the
+guarded path can bind it. Other mistakes land and are only described:
+a foreign identifier is admitted as a citation this room cannot verify,
+and a report with some other `status` word is an ordinary report, not a
+review. Historical records written before these rules can carry any of
+those shapes and are read as they stand, including an approval that does
+not cite the artifact it judges, which authorises no merge.
 
 So the result carries a `projected` object saying how the fold read the
 act. [`ratify`](ratify.md) and [`supersede`](supersede.md) carry it too,
@@ -184,12 +225,11 @@ and the quietest to survive:
 | `review` | For a report: whether it became a review, and which artifact it judges. |
 
 **These notes describe; they do not refuse.** Unknown body keys are still
-accepted — the reserved fields above are the one closed exception, and
-they are refused by the admission boundary rather than by these notes. Refusing them would catch `status` today and narrow a
-deliberately open structure for good — the body map is open so a room can
-carry vocabulary this implementation never anticipated, and a validator
-that rejects what it does not recognise takes that away to fix one
-spelling mistake. Describing the reading catches the whole family,
+accepted — the reserved review fields are the one closed exception, and
+admission refuses those, not these notes. The body map is open so a room
+can carry vocabulary this implementation never anticipated, and a
+validator that rejects what it does not recognise would take that away to
+fix one spelling mistake. Describing the reading catches the whole family,
 including the shapes nobody has hit yet, at the cost of not stopping any
 of them.
 

@@ -19,8 +19,13 @@ commits — the current hand-run practice.
 ## Logs
 
 - **The workroom log**: durable acts only. Chatter never lands here.
-- **The design-note log** (`refs/seq/design`, hand-run): sealed via
-  the continuation gate below; prose continues in the successor.
+- **The design-note log** (`refs/seq/design`, hand-run): the plan was
+  to seal it via the continuation gate below and continue prose in the
+  successor. Status as of 2026-09-07: no `refs/seq/design`, and no
+  verified migration of that log, has been located in this repository
+  or on origin, and design prose continues in ordinary `main` commits to
+  [the design note](2026-08-05-gitseq-design.md); see
+  [the design-log status](#the-continuation-gate) below.
 - **Ephemeral conversations**: anchored to what they're about,
   forgotten when everyone leaves. What mattered is promoted inward
   with the signed frames embedded as evidence.
@@ -251,6 +256,33 @@ reader must traverse predecessor → seal → successor and reproduce
 the projection; only then seal the real `refs/seq/design`. Migration
 is the acceptance test for continuation, not the act that discovers
 it.
+
+**Design-log status (recorded 2026-09-07).** The paragraph above is the
+historical proposal and is kept as history; its opening sentence
+describes the descriptor as it was then, not now. The general
+continuation facilities it asked for exist in the kernel: the genesis
+descriptor carries a predecessor genesis and a sealed head, and
+`VerifyContinuation` in `internal/kernel` checks a successor's
+descriptor against the verified frontier of its predecessor. What has
+not been located is any application of them to this hand-run log.
+Audited facts at the time of writing: `git for-each-ref
+refs/seq/design` returns nothing in this repository and `git ls-remote
+origin refs/seq/design` returns nothing on origin; no sealed successor
+of such a log has been found in either place; this repository's only
+durable log is the workroom log at `refs/seq/<genesis>`. Those absences
+say nothing about whether a hand-run copy, a scratch candidate or a
+traversal once existed on another machine, and this note does not claim
+one did or did not. The
+design note's own prose kept moving by ordinary `main` commits (its
+eleventh and twelfth waves and the 2026-09-06 addition), and the work of
+designing gitseq is coordinated in the present workroom; the route in is
+[the getting-started guide](../docs/getting-started.md). A real
+continuation migration, if ever wanted, needs its own adopted design and
+assignment with verified preconditions; nothing here asserts a
+cryptographically verified continuation relationship or activates any
+deferred feature. The original request for this status was #138, retired
+on 2026-08-22 as unfinished self-initiated work and recovered by request
+6d0277c4.
 
 ## MCP: stateless
 

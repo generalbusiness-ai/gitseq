@@ -253,7 +253,7 @@ export function buildSpine(root: string, context: SpineContext): Spine {
       : git.state === "target_gone" ? `target ${target} no longer exists`
       : git.state === "incorporated" ? `current ${target} contains the sealed merge`
       : git.state === "landed-then-removed" ? `current ${target} no longer contains the sealed merge; the receipt remains valid`
-      : git.state === "no_receipt" ? `target ${target} exists; no sealed merge to measure`
+      : git.reason ? `current target ancestry is unknown: ${git.reason}`
       : "current target ancestry is unknown";
     station({ id: "git", kind: "Git now", present: !!git, what: observation });
   }

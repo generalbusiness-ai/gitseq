@@ -52,6 +52,9 @@ export interface Statement {
   stale_because?: string;
   stale_because_path?: string;
   stale_because_truncated?: boolean;
+  // Direct bases the fold refused: staleness stops at them, so the citation
+  // is disclosed here instead of propagated. Direct citations only.
+  ineffective_bases?: string[];
 }
 
 export interface LeftLiveAccounting {
@@ -98,14 +101,14 @@ export interface Commitment {
   terminal?: string;
   // The validated merge receipt witnessing delivery to this target.
   landing_receipt?: string;
-  // Artifact landing audit, independent of commitment closure. A carried
-  // approved artifact can keep this flag on an already landed commitment.
+  // Artifact landing audit for the selected approval at the resolved target.
+  // Receipt delivery does not depend on retiring the approved artifact.
   approved_not_landed?: boolean;
 }
 
 export interface LandingMeasurement {
   measured_at: number;
-  state: "incorporated" | "landed-then-removed" | "target_gone" | "no_receipt" | "unknown";
+  state: "incorporated" | "landed-then-removed" | "target_gone" | "unknown";
   target_head?: string;
   ref_incorporated: boolean | null;
   remote?: string;
@@ -153,6 +156,9 @@ export interface Artifact {
   stale_because?: string;
   stale_because_path?: string;
   stale_because_truncated?: boolean;
+  // Direct bases the fold refused: staleness stops at them, so the citation
+  // is disclosed here instead of propagated. Direct citations only.
+  ineffective_bases?: string[];
   // No basis under this artifact can ever be retired, so no supersession can
   // make it stale. Its silence is not evidence that it is current.
   unable_to_flare?: boolean;
@@ -194,6 +200,23 @@ export interface Act {
   text?: string;
   verdict: Verdict;
   reason: string;
+}
+
+// The workroom-wide named commitment populations, counted in Go by
+// workroom.WorkOf and carried on the complete status. The board keeps its own
+// row selector for tab counts, and ui/test/work-populations.test.mjs holds the
+// two to the same answer.
+export interface WorkSummary {
+  scope: string;
+  commitments: number;
+  open: number;
+  open_lifecycles: Record<string, number>;
+  completed: number;
+  closed_not_completed: number;
+  stale: number;
+  other?: number;
+  reasoning_moved: number;
+  artifact_landing_audit: number;
 }
 
 export interface Projection {
@@ -315,13 +338,21 @@ export interface Rebuild {
   running: boolean;
   verified?: number;
   total?: number;
+  // The fold profile of the process rebuilding; compare with Status.profile.
+  profile?: string;
 }
 
 export interface Status {
   durable: DurableSnapshot;
   live: LiveSnapshot;
+  // Absent from a resident that predates the shared count; the board derives
+  // its own populations either way.
+  work?: WorkSummary;
   cursor: Cursor;
   trust_boundary: string;
+  // The fold profile this status was produced under: an opaque identifier
+  // fixed for the life of the resident process.
+  profile?: string;
 }
 
 export interface GraphCommit {
@@ -395,21 +426,28 @@ async function json<T>(response: Response): Promise<T> {
   return value as T;
 }
 
+export interface PreviewWindow {
+  start: number; end: number; total: number; partial: boolean;
+  previous?: number; next?: number; truncated?: number[];
+}
 export interface PreviewResponse {
   repo: string; event: string; commit?: string; path?: string;
   status: string; message?: string; content?: string;
   entries?: string[]; attachments?: string[]; omitted?: number; heads?: string[]; limit: number;
+  // size is the verified file's length; window says which of its lines
+  // content carries, and is partial unless it is the whole file.
+  size?: number; window?: PreviewWindow;
 }
 
 export const api = {
-  preview: (input: { event: string; path?: string; commit?: string; attachment?: string }, signal?: AbortSignal) =>
+  preview: (input: { event: string; path?: string; commit?: string; attachment?: string; line?: number; start?: number }, signal?: AbortSignal) =>
     fetch("/v0/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input), signal })
       .then((r) => json<PreviewResponse>(r)),
   status: () => fetch("/v0/status", { cache: "no-store" }).then((r) => json<Status>(r)),
   // Deliberately a separate call from status. /v0/status queues behind the
   // rebuild it would be reporting on, which is the whole reason a verifying
   // resident looked like a broken page; this one answers while that waits.
-  rebuild: () => fetch("/v0/rebuild", { cache: "no-store" }).then((r) => json<Rebuild>(r)),
+  rebuild: (signal?: AbortSignal) => fetch("/v0/rebuild", { cache: "no-store", signal }).then((r) => json<Rebuild>(r)),
   graph: () =>
     fetch("/v0/graph", { cache: "no-store" })
       .then((r) => json<{ commits: GraphCommit[]; truncated?: boolean }>(r))

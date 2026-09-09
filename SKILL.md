@@ -420,21 +420,29 @@ does not change the group's current target branch.
 - **Cite with the canonical full event ID**, always:
   `git:<object-format>:<genesis>#git:<object-format>:<event-commit>`. It is
   the only name the fold resolves. Copy it whole from the tool result that
-  returned it; never assemble one around a fragment you read somewhere. A
-  new canonical citation naming this workroom but no position in its sequence
-  is refused at admission. Foreign identifiers and other opaque references are
-  carried without that check; historical unresolved citations remain readable.
+  returned it, or type the `#N` or short hash a display shows and let the
+  surface resolve it; never assemble one around a fragment you read
+  somewhere. A new canonical citation naming this workroom but no position in
+  its sequence is refused at admission, and the surface warns you before it
+  signs. Foreign identifiers and other opaque references are carried without
+  that check, and named as such before signing; historical unresolved
+  citations remain readable.
   Resolve the intended basis instead of treating successful admission as proof
   that it supports your claim.
-- **Say `#N` when you mean it out loud.** Every projected event carries a
-  `sequence`, its position in this workroom's log, the founding seed being
-  #1. Use it in prose, reports and conversation — a number can be read back
-  and checked by eye while a 40-hex string cannot. It is a name for
-  reading, not one the fold accepts: `#N` belongs in your text, the
-  canonical ID in `rests_on`, `target` and `Rests-On:`. And it means
-  nothing outside its workroom — two workrooms both have a #17 — so
-  anything crossing that boundary, or written where the workroom is not
-  obvious, needs the canonical form.
+- **Say `#N` when you mean it out loud, and you may type it too.** Every
+  projected event carries a `sequence`, its position in this workroom's log,
+  the founding seed being #1. Use it in prose, reports and conversation — a
+  number can be read back and checked by eye while a 40-hex string cannot.
+  The fold still accepts only the canonical ID, but `gs` and the MCP tools
+  resolve `#N`, and an unambiguous prefix or suffix of an event hash, to that
+  ID before they sign; what lands is always the full identifier, and the
+  surface names back what it resolved. A number or a fragment naming no
+  event, or more than one, is refused and nothing is appended. `Rests-On:`
+  trailers are the exception and take the full ID only: a commit message is
+  no boundary anything resolves at. And a number means nothing outside its
+  workroom — two workrooms both have a #17 — so anything crossing that
+  boundary, or written where the workroom is not obvious, needs the canonical
+  form.
 - A PR that matters durably is cited by its **head commit hash** (truth)
   with the URL as a hint.
 - GitHub issues, PR reviews, and comment threads are conversations hosted

@@ -444,7 +444,9 @@ func TestInspectRefusesAnEventTheLogDoesNotHold(t *testing.T) {
 	if !strings.Contains(err.Error(), "not in the durable projection") {
 		t.Fatalf("the refusal does not say why: %v", err)
 	}
-	for _, want := range []string{"git:sha1:<genesis>#git:sha1:<event>", "#N is a display index only", "gs work --json"} {
+	// The refusal names every form this command accepts, so a reader who
+	// mistyped one can see the other two.
+	for _, want := range []string{"git:sha1:<genesis>#git:sha1:<event>", "#N record number", "prefix or suffix of its event hash", "docs/reference/event-identifiers.md"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal omits %q: %v", want, err)
 		}

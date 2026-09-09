@@ -142,12 +142,24 @@ Running the command again does not duplicate an issue already observed by
 this connector. It also does not record later edits, label changes, closure,
 or reopening.
 
-If several processes may append concurrently, send observations through the
-resident by adding its explicit loopback URL:
+Where the observation is appended follows the same rule as `gs`. With no
+`--server` flag the connector uses the resident this repository advertises
+(the one `gs serve` published), so concurrent appenders are sequenced by
+default; with no advertisement it appends locally, exactly as before. An
+explicit loopback URL selects that resident:
 
 ```text
   --server http://127.0.0.1:7777
 ```
+
+and `--server -` deliberately appends locally even when a resident is
+advertised. The route is decided before the connector's key is read. An
+advertisement that cannot be trusted (unreadable, not a record, addressless,
+or naming another workroom) or cannot be used (not an `http` loopback
+address) refuses the run, as does an advertised resident that is not
+listening or that refuses the submission; the connector never falls back to
+a local append on its own, so nothing is recorded that the operator did not
+route. `--dry-run` makes no durable change on any route.
 
 ## 5. Turn an observation into work
 
@@ -182,11 +194,16 @@ Push the candidate branch to GitHub, then collect these exact values:
 - the effective request event; and
 - the live artifact event naming that same commit.
 
-The current command requires the artifact to cite the request directly. An
-artifact that cites a promise instead is valid workroom history, but this
-connector version cannot publish it. Do not reshape the record merely to make
-the command pass; open that pull request outside the connector until
-commitment-chain support is available.
+The artifact must belong to the work the request governs, in either of the
+two lawful shapes: it rests directly on the request, or it rests on the
+performer's standing promise for that request, which is the ordinary
+assigned-work shape. The command checks the chain against the projection
+before it posts anything: the request and the artifact must both be
+effective and neither retired nor stale, a promise bridging them must meet
+the same standard, the artifact must name exactly the `--commit` head, and
+an artifact that rests on some other request or on a dead promise is refused
+as work that merely shares the log. Nothing in the record needs reshaping to
+satisfy it.
 
 Check the branch and commit yourself, because the connector does not compare
 them:

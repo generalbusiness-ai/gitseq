@@ -39,6 +39,11 @@ reassigns like any other.
 
 The old request is the one positional argument. Put every flag before it.
 
+The old request and every `--rests-on` value take a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier. Both acts of the pair are resolved against one
+verified event set before either is signed.
+
 ## Example
 
 ```sh

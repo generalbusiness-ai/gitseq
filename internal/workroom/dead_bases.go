@@ -5,13 +5,18 @@ package workroom
 // cited record was itself superseded and nothing stands there any more, stale
 // means the record still stands but a basis under it was withdrawn, and
 // supersede means the citation names an effective supersession — resting on it
-// after the fact reads as approving a retirement that already happened.
+// after the fact reads as approving a retirement that already happened, and
+// ineffective means the cited record never took force, so nothing it rested
+// on reaches through it: staleness stops at an ineffective record, and a
+// basis retired underneath one stays out of sight unless the citation is
+// named for what it is.
 type DeadBasis string
 
 const (
-	DeadBasisRetired   DeadBasis = "retired"
-	DeadBasisStale     DeadBasis = "stale"
-	DeadBasisSupersede DeadBasis = "supersede"
+	DeadBasisRetired     DeadBasis = "retired"
+	DeadBasisStale       DeadBasis = "stale"
+	DeadBasisSupersede   DeadBasis = "supersede"
+	DeadBasisIneffective DeadBasis = "ineffective"
 )
 
 // DeadBases classifies each rest-on citation that this projection already
@@ -23,12 +28,16 @@ const (
 //
 // Citations that name nothing in this workroom are absent on purpose: that is
 // a different mistake, and the callers that show these notes already report
-// unresolved citations separately. A live statement, a live artifact, an
-// ineffective supersession, and an unknown identifier all stay out — flagging
-// any of them would teach readers to skip the note.
+// unresolved citations separately. A live statement, a live artifact, and an
+// unknown identifier all stay out — flagging any of them would teach readers
+// to skip the note. A record the fold refused is in: it carries no authority
+// and no staleness, so an act resting on it stands on nothing the projection
+// will ever flare, and the only moment to say so is when the citation is made.
 //
 // When one identifier could be read more than one way, the strongest fact
-// about the event itself wins: retirement over staleness over supersession.
+// about the event itself wins: retirement over staleness over ineffectiveness
+// over supersession. The last two cannot in fact meet: the fold retires and
+// stales only effective records, so an ineffective one is never either.
 // Staleness is deliberately read only where the row is not retired, because a
 // retired statement can carry a stale flag left over from its own life and
 // reporting both would bury the news under the history. The same identifier
@@ -48,12 +57,22 @@ func DeadBases(p Projection, restsOn []string) map[string]DeadBasis {
 			supersedes[act.Event] = true
 		}
 	}
+	// Decisions are the one-per-record source of verdicts; a refused
+	// statement keeps its row, so the row alone cannot say it never took force.
+	ineffective := make(map[string]bool)
+	for _, decision := range p.Decisions {
+		if decision.Verdict != Effective {
+			ineffective[decision.Event] = true
+		}
+	}
 	classify := func(id string) (DeadBasis, bool) {
 		switch {
 		case statements[id].Retired || artifacts[id].Retired:
 			return DeadBasisRetired, true
 		case statements[id].Stale || artifacts[id].Stale:
 			return DeadBasisStale, true
+		case ineffective[id]:
+			return DeadBasisIneffective, true
 		case supersedes[id]:
 			return DeadBasisSupersede, true
 		default:

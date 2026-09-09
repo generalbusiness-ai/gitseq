@@ -63,3 +63,42 @@ func TestSessionBoundScenarioSetupUsesResidentCredential(t *testing.T) {
 		})
 	}
 }
+
+// TestWorkerLeavesCheckpointBytesToTheLaneParent pins the division the
+// compare path depends on. The worker never computes the serialized
+// checkpoint size, so a base worker built from a tree that predates the
+// metric still builds and still runs; the lane parent, which is always the
+// candidate build, fills the field in from the fixture afterwards. The sample
+// schema names v2 because the row now carries that field.
+func TestWorkerLeavesCheckpointBytesToTheLaneParent(t *testing.T) {
+	if os.Getenv("GITSEQ_PERF_INTEGRATION") == "" {
+		t.Skip("set GITSEQ_PERF_INTEGRATION=1 for real signed fixture coverage")
+	}
+	ctx := context.Background()
+	fixture := filepath.Join(t.TempDir(), "fixture")
+	if _, err := Prepare(ctx, fixture, FixturePlan{
+		GeneratorVersion: "checkpoint-bytes-test.v1", Seed: 632, Depth: 267, Shape: "linear",
+		PayloadBuckets: []int{8}, CheckpointDepths: []int{257}, ActorCount: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	restart, err := Run(ctx, RunOptions{
+		Scenario: "checkpoint_restart", Fixture: fixture, Scratch: filepath.Join(t.TempDir(), "restart"),
+		Depth: 267, Tail: 10, Fanout: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restart.SnapshotSource != app.SnapshotSourceSignedCheckpointTail {
+		t.Fatalf("restart source = %s", restart.SnapshotSource)
+	}
+	if restart.Schema != "gitseq.performance-sample.v2" {
+		t.Fatalf("sample schema = %q, want gitseq.performance-sample.v2", restart.Schema)
+	}
+	if restart.CheckpointBytes != 0 {
+		t.Fatalf("the worker computed checkpoint_bytes = %d; that is the lane parent's job", restart.CheckpointBytes)
+	}
+	if restart.Fixture.Checkpoint == "" {
+		t.Fatal("the sample recorded no checkpoint object for the parent to size")
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/safetext"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -21,8 +22,12 @@ const (
 )
 
 type Totals struct {
-	ApprovedNotLanded int            `json:"approved_not_landed"`
-	Commitments       map[string]int `json:"commitments"`
+	ApprovedNotLanded int `json:"approved_not_landed"`
+	// Work is the named commitment populations from their one owner,
+	// workroom.WorkOf. Commitments below stays beside it and counts the fold's
+	// lifecycle words, which is a different question a reader also needs.
+	Work        workroom.WorkSummary `json:"work"`
+	Commitments map[string]int       `json:"commitments"`
 	// StaleCommitments counts, per status, how many of those commitments carry
 	// the stale qualifier. Staleness qualifies a status instead of replacing
 	// it, so one count cannot say both things; a reader who only had
@@ -153,32 +158,11 @@ func Cap[T any](items []T, limit int) ([]T, int) {
 	return items[len(items)-limit:], len(items) - limit
 }
 
-// hostile reports whether a rune must be shown as an escape rather than sent
-// to a terminal as itself: every C0 and C1 control, DEL, every format
-// character — the bidi overrides and isolates, and the zero-width marks that
-// let one string print as another — and the line and paragraph separators.
-// Newline, tab and carriage return are in that first class deliberately. A
-// caller that renders text whole must not let it invent lines, because a line
-// an attacker writes looks exactly like a line the program wrote.
-func hostile(value rune) bool {
-	return value < 0x20 || value == 0x7f || (value >= 0x80 && value <= 0x9f) ||
-		unicode.Is(unicode.Cf, value) || value == '\u2028' || value == '\u2029'
-}
+// hostile and encode are the shared safetext policy; the bounded views and
+// the complete page must agree about every character they neutralize.
+func hostile(value rune) bool { return safetext.Hostile(value) }
 
-// encode writes one rune as a visible escape. The widths are the conventional
-// ones, and they are not decoration: \u is exactly four hex digits, so a rune
-// above U+FFFF written that way would run to five and the next character could
-// not be told from part of the escape.
-func encode(out *strings.Builder, value rune) {
-	switch {
-	case value <= 0xff:
-		fmt.Fprintf(out, `\x%02x`, value)
-	case value <= 0xffff:
-		fmt.Fprintf(out, `\u%04x`, value)
-	default:
-		fmt.Fprintf(out, `\U%08x`, value)
-	}
-}
+func encode(out *strings.Builder, value rune) { safetext.Encode(out, value) }
 
 // neutralized renders a list of user-controlled strings for display. The
 // durable values are unchanged; a caller that needs to match a path exactly
@@ -192,29 +176,9 @@ func neutralized(values []string) []string {
 }
 
 // Safe neutralizes user-controlled text a caller renders whole: the same
-// escapes as Text, with no one-line fold and no byte cap, so a long message
-// keeps its length and its runs of spacing exactly.
-//
-// It escapes newline and tab as well. Keeping them would have preserved the
-// shape of a chat message, but shape is exactly what an attacker wants: a
-// newline lets untrusted text add a line to a rendered block, and a reader has
-// no way to tell that line from one the program wrote.
-func Safe(value string) string {
-	var out strings.Builder
-	for index := 0; index < len(value); {
-		decoded, size := utf8.DecodeRuneInString(value[index:])
-		switch {
-		case decoded == utf8.RuneError && size == 1:
-			encode(&out, rune(value[index]))
-		case hostile(decoded):
-			encode(&out, decoded)
-		default:
-			out.WriteString(value[index : index+size])
-		}
-		index += size
-	}
-	return out.String()
-}
+// escapes as Text, with no one-line fold and no byte cap. It is the shared
+// safetext policy, kept under this name for the views that call it.
+func Safe(value string) string { return safetext.Safe(value) }
 
 // Text renders user-controlled text as one safe terminal line and caps it by
 // bytes. Runs of benign spacing fold to single spaces; anything that could
@@ -363,9 +327,14 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 		sequences[decision.Event] = decision.Sequence
 	}
 	summary := Summary{Genesis: genesis, Head: head, Depth: depth, Totals: Totals{
+		Work:        workroom.WorkOf(projection),
 		Commitments: make(map[string]int), StaleCommitments: make(map[string]int),
 		Artifacts: len(projection.Artifacts), Statements: len(projection.Statements),
 	}}
+	// The landing audit is one count with one owner. It was totalled here as
+	// well until the Work summary existed; two loops counting one thing is how
+	// two surfaces come to disagree about it.
+	summary.Totals.ApprovedNotLanded = summary.Totals.Work.ArtifactLandingAudit
 	// Two passes, and the split is the point. The first walks everything,
 	// because the totals and the omitted counts are facts about the whole
 	// projection and would be wrong if computed from a sample. It keeps only
@@ -386,9 +355,6 @@ func Build(genesis, head string, depth int, projection workroom.Projection) Summ
 	var actionableSource, attentionSource []workroom.Commitment
 	for _, commitment := range projection.Commitments {
 		summary.Totals.Commitments[commitment.Status]++
-		if commitment.ApprovedNotLanded {
-			summary.Totals.ApprovedNotLanded++
-		}
 		if commitment.Stale {
 			summary.Totals.StaleCommitments[commitment.Status]++
 		}
@@ -518,6 +484,15 @@ func Render(summary Summary, source string) []byte {
 		strings.Join(counts, ", "), summary.Totals.Artifacts-summary.Totals.StaleArtifacts,
 		summary.Totals.StaleArtifacts-summary.Totals.RetiredArtifacts, summary.Totals.RetiredArtifacts,
 		summary.Totals.WorldStaleArtifacts, summary.Totals.IneffectiveActs, summary.Totals.DisputedActs)
+	// A bounded summary carries no projection, so these counts are whatever
+	// the answering resident computed. One that predates them sends none, and
+	// printing zeros there would be a lie told confidently — the empty scope
+	// is the only way this page can tell the difference.
+	if summary.Totals.Work.Scope == "" {
+		output.WriteString("Work populations: not reported by this resident; ask a newer one, or read the verified local fold with --server -.\n")
+	} else {
+		output.WriteString(workroom.RenderWork(summary.Totals.Work))
+	}
 	fmt.Fprintf(&output, "Approved but not landed at their target: %d.\n", summary.Totals.ApprovedNotLanded)
 	for _, target := range summary.LandingTargets {
 		fmt.Fprintf(&output, "%s\n", LandingText(target))

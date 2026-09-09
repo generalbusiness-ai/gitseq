@@ -86,7 +86,7 @@ func measureLanding(g *landingGraph, input LandingInput, repository, remote stri
 		case measurement.TargetHead == "":
 			measurement.State = "target_gone"
 		case input.MergeHead == "":
-			measurement.State = "no_receipt"
+			measurement.Reason = "no witnessed merge head was supplied; ancestry is unknown"
 		default:
 			measurement.RefIncorporated = g.contains(measurement.TargetHead, input.MergeHead)
 			if measurement.RefIncorporated == nil {

@@ -73,13 +73,21 @@ fact, not an empty inspection. An empty page for a mistyped identifier
 would read like a real answer about a real event that happens to have
 nothing on it.
 
-The refusal also names the required form:
-`git:sha1:<genesis>#git:sha1:<event>` for a SHA-1 workroom, or the equivalent
-for the repository's object format. `#N` is a display index only; this command
-does not resolve it, a prefix, or an ellipsis-truncated value. Copy the full ID
-from `gs work --json`, another `--json` answer, or a command that printed the
-event when it was filed. The human inspection prints its event and direct
-event bases in full for the same reason.
+The refusal also names the three forms this command accepts: the canonical
+identifier `git:sha1:<genesis>#git:sha1:<event>` — or its equivalent for the
+repository's object format — and the two halves of a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary), the `#N`
+record number and a prefix or suffix of one event hash. One naming no event, or
+more than one, is refused rather than guessed at; an ellipsis-truncated display
+value like `git:sha1…02aa808` is missing its middle and is not one of the
+three.
+
+A canonical identifier is passed to the resident as it stands, so nothing is
+folded locally to answer for it. A number or a fragment is resolved against
+this checkout's own verified event set first, which means a very recent event
+this checkout has not fetched will not resolve here; fetch the workroom, or
+name it by its canonical identifier. The human inspection prints its event and
+direct event bases in full so the answer can be copied back.
 
 ## See also
 

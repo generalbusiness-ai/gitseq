@@ -29,7 +29,7 @@ retired artifacts forever, so the default answers "what now" rather than
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--all` | `false` | Render the complete commitment, artifact and attempt tables instead of the bounded view. |
+| `--all` | `false` | Render the complete commitment, artifact, dissent, ratification, uninterpretable-record and attempt tables instead of the bounded view. |
 | `--json` | `false` | Emit the complete snapshot as JSON, with no human view. |
 | `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
@@ -64,7 +64,8 @@ The `--all` and `--json` exports retain their durable-only shape.
 
 The header names the frontier, its depth, and where the answer came
 from — `verified local`, `resident summary`, or `verified local
-fallback`. Then a line of totals, and six sections:
+fallback`. Then a line of totals, the [Work summary](#the-work-summary), and
+six sections:
 
 | Section | What is in it |
 |---|---|
@@ -147,25 +148,80 @@ Nothing is lost. [`--all`](#all) prints a `qualifiers` column with
 `stale` field on every record. The bounded summary the resident serves
 keeps its per-row `stale` field too — only the rendered page is quiet.
 
-## Comparing CLI and board counts
+## The Work summary
 
-`gs status` counts commitments by lifecycle status and artifacts separately.
-The browser's Table and Graph share these named commitment populations:
+Every surface prints the same two lines, from one derivation in Go
+(`workroom.WorkOf`), so two screens showing one frontier show one set of
+numbers:
 
-| Board population | Selection |
+```
+Work, workroom: 5 open, 1534 completed, 958 closed and not completed, 14 stale and not in flight, of 2511 commitments.
+Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 3, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 3 open resting on reasoning that moved, 78 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
+```
+
+The first line is the named populations. The second keeps the lifecycle
+diagnostic underneath them, because **`open` is two numbers**: the lifecycle
+word the fold writes on a request nobody has claimed, and the name of the
+population holding all six in-flight words. A page printing only one of them
+is why the board read `open 5` while this command read `open 1` at the same
+head, and both were right.
+
+| Population | Selection |
 |---|---|
 | open | `open`, `promised`, `reported`, `awaiting-review`, `awaiting-authorization`, `awaiting-landing` |
-| reasoning moved | Open-population commitments carrying ordinary staleness; a subset of open |
-| artifact landing audit | `approved_not_landed`, including historical completed or closed rows |
-| stale, not in flight | Lifecycle status `stale` |
 | completed | `satisfied` |
 | closed, not completed | `superseded`, `cancelled`, `reneged`, `withdrawn`, `abandoned` |
+| stale, not in flight | Lifecycle status `stale` |
 
-`awaiting ratification` counts proposals separately, not commitments. The audit
-and reasoning-moved populations overlap other populations, so adding every tab
-count is not a commitment total. Source closure and the selected approved
-artifact's landing are labelled separately. Search selects the same rows in
-Table and Graph; graph context cards do not enter the population count.
+Those four partition the commitments: their counts add up to the commitment
+total exactly, and nothing is in two of them. A lifecycle word this grouping
+does not know would be counted as `other` and named in the line, so the total
+stays true; the shipped fold emits none.
+
+Two more counts are printed beside that partition and are **not** members of
+it:
+
+- **reasoning moved** — open commitments carrying ordinary staleness. A subset
+  of open, not a fifth population.
+- **artifact landing audit** — `approved_not_landed` across every commitment,
+  finished ones included. It overlaps any population. It is the same number as
+  `Approved but not landed at their target`, counted once.
+
+`awaiting ratification` is a different duty, owed by a role holder rather than
+by a performer. It has its own queue on the board and enters no count here.
+Artifact counts stay separate throughout: they are not commitments.
+
+`scope` says what a summary covered. Every count above is `workroom`: every
+commitment at this frontier, unfiltered. A searched board, an actor's own
+lanes, and [`gs work`](work.md) answer a different question and say so —
+the board's headline reads `2 open requests, matching your search — 8 in the
+workroom` — so a scoped number is never read as this one.
+
+Where it appears:
+
+| Surface | Where |
+|---|---|
+| `gs status` | The two lines above. |
+| `gs status --all` | The same two lines, under the header. |
+| `gs status --json` | `work`, beside the complete snapshot. |
+| `GET /v0/status` | `work`. |
+| `GET /v0/status-summary` | `durable.totals.work`. |
+| MCP [`status`](../mcp/status.md), [`wait`](../mcp/wait.md) | `totals.work`, workroom-wide beside your own lanes. |
+| The browser | One tab per population, counting exactly the rows that tab opens to. |
+
+A bounded summary carries no projection, so its counts are the answering
+resident's. One that predates them sends none, and the page then says `Work
+populations: not reported by this resident` rather than printing zeros.
+
+The browser keeps its own row selector, because a tab count has to be exactly
+the rows that tab renders under the current search. Two gates hold it to the Go
+answer on one frozen projection — `internal/wireparity/work_populations_test.go`
+and `ui/test/work-populations.test.mjs` — including controls that drop an
+awaiting-review member and regroup one surface and watch the comparison fail.
+
+Source closure and the selected approved artifact's landing are labelled
+separately. Search selects the same rows in Table and Graph; graph context
+cards do not enter the population count.
 See [browser landing presentation](../landing-observations.md#browser-presentation).
 
 Each list keeps the **newest 20** entries and says exactly how many older
@@ -209,12 +265,38 @@ the same path` and `RETIRED — withdrawn with no successor`.
 
 ## `--all`
 
-The complete human-readable tables: every commitment, every artifact,
-every non-effective attempt, with no cap. The artifact summary under that
-table reports both the number of rows and the number of supersessions
-**actually owed**. Those differ: one forgotten retirement at a long-lived
-path repeats on every later link of the chain, so the row count
-overstates how many situations there are to fix.
+The complete human-readable tables, with no cap: every commitment, every
+artifact, every standing dissent, every ratified statement, every record
+the fold could not interpret, and every non-effective attempt. Nothing the
+bounded view shows is missing here; the bounded view shows the newest
+twenty of each, this shows all of them.
+
+The artifact summary under that table reports both the number of rows and
+the number of supersessions **actually owed**. Those differ: one forgotten
+retirement at a long-lived path repeats on every later link of the chain,
+so the row count overstates how many situations there are to fix. An
+artifact row whose notes say `rests on ineffective support` cites a record
+the fold refused; see [staleness](../../concepts/staleness.md#ineffective-bases)
+for what that does and does not mean.
+
+**Standing dissent** lists each effective, unretired dissent with the
+record it stands against and that record's state now: `current`, `stale`
+or `retired` for a record that took force, the fold's verdict
+(`ineffective`, `undefined-kind`, `uninterpretable`) for one it refused,
+and `unknown` only for a target this log does not hold. A dissent never
+rewrites its target, so the target reads as it always did; this section is
+where a reader learns it is opposed.
+
+**Ratified statements** lists every statement whose ratification stands,
+with the ratifying act. This is the fold's own reading of authority: a
+proposal that became a decision, a report that closed a commitment, a
+roster grant that took effect.
+
+**Uninterpretable records** lists statements of a kind the vocabulary does
+not define, grouped by the kind they claimed and with their text, and any
+record whose payload could not be read at all. Each also appears among the
+attempts with the fold's refusal; this section gives them back the only
+disposition they have.
 
 ## `--json`
 

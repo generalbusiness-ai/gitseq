@@ -24,9 +24,9 @@ the only two acts it cannot make.
 | `--kind` | *(required)* | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
 | `--text` | *(required)* | The statement itself, in plain language. |
 | `--body` | | `key=value`, repeatable. Structured fields. |
-| `--rests-on` | | An event identifier, repeatable. What this act bears on. |
+| `--rests-on` | | An event reference, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
-| `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession stays advisory. |
+| `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession, or a record the fold refused, stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
@@ -204,6 +204,14 @@ would join and refuses any act whose signed `body.stale_bases` differs, or
 that carries the field at all on fresh ground. If your world moved between
 signing and sequencing, re-run the command to sign the current note.
 
+A basis the fold **refused** is neither: nothing was withdrawn and nothing
+underneath it can move. The act is admitted, and the command notes the
+citation on standard error as `already dead (ineffective)`, the same way it
+notes a retired, stale or superseding one, so an author sees at filing time
+that part of what the act rests on never took force. The landed statement,
+and its artifact row when it is one, then carry `ineffective_bases` in the
+projection. See [staleness](../../concepts/staleness.md#ineffective-bases).
+
 ## Reserved fields you cannot write
 
 Five body keys are reserved for the admission boundary, and a plain
@@ -237,9 +245,34 @@ one gains nothing.
 
 ## Citing
 
-`--rests-on` is how an act says what it bears on. Copy identifiers whole
-from the emitted event — see
-[Event identifiers](../event-identifiers.md).
+`--body` values are application prose, with one exception this boundary
+knows: the fields a consumer reads as exactly one durable event —
+`artifact`, `authorizes_request`, `authorizes_approval`, `merge_approval`,
+`merge_authorization` and `merge_authorization_ratification` — take a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) and are
+resolved with the rest of the act. `authorizes_candidate` names a Git commit
+and every other key is carried exactly as typed. See
+[Body fields](../event-identifiers.md#body-fields-and-why-only-some-of-them).
+
+`--rests-on` is how an act says what it bears on. It takes a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier, resolved against this workroom's verified events and
+named on standard error before anything is signed. The signed act always
+carries the full canonical identifier.
+
+Before the act is signed, the command says what each basis means here. A
+basis that is a live event of this workroom earns silence. The other three
+cases each earn one line on standard error:
+
+| The basis | What you are told |
+|---|---|
+| This workroom's own genesis | nothing: the sequencer resolves it, though the fold projects no record for it |
+| A string that is no identifier | `warning: ... is not an event identifier` — the act will rest on nothing that can flare it |
+| This workroom's identifier naming no event | `warning: ... names no event in this workroom` — the sequencer refuses the act, and this says why before it does |
+| Another workroom's identifier | `note: ... is another workroom's event` — admitted as an external citation this room cannot verify |
+
+The warnings describe; they refuse nothing and grant nothing. Only the
+sequencer's own rule, unchanged, refuses.
 
 A statement with an empty `rests_on` is almost always wrong. It is
 accepted, and then nothing can ever make it stale; the fold marks

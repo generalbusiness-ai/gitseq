@@ -92,6 +92,63 @@ func UnusableAdvertisedURL(advertised string, reason error) error {
 	return fmt.Errorf("this repository advertises %q, which is not usable: %w", advertised, reason)
 }
 
+// LocalRoute is the --server value that forces the local verified fold. It
+// is not a URL, so no advertisement can ever collide with it.
+const LocalRoute = "-"
+
+// ResolveServerURL decides where one durable command acts, and is the one
+// routing rule every writing surface with a --server flag shares: `gs` and
+// the GitHub connector call it before they read a signing key or build a
+// request, so the same six cases get the same answer and the same sentence.
+//
+// An explicit URL is honoured after loopback validation; LocalRoute forces
+// the local verified fold even when a resident is advertised; and an empty
+// value takes the address the repository itself publishes, so the resident a
+// checkout already runs answers by default and a repository without one acts
+// locally exactly as before.
+//
+// Only a genuinely missing record is absence. A record that is present and
+// cannot be trusted — unreadable, oversized, not a record, addressless, or
+// naming another workroom — is refused rather than ignored: it is an
+// ordinary file any local process can write, and quietly folding a durable
+// act locally because it was corrupt would hide both the tampering and the
+// minutes it costs. The refusal names the way out. Whether the resident then
+// answers is the caller's next step; see RefusedDial.
+func ResolveServerURL(workspace *app.Workspace, explicit string) (string, error) {
+	if explicit == LocalRoute {
+		return "", nil
+	}
+	if explicit != "" {
+		return ValidateURL(explicit)
+	}
+	advertisement := workspace.ResidentAdvertisement()
+	if advertisement.State == app.NoAdvertisement {
+		return "", nil
+	}
+	if advertisement.State == app.AdvertisementUnusable {
+		return "", fmt.Errorf("%w; pass --server %s to act locally instead", UntrustedAdvertisement(advertisement.Reason), LocalRoute)
+	}
+	validated, err := ValidateURL(advertisement.URL)
+	if err != nil {
+		return "", fmt.Errorf("%w; pass --server %s to act locally instead", UnusableAdvertisedURL(advertisement.URL, err), LocalRoute)
+	}
+	return validated, nil
+}
+
+// RefusedDial names the way out when the resident a write was routed to is
+// not listening. A silent local fallback would trade the second the resident
+// costs for a whole-log fold nobody asked for, and now that the address is
+// usually the repository's own advertisement rather than something the
+// author typed, they would have no way to tell. Only a refused dial is
+// definite enough to say nothing landed, so only that failure is reworded;
+// any other error is returned as it came.
+func RefusedDial(serverURL string, err error) error {
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("no resident is listening at %s, so nothing was appended: start one with `gs serve`, or pass --server %s to fold this act locally: %w", serverURL, LocalRoute, err)
+	}
+	return err
+}
+
 // TransportError marks failure to exchange an HTTP response with the resident.
 // Callers such as MCP use this distinction to decide whether local fallback is
 // honest; malformed or refused resident answers are not transport failures.

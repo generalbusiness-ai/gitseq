@@ -54,7 +54,7 @@ everything up to now with `reset` set.
 | `current_available_to_you` | The complete bounded current lane of unclaimed requests addressed to you, including requests whose bases have become stale. |
 | `current_waiting_on_you` | Commitments now needing your move. |
 | `current_not_actionable` | Commitments nobody can advance. |
-| `totals` | The same counts `status` reports. |
+| `totals` | The same counts `status` reports, including `totals.work`: the workroom-wide named populations described in [the Work summary](../gs/status.md#the-work-summary). |
 
 Every list is capped at 20 with its own skipped count.
 
@@ -82,6 +82,28 @@ the cursor: a pending frame makes `wait` return immediately and keeps returning
 until [`ack`](ack.md) receives its exact thread handle. Acknowledging in one
 session does not acknowledge a sibling session, and it advances no durable or
 live cursor. Acknowledging the visible page reveals the next pending page.
+
+## How the resident waits
+
+Behind this tool the resident holds one head clock per log, not one per
+waiter. While any long poll is open it reads the log's head ref every 250 ms
+and advances a generation when the answer changes, fails, or rewinds. An
+open wait reads its live cursor on every tick, in memory, and asks the
+verified durable snapshot again only on its first pass, when that generation
+advances, when the clock's head differs from the frontier it last answered
+with, or when the live cursor moved. Before the clock, each wait asked the
+snapshot on every tick of its own, and waits whose ticks did not coincide
+each paid a Git process per tick; waits that ticked together already shared
+one read through the snapshot's single flight. Now an idle wait costs one
+Git process at entry and the clock costs four a second however many waits
+are open; with no wait open the clock does not run, and a wait that is
+cancelled while the clock's read is slow leaves at once.
+
+The clock is a notice, not a verifier or a second cache. Every answer still
+comes from the workspace snapshot, verified as before, and a head that
+rewinds or disappears reaches the waiter as that snapshot's own refusal or
+error rather than as a quiet timeout. The measured before-and-after figures
+are on the [performance page](../performance.md#resident-wait-cost).
 
 ## Resets are not losses
 

@@ -1,6 +1,9 @@
 package perflane
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 type BenchmarkCase struct {
 	Scenario       string
@@ -34,7 +37,8 @@ func BenchmarkCases(contract Contract) ([]BenchmarkCase, error) {
 	if err := contract.Validate(); err != nil {
 		return nil, err
 	}
-	count := (len(contract.Scenarios)-2)*len(contract.Depths) - 1 + len(contract.CheckpointCases) + len(contract.Depths)*len(contract.Concurrency) + len(contract.ActorCounts) - 1 + len(contract.DependencyFanout.Widths)
+	envelope := envelopeBenchmarkCases(contract)
+	count := (len(contract.Scenarios)-2)*len(contract.Depths) - 1 + len(contract.CheckpointCases) + len(contract.Depths)*len(contract.Concurrency) + len(contract.ActorCounts) - 1 + len(envelope) + len(contract.DependencyFanout.Widths)
 	cases := make([]BenchmarkCase, 0, count)
 	for _, scenario := range contract.Scenarios {
 		if scenario == "checkpoint_restart" {
@@ -61,14 +65,40 @@ func BenchmarkCases(contract Contract) ([]BenchmarkCase, error) {
 	}
 	// Keep scale axes independent at the smallest required depth rather than
 	// multiplying every depth, scenario, actor count, and fan-out together.
+	// The contract's envelope_cases are the explicit exception it names,
+	// because separate axes do not prove a joint envelope.
 	axisDepth := contract.Depths[0]
 	for _, actorCount := range contract.ActorCounts[1:] {
 		cases = append(cases, BenchmarkCase{Scenario: "cold_status", Depth: axisDepth, ActorCount: actorCount})
 	}
+	cases = append(cases, envelope...)
 	for _, fanout := range contract.DependencyFanout.Widths {
 		cases = append(cases, BenchmarkCase{Scenario: "submit_ack", Depth: contract.DependencyFanout.Depth, Fanout: fanout})
 	}
 	return cases, nil
+}
+
+// envelopeBenchmarkCases expands the contract's joint depth-and-actor cells.
+// Each cell contributes the actor-count cost at its own envelope depth. A cell
+// whose depth is off the ordinary depth axis also contributes what the depth
+// loop never reached there: the one-actor cold read that is the joint cell's
+// own denominator, emitted immediately before it so the two comparable cases
+// run adjacent, and the cold verify and warm read a joint claim needs.
+func envelopeBenchmarkCases(contract Contract) []BenchmarkCase {
+	var cases []BenchmarkCase
+	for _, envelope := range contract.EnvelopeCases {
+		onAxis := slices.Contains(contract.Depths, envelope.Depth)
+		if !onAxis {
+			cases = append(cases, BenchmarkCase{Scenario: "cold_status", Depth: envelope.Depth})
+		}
+		cases = append(cases, BenchmarkCase{Scenario: "cold_status", Depth: envelope.Depth, ActorCount: envelope.Actors})
+		if !onAxis {
+			cases = append(cases,
+				BenchmarkCase{Scenario: "warm_status", Depth: envelope.Depth},
+				BenchmarkCase{Scenario: "honest_fallback", Depth: envelope.Depth})
+		}
+	}
+	return cases
 }
 
 type Revision string

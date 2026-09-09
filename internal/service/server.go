@@ -23,6 +23,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 type Frontier = statusview.Frontier
@@ -48,11 +49,20 @@ const (
 )
 
 type Status struct {
-	Durable       app.Snapshot   `json:"durable"`
-	Live          nexus.Snapshot `json:"live"`
-	Cursor        Cursor         `json:"cursor"`
-	Inbox         *nexus.Inbox   `json:"inbox,omitempty"`
-	TrustBoundary string         `json:"trust_boundary"`
+	Durable app.Snapshot   `json:"durable"`
+	Live    nexus.Snapshot `json:"live"`
+	// Work is the named commitment populations for this whole frontier,
+	// derived from the projection below by their one owner, workroom.WorkOf,
+	// so no client has to count them itself.
+	Work          workroom.WorkSummary `json:"work"`
+	Cursor        Cursor               `json:"cursor"`
+	Inbox         *nexus.Inbox         `json:"inbox,omitempty"`
+	TrustBoundary string               `json:"trust_boundary"`
+	// Profile is the fold profile this answer was produced under. A reader
+	// holding this status across a rebuild compares it with the rebuild
+	// report's profile: a different one means the retained projection is
+	// no longer interpretable by the process now running.
+	Profile string `json:"profile"`
 }
 
 // SummaryStatus is the bounded resident response used by the default CLI.
@@ -78,8 +88,9 @@ type WaitResponse struct {
 
 // DefaultWaitConcurrency bounds how many long polls the resident holds open at
 // once across /v0/wait and /v0/actor-wait together. The two routes share one
-// budget because they consume the same resource: a goroutine ticking the
-// snapshot until something changes or the poll times out.
+// budget because they consume the same resource: a goroutine ticking the live
+// cursor until something changes or the poll times out, reading the verified
+// snapshot again only when the shared head clock or that cursor moves.
 const DefaultWaitConcurrency = 64
 
 type Server struct {
@@ -91,6 +102,8 @@ type Server struct {
 	// and releases by receiving; capacity is the bound.
 	waitSlots    chan struct{}
 	previewSlots chan struct{}
+	// heads is the one head clock every open wait on this log shares.
+	heads *headWatch
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -106,6 +119,10 @@ func NewObserved(workspace *app.Workspace, observer observe.Observer) (*Server, 
 	}
 	workspace.SetObserver(observer)
 	server := &Server{workspace: workspace, hub: hub, mux: http.NewServeMux(), observer: observer, waitSlots: make(chan struct{}, DefaultWaitConcurrency), previewSlots: make(chan struct{}, 8)}
+	genesis := kernel.Ref(workspace.View().Genesis)
+	server.heads = newHeadWatch(func(ctx context.Context) (string, error) {
+		return workspace.Store.Head(observe.WithObserver(ctx, observer), genesis)
+	})
 	server.routes()
 	return server, nil
 }
@@ -198,7 +215,7 @@ func (s *Server) statusFromLive(ctx context.Context, observation nexus.Observati
 	if err != nil {
 		return Status{}, err
 	}
-	status := Status{Durable: durable, Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture}
+	status := Status{Durable: durable, Work: workroom.WorkOf(durable.Projection), Live: observation.Snapshot, Cursor: Cursor{Frontier: []Frontier{{Genesis: durable.Genesis, Head: durable.Head, Depth: durable.Depth}}, Live: observation.Snapshot.Cursor}, TrustBoundary: TrustedProcessPosture, Profile: s.workspace.Profile()}
 	if includeInbox {
 		inbox := observation.Inbox
 		status.Inbox = &inbox
@@ -395,22 +412,60 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 	write(writer, delta, nil)
 }
 
+// wait ticks on the composite cursor until something the caller has not seen
+// arrives or the poll times out. The live half is read on every tick: it is
+// in memory and cheap. The durable half is read from the verified snapshot
+// only when it can have changed — on the first tick, when the shared head
+// clock has advanced since the last read, or when the live cursor moved —
+// because that read is where the Git process is. A tick that finds neither
+// keeps the durable answer it already verified and refreshes only the live
+// view around it, so a timeout answer still carries the live state it was
+// measured against.
+//
+// The generation is read before the snapshot it guards. A head that moves
+// between the two is seen by the next tick rather than lost, and a snapshot
+// that already saw the newer head simply gets asked once more.
 func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nexus.Observation, bool, error) {
+	release := s.heads.acquire()
+	defer release()
+	includeInbox := input.Session != ""
 	var response WaitResponse
 	var observed nexus.Observation
-	changed, err := Poll(ctx, input.TimeoutMS, func() (bool, error) {
+	primed := false
+	var seen uint64
+	var advance <-chan struct{}
+	changed, err := pollUntil(ctx, input.TimeoutMS, func() <-chan struct{} { return advance }, func() (bool, error) {
 		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
 		if err != nil {
 			return false, err
 		}
-		status, err := s.statusFromLive(ctx, observation, input.Session != "")
-		if err != nil {
-			return false, err
+		var generation uint64
+		var clockHead string
+		generation, advance, clockHead = s.heads.current()
+		pending := includeInbox && len(observation.Inbox.Frames) > 0
+		liveMoved := observation.Reset || len(observation.Changes) > 0 || pending
+		// The clock's head disagreeing with the last verified answer covers
+		// the one window the generation cannot: a move that lands after this
+		// waiter's snapshot and before the clock's baseline read.
+		headMoved := primed && clockHead != "" && clockHead != response.Status.Durable.Head
+		if !primed || generation != seen || liveMoved || headMoved {
+			status, err := s.statusFromLive(ctx, observation, includeInbox)
+			if err != nil {
+				return false, err
+			}
+			response = WaitResponse{Status: status, LiveChanges: observation.Changes, Reset: observation.Reset}
+			primed, seen = true, generation
+		} else {
+			response.Status.Live = observation.Snapshot
+			response.Status.Cursor.Live = observation.Snapshot.Cursor
+			response.LiveChanges, response.Reset = nil, false
+			if includeInbox {
+				inbox := observation.Inbox
+				response.Status.Inbox = &inbox
+			}
 		}
 		observed = observation
-		response = WaitResponse{Status: status, LiveChanges: observation.Changes, Reset: observation.Reset}
-		pending := status.Inbox != nil && len(status.Inbox.Frames) > 0
-		return observation.Reset || DurableChanged(input.Cursor.Frontier, status.Durable) || len(observation.Changes) > 0 || pending, nil
+		return observation.Reset || DurableChanged(input.Cursor.Frontier, response.Status.Durable) || len(observation.Changes) > 0 || pending, nil
 	})
 	return response, observed, changed, err
 }
@@ -422,6 +477,15 @@ func DurableChanged(frontier []Frontier, durable app.Snapshot) bool {
 // Poll is the single wait clock used by composite service waits and durable-only
 // degraded clients. It checks immediately and reports false on ordinary timeout.
 func Poll(ctx context.Context, timeoutMS int, check func() (bool, error)) (bool, error) {
+	return pollUntil(ctx, timeoutMS, nil, check)
+}
+
+// pollUntil is Poll with one extra way to run the check early: wake, when
+// given, returns a channel whose close means the shared head clock advanced,
+// so a resident waiter answers an external Git change on the clock's tick
+// rather than on its own next one. The channel is re-read after every check
+// because the clock replaces it each time it fires.
+func pollUntil(ctx context.Context, timeoutMS int, wake func() <-chan struct{}, check func() (bool, error)) (bool, error) {
 	timeout := time.Duration(timeoutMS) * time.Millisecond
 	if timeout <= 0 || timeout > 30*time.Second {
 		timeout = 25 * time.Second
@@ -435,12 +499,17 @@ func Poll(ctx context.Context, timeoutMS int, check func() (bool, error)) (bool,
 		if err != nil || done {
 			return done, err
 		}
+		var advanced <-chan struct{}
+		if wake != nil {
+			advanced = wake()
+		}
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
 		case <-deadline.C:
 			return false, nil
 		case <-ticker.C:
+		case <-advanced:
 		}
 	}
 }
@@ -483,6 +552,9 @@ type rebuildReport struct {
 	Running  bool `json:"running"`
 	Verified int  `json:"verified,omitempty"`
 	Total    int  `json:"total,omitempty"`
+	// Profile is the fold profile of the process doing the rebuild, the same
+	// identifier a status carries, so a retained status can be compared.
+	Profile string `json:"profile"`
 }
 
 // handleRebuild answers while the rebuild it reports on is still running, which
@@ -497,7 +569,7 @@ type rebuildReport struct {
 // would not be.
 func (s *Server) handleRebuild(writer http.ResponseWriter, _ *http.Request) {
 	progress, running := s.workspace.RebuildProgress()
-	write(writer, rebuildReport{Running: running, Verified: progress.Verified, Total: progress.Total}, nil)
+	write(writer, rebuildReport{Running: running, Verified: progress.Verified, Total: progress.Total, Profile: s.workspace.Profile()}, nil)
 }
 
 type presenceRequest struct {

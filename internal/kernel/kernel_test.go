@@ -1890,6 +1890,162 @@ func TestVerifierRejectsAlteredCausalTrailersWithFreshIdentity(t *testing.T) {
 	}
 }
 
+// withEmptyCausalTrailer inserts an empty Rests-On line after the envelope
+// marker, the malformed shape the parser keeps as one empty reference.
+func withEmptyCausalTrailer(message string) string {
+	return strings.Replace(message, "gitseq-event-v0\n", "gitseq-event-v0\nRests-On: \n", 1)
+}
+
+// appendSignedMessage seals message over request's payload tree with the
+// sequencer key, checks the envelope reached Git storage carrying exactly
+// wantTrailers causal trailers, and advances the sequence ref from parent to
+// it. It returns the commit and the signed committer timestamp a checkpoint
+// covering that commit has to cache.
+func appendSignedMessage(t *testing.T, f fixtureState, request Request, message, parent string, wantTrailers int) (string, int64) {
+	t.Helper()
+	tree, err := f.store.WritePayloadTree(f.ctx, request.Payload, request.Attachments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit, err := f.store.SignedCommit(f.ctx, tree, parent, message, f.signingKey, gitstore.CommitIdentity{
+		AuthorName: "attacker", AuthorEmail: "attacker@example.invalid",
+		CommitterName: "gitseq sequencer", CommitterEmail: "sequencer@gitseq.invalid",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An empty trailer only matters if Git keeps it, so read the envelope back
+	// out of the object rather than trusting the string that was handed in.
+	storedMessage, timestamp, err := f.store.CommitMessageWithTimestamp(f.ctx, commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, trailers, err := intent.ParseEnvelope(storedMessage, 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trailers) != wantTrailers {
+		t.Fatalf("stored trailers = %#v, want %d", trailers, wantTrailers)
+	}
+	if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), commit, parent); err != nil {
+		t.Fatal(err)
+	}
+	return commit, timestamp
+}
+
+// An envelope may carry a "Rests-On: " line with an empty value: the parser
+// keeps it as one empty reference while the actor's signed intent holds none.
+// Before EqualRefs compared ordered elements, the two joined to the same empty
+// string and both verifiers accepted the record. The malformed commit here is
+// covered by a published checkpoint, so the checkpoint reader reaches
+// checkpointEventFromPayload rather than falling back to a full scan.
+func TestVerifierRejectsEmptyCausalTrailerAbsentFromSignedIntent(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name         string
+		inject       bool
+		wantTrailers int
+	}{
+		{name: "zero references", wantTrailers: 0},
+		{name: "empty trailer", inject: true, wantTrailers: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			f, _, requests, template := checkpointState(t, 1)
+			request := requests[0]
+			decoded := mustVerifyIntent(t, request.Signed)
+			if len(decoded.RestsOn) != 0 {
+				t.Fatalf("signed references = %#v, want none", decoded.RestsOn)
+			}
+			// Rewind and re-append the same signed intent, so the checkpoint
+			// republished below covers exactly the commit under test.
+			if err := f.store.UpdateRef(f.ctx, Ref(f.genesis), f.genesis, mustHead(t, f.store, Ref(f.genesis))); err != nil {
+				t.Fatal(err)
+			}
+			message := intent.Envelope(request.Signed, decoded.RestsOn)
+			if test.inject {
+				message = withEmptyCausalTrailer(message)
+			}
+			commit, timestamp := appendSignedMessage(t, f, request, message, f.genesis, test.wantTrailers)
+
+			stored := cloneCheckpoint(t, template)
+			stored.Head = commit
+			stored.Events[0].Commit = commit
+			stored.Events[0].Timestamp = timestamp
+			publishStoredCheckpoint(t, f, stored)
+
+			_, verifyErr := Verify(f.ctx, f.store, f.genesis)
+			_, _, checkpointErr := loadCheckpointInto(f.ctx, f.store, f.genesis, commit, CheckpointOptions{Enabled: true}, nil)
+			reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+			loaded, readErr := reader.Load(f.ctx, f.genesis)
+
+			if test.inject {
+				// Full verification refuses at loadCommit; the checkpoint path
+				// refuses the same commit at checkpointEventFromPayload, which
+				// names the event index. The reader then has no usable
+				// checkpoint and its fallback scan refuses too, so it counts one
+				// fallback, no checkpoint load and no completed scan.
+				// Each site is reported separately: one that stops refusing
+				// must not be hidden behind an earlier one that still does.
+				if verifyErr == nil || !strings.Contains(verifyErr.Error(), "causal trailers differ from signed intent") {
+					t.Errorf("full verification accepted an empty trailer the actor never signed: %v", verifyErr)
+				}
+				if checkpointErr == nil || !strings.Contains(checkpointErr.Error(), "event 0 causal trailers differ from signed intent") {
+					t.Errorf("checkpoint restoration accepted an empty trailer the actor never signed: %v", checkpointErr)
+				}
+				if readErr == nil || !strings.Contains(readErr.Error(), "causal trailers differ from signed intent") {
+					t.Errorf("checkpoint-enabled reader accepted an empty trailer the actor never signed: %v", readErr)
+				}
+				if reader.checkpointLoads != 0 || reader.checkpointFallbacks != 1 || reader.fullScans != 0 {
+					t.Errorf("reader counters = loads:%d fallbacks:%d scans:%d, want the checkpoint refused and its fallback scan failed",
+						reader.checkpointLoads, reader.checkpointFallbacks, reader.fullScans)
+				}
+				return
+			}
+			if verifyErr != nil || checkpointErr != nil || readErr != nil {
+				t.Fatalf("zero-reference control rejected: verify=%v checkpoint=%v read=%v", verifyErr, checkpointErr, readErr)
+			}
+			if !loaded.Checkpoint || reader.checkpointLoads != 1 || reader.checkpointFallbacks != 0 {
+				t.Fatalf("zero-reference control did not restore from its checkpoint: result=%+v loads=%d fallbacks=%d",
+					loaded, reader.checkpointLoads, reader.checkpointFallbacks)
+			}
+		})
+	}
+}
+
+// The same malformed commit appended beyond a published checkpoint must be
+// refused by the frontier scan that continues the restored prefix. Asserting
+// only the reader's error would not pin that: the reader discards this failure
+// and falls back to a full scan that refuses for its own reason.
+func TestCheckpointFrontierRejectsEmptyCausalTrailerAppendedAfterIt(t *testing.T) {
+	t.Parallel()
+	f, private, _, _ := checkpointState(t, 1)
+	restored, err := NewReader(f.store, CheckpointOptions{Enabled: true}).Load(f.ctx, f.genesis)
+	if err != nil || !restored.Checkpoint {
+		t.Fatalf("valid log did not restore from its checkpoint: %+v err=%v", restored, err)
+	}
+	request := f.request(t, private, "empty-trailer-after-checkpoint", []byte("claim"), nil)
+	decoded := mustVerifyIntent(t, request.Signed)
+	if len(decoded.RestsOn) != 0 {
+		t.Fatalf("signed references = %#v, want none", decoded.RestsOn)
+	}
+	message := withEmptyCausalTrailer(intent.Envelope(request.Signed, decoded.RestsOn))
+	commit, _ := appendSignedMessage(t, f, request, message, mustHead(t, f.store, Ref(f.genesis)), 1)
+
+	_, _, frontierErr := loadCheckpointInto(f.ctx, f.store, f.genesis, commit, CheckpointOptions{Enabled: true}, nil)
+	if frontierErr == nil || !strings.Contains(frontierErr.Error(), "checkpoint frontier: causal trailers differ from signed intent") {
+		t.Errorf("checkpoint frontier accepted an empty trailer the actor never signed: %v", frontierErr)
+	}
+	reader := NewReader(f.store, CheckpointOptions{Enabled: true})
+	if _, err := reader.Load(f.ctx, f.genesis); err == nil || !strings.Contains(err.Error(), "causal trailers differ from signed intent") {
+		t.Errorf("checkpoint-enabled reader accepted an empty trailer the actor never signed: %v", err)
+	}
+	if reader.checkpointLoads != 0 || reader.checkpointFallbacks != 1 || reader.fullScans != 0 {
+		t.Errorf("reader counters = loads:%d fallbacks:%d scans:%d, want the checkpoint refused and its fallback scan failed",
+			reader.checkpointLoads, reader.checkpointFallbacks, reader.fullScans)
+	}
+}
+
 func TestSequenceBoundsPinNamedGenesisAndHeadIndependently(t *testing.T) {
 	t.Parallel()
 	commits := []string{"genesis", "event", "head"}
@@ -3360,6 +3516,9 @@ func TestCheckpointMetadataBindsEnvelopeTrailersAndTreeIndependently(t *testing.
 			decoded := mustVerifyIntent(t, stored.Events[0].Signed)
 			trailers := append(append([]string(nil), decoded.RestsOn...), "git:sha1:"+strings.Repeat("f", 40))
 			sequence[1].Message = intent.Envelope(stored.Events[0].Signed, trailers)
+		}},
+		{name: "empty causal trailer", want: "causal trailers differ", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
+			sequence[1].Message = withEmptyCausalTrailer(sequence[1].Message)
 		}},
 		{name: "commit tree", want: "commit tree differs", mutate: func(_ *checkpoint, sequence []gitstore.CommitMetadata) {
 			sequence[1].Tree = strings.Repeat("f", 40)

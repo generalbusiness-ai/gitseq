@@ -10,6 +10,12 @@ import (
 )
 
 const (
+	// PreviewReadBudget bounds the Git verification work for one file: the
+	// largest blob the reader will fetch and hash-verify. It is separate from
+	// what is returned, which the service bounds per window.
+	PreviewReadBudget = 4 << 20
+	// PreviewContentLimit is the former whole-file ceiling, kept as the size
+	// above which a file is only ever shown in windows.
 	PreviewContentLimit = 512 << 10
 	previewTreeBudget   = 4 << 20
 	PreviewEntryLimit   = 128
@@ -48,7 +54,7 @@ func ValidPreviewPath(path string) bool {
 
 // Preview reads only hash-verified immutable Git objects from this store. It
 // does not follow symlinks, filters, worktree files or replacement objects.
-// One request has a 1MiB commit, 4MiB aggregate tree and 512KiB content budget.
+// One request has a 1MiB commit, 4MiB aggregate tree and 4MiB blob budget.
 func (s Store) Preview(ctx context.Context, format, commit, path string) (result PreviewObject, err error) {
 	if !ValidPreviewPath(path) {
 		return result, errors.New("invalid repository path")
@@ -123,7 +129,7 @@ func (s Store) Preview(ctx context.Context, format, commit, path string) (result
 			}
 			return result, nil
 		case "100644", "100755":
-			result.Content, err = batch.readObject(found.oid, "blob", PreviewContentLimit)
+			result.Content, err = batch.readObject(found.oid, "blob", PreviewReadBudget)
 			return result, previewReadError(err)
 		default:
 			return result, ErrPreviewType

@@ -2,7 +2,9 @@
 date: 2026-08-05, revised 2026-08-06 (tenth wave)
 status: draft/discussion, moving forward — kernel spiked; bootstrap
   plan ratified, review-repaired, and simplified (BOOTSTRAP.md). This repo's own first-parent history
-  is the first (hand-run) log; refs/seq/design carries it.
+  is the first (hand-run) log; refs/seq/design was to carry it (no such
+  ref has been located here or on origin as of 2026-09-07; see the bootstrap note's
+  design-log status).
   Restructured after adversarial review (kernel / collaboration
   profile / application profiles); the six-case adversarial spike
   under spike/ passes against real git (stable evidence projection in
@@ -443,6 +445,19 @@ Recorded so applications converge; the base runs none of it:
   identity is the identity-log convention. The sequencer's key is the
   one exception, anchored in genesis; the nexus issuer key is the
   collaboration profile's exception, anchored in its config log.
+- No reliability, promise-keeping or reputation scores (adopted
+  2026-08-27 by ratification 4838ff4b of decision c590c20e; recorded
+  here 2026-09-06). No gitseq deliverable — kernel,
+  profile, projector, or shipped projection — computes a score of any
+  actor's reliability, promise-keeping or reputation, and no
+  gitseq-shipped authority check consumes one. Roles are granted and
+  ratified as audited acts, never computed. The exclusion is of this
+  project's scope, not of anyone's capability: the record is open and
+  a third party may build such a projection outside it. What the
+  exclusion protects is that the durable log holds only deliberate
+  acts while presence and chatter are not retained by the service, so
+  the substrate itself does not become a behavioural surveillance
+  corpus; it makes no claim about copies other participants keep.
 
 ## Deployment shape
 
@@ -618,7 +633,8 @@ activates when the first stranger arrives, as an audited event.
 Promotion is `state` with frames embedded as evidence; the MCP
 surface is eight tools. The vocabulary does not grow; kinds do.
 Ninth wave: the kinds align with the **Language-Action conventions**
-(Winograd/Flores) — assert, propose, request, `promise` (never
+(Winograd/Flores; [Winograd 1987](https://doi.org/10.1207/s15327051hci0301_2))
+— assert, propose, request, `promise` (never
 "commit"; git owns that word), report, dissent — giving the missing
 commissive layer and the conversation-for-action loop as fold rules:
 a promise is open until its report is ratified *by the requester*;
@@ -703,3 +719,41 @@ basis-edge distinction that a live staleness incident demonstrated, and
 the standing projection-honesty and artifact-world-basis remainders. The
 wave's one-line lesson: genesis anchors the keys, the log anchors the
 meaning, the repo carries both.
+
+Documentation addition, 2026-09-06 (adopted decision c590c20e, ratified
+4838ff4b; recovering the outcome first requested at #322). Three points
+the waves above left implicit, written down without changing any
+contract. First, lineage. The coordination loop keeps its
+Language-Action shape (request, promise, report, ratification: the
+Winograd/Flores conversation for action). Its *force* is read the way
+Promise Theory reads promises: a promise is made voluntarily by an
+autonomous agent and binds only the agent that makes it, and whether it
+was kept is assessed by the party that relied on it, not declared by the
+promiser. That is the plain-English content of Burgess's account
+([arXiv:2604.10505](https://arxiv.org/abs/2604.10505), 2026, sections II,
+III and V: "no agent may promise anything on behalf of any agent but
+itself"; cooperation is voluntary because nothing forces an offer or its
+acceptance; trust is an agent's assessment that promises will be kept),
+and it is already how the fold behaves: only the addressee promises,
+and acceptance stays the requester's, whether given explicitly by
+ratifying a report or carried as pre-authorized acceptance in the
+sealed approved merge that closes an implementation commitment (see
+the architecture page's commitment and merge-receipt contracts). The
+further reading that a
+commitment ends without fault when its conditions of satisfaction
+disappear is this project's own, expressed in the terminal states of the
+tenth wave (withdrawn, cancelled, reneged are distinct), not a claim
+found in that paper. None of this adds a lifecycle state or a required
+speech act; the philosophical vocabulary explains the existing loop and
+does not replace it. Second, scope. The refusal above records the adopted
+exclusion of reliability, promise-keeping and reputation scoring from
+every gitseq deliverable and from every gitseq-shipped authority check;
+roles come from audited authority, never from a score. Third, the
+free-standing promise. A promise that rests on no request has a name in
+this reading: it is an *offer awaiting acceptance*, the deferred
+offer/accept pair being the polarity dual of request/promise (the
+requester asks and the performer commits, or the performer commits and a
+requester accepts). In v0 it projects as dangling, exactly as the tenth
+wave states, because nobody is positioned to declare it satisfied. This
+names the interpretation only; no offer or accept kind, state or
+affordance is implemented, and none is adopted by this addition.

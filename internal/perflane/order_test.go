@@ -1,6 +1,9 @@
 package perflane
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 func TestBenchmarkCasesHaveStableOrderAndNames(t *testing.T) {
 	cases, err := BenchmarkCases(validContract())
@@ -34,6 +37,57 @@ func TestBenchmarkCasesHaveStableOrderAndNames(t *testing.T) {
 		if selected.Fanout != fanout || selected.Depth != 1_000 || selected.Scenario != "submit_ack" {
 			t.Fatalf("fan-out block case %d = %#v", index, selected)
 		}
+	}
+}
+
+func TestEnvelopeCellsAddOnlyTheirOwnJointCases(t *testing.T) {
+	independent := validContract()
+	joint := envelopeContract()
+	// The extra checkpoint case is what makes 50,000 a reachable depth; it is
+	// not part of what the envelope cells themselves contribute.
+	independent.CheckpointCases = joint.CheckpointCases
+
+	before, err := BenchmarkCases(independent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := BenchmarkCases(joint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var added []string
+	for _, selected := range after {
+		if !slices.ContainsFunc(before, func(existing BenchmarkCase) bool { return existing.Name() == selected.Name() }) {
+			added = append(added, selected.Name())
+		}
+	}
+	// The one-actor read at 50,000 comes immediately before the joint cell it
+	// is the denominator for; 500,000 already has its one-actor read on the
+	// ordinary depth axis, so its cell adds only the joint case.
+	want := []string{
+		"cold_status/depth-050000",
+		"cold_status/depth-050000/actors-008",
+		"warm_status/depth-050000",
+		"honest_fallback/depth-050000",
+		"cold_status/depth-500000/actors-050",
+	}
+	if !slices.Equal(added, want) {
+		t.Fatalf("envelope cells added %v, want %v", added, want)
+	}
+	// Removing exactly those names must leave the independent matrix, in its
+	// own order: the cells add cases and reorder nothing.
+	var kept []string
+	for _, selected := range after {
+		if !slices.Contains(want, selected.Name()) {
+			kept = append(kept, selected.Name())
+		}
+	}
+	var original []string
+	for _, selected := range before {
+		original = append(original, selected.Name())
+	}
+	if !slices.Equal(kept, original) {
+		t.Fatalf("envelope cells disturbed the independent matrix: %v", kept)
 	}
 }
 

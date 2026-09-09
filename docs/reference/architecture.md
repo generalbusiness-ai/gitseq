@@ -2,6 +2,12 @@
 title: Architecture layers
 summary: The boundary between Gitseq's semantic-free kernel and replaceable application profiles.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0581948abafe7fda01c7e4bcafaae5337297c601
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65e932f9ddd81331c355d7c87def2de9210300ef
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b1f8e0ec38eadfc3fbd798a222d3e310426a1be
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df626b67d31ee72ba4f7af7d29c8ed4246fc04ec
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1912b37f7f0668c7512f9281c6513d2043f69f6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a51bf9c28f8fc0c4b0669a80d10d3e7ed9f698e0
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa1fb7103f0466394a55535fcd34687358e7a08e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d43258e62f3d48b8a226c084d693237cee1ec5b
@@ -123,7 +129,10 @@ The kernel owns:
 - binding an opaque schema name and opaque payload tree to the signed intent;
 - carrying the signed `rests_on` strings without assigning them application
   semantics, while refusing at admission a submitted reference that claims a
-  position in this log and does not name one;
+  position in this log and does not name one; a verified record's envelope
+  trailers must equal its signed references element by element, in order and
+  with duplicates, so a trailer the actor did not sign is refused even when its
+  value is empty;
 - idempotency namespaces, keys, replay, conflicting-retry detection, and the
   verified read-only exact-replay check used before mutable client preflight;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
@@ -387,12 +396,14 @@ and cannot be trusted. Only a genuinely missing file is absence. Unreadable,
 larger than the 8 KiB bound, not a record, carrying no address, or naming
 another workroom are all the third answer, and it carries the reason.
 
-`internal/app` owns that read, and `internal/residentclient` owns the clause
-naming which of the six failures it is — not each surface's complete sentence,
-whose remainder is the way out that surface offers. That is what keeps the two
-from drifting into separate accounts of the same record. `cmd/gs` turns the
-third answer into a refusal of the whole command before it reads a signing key
-or appends anything, and names `--server -` as the way out. `cmd/gitseq-mcp`
+`internal/app` owns that read, and `internal/residentclient` owns the routing
+rule built on it (`ResolveServerURL`): an explicit loopback URL, `-` for the
+local fold, or the advertisement by default, with the third answer turned into
+a refusal that names `--server -` as the way out, and `RefusedDial` wording a
+resident that is not listening. `cmd/gs` and `cmd/gitseq-github` both call
+that one rule before they read a signing key or build a request, so a durable
+`gs` act and a connector observation route the same way and refuse in the same
+words; the connector never falls back to a local append on its own. `cmd/gitseq-mcp`
 refuses the durable call for the same reason and before the same work, while
 leaving the attachment and the session intact, and still lets a read answer
 from the verified local fold. It judges the record on every durable act rather
@@ -954,6 +965,15 @@ where applicable and an explicit exhaustion flag. Fewest hops wins, then the
 original citation order. General provenance remains the top-level side table;
 the row carries one answer for diagnosis, not a second copy of that graph.
 
+Staleness stops at a refused record: an ineffective basis carries no
+authority and no staleness, so a retirement underneath it reaches nothing
+above it. The projection discloses the citation instead of propagating
+through it. An effective statement or artifact that rests directly on a
+refused record carries `ineffective_bases` naming those citations, and the
+dead-basis classification the filing surfaces and admission share reports
+such a citation as `ineffective`, advisory only. The disclosure is direct:
+it does not walk further, and it grants nothing.
+
 A retirement is read for what its own act rested on. A supersession resting on
 an artifact covering the same path is succession, and carries no staleness
 across reasoning edges. One naming no covering successor is condemnation, and
@@ -1069,6 +1089,30 @@ caches from `@19` are rejected and verified history is replayed. Kernel
 checkpoints remain profile-independent. Cleanup remains an explicit act by
 the old artifact's author or a ratifier.
 
+The receipt's cross-author retirement authority stays cut down to the reviewed
+paths, and the missing-classification accounting no longer reads that cut map
+as the whole plan. A merge that deletes a file publishes no successor at the
+deleted path, so the cut can never reach the deleted predecessor even though
+the receipt maps it to the empty successor in the plan it signs. That explicit
+empty JSON string, read once from the signed value with its type intact and
+never normalised or converted, is the deletion shape; a plan entry naming any
+other string claims a surviving destination and stays visible when the review
+did not cover it, and a `null` names no successor and stays visible too; a
+plan carrying a number, boolean, array or object value is not a plan the fold
+can read, so that receipt is admitted with no plan, retires nothing and
+publishes no accounting at all. An explicit deletion entry is reported as
+accounted for only when the log also records that artifact's retirement by
+an actor entitled to record it in their own right — the artifact's author, or
+an actor holding `ratifier` — and that retirement still stands. A plan entry
+with no such retirement, a refused one, and an entry naming anything that is
+not a live covered artifact all stay visible as before, as does a covered
+artifact the plan never named. The receipt's sealed unaccounted tally is not
+rewritten; the published cleanup count subtracts only these accounted
+deletions. No new retirement authority is granted, and cleanup remains an
+explicit act. This projection change advances the profile to
+`workroom-fold@23`; a cache written under `@22` is rejected and verified
+history is replayed.
+
 Before Git moves, the CLI also constructs every signed succession request and
 applies the kernel's exact genesis-ceiling measure plus the resident JSON
 transport limit when that surface is selected. Thus the application cannot
@@ -1145,6 +1189,17 @@ actor who must sign its merge. Each of those projection changes altered the
 application projection bytes and lifecycle meaning, so each advanced the
 profile: `@14` to `@15`, then `@15` to `workroom-fold@16`; a cache written
 under an older profile is rejected and history is replayed.
+
+A validated merge receipt records delivery for every eligible artifact named
+by its exact-head approval, including reporting companions. That delivery is
+independent of the receipt's retirement cut: an empty cut or a carried reporting
+artifact still closes its implementation commitment. The existing review,
+signer, ratification, candidate and temporal checks select these artifacts when
+the receipt is admitted; retirement authority remains a separate check.
+Delivery and the exposed receipt witness both match the commitment's resolved
+repository and ref. A later receipt for another destination cannot replace that
+matching witness or satisfy work addressed elsewhere. This correction advances
+the profile to `workroom-fold@24`; earlier cached projections are rebuilt.
 
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
@@ -1496,6 +1551,21 @@ pages, exact-path artifact pages, exact-item inspection, the whole-log review
 gate, the bounded staleness-wave summary, and the bounded join of a caller's
 live priority inbox.
 
+The named commitment populations a reader counts work in — open, completed,
+closed-not-completed, stale, with the open lifecycle breakdown and the
+commitment total — have exactly one owner, `workroom.WorkOf`. It sits beside
+the lifecycle words it groups, and it is derived on demand from the projected
+commitments rather than projected as a field: the snapshot shape, the fold
+profile and the cached projection contract are unchanged by it. Every surface
+reads that one result and none re-derives it: the bounded status page and
+summary totals, the complete status page and its JSON, the resident's complete
+status, and the MCP status and wait totals, which state `scope` because they
+are workroom-wide beside lanes that are not. The lifecycle counts stay beside
+the populations, because the lifecycle word `open` and the population named
+`open` are different numbers and a reader needs both. `approved_not_landed` is
+that owner's landing-audit count, read from it rather than totalled a second
+time.
+
 The resident and MCP artifact contract remains the live exact-path page. A
 separate CLI selection asks the same page-building core for one of four
 lifecycle states — live, retired, succeeded, all — or for artifacts whose
@@ -1630,7 +1700,12 @@ head; absence never falls back to main or the worktree. Layer 1 supplies bounded
 hash-verified immutable commit/tree/blob reads, without Git replacements,
 filters, symbolic links or submodules. The endpoint admits only records in the
 resident's verified projection, applies same-origin JSON checks and bounded
-input, concurrency, time, metadata, text and listing limits. React renders
+input, concurrency, time, metadata, text and listing limits. Text is answered
+in windows: the layer-1 read budget (4 MiB of one verified blob) is separate
+from what one answer carries (at most 400 lines and 64 KiB, lines cut at
+4 KiB); windows are a fixed partition of the file, the window is the one
+holding the cited line or an explicit start, and a partial answer says so
+with its real line range and neighbours. React renders
 Markdown and source as inert text with safe links. These additions change no
 kernel, fold, custody, signing or completion authority. [Reading notes, source
 files, and evidence](reading-view.md) specifies the read limits and navigation.
@@ -1638,7 +1713,10 @@ files, and evidence](reading-view.md) specifies the read limits and navigation.
 Landing observations are layer-7 Git facts, separate from the layer-6 receipt
 witness. A bounded batch captures immutable ref heads and computes local and
 remote-tracking ancestry; unavailable objects, shallow history or inspection
-limits yield unknown, never absence. No fetch runs and no observation changes
+limits yield unknown, never absence. When no witnessed merge head was supplied,
+the observation also says `unknown` and gives that reason: the read has not
+established that no receipt exists. Both ancestry booleans remain nullable;
+measured non-membership alone yields false. No fetch runs and no observation changes
 the fold's satisfied state. The worktree endpoint maps all named commitment
 heads, protects unsettled and approved-not-landed rows, refreshes cached branch
 tips, and publishes conservative deletion advice without deleting anything.
@@ -1664,6 +1742,64 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   query needs a fact Git holds rather than the projection — whether an
   approved head is an ancestor of a branch — that join happens here, because
   Git remains outside the Workroom interpreter.
+
+  **Event reference input.** Every input of `cmd/gs` and `cmd/gitseq-mcp`
+  that carries a durable event reference accepts three forms: the canonical
+  identifier, the `#N` record number the displays print, and an unambiguous
+  prefix or suffix of one event hash. One resolver in `internal/eventref`
+  answers all of them, at the tool boundary and nowhere else. Its input is
+  the selector and the verified durable event set of the selected workroom —
+  the decisions of one projection, which is the one index that names every
+  record, statements and acts alike — and its output is a canonical
+  identifier or a refusal. The searched population is that event set and never
+  Git's object database, so a hexadecimal fragment cannot name a blob, a tree
+  or an ordinary commit. Resolution is scoped to one workroom: a number or a
+  fragment never names another room's event, and an explicit canonical
+  identifier of another genesis is a cross-workroom citation, preserved as
+  typed. A statement body is an open map, so a named list of fields is
+  resolved and nothing else: the ones a consumer reads as exactly one durable
+  event — `artifact`, `authorizes_request`, `authorizes_approval` and the
+  three `merge_` receipt bindings — derived from those consumers rather than
+  from the shape of a value, and applied wherever a body is written. Actor
+  fingerprints, implementation heads, ephemeral handles, batch labels, free
+  prose and already-signed records are carried through unreinterpreted;
+  `gs merge --candidate`, `body.commit`, `authorizes_candidate` and the
+  receipt's own head fields name Git commits and are not resolved. The whole of one act resolves
+  against one event set before it is signed, the set is read at most once and
+  only when something typed needs it, and the signed payload carries the full
+  canonical identifier and never a fragment. Ambiguity and no match refuse
+  with bounded candidates and append nothing; that refusal is human input
+  validation and is distinct from the fold's contract that a signed citation
+  resolving to nothing is admitted in silence. Because the log only grows, a
+  later append can turn a unique short reference ambiguous, which refuses, but
+  can never make one name a different event: numbers are fixed at their
+  record's position, and a hash fragment gains matches without losing the one
+  it had. `gs` names each resolution on
+  standard error, keeping standard output the single identifier of the new
+  act; the MCP tools return the same sentences in the result. This adds no
+  kernel, fold, custody, signing or completion authority.
+
+  **Basis disclosure.** The filing surfaces — `gs state`, `gs supersede`,
+  `gs reassign-if-unclaimed`, `gs publish`, `gs batch` and the MCP `state`,
+  `supersede` and `reassign_if_unclaimed` tools — say what each `rests_on`
+  value means before they sign: a string that is no identifier connects the act to
+  nothing, this workroom's identifier naming no event is the claim the kernel
+  refuses, and another workroom's identifier is admitted as a citation this
+  room cannot verify. The predicate is the kernel's, not the fold's: the
+  workroom's genesis is in the log the kernel resolves against and is not an
+  application record, so it is admitted in silence while the fold's own
+  membership answer, which the projection notes report from, still holds no
+  record for it. The three are distinguished, they describe rather than
+  refuse, and they grant nothing. Two references are outside it and are named
+  here rather than left to be noticed: an intra-batch `$label` names an act the
+  same chain has yet to mint and so is no citation this boundary can describe,
+  and `gs review` and the MCP `review` tool build their citation list in
+  `internal/reviewguard`, which judges every one of them against the projection
+  and refuses what does not stand — a second, weaker description beside that
+  judgement would be noise. The kernel's refusal, the signed staleness
+  testimony, the retired-basis override, the effective-supersession advisory
+  and the ineffective-support disclosure are unchanged; after an act lands,
+  the classification `workroom.DeadBases` already holds is reported as it was.
 
   **Implementation binding.** Before a review is signed, and again wherever
   its approval is consumed, one pure resolver in `internal/reviewguard`
@@ -1824,8 +1960,17 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   witness, and checkpoint remain unchanged.
 
   Succession recording never re-applies that guard. Resuming an already-sealed
-  receipt appends its recorded suffix without replanning, so the symmetric
-  lineage rule of layer 5 keeps judging everything already admitted.
+  receipt appends only the missing acts in its sealed suffix without replanning,
+  so the symmetric lineage rule of layer 5 keeps judging everything already
+  admitted. The shared evaluator matches effective acts by merger, words, body
+  and ordered citations, resolving earlier batch labels to their recorded event
+  identifiers. Automatic historical staleness testimony is not recomputed for
+  acts already recorded. Missing acts retain their deterministic keys and pass
+  ordinary admission. A retired receipt or ambiguous matching acts refuse.
+  The plan reports `resume` only while acts remain, and `complete` when all are
+  recorded; repeating a completed merge at its sealed target and head changes
+  neither Git nor the durable log. A successor retired after delivery is not
+  recreated by that retry.
 
   A mutating merge holds `.merge.lock` in the repository-shared metadata
   directory before it looks for an existing receipt or validates and plans a
@@ -1887,7 +2032,10 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   authority.
   Its `reassign_if_unclaimed` tool owns the same guarded pair and retry
   choreography as the CLI, rather than asking callers to construct a
-  commitment expectation from generic state and supersede tools.
+  commitment expectation from generic state and supersede tools. The tool
+  inputs that carry an event reference are one table in this package, read by
+  the shared resolver above before any tool runs; a tool that acquires such an
+  input and does not join that table resolves nothing.
 - `SKILL.md` is the normative operating contract for an agent participating
   in the Workroom application.
 - `internal/connector/github` and `cmd/gitseq-github` translate admitted
@@ -2107,6 +2255,21 @@ Three consequences follow, and all of them are visible in `ui/`:
   Because a withdrawal names the record it retires rather than a basis, it
   takes no operator citation at all.
 
+Counting is the case where reading and combining is not enough on its own. The
+browser's populations are a lawful layer 7 combination of projected lifecycle
+fields, and for as long as they were only that, the board and the command line
+printed different numbers for one frontier and neither was wrong. The relation
+is now named at layer 5 by `workroom.WorkOf` and published on the status
+answers. The browser still selects its own rows, because a tab count must be
+exactly the rows that tab renders under the current search, which is a
+presentation question layer 5 cannot answer. What it may not do is disagree:
+`internal/wireparity/work_populations_test.go` and
+`ui/test/work-populations.test.mjs` count one frozen projection with the Go
+owner and with the browser's own selector and require the same answer, with
+controls that drop a member and regroup one surface and watch the comparison
+fail. A scoped count says it is scoped rather than being compared with a
+workroom-wide one.
+
 An affordance is also bounded by authority. The browser offers a ratification
 only when the fold's own published rule says this actor may make it: the
 satisfier **projected on the target statement**, which is the one admitted with
@@ -2175,14 +2338,15 @@ It introduces no replacement Gitseq command or automatic binding migration.
 | `internal/kernel` | Kernel | Uses only Git storage, intents, and an optional host interface that loads or stores an opaque checkpoint object ID. It performs no local checkpoint filesystem I/O. Its pre-append admission callback receives envelope facts, not payload meaning; its scheduled post-dedup application admission hook is handed the payload bytes and attachments uninterpreted so the application can judge the submission that would extend the log, and still assigns no meaning to them. A checkpoint caches only kernel-verified events and kernel identity (schema, object format, genesis, and authenticated sequencer-key lineage), never projection state or an application profile; every candidate is verified from those kernel facts. |
 | `internal/custody` | Example application interpreter | Folds opaque offer, acceptance and settlement records into asset-custody state. It manages no local signing keys and defines no kernel policy. |
 | `host/live` | Live runtime, public surface | Owns the single process-local coordination runtime. It opens public-key leases only after an expiring single-use possession proof, exposes a separate trusted-only custodial entry point, prepares deterministic application-neutral frame drafts, verifies actor signatures made outside the runtime, binds conversations to exact scopes, supplies runtime ordering, and retains bounded live state. Its optional composition helper keeps caller-owned durable frontiers separate from live cursors. It imports no application profile and is independent of the durable Workroom fold. |
-| `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness. It knows nothing about Git storage, HTTP, or MCP. |
+| `internal/workroom` | Application profile and interpreter | Owns Workroom schemas, vocabulary, fold, authority, commitments, artifacts, reviews, and staleness, and the one derivation of the named commitment populations every surface counts work with. It knows nothing about Git storage, HTTP, or MCP. |
 | `internal/apphost` | Application host binding | Defines the application identity, pinned source, fold version, initializing-key authority, and the binding in force shared by every host, together with the repository configuration a checkout needs to reopen its own log, and the one advisory-lock primitive that serializes a read-modify-write on a named file in that directory. It imports no application profile and has no application ontology. |
 | `host` | Durable application host, public surface | Exports binding at init, configured and attached-clone opening against a declared application, local-custody append, prepare/submit for externally actor-signed acts, and the verified record stream — and no projection, because the outside application owns its fold. It delegates canonical signing-byte construction to `internal/intent`, so no public host API names the kernel's domain tag. Attached opening receives a genesis and sequencer-key path through public fields, verifies before interpreting, and never initializes or exposes `internal/apphost.Config`. It depends on the kernel and `internal/apphost`, never on an application profile. |
 | `host/identity` | Application host, public surface | Holds the host identity vocabulary an application inherits rather than reinvents: witness declarations, witnessed GitHub and self-signed Nostr anchors, withdrawal, and two-axis resolution with a plain display at an exact verified record position. It imports `host` and no application profile, gates no append, and reads no clock. Nostr BIP-340 verification stays in this host interpreter, outside the Ed25519 kernel. The provider check that turns a GitHub login into an identity runs outside the fold, and only its result is recorded. Endorsement has two entry points over one validation and encoding site: `Endorse` signs with a held actor key, and `PrepareEndorsement` fills the genesis, validates the anchor, BIP-340-verifies any carried Nostr proof, and returns a `host.PreparedAct` for an actor to sign outside the process, taking and retaining no actor private key and writing nothing. |
 | `internal/app` | Application host and boundary adapter | The deliberate coupling point: it opens the repository's configured actor and sequencer key custody, builds Workroom payloads and signed kernel requests, applies application admission, owns the bounded repository-private checkpoint pointer and off switch, reads kernel events, and runs the fold. It also selects one interpreter from the recorded binding as a workspace opens, reports kernel verification ahead of any refusal to interpret, reuses the profile-independent authenticated kernel prefix across fold changes, and gates its separate projection cache on the selected application and fold version. Workroom is the one interpreter this build holds. The trusted resident may invoke this local custody for several actors; the nexus credential does not alter key files, kernel verification or fold authority. |
 | `internal/mergeplan` | Application workflow evaluation | Owns the typed, read-only Workroom merge preflight shared by CLI, MCP, and the mutating merge path: exact approval and implementer checks, isolated prospective Git merge, reviewed scope, live-artifact classification and succession, and prospective admission of the canonical durable suffix. It may read ordinary Git and Workroom state, but it does not append acts or write the source repository. The resident's request-size ceiling is a function the composing command supplies, so this package stays below the transport rather than importing it. |
+| `internal/eventref` | Surface | Reads what a person can type where an event reference is expected — the canonical identifier, a `#N` record number, or a prefix or suffix of one event hash — against the verified durable event set of one workroom, and answers with a canonical identifier or a bounded refusal. It reads no Git objects, holds no cache and signs nothing, so no surface can resolve a reference that the projection it was handed does not already contain. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
-| `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. |
+| `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. Every status and every rebuild report names the fold profile the process interprets with, an opaque identifier fixed for the life of the binary, so a reader that kept a status across a rebuild can tell a same-profile re-audit, where the retained status stays and is qualified, from a profile change, where it is dropped because the projection was produced under a contract this process does not implement; a profile missing on either side is unverifiable and drops it too. |
 | `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. The read-only merge-plan surface stages the prospective merge only in a disposable clone and exposes the same typed approval, classification, succession, and reviewed-scope evaluator that `merge` consumes. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls, including read-only merge planning, to Workroom and nexus operations. Per-call `repo` and `agent` values select an existing accessible key and effective roster actor, fail closed without changing either startup default, and keep resident leases scoped to that validated pair. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |

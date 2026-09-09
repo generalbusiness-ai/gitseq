@@ -2,6 +2,9 @@
 title: gs merge
 summary: Merge an approved exact head and publish its artifact succession.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0581948abafe7fda01c7e4bcafaae5337297c601
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df626b67d31ee72ba4f7af7d29c8ed4246fc04ec
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:608be185aaba9343eba9175c04bf10a20a04b015
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7452b69266324ba978fe1fd371defb3b658dca49
@@ -29,6 +32,18 @@ resumable batch.
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 It takes no positional arguments.
+
+`--approval` and `--authorization` name durable events and each takes a
+[short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
+the canonical identifier, resolved and named on standard error before the
+receipt is built. `--candidate` names an ordinary Git commit, not an event, and
+is never resolved.
+
+A merge receipt's `merge_approval`, `merge_authorization` and
+`merge_authorization_ratification` are event identifiers, and this command
+composes them from values already canonical. Written by hand into a body they
+are resolved like any other recognized field; see
+[Body fields](../event-identifiers.md#body-fields-and-why-only-some-of-them).
 
 ## Example
 
@@ -467,7 +482,13 @@ The assertion and every successor and retirement use deterministic
 idempotency keys. If submission stops part-way, run the same command again in
 the checkout still at that merge head. It finds the immutable Git receipt and
 resumes the missing suffix; it does not merge a second time or retire a
-successor it already published.
+successor it already published. Effective acts already recorded are matched by
+merger, words, body and ordered citations. Their historical staleness testimony
+is retained; current staleness does not turn a completed act into a different
+idempotent request. Missing acts still pass normal admission. When the complete
+suffix is present, the command returns without changing Git or the durable log,
+and `merge-plan` reports `complete`. This retry does not recreate a successor
+that was retired after delivery.
 
 Before creating the merge commit, the command builds the signed request for
 every act in that succession batch. It checks each request with the kernel's
@@ -479,8 +500,11 @@ the workroom log, and the receipt reservation are still unchanged.
 
 When the reviewed candidate artifact rests on its implementer's promise, that
 artifact already serves as the implementation report. The sealed receipt
-closes that commitment; no implementation ratification follows the merge. The
-review approval remains separate and must still be explicitly ratified before
+closes that commitment at its resolved destination; no implementation ratification
+follows the merge. Delivery includes every eligible reporting artifact named by
+the exact-head approval, not only the primary artifact. It does not depend on
+retiring those artifacts: an empty retirement cut or a carried report still
+counts as delivery. The review approval remains separate and must still be explicitly ratified before
 this command accepts it.
 
 ## Artifact succession
@@ -540,6 +564,33 @@ claim, and a later promise cannot repair it. Fold profile `workroom-fold@20`
 corrects this accounting when replaying existing signed receipts; it does not
 rewrite them or grant new retirement authority. The artifact's author or a
 ratifier still performs the cleanup.
+
+A live artifact the receipt neither retires nor classifies as left live is
+reported against the receipt as not classified by it. A file the merge deletes
+is not such an artifact. It has no successor at its old path, so the reviewed
+paths that bound cross-author retirement authority never reach it, but the
+receipt does name it in `merge_retirements` with the empty successor and its
+author does retire it afterwards. Fold profile `workroom-fold@23` reads that
+pair — the receipt's own signed plan entry mapping the artifact to the empty
+successor, and a standing retirement recorded by the artifact's author or by a
+ratifier — as the deletion being accounted for, and drops both the warning and
+the cleanup count it added.
+
+The explicit empty JSON string is the whole of the deletion shape, and it is
+read from the plan exactly as the receipt signed it, with its value type
+intact and no normalising or conversion. A plan entry mapping the artifact to
+any other string claims a surviving destination instead, so it is answerable
+at that destination's path and carries no authority when the review did not
+cover it, and an entry whose value is `null` names no successor at all: both
+stay reported as not classified by the receipt, however effective a retirement
+follows them. A plan carrying any other value type for an entry, a number, a
+boolean, an array or an object, is not a plan the fold can read, so the whole
+receipt is admitted with no retirement plan: it retires nothing, publishes no
+accounting and reports no entry at all. A named entry nobody retired, one whose
+supersession the fold refused, and one naming anything that is not a live
+covered artifact stay visible too, and so does a covered artifact the plan
+never named. The narrow authority map is unchanged: naming an artifact in a
+receipt still retires nothing on its own.
 
 ### Citations across a merge
 
