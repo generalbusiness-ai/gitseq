@@ -1,0 +1,79 @@
+✔ the for-you count opens a list of what is addressed to you, newest first (167.196083ms)
+✔ opening one row jumps to that thread and leaves the others unread (53.161959ms)
+✔ mark all read empties the list and the bell goes quiet (65.075167ms)
+✔ with nothing addressed to you the list says so plainly (56.933792ms)
+✔ the panel closes on Escape and on a click outside it (67.920666ms)
+✖ a saved read position decides what is unread at mount and every reading is written back (56.737041ms)
+✖ read positions stay apart by room and by actor (73.499792ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 5
+ℹ fail 2
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 880.376667
+
+✖ failing tests:
+
+test at test/notifications.test.mjs:248:1
+✖ a saved read position decides what is unread at mount and every reading is written back (56.737041ms)
+  AssertionError [ERR_ASSERTION]: reading one row out of order was not persisted
+  + actual - expected
+  
+    {
+  +   read: [],
+  -   read: [
+  -     4
+  -   ],
+      watermark: 2
+    }
+  
+      at file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:262:12
+      at async withRemounts (file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:238:5)
+      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:252:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { watermark: 2, read: [] },
+    expected: { watermark: 2, read: [ 4 ] },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/notifications.test.mjs:278:1
+✖ read positions stay apart by room and by actor (73.499792ms)
+  AssertionError [ERR_ASSERTION]: the three scopes did not each keep their own stored position
+  + actual - expected
+  
+    {
+  +   claudeHere: null,
+  +   codexElsewhere: null,
+  +   codexHere: null
+  -   claudeHere: {
+  -     read: [],
+  -     watermark: 1
+  -   },
+  -   codexElsewhere: {
+  -     read: [],
+  -     watermark: 4
+  -   },
+  -   codexHere: {
+  -     read: [],
+  -     watermark: 4
+  -   }
+    }
+  
+      at file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:300:12
+      at async withRemounts (file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:238:5)
+      at async TestContext.<anonymous> (file:///private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/mutant/ui/test/notifications.test.mjs:280:3)
+      at async Test.run (node:internal/test_runner/test:1409:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:974:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: { codexHere: null, codexElsewhere: null, claudeHere: null },
+    expected: { codexHere: { watermark: 4, read: [] }, codexElsewhere: { watermark: 4, read: [] }, claudeHere: { watermark: 1, read: [] } },
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
