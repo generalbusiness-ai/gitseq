@@ -1,3 +1,0 @@
-ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	9.780s
-ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	5.151s
-ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	13.945s
