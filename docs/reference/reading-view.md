@@ -23,6 +23,19 @@ record, even when it is not a request or does not belong to the selected
 request population. The exact-number result is separate from filtered rows.
 A record known only through its fold decision still has a detail view.
 
+## While the resident is verifying
+
+A page that opens while the resident is auditing the log from cold shows
+verification progress and nothing else. No earlier frontier is offered to a
+first-time reader during that window. A page that was already open keeps the
+status it holds, qualified, while the resident reports a rebuild, and drops
+that status unless the answering process names the same fold profile. Serving
+a previously verified frontier to a first-time reader was declined on
+2026-09-09 by proposal 7493bb29. It adds no read contract for earlier state,
+no second verifier and no persistence of unsigned projection state. The
+reasoning is in
+[Previous-frontier readers during a rebuild](../../notes/2026-09-07-previous-frontier-readers.md).
+
 ## Follow a reference
 
 Open a record's details to find its **evidence** attachments. Select an
