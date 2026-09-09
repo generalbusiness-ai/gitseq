@@ -1,0 +1,109 @@
+Mutation evidence for the notification read-position regression
+===============================================================
+
+Method
+------
+The worktree's ui/ tree (source, tests, node_modules) was copied with cp -R to
+a scratch directory outside the repository:
+
+  /private/tmp/claude-501/.../scratchpad/mutant/ui
+
+Pristine copies of ui/src/components/TopBar.tsx and ui/src/lib/memory.ts were
+kept beside it. Each of the four mutations from notification-storage-mutations.diff
+was applied on its own to the scratch copy, the focused test file was run there
+with `node --test test/notifications.test.mjs`, and the source was restored from
+the pristine copies before the next mutation. No mutation was ever applied
+inside the repository or the worktree, and no `git` command ran in the copy.
+
+The new tests are:
+  A. "a saved read position decides what is unread at mount and every reading is
+      written back"
+  B. "read positions stay apart by room and by actor"
+
+Baseline
+--------
+Unmutated scratch copy: rc=0, 7 tests, 7 pass, 0 fail (the five pre-existing
+notification tests plus A and B).
+
+Assertion failures versus build errors
+--------------------------------------
+Every failure below is a runtime AssertionError raised by node:assert inside a
+mounted React tree: node reports `code: 'ERR_ASSERTION'` with an actual and an
+expected value. None of the four runs produced a syntax, transform, module
+resolution or type error: the mutated modules loaded and rendered, and the five
+pre-existing notification tests stayed green in every run, which they could not
+have done if the module had failed to build. Grep over the four run logs for
+SyntaxError, "Transform failed", TypeError, ERR_MODULE, "Cannot find" and
+esbuild diagnostics returns zero matches; ERR_ASSERTION is the only error kind
+present.
+
+Two of the mutations change the storage key, which also makes the independently
+seeded position in test A invisible, so those runs fail in both tests. The
+boundary each mutation is meant to be caught at is named below; in every case
+the assertion at that boundary is among the failures.
+
+1. mount load omitted
+   TopBar.tsx:60  setRead(loadForYouRead(genesis, myFingerprint)) -> setRead(NOTHING_READ)
+   rc=1, 7 tests, 6 pass, 1 fail. Test B stays green (it establishes every
+   position through the component, so a mount that never loads is invisible to
+   it); test A is the load boundary and fails.
+   FAILED (ERR_ASSERTION), test A, notifications.test.mjs:254:
+     "the mount did not load the saved read position"
+     actual:   'codex — 3 for you'
+     expected: /2 for you/   operator: match
+   No build error.
+
+2. event save omitted
+   TopBar.tsx:66  saveForYouRead(genesis, myFingerprint, next) -> removed
+   rc=1, 7 tests, 5 pass, 2 fail.
+   FAILED (ERR_ASSERTION), test A, notifications.test.mjs:262 — the save boundary:
+     "reading one row out of order was not persisted"
+     actual:   { watermark: 2, read: [] }
+     expected: { watermark: 2, read: [ 4 ] }   operator: deepStrictEqual
+   FAILED (ERR_ASSERTION), test B, notifications.test.mjs:300:
+     "the three scopes did not each keep their own stored position"
+     actual:   { codexHere: null, codexElsewhere: null, claudeHere: null }
+     expected: { codexHere: { watermark: 4, read: [] },
+                 codexElsewhere: { watermark: 4, read: [] },
+                 claudeHere: { watermark: 1, read: [] } }
+   No build error.
+
+3. actor scoping omitted
+   memory.ts:18  `workroom.foryou.${genesis}.${fingerprint}` -> `workroom.foryou.${genesis}`
+   rc=1, 7 tests, 5 pass, 2 fail.
+   FAILED (ERR_ASSERTION), test B, notifications.test.mjs:293 — the actor boundary:
+     "another actor inherited this actor's read position"
+     actual:   'claude — nothing for you'
+     expected: /1 for you/   operator: match
+     (codex had read to #4 through the component; with one key per room the
+     second actor inherits that watermark and loses its own #1.)
+   FAILED (ERR_ASSERTION), test A, notifications.test.mjs:254 — the shortened key
+   also cannot see the independently seeded position:
+     "the mount did not load the saved read position"
+     actual:   'codex — 3 for you'   expected: /2 for you/
+   The room assertion in test B correctly still passes: this mutation does not
+   break room separation.
+   No build error.
+
+4. room scoping omitted
+   memory.ts:18  `workroom.foryou.${genesis}.${fingerprint}` -> `workroom.foryou.${fingerprint}`
+   rc=1, 7 tests, 5 pass, 2 fail.
+   FAILED (ERR_ASSERTION), test B, notifications.test.mjs:288 — the room boundary:
+     "another room inherited this room's read position"
+     actual:   'codex — nothing for you'
+     expected: /3 for you/   operator: match
+   FAILED (ERR_ASSERTION), test A, notifications.test.mjs:254:
+     "the mount did not load the saved read position"
+     actual:   'codex — 3 for you'   expected: /2 for you/
+   No build error.
+
+Raw run logs
+------------
+scratchpad/mutant-out/baseline.txt
+scratchpad/mutant-out/mutation-1-mount-load.txt
+scratchpad/mutant-out/mutation-2-event-save.txt
+scratchpad/mutant-out/mutation-3-actor-scope.txt
+scratchpad/mutant-out/mutation-4-room-scope.txt
+The driver that applied and reverted each mutation: scratchpad/mutate.sh
+After the last run the scratch copy was restored to pristine source; the final
+grep in the driver shows the unmutated key and both unmutated call sites.
