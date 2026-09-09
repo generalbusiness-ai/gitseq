@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d93db16e264e94ff69511ceeee9132dc197510c3","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/spine.ts."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ddc63d50a979569450ec392429f02a99f9c10506","text":"Merge retired a covered predecessor; the successor is at internal/service/uidist/index.html."}
