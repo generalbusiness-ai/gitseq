@@ -57,30 +57,35 @@ type OptionalMetric struct {
 // Result is one raw sample. Aggregates are deliberately computed later so the
 // evidence always retains the observations they summarize.
 type Result struct {
-	Schema            string                    `json:"schema"`
-	Scenario          string                    `json:"scenario"`
-	Depth             int                       `json:"depth"`
-	CheckpointTail    *int                      `json:"checkpoint_tail,omitempty"`
-	Concurrency       int                       `json:"concurrency,omitempty"`
-	ActorCount        int                       `json:"actor_count"`
-	Fanout            int                       `json:"dependency_fanout"`
-	SetupNS           int64                     `json:"setup_ns"`
-	LatencyNS         int64                     `json:"latency_ns"`
-	Operations        int                       `json:"operations"`
-	Throughput        float64                   `json:"throughput_ops_per_second"`
-	CPUTimeNS         OptionalMetric            `json:"cpu_ns"`
-	Allocations       uint64                    `json:"allocations"`
-	AllocatedBytes    uint64                    `json:"allocated_bytes"`
-	PeakRSSBytes      OptionalMetric            `json:"peak_rss_bytes"`
-	SteadyMemoryBytes OptionalMetric            `json:"steady_memory_bytes"`
-	HeapSystemBytes   uint64                    `json:"heap_system_bytes"`
-	GCCount           uint32                    `json:"gc_count"`
-	GCPauseNS         uint64                    `json:"gc_pause_ns"`
-	ResponseBytes     int                       `json:"response_bytes"`
-	ResponseBuildNS   OptionalMetric            `json:"response_build_ns"`
-	ResponseEncodeNS  OptionalMetric            `json:"response_encode_ns"`
-	QueueWaitNS       OptionalMetric            `json:"queue_wait_ns"`
-	CheckpointNS      OptionalMetric            `json:"checkpoint_ns"`
+	Schema            string         `json:"schema"`
+	Scenario          string         `json:"scenario"`
+	Depth             int            `json:"depth"`
+	CheckpointTail    *int           `json:"checkpoint_tail,omitempty"`
+	Concurrency       int            `json:"concurrency,omitempty"`
+	ActorCount        int            `json:"actor_count"`
+	Fanout            int            `json:"dependency_fanout"`
+	SetupNS           int64          `json:"setup_ns"`
+	LatencyNS         int64          `json:"latency_ns"`
+	Operations        int            `json:"operations"`
+	Throughput        float64        `json:"throughput_ops_per_second"`
+	CPUTimeNS         OptionalMetric `json:"cpu_ns"`
+	Allocations       uint64         `json:"allocations"`
+	AllocatedBytes    uint64         `json:"allocated_bytes"`
+	PeakRSSBytes      OptionalMetric `json:"peak_rss_bytes"`
+	SteadyMemoryBytes OptionalMetric `json:"steady_memory_bytes"`
+	HeapSystemBytes   uint64         `json:"heap_system_bytes"`
+	GCCount           uint32         `json:"gc_count"`
+	GCPauseNS         uint64         `json:"gc_pause_ns"`
+	ResponseBytes     int            `json:"response_bytes"`
+	ResponseBuildNS   OptionalMetric `json:"response_build_ns"`
+	ResponseEncodeNS  OptionalMetric `json:"response_encode_ns"`
+	QueueWaitNS       OptionalMetric `json:"queue_wait_ns"`
+	CheckpointNS      OptionalMetric `json:"checkpoint_ns"`
+	// CheckpointBytes is the serialized size of the checkpoint object a
+	// checkpoint_restart sample restored. The worker leaves it zero: the lane
+	// parent fills it in from the fixture, so a compared base worker built
+	// from an older tree needs no accessor for it.
+	CheckpointBytes   int64                     `json:"checkpoint_bytes"`
 	CASRetries        OptionalMetric            `json:"cas_retries"`
 	GitProcessCount   OptionalMetric            `json:"git_process_count"`
 	GitDurationNS     OptionalMetric            `json:"git_duration_ns"`
@@ -189,7 +194,7 @@ func Run(ctx context.Context, options RunOptions) (Result, error) {
 	}
 
 	result := Result{
-		Schema: "gitseq.performance-sample.v1", Scenario: options.Scenario, Depth: options.Depth,
+		Schema: "gitseq.performance-sample.v2", Scenario: options.Scenario, Depth: options.Depth,
 		Concurrency: options.Concurrency, ActorCount: manifest.ActorCount, Fanout: max(options.Fanout, 1),
 		SetupNS: setupNS, LatencyNS: latency.Nanoseconds(), Operations: operations,
 		Allocations: after.Mallocs - before.Mallocs, AllocatedBytes: after.TotalAlloc - before.TotalAlloc,

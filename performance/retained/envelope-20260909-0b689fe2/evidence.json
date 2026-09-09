@@ -1,0 +1,2821 @@
+{
+  "schema": "gitseq.performance-evidence.v2",
+  "contract_digest": "07b230aefd87f10d01f7e4c3976ef001251df27b52946efaab54036523c79d1f",
+  "contract": {
+    "schema_version": "gitseq.performance/v3",
+    "generator_version": "gitseq.performance-fixture.v2",
+    "seed": 632,
+    "depths": [
+      100,
+      1000,
+      10000,
+      100000,
+      500000
+    ],
+    "actor_counts": [
+      1,
+      8,
+      50
+    ],
+    "dependency_fanout_axis": {
+      "depth": 1000,
+      "widths": [
+        1,
+        8,
+        16,
+        64,
+        256
+      ],
+      "relative_limit": 0.1,
+      "preview_max_width": 64,
+      "first_production_max_width": 256
+    },
+    "checkpoint_tails": [
+      0,
+      1,
+      10,
+      255,
+      256,
+      1000
+    ],
+    "projection_shapes": [
+      "linear",
+      "assert_heavy",
+      "open_request_heavy",
+      "terminal_history_heavy",
+      "artifact_staleness_heavy"
+    ],
+    "payload_buckets": [
+      32,
+      1024,
+      16384
+    ],
+    "concurrency": [
+      1,
+      4,
+      16
+    ],
+    "scenarios": [
+      "startup",
+      "cold_status",
+      "warm_status",
+      "submit_ack",
+      "submit_wait",
+      "checkpoint_restart",
+      "honest_fallback",
+      "quiet_long_poll",
+      "concurrent_read_write",
+      "bounded_soak"
+    ],
+    "metrics": [
+      "latency_ns",
+      "throughput_ops_per_second",
+      "cpu_ns",
+      "allocations",
+      "allocated_bytes",
+      "peak_rss_bytes",
+      "steady_memory_bytes",
+      "gc_count",
+      "gc_pause_ns",
+      "git_process_count",
+      "git_duration_ns",
+      "filesystem_read_bytes",
+      "filesystem_write_bytes",
+      "queue_wait_ns",
+      "checkpoint_ns",
+      "response_build_ns",
+      "response_encode_ns",
+      "response_bytes",
+      "correctness_digest",
+      "checkpoint_bytes"
+    ],
+    "repetitions": {
+      "bounded_soak": 20,
+      "checkpoint_restart": 20,
+      "cold_status": 20,
+      "concurrent_read_write": 100,
+      "honest_fallback": 20,
+      "quiet_long_poll": 100,
+      "startup": 20,
+      "submit_ack": 100,
+      "submit_wait": 100,
+      "warm_status": 100
+    },
+    "warmups": {
+      "bounded_soak": 1,
+      "checkpoint_restart": 1,
+      "cold_status": 1,
+      "concurrent_read_write": 2,
+      "honest_fallback": 1,
+      "quiet_long_poll": 2,
+      "startup": 1,
+      "submit_ack": 5,
+      "submit_wait": 5,
+      "warm_status": 5
+    },
+    "timeout_seconds": {
+      "bounded_soak": 600,
+      "checkpoint_restart": 900,
+      "cold_status": 900,
+      "concurrent_read_write": 180,
+      "honest_fallback": 900,
+      "quiet_long_poll": 60,
+      "startup": 120,
+      "submit_ack": 120,
+      "submit_wait": 120,
+      "warm_status": 600
+    },
+    "soak_operations": 1000,
+    "soak_seconds": 60,
+    "checkpoint_cases": [
+      {
+        "depth": 257,
+        "tail": 0
+      },
+      {
+        "depth": 258,
+        "tail": 1
+      },
+      {
+        "depth": 267,
+        "tail": 10
+      },
+      {
+        "depth": 512,
+        "tail": 255
+      },
+      {
+        "depth": 513,
+        "tail": 256
+      },
+      {
+        "depth": 1257,
+        "tail": 1000
+      },
+      {
+        "depth": 50000,
+        "tail": 255
+      },
+      {
+        "depth": 500000,
+        "tail": 255
+      }
+    ],
+    "envelope_cases": [
+      {
+        "depth": 50000,
+        "actors": 8
+      },
+      {
+        "depth": 500000,
+        "actors": 50
+      }
+    ],
+    "percentile_minimums": {
+      "p95": 20,
+      "p99": 100
+    }
+  },
+  "harness_commit": "0b689fe27affcae3eba5c496eee4713b257dce40",
+  "candidate_commit": "0b689fe27affcae3eba5c496eee4713b257dce40",
+  "tier": "envelope",
+  "environment": {
+    "os": {
+      "value": "darwin"
+    },
+    "architecture": {
+      "value": "arm64"
+    },
+    "go_version": {
+      "value": "go1.27.0"
+    },
+    "git_version": {
+      "value": "git version 2.50.1 (Apple Git-155)"
+    },
+    "cpu_model": {
+      "value": "Apple M5 Max"
+    },
+    "logical_cpus": {
+      "value": 18
+    },
+    "memory_bytes": {
+      "value": 68719476736
+    },
+    "container_cpu_limit": {
+      "value": null,
+      "unavailable_reason": "cgroup v2 CPU limit unavailable"
+    },
+    "container_memory_limit_bytes": {
+      "value": null,
+      "unavailable_reason": "cgroup v2 memory limit unavailable"
+    },
+    "filesystem": {
+      "value": "/"
+    },
+    "power_mode": {
+      "value": null,
+      "unavailable_reason": "portable power-mode collector unavailable"
+    },
+    "dirty_worktree": {
+      "value": false
+    }
+  },
+  "started_at": "2026-09-09T12:39:59Z",
+  "samples": [
+    {
+      "case": "cold_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 159872542,
+        "latency_ns": 126360148042,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007913887530961238,
+        "cpu_ns": {
+          "value": 95443144000
+        },
+        "allocations": 77922666,
+        "allocated_bytes": 18660464296,
+        "peak_rss_bytes": {
+          "value": 3098345472
+        },
+        "steady_memory_bytes": {
+          "value": 1628333640
+        },
+        "heap_system_bytes": 3065053184,
+        "gc_count": 61,
+        "gc_pause_ns": 2718036,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 109178166
+        },
+        "response_encode_ns": {
+          "value": 32042
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 159601375,
+        "latency_ns": 126193962209,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007924309392424174,
+        "cpu_ns": {
+          "value": 95249968000
+        },
+        "allocations": 77922704,
+        "allocated_bytes": 18658806200,
+        "peak_rss_bytes": {
+          "value": 3126509568
+        },
+        "steady_memory_bytes": {
+          "value": 1627971848
+        },
+        "heap_system_bytes": 3102834688,
+        "gc_count": 61,
+        "gc_pause_ns": 2773453,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 136542792
+        },
+        "response_encode_ns": {
+          "value": 23625
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 126655978125,
+        "latency_ns": 150306750,
+        "operations": 1,
+        "throughput_ops_per_second": 6.653061156601417,
+        "cpu_ns": {
+          "value": 145093000
+        },
+        "allocations": 504435,
+        "allocated_bytes": 183996760,
+        "peak_rss_bytes": {
+          "value": 3088056320
+        },
+        "steady_memory_bytes": {
+          "value": 1627986272
+        },
+        "heap_system_bytes": 3044147200,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 121629583
+        },
+        "response_encode_ns": {
+          "value": 26666
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 126406746000,
+        "latency_ns": 164121625,
+        "operations": 1,
+        "throughput_ops_per_second": 6.093042278858743,
+        "cpu_ns": {
+          "value": 159671000
+        },
+        "allocations": 504431,
+        "allocated_bytes": 183995192,
+        "peak_rss_bytes": {
+          "value": 3374071808
+        },
+        "steady_memory_bytes": {
+          "value": 1627834488
+        },
+        "heap_system_bytes": 3337715712,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 136034958
+        },
+        "response_encode_ns": {
+          "value": 25833
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-050000/tail-0255",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 50000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 162314667,
+        "latency_ns": 7242908500,
+        "operations": 1,
+        "throughput_ops_per_second": 0.13806608215470345,
+        "cpu_ns": {
+          "value": 7638865000
+        },
+        "allocations": 9303313,
+        "allocated_bytes": 4312696480,
+        "peak_rss_bytes": {
+          "value": 2250342400
+        },
+        "steady_memory_bytes": {
+          "value": 796180344
+        },
+        "heap_system_bytes": 2247163904,
+        "gc_count": 20,
+        "gc_pause_ns": 1246124,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 6817083
+        },
+        "response_encode_ns": {
+          "value": 76042
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 7242908500
+        },
+        "checkpoint_bytes": 2161188,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "checkpoint": "b861502ed00d0ec413a0e68c66f2668fc548d7f2",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-050000/tail-0255",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 50000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 167909125,
+        "latency_ns": 7211253291,
+        "operations": 1,
+        "throughput_ops_per_second": 0.13867215026936433,
+        "cpu_ns": {
+          "value": 7652622000
+        },
+        "allocations": 9303341,
+        "allocated_bytes": 4312705104,
+        "peak_rss_bytes": {
+          "value": 1807319040
+        },
+        "steady_memory_bytes": {
+          "value": 796096184
+        },
+        "heap_system_bytes": 1802600448,
+        "gc_count": 20,
+        "gc_pause_ns": 1315122,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 6779792
+        },
+        "response_encode_ns": {
+          "value": 71166
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 7211253291
+        },
+        "checkpoint_bytes": 2161188,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "checkpoint": "b861502ed00d0ec413a0e68c66f2668fc548d7f2",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-500000/tail-0255",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 500000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 162125917,
+        "latency_ns": 69417431500,
+        "operations": 1,
+        "throughput_ops_per_second": 0.014405603583877918,
+        "cpu_ns": {
+          "value": 71297402000
+        },
+        "allocations": 92773395,
+        "allocated_bytes": 43357603448,
+        "peak_rss_bytes": {
+          "value": 17208836096
+        },
+        "steady_memory_bytes": {
+          "value": 7369201464
+        },
+        "heap_system_bytes": 17166336000,
+        "gc_count": 57,
+        "gc_pause_ns": 2920253,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 117988416
+        },
+        "response_encode_ns": {
+          "value": 78959
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 69417431500
+        },
+        "checkpoint_bytes": 21934525,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "checkpoint": "5649aa306ec8c149e275c5ec9573571ef16fba96",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-500000/tail-0255",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 500000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 159270125,
+        "latency_ns": 69320439917,
+        "operations": 1,
+        "throughput_ops_per_second": 0.014425759576790598,
+        "cpu_ns": {
+          "value": 71114187000
+        },
+        "allocations": 92773342,
+        "allocated_bytes": 42038795416,
+        "peak_rss_bytes": {
+          "value": 18966216704
+        },
+        "steady_memory_bytes": {
+          "value": 7105188584
+        },
+        "heap_system_bytes": 18906939392,
+        "gc_count": 57,
+        "gc_pause_ns": 2674079,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 108364375
+        },
+        "response_encode_ns": {
+          "value": 83708
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 69320439917
+        },
+        "checkpoint_bytes": 21934525,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "checkpoint": "5649aa306ec8c149e275c5ec9573571ef16fba96",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 160560541,
+        "latency_ns": 129258919917,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007736409995086777,
+        "cpu_ns": {
+          "value": 99595686000
+        },
+        "allocations": 77918148,
+        "allocated_bytes": 39250258240,
+        "peak_rss_bytes": {
+          "value": 16645439488
+        },
+        "steady_memory_bytes": {
+          "value": 7105380976
+        },
+        "heap_system_bytes": 16616882176,
+        "gc_count": 68,
+        "gc_pause_ns": 3122303,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 106128292
+        },
+        "response_encode_ns": {
+          "value": 81875
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 158692250,
+        "latency_ns": 128809535583,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007763400399465284,
+        "cpu_ns": {
+          "value": 99131128000
+        },
+        "allocations": 77918435,
+        "allocated_bytes": 39252459280,
+        "peak_rss_bytes": {
+          "value": 16204529664
+        },
+        "steady_memory_bytes": {
+          "value": 7105348480
+        },
+        "heap_system_bytes": 16256139264,
+        "gc_count": 68,
+        "gc_pause_ns": 3127332,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 117927292
+        },
+        "response_encode_ns": {
+          "value": 85541
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 158165917,
+        "latency_ns": 12746123709,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07845522472796203,
+        "cpu_ns": {
+          "value": 9743826000
+        },
+        "allocations": 7795643,
+        "allocated_bytes": 1842722736,
+        "peak_rss_bytes": {
+          "value": 481116160
+        },
+        "steady_memory_bytes": {
+          "value": 223993120
+        },
+        "heap_system_bytes": 460423168,
+        "gc_count": 16,
+        "gc_pause_ns": 878502,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 6271334
+        },
+        "response_encode_ns": {
+          "value": 26583
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 160190417,
+        "latency_ns": 12733472084,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07853317566514563,
+        "cpu_ns": {
+          "value": 9789539000
+        },
+        "allocations": 7795954,
+        "allocated_bytes": 1843419488,
+        "peak_rss_bytes": {
+          "value": 487030784
+        },
+        "steady_memory_bytes": {
+          "value": 224049328
+        },
+        "heap_system_bytes": 468844544,
+        "gc_count": 16,
+        "gc_pause_ns": 877462,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 5693167
+        },
+        "response_encode_ns": {
+          "value": 21125
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000/actors-008",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 8,
+        "dependency_fanout": 1,
+        "setup_ns": 60625292,
+        "latency_ns": 12647022000,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07906999766427227,
+        "cpu_ns": {
+          "value": 9387039000
+        },
+        "allocations": 7797048,
+        "allocated_bytes": 1843797880,
+        "peak_rss_bytes": {
+          "value": 396640256
+        },
+        "steady_memory_bytes": {
+          "value": 159618056
+        },
+        "heap_system_bytes": 376537088,
+        "gc_count": 58,
+        "gc_pause_ns": 2196548,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 5376583
+        },
+        "response_encode_ns": {
+          "value": 23125
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "trusted_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 8,
+          "head": "cddb45a0881c0c56d10374e6cb6f8acdbec9fb44",
+          "logical_digest": "82ac99ccabc79369f94ed28cf4c86c46ed6f07ec443706e2b317766091a5fe57",
+          "exact_digest": "a466e80b7683cbf5251f88023d419588c8c22c5461c992e107089c5276aae395"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000/actors-008",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 8,
+        "dependency_fanout": 1,
+        "setup_ns": 60990459,
+        "latency_ns": 12659023708,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07899503335063982,
+        "cpu_ns": {
+          "value": 9419021000
+        },
+        "allocations": 7796986,
+        "allocated_bytes": 1843708208,
+        "peak_rss_bytes": {
+          "value": 387366912
+        },
+        "steady_memory_bytes": {
+          "value": 159604424
+        },
+        "heap_system_bytes": 368181248,
+        "gc_count": 58,
+        "gc_pause_ns": 2174588,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 5866709
+        },
+        "response_encode_ns": {
+          "value": 23250
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "trusted_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 8,
+          "head": "cddb45a0881c0c56d10374e6cb6f8acdbec9fb44",
+          "logical_digest": "82ac99ccabc79369f94ed28cf4c86c46ed6f07ec443706e2b317766091a5fe57",
+          "exact_digest": "a466e80b7683cbf5251f88023d419588c8c22c5461c992e107089c5276aae395"
+        }
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 12904182333,
+        "latency_ns": 17588750,
+        "operations": 1,
+        "throughput_ops_per_second": 56.854523488025016,
+        "cpu_ns": {
+          "value": 11375000
+        },
+        "allocations": 50597,
+        "allocated_bytes": 16371368,
+        "peak_rss_bytes": {
+          "value": 488751104
+        },
+        "steady_memory_bytes": {
+          "value": 223954320
+        },
+        "heap_system_bytes": 468844544,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 5481792
+        },
+        "response_encode_ns": {
+          "value": 19209
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 12891657292,
+        "latency_ns": 18155000,
+        "operations": 1,
+        "throughput_ops_per_second": 55.081244836133294,
+        "cpu_ns": {
+          "value": 10974000
+        },
+        "allocations": 50560,
+        "allocated_bytes": 16360176,
+        "peak_rss_bytes": {
+          "value": 489095168
+        },
+        "steady_memory_bytes": {
+          "value": 223919128
+        },
+        "heap_system_bytes": 468811776,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 5589834
+        },
+        "response_encode_ns": {
+          "value": 21125
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 159881917,
+        "latency_ns": 12978771792,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07704889307140689,
+        "cpu_ns": {
+          "value": 10266601000
+        },
+        "allocations": 7795417,
+        "allocated_bytes": 3767383624,
+        "peak_rss_bytes": {
+          "value": 1863630848
+        },
+        "steady_memory_bytes": {
+          "value": 743702744
+        },
+        "heap_system_bytes": 1873936384,
+        "gc_count": 21,
+        "gc_pause_ns": 1154542,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 6161583
+        },
+        "response_encode_ns": {
+          "value": 74875
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 163629583,
+        "latency_ns": 13000610959,
+        "operations": 1,
+        "throughput_ops_per_second": 0.07691946195095738,
+        "cpu_ns": {
+          "value": 10315014000
+        },
+        "allocations": 7795141,
+        "allocated_bytes": 4030141304,
+        "peak_rss_bytes": {
+          "value": 2140258304
+        },
+        "steady_memory_bytes": {
+          "value": 796210904
+        },
+        "heap_system_bytes": 2138112000,
+        "gc_count": 21,
+        "gc_pause_ns": 1108376,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 5742292
+        },
+        "response_encode_ns": {
+          "value": 99917
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-500000/actors-050",
+      "revision": "candidate",
+      "round": 1,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 50,
+        "dependency_fanout": 1,
+        "setup_ns": 164273625,
+        "latency_ns": 126147978750,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007927197961544827,
+        "cpu_ns": {
+          "value": 94816392000
+        },
+        "allocations": 77923799,
+        "allocated_bytes": 18657086680,
+        "peak_rss_bytes": {
+          "value": 3547348992
+        },
+        "steady_memory_bytes": {
+          "value": 1628265888
+        },
+        "heap_system_bytes": 3518070784,
+        "gc_count": 60,
+        "gc_pause_ns": 2588916,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 102356917
+        },
+        "response_encode_ns": {
+          "value": 33208
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "trusted_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 50,
+          "head": "777f4814748886e76c48e5257260a6296671350d",
+          "logical_digest": "5651abd3325c857aa4066197ad7698aab8c84865491df32d3127706856fcf5b0",
+          "exact_digest": "282d00e564fd0bb8ee063b2b809dca6ff9d2be5a88dbf36f26db0b52447929eb"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-500000/actors-050",
+      "revision": "candidate",
+      "round": 2,
+      "position": 1,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 50,
+        "dependency_fanout": 1,
+        "setup_ns": 162666958,
+        "latency_ns": 126470551834,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007906979020005847,
+        "cpu_ns": {
+          "value": 95516110000
+        },
+        "allocations": 77924434,
+        "allocated_bytes": 18657935368,
+        "peak_rss_bytes": {
+          "value": 3053731840
+        },
+        "steady_memory_bytes": {
+          "value": 1628005888
+        },
+        "heap_system_bytes": 3027304448,
+        "gc_count": 61,
+        "gc_pause_ns": 2829501,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 121445084
+        },
+        "response_encode_ns": {
+          "value": 30375
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "git_duration_ns": {
+          "value": null,
+          "reason": "Git Trace2 diagnostic not requested"
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "trusted_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 50,
+          "head": "777f4814748886e76c48e5257260a6296671350d",
+          "logical_digest": "5651abd3325c857aa4066197ad7698aab8c84865491df32d3127706856fcf5b0",
+          "exact_digest": "282d00e564fd0bb8ee063b2b809dca6ff9d2be5a88dbf36f26db0b52447929eb"
+        }
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 160673125,
+        "latency_ns": 126977523625,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007875409532739656,
+        "cpu_ns": {
+          "value": 97671690000
+        },
+        "allocations": 77930232,
+        "allocated_bytes": 18665663232,
+        "peak_rss_bytes": {
+          "value": 3530014720
+        },
+        "steady_memory_bytes": {
+          "value": 1628027976
+        },
+        "heap_system_bytes": 3488677888,
+        "gc_count": 61,
+        "gc_pause_ns": 2833715,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 98996417
+        },
+        "response_encode_ns": {
+          "value": 26000
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 121602509000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 121602509000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 126366987916,
+        "latency_ns": 163102541,
+        "operations": 1,
+        "throughput_ops_per_second": 6.131112328899891,
+        "cpu_ns": {
+          "value": 162560000
+        },
+        "allocations": 504748,
+        "allocated_bytes": 186068864,
+        "peak_rss_bytes": {
+          "value": 3086860288
+        },
+        "steady_memory_bytes": {
+          "value": 1627852216
+        },
+        "heap_system_bytes": 3044081664,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 153081042
+        },
+        "response_encode_ns": {
+          "value": 30625
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 1
+        },
+        "git_duration_ns": {
+          "value": 801000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 1,
+        "cumulative_duration_ns": 801000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-050000/tail-0255",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 50000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 160382083,
+        "latency_ns": 7259003666,
+        "operations": 1,
+        "throughput_ops_per_second": 0.13775995246893707,
+        "cpu_ns": {
+          "value": 7726829000
+        },
+        "allocations": 9308232,
+        "allocated_bytes": 4315669152,
+        "peak_rss_bytes": {
+          "value": 2321022976
+        },
+        "steady_memory_bytes": {
+          "value": 796181328
+        },
+        "heap_system_bytes": 2322628608,
+        "gc_count": 21,
+        "gc_pause_ns": 1291955,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 10466917
+        },
+        "response_encode_ns": {
+          "value": 81750
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 7259003666
+        },
+        "checkpoint_bytes": 2161188,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 26
+        },
+        "git_duration_ns": {
+          "value": 814172000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "checkpoint": "b861502ed00d0ec413a0e68c66f2668fc548d7f2",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 26,
+        "cumulative_duration_ns": 814172000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "checkpoint_restart/shape-linear/depth-500000/tail-0255",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "checkpoint_restart",
+        "depth": 500000,
+        "checkpoint_tail": 255,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 166695834,
+        "latency_ns": 69783813708,
+        "operations": 1,
+        "throughput_ops_per_second": 0.014329970617317526,
+        "cpu_ns": {
+          "value": 72123428000
+        },
+        "allocations": 92788538,
+        "allocated_bytes": 42043822168,
+        "peak_rss_bytes": {
+          "value": 18066472960
+        },
+        "steady_memory_bytes": {
+          "value": 7105423056
+        },
+        "heap_system_bytes": 18181324800,
+        "gc_count": 58,
+        "gc_pause_ns": 3246878,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 137704750
+        },
+        "response_encode_ns": {
+          "value": 77334
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": 69783813708
+        },
+        "checkpoint_bytes": 21934525,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 26
+        },
+        "git_duration_ns": {
+          "value": 6699276000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_signed_checkpoint_tail",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "checkpoint": "5649aa306ec8c149e275c5ec9573571ef16fba96",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 26,
+        "cumulative_duration_ns": 6699276000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-500000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 500000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 164241000,
+        "latency_ns": 129310412250,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007733329301175435,
+        "cpu_ns": {
+          "value": 100915119000
+        },
+        "allocations": 77925796,
+        "allocated_bytes": 40574077344,
+        "peak_rss_bytes": {
+          "value": 17146789888
+        },
+        "steady_memory_bytes": {
+          "value": 7369200112
+        },
+        "heap_system_bytes": 17212506112,
+        "gc_count": 67,
+        "gc_pause_ns": 3242499,
+        "response_bytes": 3247800825,
+        "response_build_ns": {
+          "value": 116373625
+        },
+        "response_encode_ns": {
+          "value": 70542
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 121278949000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "trusted_digest": "1fdd783a8551c0cf17cec0deeaefe508fb03bce7d26220b235f535c9baa9d434",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 1,
+          "head": "587ce2caff5718b584aa19d936e03fb860bd4a50",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 121278949000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 161251916,
+        "latency_ns": 12775483417,
+        "operations": 1,
+        "throughput_ops_per_second": 0.0782749245065221,
+        "cpu_ns": {
+          "value": 9919500000
+        },
+        "allocations": 7798574,
+        "allocated_bytes": 1846280904,
+        "peak_rss_bytes": {
+          "value": 493207552
+        },
+        "steady_memory_bytes": {
+          "value": 224098560
+        },
+        "heap_system_bytes": 472940544,
+        "gc_count": 16,
+        "gc_pause_ns": 901750,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 6145666
+        },
+        "response_encode_ns": {
+          "value": 15250
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 12113707000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 12113707000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-050000/actors-008",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 50000,
+        "actor_count": 8,
+        "dependency_fanout": 1,
+        "setup_ns": 59776875,
+        "latency_ns": 12690944417,
+        "operations": 1,
+        "throughput_ops_per_second": 0.0787963422690956,
+        "cpu_ns": {
+          "value": 9538640000
+        },
+        "allocations": 7799486,
+        "allocated_bytes": 1846289528,
+        "peak_rss_bytes": {
+          "value": 381304832
+        },
+        "steady_memory_bytes": {
+          "value": 159604984
+        },
+        "heap_system_bytes": 363986944,
+        "gc_count": 53,
+        "gc_pause_ns": 2086162,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 7326333
+        },
+        "response_encode_ns": {
+          "value": 17750
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 12030357000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "trusted_digest": "cd4ad09a245f0d4697a0be58af59a3b3887decea05f20e78d2b9200ba660d1ed",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 8,
+          "head": "cddb45a0881c0c56d10374e6cb6f8acdbec9fb44",
+          "logical_digest": "82ac99ccabc79369f94ed28cf4c86c46ed6f07ec443706e2b317766091a5fe57",
+          "exact_digest": "a466e80b7683cbf5251f88023d419588c8c22c5461c992e107089c5276aae395"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 12030357000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "warm_status/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "warm_status",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 12856164500,
+        "latency_ns": 18467583,
+        "operations": 1,
+        "throughput_ops_per_second": 54.14893762762566,
+        "cpu_ns": {
+          "value": 15537000
+        },
+        "allocations": 50639,
+        "allocated_bytes": 18361912,
+        "peak_rss_bytes": {
+          "value": 493748224
+        },
+        "steady_memory_bytes": {
+          "value": 223966344
+        },
+        "heap_system_bytes": 468779008,
+        "gc_count": 0,
+        "gc_pause_ns": 0,
+        "response_bytes": 1213,
+        "response_build_ns": {
+          "value": 7244708
+        },
+        "response_encode_ns": {
+          "value": 17792
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 1
+        },
+        "git_duration_ns": {
+          "value": 772000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 1,
+        "cumulative_duration_ns": 772000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "honest_fallback/shape-linear/depth-050000",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "honest_fallback",
+        "depth": 50000,
+        "actor_count": 1,
+        "dependency_fanout": 1,
+        "setup_ns": 161969208,
+        "latency_ns": 12994228791,
+        "operations": 1,
+        "throughput_ops_per_second": 0.0769572412556423,
+        "cpu_ns": {
+          "value": 10507863000
+        },
+        "allocations": 7798379,
+        "allocated_bytes": 4032626520,
+        "peak_rss_bytes": {
+          "value": 1998602240
+        },
+        "steady_memory_bytes": {
+          "value": 796220352
+        },
+        "heap_system_bytes": 2045837312,
+        "gc_count": 22,
+        "gc_pause_ns": 1184418,
+        "response_bytes": 321858214,
+        "response_build_ns": {
+          "value": 8371625
+        },
+        "response_encode_ns": {
+          "value": 88916
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 12086929000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "trusted_digest": "f74d307f983badbf17a2e6c16fea8d0e42242bd075673b793b49b473da7f6be9",
+        "snapshot_source": "verified_cold_full_audit",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 50000,
+          "actor_count": 1,
+          "head": "7f2a2d4f25d078a2c9ad9630a52d586648193d39",
+          "logical_digest": "de41b92caf72003424955346fd5634372c53b69dd5ee4b9e88fdf3a3af71b5d5",
+          "exact_digest": "19a20fe89a19433ae571f8fd4c10cd652e42197baa527b6cb7e7f9463cd8f298"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 12086929000,
+        "incomplete_children": 0
+      }
+    },
+    {
+      "case": "cold_status/shape-linear/depth-500000/actors-050",
+      "revision": "candidate",
+      "round": 0,
+      "position": 0,
+      "result": {
+        "schema": "gitseq.performance-sample.v2",
+        "scenario": "cold_status",
+        "depth": 500000,
+        "actor_count": 50,
+        "dependency_fanout": 1,
+        "setup_ns": 164951083,
+        "latency_ns": 126918143250,
+        "operations": 1,
+        "throughput_ops_per_second": 0.007879094149921705,
+        "cpu_ns": {
+          "value": 97120381000
+        },
+        "allocations": 77933330,
+        "allocated_bytes": 18666065712,
+        "peak_rss_bytes": {
+          "value": 3054026752
+        },
+        "steady_memory_bytes": {
+          "value": 1628209488
+        },
+        "heap_system_bytes": 3023142912,
+        "gc_count": 60,
+        "gc_pause_ns": 2790622,
+        "response_bytes": 1216,
+        "response_build_ns": {
+          "value": 121206625
+        },
+        "response_encode_ns": {
+          "value": 28917
+        },
+        "queue_wait_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_ns": {
+          "value": null,
+          "reason": "not applicable to scenario"
+        },
+        "checkpoint_bytes": 0,
+        "cas_retries": {
+          "value": null,
+          "reason": "not exposed by scenario"
+        },
+        "git_process_count": {
+          "value": 15
+        },
+        "git_duration_ns": {
+          "value": 121413081000
+        },
+        "filesystem_read_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "filesystem_write_bytes": {
+          "value": null,
+          "reason": "portable byte counter unavailable"
+        },
+        "correctness_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "trusted_digest": "509d9a931fa360627230131e3fd44ec8cd9f966fcc18955ff9045582e6ba68c8",
+        "fixture": {
+          "generator_version": "gitseq.performance-fixture.v2",
+          "seed": 632,
+          "shape": "linear",
+          "depth": 500000,
+          "actor_count": 50,
+          "head": "777f4814748886e76c48e5257260a6296671350d",
+          "logical_digest": "5651abd3325c857aa4066197ad7698aab8c84865491df32d3127706856fcf5b0",
+          "exact_digest": "282d00e564fd0bb8ee063b2b809dca6ff9d2be5a88dbf36f26db0b52447929eb"
+        }
+      },
+      "trace2": {
+        "child_process_count": 15,
+        "cumulative_duration_ns": 121413081000,
+        "incomplete_children": 0
+      }
+    }
+  ],
+  "latency_ns": {
+    "candidate/checkpoint_restart/shape-linear/depth-050000/tail-0255": {
+      "samples": 2,
+      "p50": {
+        "value": 7211253291
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 7242908500
+      }
+    },
+    "candidate/checkpoint_restart/shape-linear/depth-500000/tail-0255": {
+      "samples": 2,
+      "p50": {
+        "value": 69320439917
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 69417431500
+      }
+    },
+    "candidate/cold_status/shape-linear/depth-050000": {
+      "samples": 2,
+      "p50": {
+        "value": 12733472084
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 12746123709
+      }
+    },
+    "candidate/cold_status/shape-linear/depth-050000/actors-008": {
+      "samples": 2,
+      "p50": {
+        "value": 12647022000
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 12659023708
+      }
+    },
+    "candidate/cold_status/shape-linear/depth-500000": {
+      "samples": 2,
+      "p50": {
+        "value": 126193962209
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 126360148042
+      }
+    },
+    "candidate/cold_status/shape-linear/depth-500000/actors-050": {
+      "samples": 2,
+      "p50": {
+        "value": 126147978750
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 126470551834
+      }
+    },
+    "candidate/honest_fallback/shape-linear/depth-050000": {
+      "samples": 2,
+      "p50": {
+        "value": 12978771792
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 13000610959
+      }
+    },
+    "candidate/honest_fallback/shape-linear/depth-500000": {
+      "samples": 2,
+      "p50": {
+        "value": 128809535583
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 129258919917
+      }
+    },
+    "candidate/warm_status/shape-linear/depth-050000": {
+      "samples": 2,
+      "p50": {
+        "value": 17588750
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 18155000
+      }
+    },
+    "candidate/warm_status/shape-linear/depth-500000": {
+      "samples": 2,
+      "p50": {
+        "value": 150306750
+      },
+      "p95": {
+        "value": null,
+        "unavailable_reason": "p95 requires at least 20 samples; got 2"
+      },
+      "p99": {
+        "value": null,
+        "unavailable_reason": "p99 requires at least 100 samples; got 2"
+      },
+      "max": {
+        "value": 164121625
+      }
+    }
+  },
+  "outcome": "pass",
+  "benchstat": {
+    "value": null,
+    "unavailable_reason": "comparison not requested"
+  }
+}

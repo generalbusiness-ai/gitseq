@@ -2,19 +2,25 @@
 title: Limits
 summary: The sizes and counts a call is refused for exceeding.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4eeb3acf8ba29c41c1076d8eb54dadb37463de51
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c4f0d4142bfa057005b09e59bc0a3462980842b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:35a8c246effe4f81fe54aac7ebd260f8fb3888d4
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cae4cb65017feffac75c4cba88dccda021a640de
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b2c6b2a03e3c03af9a20985a40f85e09f31ee417
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b1c98a63e3a0cfa3c4638086a2551d82fe78e14b
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe
 ---
 
 # Limits
 
 These bounds are enforced on the write path, before the sequence ref
 moves, and again by readers. A refused act leaves nothing behind.
+
+Everything on this page is a refusal. Nothing on this page is a performance
+commitment, and no measurement makes something here more or less binding. The
+scale envelopes and the measured latency, memory and checkpoint sizes are on
+the [performance evidence](performance.md) page, where they are evidence about
+one workload and one machine.
 
 ## Signed intent
 
@@ -192,13 +198,20 @@ another's.
 | Checkpoint refresh cadence | every 256 accepted events after the last successful write |
 | Serialized checkpoint blob | 256 MiB |
 
+The serialized size an actual checkpoint reaches at 50,000 and 500,000 records
+is measured on the [performance evidence](performance.md) page. That
+measurement is compared against this ceiling; it does not set it.
+
 A successful checkpoint therefore leaves at most 255 sequence commits for
 full delta verification, though persistent storage or signing failures
 make the tail larger. Restart is linear in total history for the local
 metadata proof and linear in the tail for commit-signature and payload
-reads. Rotations are the exception to that shortcut: a rotation inside
-the cached prefix still costs a signature check, because the key the
-checkpoint is authenticated under is derived through them.
+reads. That is the shape of the cost, not a bound on it: no restart is
+refused for taking too long, and the seconds it actually takes are measured
+on the [performance evidence](performance.md) page. Rotations are the
+exception to that shortcut: a rotation inside the cached prefix still costs a
+signature check, because the key the checkpoint is authenticated under is
+derived through them.
 
 The repository-private pointer at
 `.git/gitseq/checkpoints/<genesis>.json` is bounded to 4 KiB and written by
@@ -226,3 +239,11 @@ repository holds custody for, or on how many events one act may
 transitively rest on. Cold audit cost grows with depth; that is what the
 resident checkpoint exists to amortize, and what
 [`gs verify`](gs/verify.md) deliberately does not use.
+
+Because none of those is bounded, the scale envelopes are not bounds either.
+PREVIEW and FIRST-PRODUCTION name workloads that have been measured, on the
+[performance evidence](performance.md) page. Exceeding an envelope refuses
+nothing, and staying inside one is not a promise about latency or memory. A
+production commitment would be a different kind of thing: it would need a
+concrete ordinary proposal and its adoption, and it would appear on this page
+only if the write path actually enforced it.

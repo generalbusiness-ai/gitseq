@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -48,6 +50,90 @@ func validContract() Contract {
 		SoakSeconds:        60,
 		CheckpointCases:    checkpointCases,
 		PercentileMinimums: PercentileMinimums{P95: 20, P99: 100},
+	}
+}
+
+// envelopeContract is the smallest v3 contract: the v2 axes, the v3 metric
+// list, and the two joint cells. Its PREVIEW cell sits at a checkpoint-case
+// depth that the frozen depth axis does not carry.
+func envelopeContract() Contract {
+	contract := validContract()
+	contract.SchemaVersion = SchemaVersionV3
+	contract.Metrics = RequiredMetricsV3()
+	contract.CheckpointCases = append(contract.CheckpointCases, CheckpointCase{Depth: 50_000, Tail: 255})
+	contract.EnvelopeCases = []EnvelopeCase{{Depth: 50_000, Actors: 8}, {Depth: 500_000, Actors: 50}}
+	return contract
+}
+
+func TestTrackedContractsBothLoad(t *testing.T) {
+	for _, name := range []string{"contract-v2.json", "contract-v3.json"} {
+		contract, err := LoadContract(filepath.Join("..", "..", "performance", name))
+		if err != nil {
+			t.Fatalf("LoadContract %s: %v", name, err)
+		}
+		switch name {
+		case "contract-v2.json":
+			if contract.SchemaVersion != SchemaVersion || len(contract.EnvelopeCases) != 0 {
+				t.Fatalf("v2 contract = %s with %d envelope cells", contract.SchemaVersion, len(contract.EnvelopeCases))
+			}
+		case "contract-v3.json":
+			want := []EnvelopeCase{{Depth: 50_000, Actors: 8}, {Depth: 500_000, Actors: 50}}
+			if contract.SchemaVersion != SchemaVersionV3 || !reflect.DeepEqual(contract.EnvelopeCases, want) {
+				t.Fatalf("v3 contract = %s with cells %+v", contract.SchemaVersion, contract.EnvelopeCases)
+			}
+			if !slices.Contains(contract.Metrics, "checkpoint_bytes") {
+				t.Fatalf("v3 metrics omit checkpoint_bytes: %v", contract.Metrics)
+			}
+			// A warm_status sample pays a full cold status read in setup,
+			// measured at about 134 s at 500,000 records, and the cold
+			// scenarios pay it inside the measured window. v2's ceilings are
+			// sized for the depths v2 reaches and would abort the tier.
+			for scenario, floor := range map[string]int{
+				"warm_status": 600, "cold_status": 900, "honest_fallback": 900, "checkpoint_restart": 900,
+			} {
+				if contract.TimeoutSeconds[scenario] < floor {
+					t.Fatalf("v3 timeout_seconds[%q] = %d, want at least %d", scenario, contract.TimeoutSeconds[scenario], floor)
+				}
+			}
+		}
+	}
+}
+
+func TestEnvelopeContractValidation(t *testing.T) {
+	if err := envelopeContract().Validate(); err != nil {
+		t.Fatalf("valid v3 contract: %v", err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Contract)
+		want   string
+	}{
+		{"metric missing", func(c *Contract) { c.Metrics = RequiredMetrics() }, "metrics"},
+		{"metric on v2", func(c *Contract) {
+			c.SchemaVersion = SchemaVersion
+			c.EnvelopeCases = nil
+		}, "metrics"},
+		{"cells need v3", func(c *Contract) {
+			c.SchemaVersion = SchemaVersion
+			c.Metrics = RequiredMetrics()
+		}, "envelope_cases requires schema_version"},
+		{"depth unreached", func(c *Contract) { c.EnvelopeCases[0].Depth = 51_000 }, "already reaches"},
+		{"depth is the actor axis", func(c *Contract) { c.EnvelopeCases[0].Depth = c.Depths[0] }, "must not be the smallest depth"},
+		{"actors are the denominator", func(c *Contract) { c.EnvelopeCases[0].Actors = c.ActorCounts[0] }, "must exceed the smallest actor count"},
+		{"actors off axis", func(c *Contract) { c.EnvelopeCases[0].Actors = 9 }, "actor_counts"},
+		{"cells ordered", func(c *Contract) {
+			c.EnvelopeCases[0], c.EnvelopeCases[1] = c.EnvelopeCases[1], c.EnvelopeCases[0]
+		}, "ordered by depth"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			contract := envelopeContract()
+			test.mutate(&contract)
+			err := contract.Validate()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Validate error = %v, want substring %q", err, test.want)
+			}
+		})
 	}
 }
 

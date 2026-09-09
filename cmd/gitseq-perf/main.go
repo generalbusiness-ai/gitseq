@@ -246,7 +246,7 @@ func workerCommand(ctx context.Context, arguments []string) error {
 func laneCommand(ctx context.Context, root string, compare, overhead bool, arguments []string) error {
 	flags := flag.NewFlagSet("lane", flag.ContinueOnError)
 	contractPath := flags.String("contract", filepath.Join(root, defaultContract), "contract path")
-	tier := flags.String("tier", "smoke", "smoke, standard, memory, full, or fanout")
+	tier := flags.String("tier", "smoke", "smoke, standard, memory, envelope, full, or fanout")
 	output := flags.String("output", filepath.Join(root, "performance", "evidence"), "evidence directory")
 	baseRef := flags.String("base", "main", "exact base ref")
 	candidateRef := flags.String("candidate", "HEAD", "exact candidate ref")
@@ -264,6 +264,12 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 	cases, err := casesForTier(contract, *tier)
 	if err != nil {
 		return err
+	}
+	// An empty selection is not a campaign. Without this refusal the lane
+	// creates an evidence directory whose outcome is pass and whose sample
+	// count is zero, which reads as a successful run of nothing.
+	if len(cases) == 0 {
+		return fmt.Errorf("tier %s selects no cases under contract %s: this contract names no cases for that tier, and an empty campaign cannot pass", *tier, *contractPath)
 	}
 	contractDigest, err := perflane.CorrectnessDigest(contract)
 	if err != nil {
@@ -358,7 +364,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 		for revision, binary := range binaries {
 			for warmup := 0; warmup < warmups; warmup++ {
 				if _, err := runWorker(ctx, binary, fixture, selected, contract, "", overhead && revision == perflane.CandidateRevision); err != nil {
-					return fmt.Errorf("warmup %s %s: %w", revision, selected.name(), err)
+					return failRun(*output, evidence, fmt.Errorf("warmup %s %s: %w", revision, selected.name(), err))
 				}
 			}
 		}
@@ -375,18 +381,21 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 		}
 		for _, scheduled := range order {
 			result, err := runWorker(ctx, binaries[scheduled.Revision], fixture, selected, contract, "", overhead && scheduled.Revision == perflane.CandidateRevision)
+			if err == nil {
+				err = recordCheckpointBytes(ctx, fixture, selected, &result)
+			}
 			envelope := sampleEnvelope{Case: selected.name(), Revision: scheduled.Revision, Round: scheduled.Round, Position: scheduled.Position, Result: result}
 			if err != nil {
 				envelope.Error = err.Error()
 				evidence.Outcome = "error"
 			}
-			if err := appendJSON(rawFile, envelope); err != nil {
-				return err
+			if writeErr := appendJSON(rawFile, envelope); writeErr != nil {
+				return writeErr
 			}
 			evidence.Samples = append(evidence.Samples, envelope)
 			primarySamples++
 			if err != nil {
-				return fmt.Errorf("sample %s %s: %w", scheduled.Revision, selected.name(), err)
+				return failRun(*output, evidence, fmt.Errorf("sample %s %s: %w", scheduled.Revision, selected.name(), err))
 			}
 			key := string(scheduled.Revision) + "/" + selected.name()
 			latencies[key] = append(latencies[key], float64(result.LatencyNS))
@@ -409,8 +418,11 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 			return err
 		}
 		traceResult, traceErr := runWorkerDiagnostic(ctx, binaries[perflane.CandidateRevision], fixture, selected, contract, tracePath, profilePrefix, overhead)
+		if traceErr == nil {
+			traceErr = recordCheckpointBytes(ctx, fixture, selected, &traceResult)
+		}
 		if traceErr != nil {
-			return fmt.Errorf("Trace2 diagnostic %s: %w", selected.name(), traceErr)
+			return failRun(*output, evidence, fmt.Errorf("Trace2 diagnostic %s: %w", selected.name(), traceErr))
 		}
 		traceFile, err := os.Open(tracePath)
 		if err != nil {
@@ -426,7 +438,7 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 		}
 		if traceResult.GitProcessCount.Value == nil || *traceResult.GitProcessCount.Value != int64(traceSummary.ChildProcessCount) ||
 			traceResult.GitDurationNS.Value == nil || *traceResult.GitDurationNS.Value != traceSummary.CumulativeDuration.Nanoseconds() {
-			return fmt.Errorf("Trace2 diagnostic %s did not populate matching result metrics", selected.name())
+			return failRun(*output, evidence, fmt.Errorf("Trace2 diagnostic %s did not populate matching result metrics", selected.name()))
 		}
 		traceEnvelope := sampleEnvelope{Case: selected.name(), Revision: perflane.CandidateRevision, Round: 0, Position: 0, Result: traceResult, Trace2: &traceSummary}
 		if err := appendJSON(rawFile, traceEnvelope); err != nil {
@@ -457,15 +469,34 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 			}
 		}
 	}
-	encoded, err := json.MarshalIndent(evidence, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(*output, "evidence.json"), append(encoded, '\n'), 0o644); err != nil {
+	if err := writeEvidence(*output, evidence); err != nil {
 		return err
 	}
 	fmt.Printf("%s: wrote %s (%d primary samples)\n", evidence.Outcome, *output, primarySamples)
 	return nil
+}
+
+// writeEvidence publishes the evidence document.
+func writeEvidence(output string, evidence runEvidence) error {
+	encoded, err := json.MarshalIndent(evidence, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(output, "evidence.json"), append(encoded, '\n'), 0o644)
+}
+
+// failRun publishes what the campaign already has before giving up on it. A
+// run that loses one sample used to return with no evidence.json at all,
+// discarding the contract, the environment, the exact heads and every sample
+// that did complete; the raw samples.jsonl is left exactly as the run wrote
+// it. The original cause is returned unchanged, so the command still exits
+// non-zero and the failure is never reported as a pass.
+func failRun(output string, evidence runEvidence, cause error) error {
+	evidence.Outcome = "error"
+	if err := writeEvidence(output, evidence); err != nil {
+		return errors.Join(cause, err)
+	}
+	return cause
 }
 
 func runWorker(ctx context.Context, binary, fixture string, selected runCase, contract perflane.Contract, trace2 string, telemetry bool) (perfscenario.Result, error) {
@@ -516,6 +547,45 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 	return result, nil
 }
 
+// checkpointBlobPath is the single blob a published checkpoint commit carries.
+// The harness names it here instead of reading the kernel's own constant
+// because a compare run rebuilds this command inside a base worktree, where
+// that constant need not exist. The same rule keeps the size read below on
+// plain Git rather than on any store helper this commit could have added.
+const checkpointBlobPath = "checkpoint"
+
+// objectID pins a checkpoint identifier to a bare hex object name, so a
+// corrupt manifest can never hand Git something that opens as an option or
+// carries a revision separator.
+var objectID = regexp.MustCompile(`^[0-9a-f]{40}$|^[0-9a-f]{64}$`)
+
+// recordCheckpointBytes adds the one metric the worker deliberately does not
+// produce: the serialized size of the checkpoint object a checkpoint_restart
+// sample restored. The lane parent reads it, never the worker, because a
+// compared base worker is built from an older tree. It reads the size rather
+// than the content, from the fixture, which holds the same immutable object
+// the sample's scratch copy borrowed through Git alternates, so the figure is
+// the restored object's own size. Every other scenario keeps the zero, which
+// for the cold verify is the fact itself: it restored no checkpoint.
+func recordCheckpointBytes(ctx context.Context, fixture string, selected runCase, result *perfscenario.Result) error {
+	if selected.Scenario != "checkpoint_restart" {
+		return nil
+	}
+	if !objectID.MatchString(result.Fixture.Checkpoint) {
+		return fmt.Errorf("checkpoint sample %s recorded no usable checkpoint object", selected.name())
+	}
+	sized, err := output(ctx, fixture, "git", "cat-file", "-s", result.Fixture.Checkpoint+":"+checkpointBlobPath)
+	if err != nil {
+		return err
+	}
+	size, err := strconv.ParseInt(sized, 10, 64)
+	if err != nil {
+		return fmt.Errorf("parse checkpoint size %q: %w", sized, err)
+	}
+	result.CheckpointBytes = size
+	return nil
+}
+
 func validateWorkerResult(selected runCase, result perfscenario.Result) error {
 	wantActors := selected.fixtureKey().actorCount
 	if result.ActorCount != wantActors {
@@ -529,8 +599,8 @@ func validateWorkerResult(selected runCase, result perfscenario.Result) error {
 }
 
 func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
-	if tier != "smoke" && tier != "standard" && tier != "memory" && tier != "full" && tier != "fanout" {
-		return nil, errors.New("tier must be smoke, standard, memory, full, or fanout")
+	if tier != "smoke" && tier != "standard" && tier != "memory" && tier != "envelope" && tier != "full" && tier != "fanout" {
+		return nil, errors.New("tier must be smoke, standard, memory, envelope, full, or fanout")
 	}
 	benchmarkCases, err := perflane.BenchmarkCases(contract)
 	if err != nil {
@@ -556,6 +626,10 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 			if candidate.Fanout == 0 {
 				continue
 			}
+		} else if tier == "envelope" {
+			if !selectsEnvelopeCase(contract, candidate) {
+				continue
+			}
 		} else {
 			if !allowedDepth(candidate.Depth) {
 				continue
@@ -570,12 +644,40 @@ func casesForTier(contract perflane.Contract, tier string) ([]runCase, error) {
 		}
 		result = append(result, runCase{Scenario: candidate.Scenario, Shape: "linear", Depth: candidate.Depth, Tail: tail, Concurrency: candidate.Concurrency, ActorCount: max(candidate.ActorCount, 1), Fanout: candidate.Fanout})
 	}
-	if tier != "fanout" && tier != "memory" {
+	if tier != "fanout" && tier != "memory" && tier != "envelope" {
 		for _, shape := range contract.ProjectionShapes[1:] {
 			result = append(result, runCase{Scenario: "cold_status", Shape: shape, Depth: 100, Tail: -1, ActorCount: 1})
 		}
 	}
 	return result, nil
+}
+
+// envelopeCheckpointTail is the near-head tail the envelope claims: a restart
+// from an authenticated checkpoint 255 events behind the head. A contract that
+// adds another checkpoint case at an envelope depth does not silently enlarge
+// the tier.
+const envelopeCheckpointTail = 255
+
+// selectsEnvelopeCase keeps the bounded envelope tier to the five residual
+// dimensions at the depths the contract's envelope_cases name: the near-head
+// checkpoint restart, the cold verify with no checkpoint, and the warm status
+// read at that depth, plus both cold reads the actor-count cost needs, the
+// one-actor denominator and the joint cell. Every other scenario stays out.
+func selectsEnvelopeCase(contract perflane.Contract, candidate perflane.BenchmarkCase) bool {
+	for _, envelope := range contract.EnvelopeCases {
+		if candidate.Depth != envelope.Depth {
+			continue
+		}
+		switch candidate.Scenario {
+		case "checkpoint_restart":
+			return candidate.CheckpointTail != nil && *candidate.CheckpointTail == envelopeCheckpointTail
+		case "honest_fallback", "warm_status":
+			return true
+		case "cold_status":
+			return candidate.ActorCount == 0 || candidate.ActorCount == envelope.Actors
+		}
+	}
+	return false
 }
 
 func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
@@ -585,7 +687,7 @@ func tierCounts(contract perflane.Contract, tier, scenario string) (int, int) {
 	case "standard":
 		warmups := min(contract.Warmups[scenario], 1)
 		return warmups, min(contract.Repetitions[scenario], 5)
-	case "memory":
+	case "memory", "envelope":
 		return 0, 2
 	case "fanout":
 		return contract.Warmups[scenario], contract.Repetitions[scenario]
@@ -740,6 +842,11 @@ func buildComparedWorkers(ctx context.Context, root, base, candidate string) (fu
 			return nil, nil, fmt.Errorf("create %s worktree: %w: %s", revision, err, output)
 		}
 		worktrees[revision] = worktree
+		// The harness is overlaid onto the base tree and rebuilt there, so
+		// every one of these paths must compile against the base revision's
+		// own internal packages. Adding an API to internal/kernel or
+		// internal/gitstore and calling it from here would break the base
+		// build for every base older than that addition.
 		for _, path := range []string{"cmd/gitseq-perf", "internal/perflane", "internal/perfscenario", defaultContract} {
 			if err := overlay(filepath.Join(root, path), filepath.Join(worktree, path)); err != nil {
 				cleanup()
