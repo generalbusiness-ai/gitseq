@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d5be8eb3874ce873e8f5e0fc7e7fcda2fb165cd1","text":"Merge retired a covered predecessor; the successor is at internal/service/oversized_evidence_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d8d103c128e68718536ae6cdce880636118f9033","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp/oversized_evidence_test.go."}
