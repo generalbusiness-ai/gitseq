@@ -1,0 +1,11 @@
+{
+ "head": "9b35d922ceacd247312222a7c17c26c037ff87c7",
+ "expectedCitations": 20,
+ "nativePreviewAnchors": 21,
+ "externalAnchors": 20,
+ "unavailableMarkers": 0,
+ "allPaired": true,
+ "externalAllPinnedGithub": true,
+ "targetBlank": 20
+}
+exit=0

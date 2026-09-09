@@ -1,0 +1,11 @@
+== control A: one GitHub link changed to a document-relative link at a missing file
+1
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq	0.264s
+FAIL
+rcA=1
+== control B: original root-relative path:line form restored on one citation
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq	0.165s
+FAIL
+rcB=1
