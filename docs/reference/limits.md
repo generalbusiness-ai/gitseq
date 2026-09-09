@@ -9,6 +9,8 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54826d805556c6dd81ccc460bf4c5ce80abb4e5b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b1c98a63e3a0cfa3c4638086a2551d82fe78e14b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52966895e59050b9a39308e6069ddb9ae7bd0c2e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f51aec8a375e1a1bcc04b9bc6dcbe04f640c397d
 ---
 
 # Limits
@@ -16,7 +18,9 @@ rests_on:
 These bounds are enforced on the write path, before the sequence ref
 moves, and again by readers. A refused act leaves nothing behind.
 
-Everything on this page is a refusal. Nothing on this page is a performance
+Everything on this page is a refusal, with one exception: the dated headroom
+measurement kept beside the ceiling it is measured against, which is marked as
+evidence and refuses nothing. Nothing on this page is a performance
 commitment, and no measurement makes something here more or less binding. The
 scale envelopes and the measured latency, memory and checkpoint sizes are on
 the [performance evidence](performance.md) page, where they are evidence about
@@ -37,6 +41,80 @@ validates against the value recorded in genesis.
 
 Readers enforce the same envelope ceiling explicitly, so the write path
 cannot admit a commit that a parser would later reject.
+
+An act over the ceiling is refused. Nothing is stored by reference, no
+attachment is converted, and no external locator is accepted. The refusal
+names the ceiling, the measured total, the split across envelope, payload
+and attachments, and the largest attachment by name, so an author can see
+what to shrink.
+
+The application applies that measurement where it signs, so the refusal
+arrives before a signature exists and before an act travels anywhere. One
+boundary covers every surface: `gs state`, `gs batch`, merge planning, MCP
+`state` and the resident's `/v0/act`. The bound it measures against is the
+one genesis records, so it holds on every workroom, including one attached
+to a fetched sequence whose local configuration carries no copy of it. No
+signature means no act under that retry key, so a refused act may be filed
+again under the same `--idempotency-key`.
+
+## Resident request body
+
+| Limit | Value |
+|---|---|
+| Any JSON request body the resident decodes | 2 MiB |
+
+This is the resident's transport bound, separate from the genesis ceiling
+and enforced before the body is parsed. It covers every endpoint decoded by
+`decode`, including `/v0/submit` and the browser's `/v0/act`. It is not the
+only body bound the resident applies: `/v0/preview` caps its own body at
+8 KiB.
+
+JSON carries attachment bytes base64 encoded, so 1 MiB of attachments
+travels as about 1.4 MiB of body. On a workroom at the default 1 MiB
+ceiling the genesis ceiling binds first, by about 1.5x. A workroom created
+with a larger `payload_ceiling` can meet this cap first, and its refusal
+says so in different words.
+
+Two write paths meet this cap differently, and the difference is worth
+knowing. `gs batch` and merge planning measure it themselves before they
+change anything else, so a receipt that cannot be sent is refused before the
+Git merge rather than discovered after it. A single act does not: it is sent,
+and the resident's own cap answers. That asymmetry is deliberate for the
+paths that must not half-finish, and it means a single act learns about this
+bound one round trip later than a batch does.
+
+## Measured attachment use
+
+This section is evidence about headroom. Nothing here is enforced, and
+nothing here is demand evidence.
+
+An independent census on 2026-09-09 (assert `0a048f5d`) measured every one of
+the 27,845 non-genesis events at four pinned workroom heads, records with and
+without attachments alike. A second run at the same saved heads produced
+identical room measurements. All four workrooms record a ceiling of 1,048,576
+bytes.
+
+555 events carry 1,772 attachments. By nearest-rank percentile an attachment
+is 1,279 bytes at the median, 9,145 at the 90th, 60,232 at the 99th, and
+498,733 at the largest. Largest complete event per room:
+
+| Workroom | Largest event | Headroom against its ceiling |
+|---|---|---|
+| Gitseq | 196,373 bytes | 5.34 times |
+| Tailapp | 535,397 bytes | 1.96 times |
+| Chess | 86,436 bytes | 12.13 times |
+| Inventory | 31,972 bytes | 32.80 times |
+
+The largest record carrying no attachment at all is 74,031 bytes, in Gitseq.
+Keep the rooms distinct: the fleet maximum is Tailapp's, and it is not
+Gitseq's headroom.
+
+What this cannot say. It is a byte measurement of accepted records. Refused
+admission creates no event, so accepted history cannot show how many attempts
+were refused, or that any were. No refusal evidence was found in the retained
+logs that were searched, and that search was limited. Nobody asking for a
+larger attachment would appear here either. Read these numbers as the size of
+what has been written, and nothing more.
 
 ## Concurrent submissions
 

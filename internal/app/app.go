@@ -67,6 +67,12 @@ type Workspace struct {
 	config   apphost.Config
 	observer observe.Observer
 
+	// genesisCeiling remembers the ceiling read out of genesis for a workroom
+	// whose local record carries none. Genesis is immutable, so two readers
+	// racing here compute the same value and the store is idempotent; zero
+	// means not yet read.
+	genesisCeiling atomic.Uint64
+
 	// configMu guards Config's mutable state — the actor map and the
 	// verified-frontier pointer — against both the readers who take copies
 	// and the updates that adopt freshly stored values, so a View never
@@ -1968,15 +1974,79 @@ func (w *Workspace) signRequest(ctx context.Context, private ed25519.PrivateKey,
 			return kernel.Request{}, err
 		}
 	}
-	signed, err := intent.Sign(intent.Intent{
+	// Encoding the intent separately from signing it is what lets the size be
+	// measured against the bytes that will actually be signed rather than
+	// against an equal re-encoding.
+	encodedIntent, err := intent.Encode(intent.Intent{
 		Version: intent.Version, Target: "git:" + w.config.ObjectFormat + ":" + w.config.Genesis,
 		Schema: schema, PayloadTree: "git:" + w.config.ObjectFormat + ":" + tree,
 		RestsOn: rests, IdempotencyNS: w.idempotencyNamespace(actorName), IdempotencyKey: key,
-	}, private)
+	})
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	// This is the only place a submission is signed, so it is the only place a
+	// size check can stand in front of every surface at once. The kernel owns
+	// the accounting and lends it here for an act that is not signed yet: the
+	// actor key and the signature are fixed widths, so the placeholder envelope
+	// it measures is the one this act will carry. An act that cannot be
+	// admitted is refused with the kernel's own diagnostic before a signature
+	// exists, so no surface pays for signing to learn it, and the retry key is
+	// never minted into a signed act.
+	ceiling, err := w.payloadCeiling(ctx)
+	if err != nil {
+		return kernel.Request{}, err
+	}
+	if err := kernel.ValidateUnsignedRequestSize(encodedIntent, private.Public().(ed25519.PublicKey), rests, encoded, attachments, ceiling); err != nil {
+		return kernel.Request{}, err
+	}
+	signed, err := w.sign(ctx, encodedIntent, private)
 	if err != nil {
 		return kernel.Request{}, err
 	}
 	return kernel.Request{Signed: signed, Payload: encoded, Attachments: attachments}, nil
+}
+
+// payloadCeiling is the bound this act is measured against before it is signed.
+//
+// Genesis is the authority, and the local record is a mirror of it: a
+// read-only attachment records no ceiling, and neither does a configuration
+// written before the field existed. Skipping the measurement for those
+// workrooms would sign exactly the acts the boundary exists to refuse, so an
+// absent mirror is answered from genesis instead. Genesis is immutable, so the
+// answer is remembered and the read costs one commit message once per process,
+// on the only path that needs it. The kernel still reads the same descriptor
+// and enforces the same bound at admission; this is the early half of that one
+// bound, never a second one.
+func (w *Workspace) payloadCeiling(ctx context.Context) (uint64, error) {
+	if ceiling := w.config.PayloadCeiling; ceiling > 0 {
+		return ceiling, nil
+	}
+	if remembered := w.genesisCeiling.Load(); remembered > 0 {
+		return remembered, nil
+	}
+	desc, err := kernel.Descriptor(ctx, w.Store, w.config.Genesis)
+	if err != nil {
+		return 0, err
+	}
+	w.genesisCeiling.Store(desc.PayloadCeiling)
+	return desc.PayloadCeiling, nil
+}
+
+// sign produces the one signature a submission carries, and records that it
+// was produced. The record lives inside this function rather than beside its
+// call so the fact cannot drift away from the act: anything that signs is
+// observed to have signed, which is what makes "refused before signing" a
+// claim a test can check rather than one it has to trust.
+func (w *Workspace) sign(ctx context.Context, encodedIntent []byte, private ed25519.PrivateKey) (intent.Signed, error) {
+	signed, err := intent.SignEncoded(encodedIntent, private)
+	if err != nil {
+		return intent.Signed{}, err
+	}
+	if w.observer != nil {
+		w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationSubmit, Path: observe.PathSignature, Outcome: observe.OutcomeOK, Items: 1})
+	}
+	return signed, nil
 }
 
 // idempotencyNamespace is the retry namespace this workspace signs under.

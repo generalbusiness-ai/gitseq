@@ -1707,7 +1707,9 @@ func TestSubmitChargesPayloadAndAllAttachmentsToOneCeiling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Submit(f.ctx, f.store, Request{Signed: signed, Payload: payload, Attachments: attachments}, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+	if _, err := Submit(f.ctx, f.store, Request{Signed: signed, Payload: payload, Attachments: attachments}, Options{SigningKey: f.signingKey}); err == nil ||
+		!strings.Contains(err.Error(), "event exceeds genesis ceiling: ") ||
+		!strings.Contains(err.Error(), "attachments 450560 in 2 files") {
 		t.Fatalf("combined payload and attachments error = %v", err)
 	}
 	after, err := f.store.Head(f.ctx, Ref(f.genesis))
@@ -1735,7 +1737,9 @@ func TestValidateRequestSizeMatchesSubmitAccountingWithoutWriting(t *testing.T) 
 	if err := ValidateRequestSize(request, exact); err != nil {
 		t.Fatalf("exact request size rejected: %v", err)
 	}
-	if err := ValidateRequestSize(request, exact-1); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+	if err := ValidateRequestSize(request, exact-1); err == nil ||
+		!strings.Contains(err.Error(), "event exceeds genesis ceiling: ") ||
+		!strings.Contains(err.Error(), "no attachments") {
 		t.Fatalf("oversized request validation error = %v", err)
 	}
 	after, err := f.store.Head(f.ctx, Ref(f.genesis))
@@ -1769,7 +1773,9 @@ func TestOversizedEnvelopeIsRefusedWithoutPoisoningTheLog(t *testing.T) {
 		tooManyBytes[index] = ref
 	}
 	oversized := f.request(t, private, "oversized-envelope", []byte("refuse"), tooManyBytes)
-	if _, err := Submit(f.ctx, f.store, oversized, Options{SigningKey: f.signingKey}); err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+	if _, err := Submit(f.ctx, f.store, oversized, Options{SigningKey: f.signingKey}); err == nil ||
+		!strings.Contains(err.Error(), "event exceeds genesis ceiling: ") ||
+		!strings.Contains(err.Error(), "against a ceiling of 1048576") {
 		t.Fatalf("oversized envelope error = %v", err)
 	}
 	after, err := f.store.Head(f.ctx, Ref(f.genesis))

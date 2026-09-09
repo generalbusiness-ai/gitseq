@@ -111,9 +111,14 @@ need no sequencer.
   trailers. The kernel validates shape and size only.
 - **Tree** = the payload: one blob at `event`, plus optional blobs
   under `attachments/`. Content-addressed sharing comes free from
-  git. Above the genesis-declared ceiling, an attachment is a
-  content-addressed hash reference with an optional locator hint —
-  the hash binds, storage is a hint.
+  git. The genesis-declared ceiling is a hard bound on the signed
+  envelope, the inline payload and every attachment together. An
+  event over it is refused, with a diagnostic naming the ceiling,
+  the measured total, that split and the largest attachment.
+  Nothing is stored by reference: no attachment becomes a hash
+  reference, and there is no locator hint. Resolved 2026-09-09 by
+  proposal `ddaf3197`, which withdrew the reference path and kept
+  the hard refusal.
 
 ### The signed submission intent
 

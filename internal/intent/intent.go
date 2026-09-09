@@ -137,6 +137,14 @@ func Sign(i Intent, private ed25519.PrivateKey) (Signed, error) {
 	if err != nil {
 		return Signed{}, err
 	}
+	return SignEncoded(encoded, private)
+}
+
+// SignEncoded signs intent bytes the caller has already encoded. A caller that
+// must measure the exact envelope before it commits to signing it signs the
+// same bytes it measured, rather than an equal re-encoding it has to argue is
+// equal. Sign is this function with the encoding done first.
+func SignEncoded(encoded []byte, private ed25519.PrivateKey) (Signed, error) {
 	message, err := SigningBytes(encoded)
 	if err != nil {
 		return Signed{}, err
