@@ -342,6 +342,9 @@ type parsedRecord struct {
 	definition *KindDefinition
 	declared   *KindDefinition
 	mergePlan  map[string]string
+	// mergeArtifacts freezes the eligible exact-head review set at receipt
+	// admission. Delivery is independent of which predecessors may retire.
+	mergeArtifacts map[string]string
 	// A receipt becomes prospective only when both fields are present and the
 	// changed-path list is canonical. Truly legacy receipts carry neither and
 	// retain the old fold-time succession projection exactly. Present but
@@ -1657,7 +1660,7 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	if result.world[artifactID] {
 		return nil
 	}
-	reviewed := f.reviewedPathsWith(approval, implementer, state.Body["merge_candidate"], result.world)
+	reviewed := f.reviewedArtifactsWith(approval, implementer, state.Body["merge_candidate"], result.world)
 	if len(reviewed) == 0 {
 		return nil
 	}
@@ -1678,6 +1681,7 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 			}
 		}
 	}
+	receipt.mergeArtifacts = reviewed
 	return reached
 }
 
@@ -2125,9 +2129,8 @@ func (f *foldState) effectiveProvenanceReaches(from, target string) bool {
 // the receipt's reach when the world moved after they signed; one that had
 // already moved does not widen it at all, and neither does one whose causes
 // cannot be dated.
-func (f *foldState) reviewedPathsWith(approval *parsedRecord, implementer, head string, world map[string]bool) []string {
-	var paths []string
-	seen := make(map[string]bool)
+func (f *foldState) reviewedArtifactsWith(approval *parsedRecord, implementer, head string, world map[string]bool) map[string]string {
+	artifacts := make(map[string]string)
 	for _, basis := range approval.record.RestsOn {
 		cited := f.byID[basis]
 		if cited == nil || cited.decision.Verdict != Effective || f.retired(basis) {
@@ -2143,12 +2146,11 @@ func (f *foldState) reviewedPathsWith(approval *parsedRecord, implementer, head 
 		if !ok || body.Body["commit"] != head {
 			continue
 		}
-		if path := body.Body["path"]; path != "" && !seen[path] {
-			seen[path] = true
-			paths = append(paths, path)
+		if path := body.Body["path"]; path != "" {
+			artifacts[basis] = path
 		}
 	}
-	return paths
+	return artifacts
 }
 
 // artifactPath answers where an event stands, and whether it is an artifact at
@@ -3621,7 +3623,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Report = completion.record.ID
 					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, completion.record.Actor)
 					entry.Stale = stale[requestRecord.record.ID] || stale[completion.record.ID]
-					if receipt := mergedArtifacts[completion.record.ID]; receipt != nil && entry.Status != "satisfied" {
+					if receipt := mergedArtifacts.at(completion.record.ID, result); f.dischargedBy(receipt, result) && entry.Status != "satisfied" {
 						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 					}
 				case stale[requestRecord.record.ID]:
@@ -3669,7 +3671,7 @@ func (f *foldState) projectCommitments(stale map[string]bool) []Commitment {
 					entry.Report = completion.record.ID
 					f.completionStatus(&entry, result, completion, requestRecord.record.Actor, performer)
 					entry.Stale = stale[requestRecord.record.ID] || stale[promiseRecord.record.ID] || stale[completion.record.ID]
-					if receipt := mergedArtifacts[completion.record.ID]; receipt != nil && entry.Status != "satisfied" {
+					if receipt := mergedArtifacts.at(completion.record.ID, result); f.dischargedBy(receipt, result) && entry.Status != "satisfied" {
 						entry.Status, entry.Terminal, entry.WaitingOn = "satisfied", "landed", ""
 						entry.Stale = entry.Stale || stale[receipt.record.ID]
 					}
@@ -3749,12 +3751,12 @@ func (f *foldState) completionStatus(entry *Commitment, result requestResult, co
 // markApprovedNotLanded records the audit fact relative to the destination the
 // request named. It never means "absent from main": a receipt into some other
 // ref is a real landing that discharged nothing here, and stays counted.
-func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResult, approved *parsedRecord, mergedArtifacts map[string]*parsedRecord) {
+func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResult, approved *parsedRecord, mergedArtifacts mergeDeliveries) {
 	// Completion and newest approval are different facts. Preserve the receipt
 	// which closed the row even if a later artifact acquired another approval.
-	receipt := mergedArtifacts[entry.Report]
+	receipt := mergedArtifacts.at(entry.Report, result)
 	if !f.dischargedBy(receipt, result) && approved != nil {
-		receipt = mergedArtifacts[approved.record.ID]
+		receipt = mergedArtifacts.at(approved.record.ID, result)
 	}
 	if f.dischargedBy(receipt, result) {
 		entry.LandingReceipt = receipt.record.ID
@@ -3762,7 +3764,7 @@ func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResul
 	if approved == nil || !result.landing || entry.Status == "abandoned" {
 		return
 	}
-	entry.ApprovedNotLanded = !f.dischargedBy(mergedArtifacts[approved.record.ID], result)
+	entry.ApprovedNotLanded = !f.dischargedBy(mergedArtifacts.at(approved.record.ID, result), result)
 }
 
 // latestCompletion returns the promise's live completion record. A sealed
@@ -3779,7 +3781,7 @@ func (f *foldState) markApprovedNotLanded(entry *Commitment, result requestResul
 // that actor's artifact resting on it with a commit, which serves as the
 // implementation report. Passing the claim rather than always a promise is
 // what keeps the two shapes one rule instead of two that drift.
-func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts map[string]*parsedRecord, result requestResult) *parsedRecord {
+func (f *foldState) latestCompletion(claim *parsedRecord, performer string, mergedArtifacts mergeDeliveries, result requestResult) *parsedRecord {
 	landing := result.landing && !result.legacy
 	// A state@3 request that stated no_git_artifact=true owes no Git artifact,
 	// so an artifact resting on its claim answers nothing: it is a pointer the
@@ -3818,12 +3820,12 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 		// artifact is the one exception: merge-driven succession retires it as
 		// it publishes the main-line successor, and that planned retirement
 		// must not erase the merge which satisfied the promise.
-		if f.retired(record.record.ID) && (!isArtifactReport || mergedArtifacts[record.record.ID] == nil) {
+		if f.retired(record.record.ID) && (!isArtifactReport || !mergedArtifacts.has(record.record.ID)) {
 			continue
 		}
-		if receipt := mergedArtifacts[record.record.ID]; receipt != nil {
-			if merged == nil || receipt.index > mergedArtifacts[merged.record.ID].index ||
-				(receipt.index == mergedArtifacts[merged.record.ID].index && record.index > merged.index) {
+		if receipt := mergedArtifacts.at(record.record.ID, result); f.dischargedBy(receipt, result) {
+			if merged == nil || receipt.index > mergedArtifacts.at(merged.record.ID, result).index ||
+				(receipt.index == mergedArtifacts.at(merged.record.ID, result).index && record.index > merged.index) {
 				merged = record
 			}
 			continue
@@ -3865,43 +3867,40 @@ func (f *foldState) latestCompletion(claim *parsedRecord, performer string, merg
 	return artifact
 }
 
-// mergedArtifacts indexes every reporting artifact in a live sealed receipt's
-// approved retirement plan. validateMergeReceiptNow sealed the full ratified
+// Destination is part of delivery identity. A later receipt into another
+// branch cannot hide the receipt that discharged this request.
+type mergeDeliveryTarget struct{ artifact, repo, ref string }
+
+type mergeDeliveries struct {
+	byTarget  map[mergeDeliveryTarget]*parsedRecord
+	artifacts map[string]bool
+}
+
+func (m mergeDeliveries) at(artifact string, result requestResult) *parsedRecord {
+	return m.byTarget[mergeDeliveryTarget{artifact, result.targetRepo, result.targetRef}]
+}
+
+func (m mergeDeliveries) has(artifact string) bool { return m.artifacts[artifact] }
+
+// mergedArtifacts indexes every eligible artifact in a live sealed receipt's
+// exact-head review set. validateMergeReceiptNow sealed the full ratified
 // approval chain when the receipt landed; keeping review ratification explicit
 // makes that chain the authority for automatic commitment closure. Reading the
-// whole reviewed plan matters for a multi-path implementation: the artifact a
+// whole reviewed set matters for a multi-path implementation: the artifact a
 // verdict names is only its primary pointer, not the only artifact it signs.
-func (f *foldState) mergedArtifacts() map[string]*parsedRecord {
-	merged := make(map[string]*parsedRecord)
+// Retirement membership is separate authority: a carried reporting artifact
+// or a first publication with no predecessors still delivers its commitment.
+func (f *foldState) mergedArtifacts() mergeDeliveries {
+	merged := mergeDeliveries{byTarget: make(map[mergeDeliveryTarget]*parsedRecord), artifacts: make(map[string]bool)}
 	for index := range f.records {
 		receipt := &f.records[index]
 		if receipt.mergePlan == nil || f.retired(receipt.record.ID) {
 			continue
 		}
-		state, ok := receipt.body.(*State)
-		if !ok {
-			continue
-		}
-		approval := f.byID[state.Body["merge_approval"]]
-		if approval == nil {
-			continue
-		}
-		if _, ok := approval.body.(*State); !ok {
-			continue
-		}
-		candidate := state.Body["merge_candidate"]
-		for _, artifactID := range approval.record.RestsOn {
-			if _, planned := receipt.mergePlan[artifactID]; !planned {
-				continue
-			}
-			artifact := f.byID[artifactID]
-			if artifact == nil || artifact.record.Actor != receipt.record.Actor || artifact.definition == nil || artifact.definition.Render != RenderArtifact {
-				continue
-			}
-			implementation, ok := artifact.body.(*State)
-			if ok && implementation.Body["commit"] == candidate {
-				merged[artifactID] = receipt
-			}
+		repo, ref := f.receiptTarget(receipt)
+		for artifactID := range receipt.mergeArtifacts {
+			merged.byTarget[mergeDeliveryTarget{artifactID, repo, ref}] = receipt
+			merged.artifacts[artifactID] = true
 		}
 	}
 	return merged
