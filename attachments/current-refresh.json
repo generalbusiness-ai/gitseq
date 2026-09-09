@@ -1,0 +1,16 @@
+{
+  "head": "d70d8fe6a160a470a75cf613f0075b7695ef5c08",
+  "source_byte_equal_to_original_cited_heads": {
+    "ui/src/components/TopBar.tsx": true,
+    "ui/src/lib/memory.ts": true,
+    "ui/test/notifications.test.mjs": true
+  },
+  "original_cited_heads": {
+    "ui/src/components/TopBar.tsx": "d630554a7ba7d99c5f95eb77e1dfa7fd1f41637a",
+    "ui/src/lib/memory.ts": "0da3b399faf37f3e0d845e3a0da2d1fa3987025b",
+    "ui/test/notifications.test.mjs": "0da3b399faf37f3e0d845e3a0da2d1fa3987025b"
+  },
+  "already_published_candidate": "f1e108fcb2246a487f6909fd28bd9fdf9c67f0c5",
+  "original_report": "8c7ed1aa2f88ddfecaca1ce46c73a7b446c57d2c",
+  "limits": "Root source equality and full request/artifact reading; original signed audit attachments retain historical attribution. Candidate test evidence reported by Claude, not rerun by root. Independent reviewer must judge the final exact head."
+}
