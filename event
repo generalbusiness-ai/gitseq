@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1353cee47c966b35aa33a96e8f0f28b0c474d2fa","text":"Retire the S1 artifact at 643ab9c5 for internal/gitstore/graph.go; successor a25adbb8a7688ad146a7016212f587d65c692320 at 557ef676 on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84c5ef597253e33d4423f43226aa0b9291085da7","text":"Retire the S1 artifact at 643ab9c5 for internal/reviewguard/binding.go; successor 00ab40412a425f9430f6a8b56519e53b390991e7 at 557ef676 on the same promise a4c569b1."}
