@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bb847634f8ac1070c7f7724710e3736716e05517","text":"Merge retired a covered predecessor; the successor is at internal/intent/intent.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c7063d1f84adc763a4c8e74a857110bd50b8a17c","text":"Merge retired a covered predecessor; the successor is at notes/2026-08-05-gitseq-design.md."}
