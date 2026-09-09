@@ -531,15 +531,18 @@ func runWorkerDiagnostic(ctx context.Context, binary, fixture string, selected r
 		arguments = append(arguments, "--telemetry")
 	}
 	command := exec.CommandContext(workerCtx, binary, arguments...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return perfscenario.Result{}, fmt.Errorf("worker: %w: %s", err, output)
+	var stdout, stderr bytes.Buffer
+	command.Stdout, command.Stderr = &stdout, &stderr
+	if err := command.Run(); err != nil {
+		return perfscenario.Result{}, fmt.Errorf("worker: %w; stdout: %s; stderr: %s", err, stdout.Bytes(), stderr.Bytes())
 	}
+	// Worker JSON belongs to stdout. Successful runtime diagnostics on stderr
+	// are discarded; process and decode errors retain them beside result bytes.
 	var result perfscenario.Result
-	decoder := json.NewDecoder(bytes.NewReader(output))
+	decoder := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&result); err != nil {
-		return perfscenario.Result{}, fmt.Errorf("decode worker result: %w: %s", err, output)
+		return perfscenario.Result{}, fmt.Errorf("decode worker result: %w; stdout: %s; stderr: %s", err, stdout.Bytes(), stderr.Bytes())
 	}
 	if err := validateWorkerResult(selected, result); err != nil {
 		return perfscenario.Result{}, err
