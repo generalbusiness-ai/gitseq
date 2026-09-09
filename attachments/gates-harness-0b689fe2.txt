@@ -1,0 +1,98 @@
+Gates for the bounded envelope harness change, after the review of 32bbf66a
+worktree: /Users/hughpyle/play/gitseq-worktrees/scale-envelope-evidence   branch: request/scale-envelope-evidence
+head: 0b689fe27affcae3eba5c496eee4713b257dce40 (the tree these gates ran against, committed unchanged)
+go: go version go1.27.0 darwin/arm64   git: git version 2.50.1 (Apple Git-155)
+run at: 2026-09-09T12:16:01Z
+
+$ gofmt -l ./internal ./cmd
+
+rc=0
+
+$ go vet ./...
+
+rc=0
+
+$ go build ./...
+
+rc=0
+
+$ go test -count=1 ./internal/perflane/... ./internal/perfscenario/... ./cmd/gitseq-perf/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	0.234s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	2.104s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.693s
+rc=0
+
+$ go test -count=1 ./internal/docset/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	52.228s
+rc=0
+
+$ git diff --check
+
+rc=0
+
+$ GITSEQ_PERF_INTEGRATION=1 go test -count=1 -run TestWorkerLeavesCheckpointBytesToTheLaneParent ./internal/perfscenario/ -v
+=== RUN   TestWorkerLeavesCheckpointBytesToTheLaneParent
+--- PASS: TestWorkerLeavesCheckpointBytesToTheLaneParent (1.28s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	1.543s
+rc=0
+
+$ go test -count=1 ./...
+(all packages ok; only non-ok lines shown above)
+rc=0
+
+$ compare-mode base worker build: overlay the harness onto main and build there
+  git worktree add --detach $T/base main
+  cp cmd/gitseq-perf internal/perflane internal/perfscenario performance/contract-v2.json over it
+  go build -o $T/gitseq-perf-base ./cmd/gitseq-perf   # run inside the base worktree
+
+rc=0
+  base binary validates the new contract: valid gitseq.performance/v3 07b230aefd87f10d01f7e4c3976ef001251df27b52946efaab54036523c79d1f
+
+$ go run ./cmd/gitseq-perf run --contract /Users/hughpyle/play/gitseq-worktrees/scale-envelope-evidence/performance/contract-v3.json --tier smoke --output /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/20084/smoke-evidence
+pass: wrote /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/20084/smoke-evidence (20 primary samples)
+rc=0
+
+--- smoke check: checkpoint_bytes in samples.jsonl
+samples: 40
+  checkpoint_restart/shape-linear/depth-000257/tail-0000 checkpoint_bytes = 11880
+  checkpoint_restart/shape-linear/depth-000258/tail-0001 checkpoint_bytes = 11880
+  checkpoint_restart/shape-linear/depth-000267/tail-0010 checkpoint_bytes = 11880
+  honest_fallback/shape-linear/depth-000100 checkpoint_bytes = 0
+scenarios with a non-zero checkpoint_bytes: ['checkpoint_restart']
+sample schemas: ['gitseq.performance-sample.v2']
+--- smoke check: evidence.json
+schema_version: gitseq.performance/v3  contract_digest: 07b230aefd87f10d01f7e4c3976ef001251df27b52946efaab54036523c79d1f
+envelope_cases: [{'depth': 50000, 'actors': 8}, {'depth': 500000, 'actors': 50}]
+timeout_seconds: {'warm_status': 600, 'cold_status': 900, 'honest_fallback': 900, 'checkpoint_restart': 900}
+tier: smoke outcome: pass samples: 40
+harness_commit: 32bbf66a0d2f801c35dbb48732ed2d235a57ccf8 candidate_commit: 32bbf66a0d2f801c35dbb48732ed2d235a57ccf8
+checkpoint_restart checkpoint_bytes: [11880]
+--- v2 is byte-identical to main
+(empty above = contract v2, internal/gitstore and internal/kernel are unchanged from main)
+
+--- summary
+every gate above returned rc=0.
+the compare-mode base worker built from main with the new harness overlaid, which is
+what finding 4 asked for: nothing the harness calls is newer than the base revision.
+the smoke run used contract-v3 (digest 07b230aefd87f10d...) and wrote 20 primary
+samples plus 20 diagnostics; checkpoint_bytes = 11880 on all three checkpoint_restart
+smoke cases and 0 everywhere else, and every row carries gitseq.performance-sample.v2.
+the smoke fixtures were removed afterwards; they are gitignored.
+$ go run ./cmd/gitseq-perf run --contract /Users/hughpyle/play/gitseq-worktrees/scale-envelope-evidence/performance/contract-v3.json --tier smoke --output /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/20084/smoke-evidence
+pass: wrote /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/20084/smoke-evidence (20 primary samples)
+rc=0
+
+--- smoke re-run at the committed head 0b689fe27affcae3eba5c496eee4713b257dce40
+samples: 40
+  checkpoint_restart/shape-linear/depth-000257/tail-0000 checkpoint_bytes = 11880
+  checkpoint_restart/shape-linear/depth-000258/tail-0001 checkpoint_bytes = 11880
+  checkpoint_restart/shape-linear/depth-000267/tail-0010 checkpoint_bytes = 11880
+  honest_fallback/shape-linear/depth-000100 checkpoint_bytes = 0
+scenarios with a non-zero checkpoint_bytes: ['checkpoint_restart']
+sample schemas: ['gitseq.performance-sample.v2']
+schema_version: gitseq.performance/v3  contract_digest: 07b230aefd87f10d01f7e4c3976ef001251df27b52946efaab54036523c79d1f
+envelope_cases: [{'depth': 50000, 'actors': 8}, {'depth': 500000, 'actors': 50}]
+timeout_seconds: {'warm_status': 600, 'cold_status': 900, 'honest_fallback': 900, 'checkpoint_restart': 900}
+tier: smoke outcome: pass samples: 40
+harness_commit: 0b689fe27affcae3eba5c496eee4713b257dce40 candidate_commit: 0b689fe27affcae3eba5c496eee4713b257dce40
