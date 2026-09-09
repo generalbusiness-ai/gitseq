@@ -1,0 +1,18 @@
+func TestCodexWorkerDiagnosticStderrRepaired(t *testing.T) {
+ ctx := context.Background()
+ fixture := filepath.Join(t.TempDir(), "fixture")
+ _, err := perfscenario.Prepare(ctx, fixture, perfscenario.FixturePlan{GeneratorVersion:"planner-stderr-proof.v1",Seed:632,Depth:10,Shape:"linear",PayloadBuckets:[]int{8},ActorCount:1})
+ if err != nil { t.Fatal(err) }
+ selected := runCase{Scenario:"cold_status",Shape:"linear",Depth:10,Tail:-1,Concurrency:1,ActorCount:1,Fanout:1}
+ binary := os.Getenv("PLANNER_PERF_PROBE_BINARY")
+ if binary == "" { t.Fatal("missing probe binary") }
+ t.Setenv("GODEBUG", "")
+ result, err := runWorker(ctx,binary,fixture,selected,testContract(t),"",false)
+ if err != nil { t.Fatalf("ordinary worker: %v",err) }
+ t.Logf("ordinary worker succeeded: schema=%s depth=%d",result.Schema,result.Depth)
+ t.Setenv("GODEBUG", "gctrace=1")
+ diagnostic, err := runWorker(ctx,binary,fixture,selected,testContract(t),"",false)
+ if err != nil { t.Fatalf("gctrace worker: %v",err) }
+ if diagnostic.CorrectnessDigest != result.CorrectnessDigest || diagnostic.ActorCount != result.ActorCount || diagnostic.Fanout != result.Fanout { t.Fatal("diagnostic run changed the worker result identity") }
+ t.Logf("gctrace worker succeeded: schema=%s depth=%d correctness=%s",diagnostic.Schema,diagnostic.Depth,diagnostic.CorrectnessDigest)
+}

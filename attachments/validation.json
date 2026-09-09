@@ -1,0 +1,23 @@
+{
+  "head": "af599ecf55ca3adf0c9d806821c1bd5354010c4c",
+  "base": "d6981d91206c02074b04290df2b1e8b94e1de839",
+  "toolchain": "go1.26.7",
+  "source_scope": [
+    "cmd/gitseq-perf/main.go",
+    "cmd/gitseq-perf/worker_process_test.go"
+  ],
+  "validation": {
+    "full_cmd_gitseq_perf": "PASS 3.593s",
+    "vet_cmd_gitseq_perf": "PASS",
+    "build_cmd_gitseq_perf": "PASS",
+    "original_successful_stderr_control": "FAIL expected, decoder invalid character w;0.394s",
+    "real_depth10_ordinary_and_gctrace": "PASS 2.725s, matching correctness digest 4b37c6a66983aa6991fa383b66d23327ad80a87205e79f43f963127b3f050c85",
+    "limitations": "no performance campaign, whole-module run or service operation; final subsequent source change only clarifies a comment"
+  },
+  "recorded_utc": "2026-09-09T21:57:22.993576+00:00",
+  "source_sha256": {
+    "cmd/gitseq-perf/main.go": "e8efbd832eacb1e434f081ceda6afc4d219795b65e6c49e8cb9b6ab5e5edb204",
+    "cmd/gitseq-perf/worker_process_test.go": "6bda8a3761223a375883db7ba9e890150a61feeb16a56d844e4deb3ed4a49b56"
+  },
+  "binary_sha256": "26498faf2231e2781cad4f0565e3083d692bb32e1b8216b9272dd31dd0b8c328"
+}

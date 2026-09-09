@@ -1,0 +1,6 @@
+=== RUN   TestCodexWorkerDiagnosticStderrRepaired
+    main_test.go:514: ordinary worker succeeded: schema=gitseq.performance-sample.v2 depth=10
+    main_test.go:519: gctrace worker succeeded: schema=gitseq.performance-sample.v2 depth=10 correctness=4b37c6a66983aa6991fa383b66d23327ad80a87205e79f43f963127b3f050c85
+--- PASS: TestCodexWorkerDiagnosticStderrRepaired (2.40s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	2.725s
