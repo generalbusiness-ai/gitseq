@@ -1,0 +1,9 @@
+== head 06f474c300b739e1cdbaae840ec2ccaec80d5db6
+go version go1.26.7 darwin/arm64
+=== RUN   TestLocalMarkdownLinks
+--- PASS: TestLocalMarkdownLinks (0.01s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq	0.248s
+rc=0
+ok  	github.com/generalbusiness-ai/gitseq	0.251s
+rc127=0

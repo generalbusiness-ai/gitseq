@@ -1,0 +1,8 @@
+== 06f474c300b739e1cdbaae840ec2ccaec80d5db6
+build ok
+vet root ok
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	80.674s
+docset rc=0
+ok  	github.com/generalbusiness-ai/gitseq	0.170s
+root pkg rc=0
+diff-check clean

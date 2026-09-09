@@ -1,0 +1,13 @@
+== control A: one relative link retargeted to a missing file
+1
+    public_surface_test.go:206: /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/casec-links/control-tree/notes/2026-09-07-previous-frontier-readers.md links to missing ../internal/service/server-missing.go: stat /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/casec-links/control-tree/internal/service/server-missing.go: no such file or directory
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq	0.258s
+FAIL
+rcA=1
+== control B: the original root-relative path:line form restored on one citation
+    public_surface_test.go:206: /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/casec-links/control-tree/notes/2026-09-07-previous-frontier-readers.md links to missing internal/service/server.go:570: stat /private/tmp/claude-501/-Users-hughpyle-play-gitseq/edad3ec5-3d64-4212-89b8-59e5bafff100/scratchpad/casec-links/control-tree/notes/internal/service/server.go:570: no such file or directory
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq	0.167s
+FAIL
+rcB=1

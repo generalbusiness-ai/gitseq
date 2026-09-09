@@ -1,0 +1,10 @@
+{
+ "head": "06f474c300b739e1cdbaae840ec2ccaec80d5db6",
+ "expected": 20,
+ "previewAnchors": 20,
+ "allExpectedRendered": true,
+ "unavailableRelativeLinks": 20,
+ "anchorsTotal": 20
+}
+sample: {"label":"internal/service/server.go:570","file":"internal/service/server.go","at":"06f474c300b739e1cdbaae840ec2ccaec80d5db6","line":"570","event":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+non-app anchors: 0
