@@ -56,6 +56,15 @@ Run the bounded two-envelope tier with:
 make perf PERF_ARGS='run --contract performance/contract-v3.json --tier envelope'
 ```
 
+The contract argument is not optional here. The lane refuses a tier that
+selects no cases under the contract it was given, before it creates any output,
+so asking for `--tier envelope` against contract v2 is an error and not a
+campaign of zero samples that reports a pass. That refusal was added after the
+envelope campaign ran: the campaign ran at harness head
+`0b689fe27affcae3eba5c496eee4713b257dce40`, and the final head adds the
+empty-selection guard at the lane entry, which does not touch any measured
+path.
+
 Contract v3 differs from contract v2 in three places: an `envelope_cases`
 list, a `checkpoint_bytes` metric, and longer per-scenario worker timeouts.
 Contract v2 is unchanged and stays the default, so runs retained against v2
@@ -93,6 +102,18 @@ zero, which for the cold verify is the fact itself: it restored no checkpoint.
 The lane parent reads that size from the fixture, not the worker, so a `compare`
 run can still build a base worker from a tree that predates the metric.
 
+One thing about the fixtures matters for that read. Preparation writes one
+checkpoint per checkpoint depth, walking the depths in ascending order, and the
+fixture's checkpoint ref is left pointing at the deepest one. A fixture
+prepared to 500,000 records therefore holds checkpoint objects at 257, 49,745
+and 499,745, and only the last of those is still named by a ref; a fixture
+prepared to 50,000 holds 257 and 49,745, and only 49,745 is named. The others
+survive because nothing has collected them, and the manifest is the only thing
+that still records their object ids. So do not run `git gc` or `git prune` in a
+cached fixture. If a needed checkpoint object has been collected, the run does
+not quietly record a zero: the size read fails and the sample fails with it.
+The repair is to delete that cached fixture directory and prepare it again.
+
 ## Retained runs
 
 A run writes into `evidence/`, which is untracked working space and is deleted
@@ -102,7 +123,13 @@ fan-out campaign was lost exactly that way, leaving a reference page citing
 distributions nobody could consult.
 
 So a run whose numbers reach a page is copied into `retained/<run-id>/` before
-review, and that copy is exactly three files:
+review. The run id is the lane, the run date and the first eight characters of
+the exact head that was measured, joined by hyphens: the envelope campaign
+retains as `envelope-20260909-0b689fe2`. That name is the one thing about a
+retained directory that has to be readable without opening it, because a page
+cites it by path and a later reader needs to know which lane and which head
+the numbers came from. The copy is three required files and, for some
+campaigns, two optional ones:
 
 - `evidence.json` — the harness evidence document, which carries the contract,
   the environment, the fixture and contract digests, the exact head, and the
@@ -112,6 +139,21 @@ review, and that copy is exactly three files:
   nothing reads that identifier, so it is a label for a reader comparing rows
   across runs rather than a decoder switch;
 - `candidate.bench` — the primary samples in Go benchmark format.
+
+Two more files are retained only when a campaign declares them, because
+without them a reader cannot check a claim the page makes:
+
+- `load.log`, the machine load samples across the measurement window, for a
+  campaign that declares a quiet window and reports the load range it ran
+  under;
+- `classification-rules.md`, the rules deciding measured, modeled, unavailable
+  or inconclusive, for a campaign that writes them down. The file records the
+  bands and admission checks the author applied, and where each band came
+  from, so a later reader can hold the published numbers against them.
+  Retaining it does not by itself show the bands were fixed before the numbers
+  were read; a file that claims that priority has to say when it was written,
+  and the envelope campaign's rules say plainly that they were written during
+  the run and are not a pre-registration.
 
 No separate derived file is retained. The harness's own summaries travel inside
 `evidence.json`, and any further statistic a page computes for itself is
@@ -139,8 +181,8 @@ git add retained/<run-id>/evidence.json retained/<run-id>/samples.jsonl
 git add -f retained/<run-id>/candidate.bench
 ```
 
-Then check that the directory holds the three files and nothing else, because
-the ignore rules will not tell you what they dropped:
+Then check that the directory holds those files and nothing else, because the
+ignore rules will not tell you what they dropped:
 
 ```text
 git ls-files retained/<run-id>
@@ -188,4 +230,6 @@ no secrets, and finite artifact retention. Large fixture generation writes the
 synthetic signed commits as one Git pack, then uses ordinary verification when
 a sample runs. Fixtures are cached by contract digest, generator version,
 seed, object format, shape, and actor count; they are never repeated for every
-sample.
+sample. A cached fixture is an input to a measurement, so treat it as one:
+leave it alone between preparation and the run, and prepare a fresh one rather
+than repairing one in place.

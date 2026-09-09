@@ -265,6 +265,12 @@ func laneCommand(ctx context.Context, root string, compare, overhead bool, argum
 	if err != nil {
 		return err
 	}
+	// An empty selection is not a campaign. Without this refusal the lane
+	// creates an evidence directory whose outcome is pass and whose sample
+	// count is zero, which reads as a successful run of nothing.
+	if len(cases) == 0 {
+		return fmt.Errorf("tier %s selects no cases under contract %s: this contract names no cases for that tier, and an empty campaign cannot pass", *tier, *contractPath)
+	}
 	contractDigest, err := perflane.CorrectnessDigest(contract)
 	if err != nil {
 		return err

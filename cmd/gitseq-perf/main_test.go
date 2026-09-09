@@ -472,3 +472,29 @@ func TestOverlayCopiesAFileTreeAndRejectsSymlinks(t *testing.T) {
 		t.Fatal("overlay followed a symlink")
 	}
 }
+
+// TestEmptySelectionIsRefusedBeforeAnyEvidence covers the lane entry
+// boundary. A contract that names no cases for the requested tier must be
+// refused by name, and nothing may be written: a zero-sample directory whose
+// outcome is pass reads as a successful campaign that never ran.
+func TestEmptySelectionIsRefusedBeforeAnyEvidence(t *testing.T) {
+	root := filepath.Join("..", "..")
+	contractPath := filepath.Join(root, defaultContract)
+	cases, err := casesForTier(testContract(t), "envelope")
+	if err != nil || len(cases) != 0 {
+		t.Fatalf("envelope selection under %s = %d cases, %v; this test needs the empty selection", defaultContract, len(cases), err)
+	}
+	output := filepath.Join(t.TempDir(), "evidence")
+	err = laneCommand(context.Background(), root, false, false, []string{"--tier", "envelope", "--contract", contractPath, "--output", output})
+	if err == nil {
+		t.Fatal("laneCommand accepted a tier that selects no cases")
+	}
+	for _, want := range []string{"envelope", defaultContract, "no cases"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not name %q", err, want)
+		}
+	}
+	if _, statErr := os.Stat(output); !os.IsNotExist(statErr) {
+		t.Fatalf("refused campaign created %s (%v)", output, statErr)
+	}
+}
