@@ -1695,7 +1695,8 @@ func TestMergeRefusesUnrecordableReceiptBeforeMovingHead(t *testing.T) {
 		"--candidate", fixture.candidate, "--approval", approval,
 		"--text", "Attempt a merge whose complete receipt cannot be recorded.",
 	})
-	if err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+	if err == nil || !strings.Contains(err.Error(), "event exceeds genesis ceiling: ") ||
+		!strings.Contains(err.Error(), "split it across several events") {
 		t.Fatalf("oversized receipt error = %v", err)
 	}
 	if afterHead := testGit(t, repo, "rev-parse", "HEAD"); afterHead != beforeHead {
@@ -1741,7 +1742,9 @@ func TestSuccessionAdmissionPreflightsEveryActWithoutAppending(t *testing.T) {
 		t.Fatalf("receipt act alone should fit: %v", err)
 	}
 	err = preflightBatchAdmission(ctx, workspace, "", "operator", private, acts, true)
-	if err == nil || !strings.Contains(err.Error(), "act 1:") || !strings.Contains(err.Error(), "event exceeds genesis ceiling") {
+	if err == nil || !strings.Contains(err.Error(), "act 1:") ||
+		!strings.Contains(err.Error(), "event exceeds genesis ceiling: ") ||
+		!strings.Contains(err.Error(), "against a ceiling of 2048") {
 		t.Fatalf("later oversized act error = %v", err)
 	}
 	after, err := workspace.Snapshot(ctx)

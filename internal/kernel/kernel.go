@@ -3,6 +3,7 @@ package kernel
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -384,6 +385,30 @@ func ValidateRequestSize(request Request, ceiling uint64) error {
 	return validateRequestSize(request, decoded, ceiling)
 }
 
+// ValidateUnsignedRequestSize applies that same accounting to an act that has
+// not been signed yet, so a caller can learn an act cannot be admitted before
+// it spends a signature on it.
+//
+// The envelope carries the actor key and the actor signature at fixed widths,
+// 32 and 64 bytes base64 encoded, and the intent bytes and causal references
+// are already final. A placeholder signature therefore measures the byte for
+// byte identical envelope the signed request will carry, and there is one size
+// formula rather than two: this runs the same measurement Submit runs.
+// encodedIntent must be the exact bytes the caller will sign.
+func ValidateUnsignedRequestSize(encodedIntent []byte, actorKey ed25519.PublicKey, restsOn []string, payload []byte, attachments map[string][]byte, ceiling uint64) error {
+	if len(actorKey) != ed25519.PublicKeySize {
+		return errors.New("invalid actor public key length")
+	}
+	placeholder := Request{
+		Signed: intent.Signed{
+			Intent: encodedIntent, ActorKey: actorKey,
+			Signature: make([]byte, ed25519.SignatureSize),
+		},
+		Payload: payload, Attachments: attachments,
+	}
+	return measureRequest(intent.Envelope(placeholder.Signed, restsOn), placeholder).judge(ceiling)
+}
+
 // CheckReplay verifies the target log and reports whether request is the exact
 // signed intent already held under its idempotency key. It never writes
 // objects or runs admission hooks. A caller may use it to avoid re-judging
@@ -469,23 +494,110 @@ func PriorAct(ctx context.Context, store gitstore.Store, target, dedupKey string
 }
 
 func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64) error {
-	message := intent.Envelope(request.Signed, decoded.RestsOn)
-	eventSize := uint64(len(message))
-	if eventSize > ceiling || uint64(len(request.Payload)) > ceiling-eventSize {
-		return errors.New("event exceeds genesis ceiling")
-	}
-	eventSize += uint64(len(request.Payload))
-	for _, attachment := range request.Attachments {
-		size := uint64(len(attachment))
-		if eventSize > ceiling || size > ceiling-eventSize {
-			return errors.New("event exceeds genesis ceiling")
-		}
-		eventSize += size
-	}
-	if eventSize > ceiling {
-		return errors.New("event exceeds genesis ceiling")
+	return measureRequest(intent.Envelope(request.Signed, decoded.RestsOn), request).judge(ceiling)
+}
+
+// judge is the one place a measured request meets a ceiling. It spends the
+// ceiling as a remaining budget, envelope then payload then attachments,
+// which is the accounting this kernel has always applied and cannot overflow.
+// A measurement that saturated is refused outright: its true total is larger
+// than any ceiling a genesis can record.
+func (s requestSize) judge(ceiling uint64) error {
+	if s.saturated || s.envelope > ceiling || s.payload > ceiling-s.envelope || s.attachments > ceiling-s.envelope-s.payload {
+		return s.refusal(ceiling)
 	}
 	return nil
+}
+
+// requestSize is the kernel's accounting of one submission. The genesis
+// ceiling bounds the signed envelope, the inline payload and every attachment
+// together rather than each of them separately, so the whole split has to be
+// measured before any of it is judged: a refusal naming only the component
+// that happened to cross the line cannot tell an author what to shrink.
+type requestSize struct {
+	envelope    uint64
+	payload     uint64
+	attachments uint64
+	count       int
+	largestName string
+	largestSize uint64
+	// saturated marks an attachment total larger than this machine can
+	// express. No request that exists can reach it; carrying the fact is what
+	// keeps the judgement below exact instead of nearly exact.
+	saturated bool
+}
+
+// measureRequest takes the envelope already built rather than building its
+// own, so the one caller that needs the envelope bytes afterwards, Submit,
+// does not construct them twice.
+func measureRequest(envelope string, request Request) requestSize {
+	size := requestSize{
+		envelope: uint64(len(envelope)),
+		payload:  uint64(len(request.Payload)),
+		count:    len(request.Attachments),
+	}
+	for name, attachment := range request.Attachments {
+		content := uint64(len(attachment))
+		var wrapped bool
+		size.attachments, wrapped = addSize(size.attachments, content)
+		size.saturated = size.saturated || wrapped
+		// Map iteration order is not stable, so equal sizes are settled by
+		// name: one request always names the same largest attachment.
+		if size.largestName == "" || content > size.largestSize || (content == size.largestSize && name < size.largestName) {
+			size.largestSize, size.largestName = content, name
+		}
+	}
+	return size
+}
+
+// total is the number the diagnostic reports. It saturates rather than
+// wrapping, so an impossible total reads as enormous instead of as small.
+func (s requestSize) total() uint64 {
+	running, _ := addSize(s.envelope, s.payload)
+	running, _ = addSize(running, s.attachments)
+	return running
+}
+
+// addSize saturates rather than wrapping and says whether it had to.
+func addSize(total, size uint64) (uint64, bool) {
+	if size > ^uint64(0)-total {
+		return ^uint64(0), true
+	}
+	return total + size, false
+}
+
+// maxAttachmentNameBytes is the longest attachment name a payload tree will
+// accept. The kernel measures a request before the tree writer validates its
+// names, so a submission body can reach this diagnostic carrying a key of any
+// length at all.
+const maxAttachmentNameBytes = 128
+
+// boundedName keeps an untrusted attachment name out of an unbounded error
+// string. A name longer than a payload tree will ever hold is inadmissible
+// anyway; quoting is what makes the remainder safe to print.
+func boundedName(name string) string {
+	if len(name) > maxAttachmentNameBytes {
+		return name[:maxAttachmentNameBytes]
+	}
+	return name
+}
+
+// refusal is the kernel's one refusal for the aggregate genesis ceiling. It
+// opens with the string this kernel has always refused with, so every caller
+// and document matching that prefix still matches, and everything after it
+// says what was measured and what to do instead.
+func (s requestSize) refusal(ceiling uint64) error {
+	split := fmt.Sprintf("envelope %d, payload %d, no attachments", s.envelope, s.payload)
+	if s.count > 0 {
+		files := "files"
+		if s.count == 1 {
+			files = "file"
+		}
+		split = fmt.Sprintf("envelope %d, payload %d, attachments %d in %d %s, largest %q at %d bytes",
+			s.envelope, s.payload, s.attachments, s.count, files, boundedName(s.largestName), s.largestSize)
+	}
+	return fmt.Errorf("event exceeds genesis ceiling: %d bytes against a ceiling of %d (%s); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes",
+		s.total(), ceiling, split)
 }
 
 // Rotate appends the kernel's reserved key-rotation event. The rotation commit
@@ -578,7 +690,7 @@ func submit(ctx context.Context, store gitstore.Store, request Request, options 
 		return Result{}, err
 	}
 	message := intent.Envelope(request.Signed, decoded.RestsOn)
-	if err := validateRequestSize(request, decoded, desc.PayloadCeiling); err != nil {
+	if err := measureRequest(message, request).judge(desc.PayloadCeiling); err != nil {
 		return Result{}, err
 	}
 	if options.PreAppend != nil {
