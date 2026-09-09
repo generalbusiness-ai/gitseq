@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a2256c0e8b92008fc7cb9a0ccae46cc534cad9ce","text":"Retire the S1 artifact at 643ab9c5 for internal/app/worktree_landing.go; successor 9619a55d9808687c12cbee7e9cf656b041d01cdd at 557ef676 on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5c60ed0c1a84698b3747fdbb84e80fefa68081e0","text":"Retire the S1 artifact at 643ab9c5 for internal/app/worktree_index_test.go; successor 357af2a028a79327a92ddc3bb6a9f3de0e3d98e8 at 557ef676 on the same promise a4c569b1."}
