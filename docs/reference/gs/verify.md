@@ -7,6 +7,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ad5dd1bf5e0c2c325384f497ada3fdcda1b8fe52
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:191ece9ae6bdc7636c4bc5c219e6af3aefb489ba
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52966895e59050b9a39308e6069ddb9ae7bd0c2e
 ---
 
 # `gs verify`
@@ -66,7 +67,9 @@ an event, so each one raises `Depth` above `Events` by one.
   log.
 - Each event occupies the commit it claims, with matching envelope,
   causal trailers and payload tree.
-- Payload sizes are within the workroom's ceiling.
+- The signed envelope, the inline payload and every attachment together
+  are within the workroom's ceiling. The ceiling covers all three as one
+  total, not each of them separately.
 - The verified head and depth do not move behind or away from the last
   frontier recorded in this repository's Gitseq config. Any verified read,
   including an explicit full audit, advances that local marker before it

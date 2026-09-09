@@ -40,6 +40,9 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3c6d28f602ea92883a8c4aa586c5b71f341b5db
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0438e5f5a6b2167feceb5a0c8646280a4227794c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bd891443ff868623f2ad427b4a5becd32359e5d3
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:52966895e59050b9a39308e6069ddb9ae7bd0c2e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f51aec8a375e1a1bcc04b9bc6dcbe04f640c397d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:76c6ce3f76b2c7c08e5aca3d4e185b1acc1d53e5
 ---
 
 # Architecture layers
@@ -130,7 +133,9 @@ The kernel owns:
 - idempotency namespaces, keys, replay, conflicting-retry detection, and the
   verified read-only exact-replay check used before mutable client preflight;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
-  attachments;
+  attachments, and the exported form of that same accounting for an act that
+  is not signed yet, so the application can apply the kernel's one measurement
+  before it spends a signature rather than a second formula of its own;
 - verification of history, object shape, signatures, ordering, and payload
   binding;
 - signed, profile-independent verification checkpoints containing only
@@ -1818,6 +1823,22 @@ wire fields, limits, remote-selection policy and cleanup preconditions.
   report's `target_pre_head`, which is the signer's own measurement and is
   checked on the report path. Every refusal here happens before the request is
   signed, so the frontier is unchanged.
+
+  **Size is measured before the signature.** The one place `internal/app`
+  signs a submission measures the act against the ceiling this workroom
+  records, using the kernel's exported accounting for an unsigned act, and
+  refuses with the kernel's own diagnostic before any signature exists. It
+  encodes the intent, measures those bytes, and signs the same bytes through
+  `internal/intent.SignEncoded`, so what was measured is what is signed. This
+  covers every surface at once, and no surface carries a size check of its own.
+  A refused act has no signature and therefore no act under its retry key, so
+  the key may be used again. The ceiling is the one genesis records, and the
+  local configuration is a mirror of it: a workroom whose record carries none,
+  such as a read-only attachment or a configuration written before the field
+  existed, is answered from genesis rather than skipped, so the boundary holds
+  on every supported workroom. The kernel reads the same descriptor and
+  enforces the same bound at admission; this is the early half of that one
+  bound, never a second one.
 
   The measurement is taken per filing, and a retry is answered before any of it
   happens. The retry identity the kernel indexes — target log, actor key,
