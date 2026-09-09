@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27281aa47ae994b9a9e6bc4c59d18fd537c75075","text":"Retire the #22093 artifact for internal/app/sign_ceiling_test.go at the withdrawn head; successor 9db942406aaf48efcf0a010d1ccfdde8e06ac4be on the same promise c2c18651."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:19bb2851766c19b29616681516c9f812fd96b5e2","text":"Retire the #22093 artifact for cmd/gs/main_test.go at the withdrawn head; successor 52890331bfebcf6dcb485020b4bfc6af3ee243f9 on the same promise c2c18651."}
