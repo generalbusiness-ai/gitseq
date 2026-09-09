@@ -1,0 +1,38 @@
+cold_status/shape-linear/depth-500000                    rnd=1 pos=1 lat= 126.360s ckpt=   0.00s setup=   0.16s rss= 2.886GiB steady= 1.517GiB ckB=0 resp=1216 git=0 dig=ok
+cold_status/shape-linear/depth-500000                    rnd=2 pos=1 lat= 126.194s ckpt=   0.00s setup=   0.16s rss= 2.912GiB steady= 1.516GiB ckB=0 resp=1216 git=0 dig=ok
+warm_status/shape-linear/depth-500000                    rnd=1 pos=1 lat=   0.150s ckpt=   0.00s setup= 126.66s rss= 2.876GiB steady= 1.516GiB ckB=0 resp=1216 git=0 dig=ok
+warm_status/shape-linear/depth-500000                    rnd=2 pos=1 lat=   0.164s ckpt=   0.00s setup= 126.41s rss= 3.142GiB steady= 1.516GiB ckB=0 resp=1216 git=0 dig=ok
+checkpoint_restart/shape-linear/depth-050000/tail-0255   rnd=1 pos=1 lat=   7.243s ckpt=   7.24s setup=   0.16s rss= 2.096GiB steady= 0.742GiB ckB=2161188 resp=321858214 git=0 dig=ok
+checkpoint_restart/shape-linear/depth-050000/tail-0255   rnd=2 pos=1 lat=   7.211s ckpt=   7.21s setup=   0.17s rss= 1.683GiB steady= 0.741GiB ckB=2161188 resp=321858214 git=0 dig=ok
+checkpoint_restart/shape-linear/depth-500000/tail-0255   rnd=1 pos=1 lat=  69.417s ckpt=  69.42s setup=   0.16s rss=16.027GiB steady= 6.863GiB ckB=21934525 resp=3247800825 git=0 dig=ok
+checkpoint_restart/shape-linear/depth-500000/tail-0255   rnd=2 pos=1 lat=  69.320s ckpt=  69.32s setup=   0.16s rss=17.664GiB steady= 6.617GiB ckB=21934525 resp=3247800825 git=0 dig=ok
+honest_fallback/shape-linear/depth-500000                rnd=1 pos=1 lat= 129.259s ckpt=   0.00s setup=   0.16s rss=15.502GiB steady= 6.617GiB ckB=0 resp=3247800825 git=0 dig=ok
+honest_fallback/shape-linear/depth-500000                rnd=2 pos=1 lat= 128.810s ckpt=   0.00s setup=   0.16s rss=15.092GiB steady= 6.617GiB ckB=0 resp=3247800825 git=0 dig=ok
+cold_status/shape-linear/depth-050000                    rnd=1 pos=1 lat=  12.746s ckpt=   0.00s setup=   0.16s rss= 0.448GiB steady= 0.209GiB ckB=0 resp=1213 git=0 dig=ok
+cold_status/shape-linear/depth-050000                    rnd=2 pos=1 lat=  12.733s ckpt=   0.00s setup=   0.16s rss= 0.454GiB steady= 0.209GiB ckB=0 resp=1213 git=0 dig=ok
+cold_status/shape-linear/depth-050000/actors-008         rnd=1 pos=1 lat=  12.647s ckpt=   0.00s setup=   0.06s rss= 0.369GiB steady= 0.149GiB ckB=0 resp=1213 git=0 dig=ok
+cold_status/shape-linear/depth-050000/actors-008         rnd=2 pos=1 lat=  12.659s ckpt=   0.00s setup=   0.06s rss= 0.361GiB steady= 0.149GiB ckB=0 resp=1213 git=0 dig=ok
+warm_status/shape-linear/depth-050000                    rnd=1 pos=1 lat=   0.018s ckpt=   0.00s setup=  12.90s rss= 0.455GiB steady= 0.209GiB ckB=0 resp=1213 git=0 dig=ok
+warm_status/shape-linear/depth-050000                    rnd=2 pos=1 lat=   0.018s ckpt=   0.00s setup=  12.89s rss= 0.456GiB steady= 0.209GiB ckB=0 resp=1213 git=0 dig=ok
+honest_fallback/shape-linear/depth-050000                rnd=1 pos=1 lat=  12.979s ckpt=   0.00s setup=   0.16s rss= 1.736GiB steady= 0.693GiB ckB=0 resp=321858214 git=0 dig=ok
+honest_fallback/shape-linear/depth-050000                rnd=2 pos=1 lat=  13.001s ckpt=   0.00s setup=   0.16s rss= 1.993GiB steady= 0.742GiB ckB=0 resp=321858214 git=0 dig=ok
+cold_status/shape-linear/depth-500000/actors-050         rnd=1 pos=1 lat= 126.148s ckpt=   0.00s setup=   0.16s rss= 3.304GiB steady= 1.516GiB ckB=0 resp=1216 git=0 dig=ok
+cold_status/shape-linear/depth-500000/actors-050         rnd=2 pos=1 lat= 126.471s ckpt=   0.00s setup=   0.16s rss= 2.844GiB steady= 1.516GiB ckB=0 resp=1216 git=0 dig=ok
+cold_status/shape-linear/depth-500000                    rnd=0 pos=0 lat= 126.978s ckpt=   0.00s setup=   0.16s rss= 3.288GiB steady= 1.516GiB ckB=0 resp=1216 git=15 dig=ok
+warm_status/shape-linear/depth-500000                    rnd=0 pos=0 lat=   0.163s ckpt=   0.00s setup= 126.37s rss= 2.875GiB steady= 1.516GiB ckB=0 resp=1216 git=1 dig=ok
+checkpoint_restart/shape-linear/depth-050000/tail-0255   rnd=0 pos=0 lat=   7.259s ckpt=   7.26s setup=   0.16s rss= 2.162GiB steady= 0.742GiB ckB=2161188 resp=321858214 git=26 dig=ok
+checkpoint_restart/shape-linear/depth-500000/tail-0255   rnd=0 pos=0 lat=  69.784s ckpt=  69.78s setup=   0.17s rss=16.826GiB steady= 6.617GiB ckB=21934525 resp=3247800825 git=26 dig=ok
+honest_fallback/shape-linear/depth-500000                rnd=0 pos=0 lat= 129.310s ckpt=   0.00s setup=   0.16s rss=15.969GiB steady= 6.863GiB ckB=0 resp=3247800825 git=15 dig=ok
+cold_status/shape-linear/depth-050000                    rnd=0 pos=0 lat=  12.775s ckpt=   0.00s setup=   0.16s rss= 0.459GiB steady= 0.209GiB ckB=0 resp=1213 git=15 dig=ok
+cold_status/shape-linear/depth-050000/actors-008         rnd=0 pos=0 lat=  12.691s ckpt=   0.00s setup=   0.06s rss= 0.355GiB steady= 0.149GiB ckB=0 resp=1213 git=15 dig=ok
+warm_status/shape-linear/depth-050000                    rnd=0 pos=0 lat=   0.018s ckpt=   0.00s setup=  12.86s rss= 0.460GiB steady= 0.209GiB ckB=0 resp=1213 git=1 dig=ok
+honest_fallback/shape-linear/depth-050000                rnd=0 pos=0 lat=  12.994s ckpt=   0.00s setup=   0.16s rss= 1.861GiB steady= 0.742GiB ckB=0 resp=321858214 git=15 dig=ok
+cold_status/shape-linear/depth-500000/actors-050         rnd=0 pos=0 lat= 126.918s ckpt=   0.00s setup=   0.16s rss= 2.844GiB steady= 1.516GiB ckB=0 resp=1216 git=15 dig=ok
+evidence keys ['benchstat', 'candidate_commit', 'contract', 'contract_digest', 'environment', 'harness_commit', 'latency_ns', 'outcome', 'samples', 'schema', 'started_at', 'tier']
+outcome pass
+harness_commit 0b689fe27affcae3eba5c496eee4713b257dce40
+candidate_commit 0b689fe27affcae3eba5c496eee4713b257dce40
+contract_digest 07b230aefd87f10d01f7e4c3976ef001251df27b52946efaab54036523c79d1f
+started_at 2026-09-09T12:39:59Z
+tier envelope
+environment {"os": {"value": "darwin"}, "architecture": {"value": "arm64"}, "go_version": {"value": "go1.27.0"}, "git_version": {"value": "git version 2.50.1 (Apple Git-155)"}, "cpu_model": {"value": "Apple M5 Max"}, "logical_cpus": {"value": 18}, "memory_bytes": {"value": 68719476736}, "container_cpu_limit": {"value": null, "unavailable_reason": "cgroup v2 CPU limit unavailable"}, "container_memory_limit_bytes": {"value": null, "unavailable_reason": "cgroup v2 memory limit unavailable"}, "filesystem": {"value": "/"}, "power_mode": {"value": null, "unavailable_reason": "portable power-mode collector unava

@@ -1,0 +1,30 @@
+head 0b689fe27affcae3eba5c496eee4713b257dce40
+date 2026-09-09T13:48:00Z
+=== go build ./...
+$ go build ./...
+rc=0
+=== go vet ./...
+$ go vet ./...
+rc=0
+=== go test -count=1 ./internal/docset/...
+$ go test -count=1 ./internal/docset/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	52.180s
+rc=0
+=== go test -count=1 ./internal/perflane/... ./cmd/gitseq-perf/...
+$ go test -count=1 ./internal/perflane/... ./cmd/gitseq-perf/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	0.160s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	1.404s
+rc=0
+=== git diff --check
+$ git diff --check
+rc=0
+=== markdown link check
+no dedicated links target in Makefile; 'make docs' is 'go test ./internal/docset/...', already run above
+=== commit
+0298694e3b3ac9c37b0f7b8f226c675c655afefb
+=== push
+0298694e3b3ac9c37b0f7b8f226c675c655afefb	refs/heads/request/scale-envelope-evidence
+=== 8add6909 fold check (curl http://127.0.0.1:7777/v0/status)
+commitment 8add6909: status=satisfied terminal=reported report=3bb86abd stale=true
+ratify act e043c27b target 3bb86abd verdict=effective reason='requester declared satisfaction' ts=1787138202 (2026-08-19T11:16:42Z)
+=> the page sentence 'Planner report remains unratified' was false; Block D applied
