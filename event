@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2351943914c799a2522314f3ccbe919ae4635d75","text":"Retire the #22093 artifact for docs/reference/limits.md at the withdrawn head; successor 0ffd5c67f0bbaac8ffb056296b0631371b991ecc on the same promise c2c18651."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8aa561dc1cceecd5fe41a286d07bb091b48669e6","text":"Retire the #22093 artifact for docs/reference/architecture.md at the withdrawn head; successor 2617079cb711d513acee6a3ac0fd7076f6dec620 on the same promise c2c18651."}
