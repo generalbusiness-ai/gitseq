@@ -1,4 +1,0 @@
- "anchorsTotal": 20
-}
-sample: {"label":"server.go:570","file":"internal/service/server.go","at":"0afa98aa26be6756682f28defb081043ecc8efa2","line":"570","event":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
-non-app anchors: 0
