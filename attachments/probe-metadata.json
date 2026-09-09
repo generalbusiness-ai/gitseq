@@ -1,0 +1,18 @@
+{
+  "source_head": "e66a29775d7050e1158398de0b7e7cbc6f9e4297",
+  "directory": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/planner-oversized-zero-ceiling-v2e3ckl3",
+  "scope": "Disposable git archive plus diagnostic test; synthetic legacy-style stored config with zero ceiling, reopened normally. No real config or remote attached process is modified or exercised.",
+  "command": [
+    "go",
+    "test",
+    "./internal/app",
+    "-run",
+    "^(TestSignRequestRefusesOverCeilingBeforeSigning|TestPlannerNoLocalCeilingSignsOversizedBeforeKernelRefusal)$",
+    "-count=1",
+    "-v"
+  ],
+  "toolchain": "go1.26.7",
+  "exit_code": 0,
+  "initial_fixture_error": "Initial probe changed only the in-memory ceiling before Snapshot; the immutable-config consistency guard correctly refused that mismatch before signing. Corrected fixture stores a cloned config with only ceiling=0 then reopens, preserving frontier and custody.",
+  "diagnostic_result": "Final test preserves the act refusal in its log rather than printing the later successful Snapshot error variable. Both actual assertions and final output checked."
+}

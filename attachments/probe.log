@@ -1,0 +1,9 @@
+=== RUN   TestPlannerNoLocalCeilingSignsOversizedBeforeKernelRefusal
+    planner_zero_ceiling_probe_test.go:31: reproduced missing-local-ceiling gap: signatures=1; frontier unchanged=true; error=event exceeds genesis ceiling: 4802 bytes against a ceiling of 2048 (envelope 648, payload 58, attachments 4096 in 1 file, largest "evidence.txt" at 4096 bytes); shrink the evidence, split it across several events, or cite a repository path instead of attaching bytes
+--- PASS: TestPlannerNoLocalCeilingSignsOversizedBeforeKernelRefusal (0.65s)
+=== RUN   TestSignRequestRefusesOverCeilingBeforeSigning
+=== PAUSE TestSignRequestRefusesOverCeilingBeforeSigning
+=== CONT  TestSignRequestRefusesOverCeilingBeforeSigning
+--- PASS: TestSignRequestRefusesOverCeilingBeforeSigning (0.74s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	1.750s
