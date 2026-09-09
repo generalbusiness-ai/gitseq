@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e875ebfa22e5ae8bb92c1f8c7c6a1ab2c584e640","text":"Retire the #22093 artifact for docs/reference/gs/verify.md at the withdrawn head; successor 3f46d12c955576be9d37add6628af574e08b0de7 on the same promise c2c18651."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2351943914c799a2522314f3ccbe919ae4635d75","text":"Retire the #22093 artifact for docs/reference/limits.md at the withdrawn head; successor 0ffd5c67f0bbaac8ffb056296b0631371b991ecc on the same promise c2c18651."}
