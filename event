@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b035cfef4ca156fba09586ab10c1b9910a341b79","text":"Retire the reconciled design note artifact at 3f817c3b; successor 7ff32a3b32f17d48f4567efc8f6a884d5af06460 at the S1 head 0d1c7e11."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fe3893fa5f7834a0d0e26d70407710cf2af1826","text":"Retire the changes-for-adoption note artifact at 3f817c3b; successor f52eed58115c0c7e3c04b38e9b6d7e6a2108e0c5 at the S1 head 0d1c7e11."}
