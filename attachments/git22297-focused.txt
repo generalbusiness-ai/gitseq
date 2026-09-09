@@ -1,0 +1,18 @@
+=== RUN   TestSlowLocalAuditReportsProgressWithoutChangingTheResult
+=== PAUSE TestSlowLocalAuditReportsProgressWithoutChangingTheResult
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures
+=== PAUSE TestBatchProcessReadsItsFileAndReportsFailures
+=== CONT  TestSlowLocalAuditReportsProgressWithoutChangingTheResult
+=== CONT  TestBatchProcessReadsItsFileAndReportsFailures
+--- PASS: TestSlowLocalAuditReportsProgressWithoutChangingTheResult (1.10s)
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures/positional_file
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures/positional_file_with_stderr_progress
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures/bad_batch_input_exits_nonzero
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures/missing_flag_value_exits_nonzero
+--- PASS: TestBatchProcessReadsItsFileAndReportsFailures (8.84s)
+    --- PASS: TestBatchProcessReadsItsFileAndReportsFailures/positional_file (3.65s)
+    --- PASS: TestBatchProcessReadsItsFileAndReportsFailures/positional_file_with_stderr_progress (3.39s)
+    --- PASS: TestBatchProcessReadsItsFileAndReportsFailures/bad_batch_input_exits_nonzero (0.02s)
+    --- PASS: TestBatchProcessReadsItsFileAndReportsFailures/missing_flag_value_exits_nonzero (0.01s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	9.422s

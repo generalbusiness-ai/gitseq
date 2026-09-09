@@ -1,0 +1,27 @@
+{
+  "source_parent": "359b211cfe94e758db592d6e4e78c2f85c6c9c30",
+  "changed_path": "cmd/gs/main_test.go",
+  "source_sha256": "b26adc9ad9b125bb69cd2b27d1d130330e24f52030863710ebb3d1e0c68ff9e9",
+  "focused_exit": 0,
+  "focused_package_seconds": 9.422,
+  "race_focused_exit": 0,
+  "vet_build_exit": 0,
+  "mutation": {
+    "file": "/tmp/git22297-mixed-stream-overlay.json",
+    "change": "Only parse stdout plus stderr in the positional-file assertions, leaving separate capture and stderr notice check intact.",
+    "exit": 1,
+    "result": "New deterministic stderr case failed in json.Unmarshal: invalid character g after top-level value. Runtime failure, not compile failure.",
+    "seconds": 12.284
+  },
+  "full_go_suite": {
+    "command": "go test -count=1 ./...",
+    "exit": 0,
+    "cli_seconds": 517.201,
+    "docset_seconds": 127.035,
+    "log": "git22297-go-test-all.txt"
+  },
+  "attribution": "Local own worktree. No production source changes. POSIX shell wrapper supplies a synthetic copy of the notice before exec of the actual built gs, with all data passed as positional arguments. Existing real slow-audit test unchanged and passed. No claim to reproduce original load-dependent timing failure.",
+  "head": "84bfe52f68e0f5a21b33219fb5e756068dbd226e",
+  "race_focused_seconds": 17.5,
+  "toolchain": "go1.27.0 darwin/arm64"
+}

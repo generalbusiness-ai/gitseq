@@ -1,0 +1,10 @@
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures
+=== PAUSE TestBatchProcessReadsItsFileAndReportsFailures
+=== CONT  TestBatchProcessReadsItsFileAndReportsFailures
+=== RUN   TestBatchProcessReadsItsFileAndReportsFailures/positional_file_with_stderr_progress
+    main_test.go:5076: decode batch report "{\n  \"acts\": [\n    {\n      \"position\": 0,\n      \"event\": \"git:sha1:b2781daf748149f15d72dbfefa6dc5bfa5b0e125#git:sha1:d2fe0218c7c453ff4ec04dbee81dc8994f7f1981\",\n      \"outcome\": \"landed\"\n    }\n  ],\n  \"landed\": 1,\n  \"replayed\": 0\n}\n": invalid character 'g' after top-level value; stderr="gs: verifying the durable log; this may take a while\ngs: verifying the durable log; this may take a while\n"
+--- FAIL: TestBatchProcessReadsItsFileAndReportsFailures (7.87s)
+    --- FAIL: TestBatchProcessReadsItsFileAndReportsFailures/positional_file_with_stderr_progress (7.09s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	12.284s
+FAIL

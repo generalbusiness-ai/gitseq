@@ -1,0 +1,68 @@
+diff --git a/cmd/gs/main_test.go b/cmd/gs/main_test.go
+index c243ae0df..50167e335 100644
+--- a/cmd/gs/main_test.go
++++ b/cmd/gs/main_test.go
+@@ -5043,27 +5043,43 @@ func TestBatchProcessReadsItsFileAndReportsFailures(t *testing.T) {
+ 	t.Parallel()
+ 	binary := buildGS(t)
+ 
+-	t.Run("positional file", func(t *testing.T) {
+-		repo, workspace := servableRepository(t)
+-		seed := workspace.EventID(workspace.View().Genesis)
+-		path := filepath.Join(t.TempDir(), "batch.json")
+-		acts := fmt.Sprintf(`[{"verb":"state","kind":"assert","text":"the positional file was read","rests_on":[%q],"idempotency_key":"positional-file"}]`, seed)
+-		if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
+-			t.Fatal(err)
+-		}
++	for _, name := range []string{"positional file", "positional file with stderr progress"} {
++		t.Run(name, func(t *testing.T) {
++			repo, workspace := servableRepository(t)
++			seed := workspace.EventID(workspace.View().Genesis)
++			path := filepath.Join(t.TempDir(), "batch.json")
++			acts := fmt.Sprintf(`[{"verb":"state","kind":"assert","text":"the positional file was read","rests_on":[%q],"idempotency_key":"positional-file"}]`, seed)
++			if err := os.WriteFile(path, []byte(acts), 0o600); err != nil {
++				t.Fatal(err)
++			}
+ 
+-		output, err := exec.Command(binary, "batch", "--repo", repo, "--as", "human", path).CombinedOutput()
+-		if err != nil {
+-			t.Fatalf("gs batch file: %v: %s", err, output)
+-		}
+-		var report batchReport
+-		if err := json.Unmarshal(output, &report); err != nil {
+-			t.Fatalf("decode batch report %q: %v", output, err)
+-		}
+-		if report.Landed != 1 || report.Error != nil {
+-			t.Fatalf("batch report = %#v, want one landed act and no error", report)
+-		}
+-	})
++			command := exec.Command(binary, "batch", "--repo", repo, "--as", "human", path)
++			const notice = "gs: verifying the durable log; this may take a while"
++			withProgress := name == "positional file with stderr progress"
++			if withProgress {
++				// Emit a notice before exec replaces the shell with the real gs.
++				// This exercises both process streams without a timing race or a
++				// production delay hook. Paths stay arguments, never shell code.
++				args := append([]string{"-c", `printf '%s\n' "$1" >&2; shift; exec "$@"`, "batch-progress", notice}, command.Args...)
++				command = exec.Command("sh", args...)
++			}
++			var stdout, stderr bytes.Buffer
++			command.Stdout, command.Stderr = &stdout, &stderr
++			if err := command.Run(); err != nil {
++				t.Fatalf("gs batch file: %v; stdout=%q; stderr=%q", err, stdout.String(), stderr.String())
++			}
++			if withProgress && !strings.Contains(stderr.String(), notice) {
++				t.Fatalf("missing progress notice; stdout=%q; stderr=%q", stdout.String(), stderr.String())
++			}
++			var report batchReport
++			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++				t.Fatalf("decode batch report %q: %v; stderr=%q", stdout.String(), err, stderr.String())
++			}
++			if report.Landed != 1 || report.Error != nil {
++				t.Fatalf("batch report = %#v, want one landed act and no error; stderr=%q", report, stderr.String())
++			}
++		})
++	}
+ 
+ 	t.Run("bad batch input exits nonzero", func(t *testing.T) {
+ 		path := filepath.Join(t.TempDir(), "batch.json")

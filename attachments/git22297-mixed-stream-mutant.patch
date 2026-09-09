@@ -1,0 +1,11 @@
+--- a/cmd/gs/main_test.go
++++ b/cmd/gs/main_test.go
+@@ -5072,7 +5072,7 @@
+ 				t.Fatalf("missing progress notice; stdout=%q; stderr=%q", stdout.String(), stderr.String())
+ 			}
+ 			var report batchReport
+-			if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
++			if err := json.Unmarshal(append(stdout.Bytes(), stderr.Bytes()...), &report); err != nil {
+ 				t.Fatalf("decode batch report %q: %v; stderr=%q", stdout.String(), err, stderr.String())
+ 			}
+ 			if report.Landed != 1 || report.Error != nil {
