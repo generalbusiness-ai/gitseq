@@ -34,7 +34,9 @@ a previously verified frontier to a first-time reader was declined on
 2026-09-09 by proposal 7493bb29. It adds no read contract for earlier state,
 no second verifier and no persistence of unsigned projection state. The
 reasoning is in
-[Previous-frontier readers during a rebuild](../../notes/2026-09-07-previous-frontier-readers.md).
+[Previous-frontier readers during a rebuild](https://github.com/generalbusiness-ai/gitseq/blob/d6981d91206c02074b04290df2b1e8b94e1de839/notes/2026-09-07-previous-frontier-readers.md),
+which the reading view opens from
+`notes/2026-09-07-previous-frontier-readers.md`.
 
 ## Follow a reference
 
