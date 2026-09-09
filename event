@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4470173ab4a3c7f9a9ac9aa985d9cc6e5c29d890","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/merge_plan.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:44f0576308367ab90517b578626d62fdc4be22ae","text":"Merge retired a covered predecessor; the successor is at ui/src/lib/api.ts."}
