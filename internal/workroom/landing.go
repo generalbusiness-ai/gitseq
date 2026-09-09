@@ -824,15 +824,3 @@ func (f *foldState) receiptTarget(receipt *parsedRecord) (repo, ref string) {
 	}
 	return repo, ref
 }
-
-// dischargedBy reports whether a sealed receipt discharged this landing
-// obligation. Only a receipt into the named ref of the named repository does:
-// landing an approved head somewhere else is a real event and a real receipt,
-// and it still leaves the obligation open.
-func (f *foldState) dischargedBy(receipt *parsedRecord, result requestResult) bool {
-	if receipt == nil {
-		return false
-	}
-	repo, ref := f.receiptTarget(receipt)
-	return repo == result.targetRepo && ref == result.targetRef
-}

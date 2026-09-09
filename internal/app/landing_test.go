@@ -108,8 +108,14 @@ func TestLandingMeasurementsFollowTargetAndPreserveUnknown(t *testing.T) {
 	landingTestGit(t, repo, "update-ref", "refs/heads/release", forward)
 	input.MergeHead = strings.Repeat("a", 40)
 	got = measure()
-	if got.State != "unknown" || got.RefIncorporated != nil || got.RemoteContains != nil {
+	if got.State != "unknown" || got.RefIncorporated != nil || got.RemoteContains != nil || got.Reason == "" {
 		t.Fatalf("missing object became absence: %+v", got)
+	}
+	input.MergeHead = ""
+	got = measure()
+	if got.State != "unknown" || got.RefIncorporated != nil || got.RemoteContains != nil ||
+		got.TargetHead != forward || !strings.Contains(got.Reason, "no witnessed merge head") {
+		t.Fatalf("missing supplied head claimed a missing receipt or measured false: %+v", got)
 	}
 	input.MergeHead = merged
 	// Ambient routing must not redirect the advisory read into another repo.

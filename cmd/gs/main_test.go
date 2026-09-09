@@ -2510,6 +2510,16 @@ func TestMergeRetryResumesPartlyLandedSuccessionWithoutRemerging(t *testing.T) {
 	if err != nil || partial.Landed != 2 {
 		t.Fatalf("partial succession = %+v, %v", partial, err)
 	}
+	if _, err := fixture.workspace.Act(fixture.ctx, "operator", app.Act{Verb: app.VerbSupersede,
+		Target: fixture.ground, Text: "Evidence moved while succession was interrupted.",
+		RestsOn: []string{fixture.ground}, IdempotencyKey: "partial-succession-ground"}); err != nil {
+		t.Fatal(err)
+	}
+	prospective := mergeplan.Build(fixture.ctx, fixture.workspace, fixture.repo, fixture.candidate, approval,
+		fixture.workspace.View().Actors["operator"].Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	if !prospective.Allowed || prospective.Mode != "resume" {
+		t.Fatalf("partial succession plan = %+v, want resume", prospective)
+	}
 	beforeRetry := fixture.snapshot(t).Depth
 	if err := mergeCommand(fixture.ctx, []string{
 		"--repo", fixture.repo, "--as", "operator", "--checkout", fixture.repo,

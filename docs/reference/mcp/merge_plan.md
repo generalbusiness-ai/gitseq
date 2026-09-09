@@ -2,6 +2,8 @@
 title: MCP merge plan
 summary: Read the exact guarded merge plan without changing Git or the workroom.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b1f8e0ec38eadfc3fbd798a222d3e310426a1be
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ca4b615d2b0ebceeff06f92e4af81305e1cea4b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8e2b7c8cd90d20d20bdf15065f8cf290bfebdac0
 ---
@@ -39,6 +41,12 @@ paths; every covering artifact and its classification; retirements and
 successors; and stable allow or refusal reasons. The five classifications are
 `reviewed candidate`, `in-target predecessor`, `carried`, `protected sibling`,
 and `abandoned`.
+
+For an existing sealed receipt at the matching target and head, `mode: resume`
+means succession acts remain. `mode: complete` with `allowed: true` means all
+canonical acts are already recorded and retrying merge appends nothing. The
+same effective-act matching and refusal rules as the CLI apply; the MCP adapter
+does not decide completion separately.
 
 Before allowing a fresh plan, the evaluator encodes the exact durable receipt,
 successor, and retirement suffix without structured authorization through the

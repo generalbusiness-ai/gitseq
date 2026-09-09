@@ -151,9 +151,22 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	if err := mergeplan.ValidateSuccession(ctx, workspace, checkout, plan); err != nil {
 		return err
 	}
-	acts := successionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate,
+	shared := mergeplan.SuccessionActs(receipt.Approval, receipt.Authorization, receipt.AuthorizationRatification, receipt.Candidate,
 		mergeplan.Target{Repo: receipt.TargetRepo, Ref: receipt.TargetRef, PreHead: receipt.TargetPreHead},
 		receipt.MergeHead, receipt.Staleness, receipt.HoldWarning == "true", plan)
+	if len(shared) == 0 {
+		return errors.New("sealed merge succession is not representable")
+	}
+	pending, err := mergeplan.PendingSuccession(snapshot.Projection, workspace.View().Actors[actor].Fingerprint, shared)
+	if err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		// Delivery is already complete. Current live-path counts may have
+		// changed since then; checking them would reopen historical work.
+		return nil
+	}
+	acts := batchSuccessionActs(pending)
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("merge succession admission preflight: %w", err)
 	}
@@ -247,6 +260,10 @@ func successionActs(approval, authorization, authorizationRatification, candidat
 		return nil
 	}
 	shared := mergeplan.SuccessionActs(approval, authorization, authorizationRatification, candidate, target, mergeHead, staleness, holdWarning, plan)
+	return batchSuccessionActs(shared)
+}
+
+func batchSuccessionActs(shared []mergeplan.ProspectiveAct) []batchAct {
 	acts := make([]batchAct, 0, len(shared))
 	for _, entry := range shared {
 		act := entry.Act

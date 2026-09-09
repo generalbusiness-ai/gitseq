@@ -2,6 +2,8 @@
 title: gs merge-plan
 summary: Explain an exact merge and its artifact succession without changing the repository or workroom.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8b1f8e0ec38eadfc3fbd798a222d3e310426a1be
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4b69abf701279b7e30b83e0e539eb26fbc8b8779
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8ca4b615d2b0ebceeff06f92e4af81305e1cea4b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3eb96a9faebd16a9626fc17362bae4cd75e4b2c3
 ---
@@ -54,7 +56,7 @@ gs merge-plan --repo "$REPO" --as alice --checkout "$REPO" \
 
 ## Result
 
-`mode` is `fresh`, `resume`, or `used`. A fresh plan reports the exact durable
+`mode` is `fresh`, `resume`, `complete`, or `used`. A fresh plan reports the exact durable
 frontier, approval, candidate head, implementer, target pre-head, candidate
 artifacts, reviewed paths, canonical changed paths, and every live covering
 artifact. Each covering artifact is classified as `reviewed candidate`,
@@ -71,9 +73,14 @@ a normal structured result and names the exact failed check. Results are sorted
 deterministically and bounded to 2 MiB; a larger result refuses with
 `plan_output_too_large` instead of silently omitting accounting.
 
-For a resumed merge, the command reads the immutable receipt already at the
-checkout head and renders its sealed succession. It does not replan against a
-newer world. A receipt already used in another checkout is `used` and refuses.
+For an existing receipt, the command checks its sealed repository, ref and
+merge head against the checkout and renders its sealed succession. It does not
+replan against a newer world. `resume` means some canonical succession acts
+remain to be recorded. `complete` with `allowed: true` means all are already
+recorded: repeating the merge appends nothing. Effective acts are matched by
+merger, content and ordered citations, preserving their original staleness
+record. A retired receipt or ambiguous match refuses. A receipt already used
+in another checkout is `used` and refuses.
 
 The prospective Git merge is staged only in a disposable clone. The governed
 repository is read with optional locks disabled. `gs merge` consumes this same

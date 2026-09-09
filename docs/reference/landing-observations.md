@@ -2,6 +2,9 @@
 title: Landing observations
 summary: Keep durable delivery evidence separate from current target and worktree facts.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0581948abafe7fda01c7e4bcafaae5337297c601
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:65e932f9ddd81331c355d7c87def2de9210300ef
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c1912b37f7f0668c7512f9281c6513d2043f69f6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a51bf9c28f8fc0c4b0669a80d10d3e7ed9f698e0
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aa1fb7103f0466394a55535fcd34687358e7a08e
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0d43258e62f3d48b8a226c084d693237cee1ec5b
@@ -27,7 +30,7 @@ the raw `commitment` block and adds the same shared shape under `landing`.
 | `hold_owner`, `release` | The hold owner and effective release event, if present. |
 | `approval`, `candidate` | The ratified approval and exact candidate head. |
 | `latest_resolution`, `terminal` | Nonterminal evidence and the existing closure reason. |
-| `approved_not_landed` | The selected approved artifact has no recorded landing to its target. This audit is independent of commitment closure; a receipt may carry that artifact while changed-path companions close the source commitment. |
+| `approved_not_landed` | The selected approved artifact has no recorded landing to its target. Delivery includes every eligible reporting artifact named by the exact-head approval, even when the retirement cut is empty or carries that artifact. |
 | `landing_receipt` | The existing validated receipt selected by the fold's merge index and matched to the commitment's target. |
 | `merge_head`, `receipt_legacy` | The witnessed receipt's source merge head and whether both target fields were absent. |
 | `merge_hold_warning` | True only when that receipt explicitly sealed `merge_hold_warning=true`. |
@@ -37,10 +40,12 @@ legacy fields do not imply a hold warning. A released held landing and a landing
 that used the compatibility window remain distinguishable by their actual
 receipt evidence. The human CLI and MCP summaries also flag shown warnings.
 
-The witness is an additive projection field. It changes no admission, lifecycle,
-release or merge-authorization rule. Process-local snapshots are rebuilt by a
-new process; signed checkpoints contain authenticated transport records, not
-serialized commitment projections requiring a new cache format.
+The witness and commitment closure use the same destination-matched delivery.
+Retirement authority remains separate from delivery: carrying an approved
+reporting artifact does not leave its commitment awaiting landing. The correction
+advances the fold profile to `workroom-fold@24`, rebuilding older projection
+caches from verified records. Signed checkpoints still contain authenticated
+transport records; their format does not change.
 
 ## Current Git observations
 
@@ -52,8 +57,7 @@ The nested `git` object is advisory. It includes `measured_at`, the observed
 | `incorporated` | The observed target contains the receipt's `merge_head`. |
 | `landed-then-removed` | The target exists, and its ancestry no longer contains that merge. |
 | `target_gone` | A complete local ref inventory contains no such target. |
-| `no_receipt` | The target exists but this row has no witnessed merge to measure. |
-| `unknown` | The repository, receipt details, objects or bounded ancestry read could not settle the answer. |
+| `unknown` | The repository, supplied merge head, objects or bounded ancestry read could not settle the answer. A missing witnessed merge head has an explicit reason and leaves both ancestry booleans null; it does not prove that no receipt exists. |
 
 `remote`, `remote_ref`, `remote_head` and nullable `remote_contains` describe
 the configured remote's **local tracking observation**. No network fetch runs.
