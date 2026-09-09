@@ -1,0 +1,10 @@
+Original file from base 9fbc913e, over uncommitted current code inputs.
+go test -overlay /tmp/git21944-mutants/receipt-rebuilt-after-staleness.json -count=1 -run TestCompletedMergeRetryKeepsItsDurableSuffix ./cmd/gs
+git:sha1:9c60fb5339e8f853a00169485367f2bc08f4f813#git:sha1:70649d7d6a67b5b1aa4dd496289013d5611c9d72
+warning: merge has no structured authorization; phase-one compatibility permits this merge
+61d70409d71c12c0521d3eeda42a2fab03d275df
+--- FAIL: TestCompletedMergeRetryKeepsItsDurableSuffix (5.88s)
+    merge_completion_test.go:38: completed retry refused: record merge succession: batch submit: idempotency key reused with different intent
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/cmd/gs	6.241s
+FAIL
