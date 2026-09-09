@@ -119,6 +119,40 @@ func TestEnvelopeRejectsAlteredCausality(t *testing.T) {
 	}
 }
 
+// TestEqualRefsComparesOrderedElements pins the comparator itself. Several
+// cases below (an empty reference, a NUL inside a reference) cannot reach a
+// verifier through a valid signed intent, because Validate rejects empty and
+// NUL-bearing references; they are listed to fix EqualRefs' behaviour on any
+// input, not to claim such intents are reachable.
+func TestEqualRefsComparesOrderedElements(t *testing.T) {
+	ref := "git:sha1:abc#git:sha1:123"
+	tests := []struct {
+		name string
+		a, b []string
+		want bool
+	}{
+		{name: "nil and nil", a: nil, b: nil, want: true},
+		{name: "nil and empty slice", a: nil, b: []string{}, want: true},
+		{name: "nil and one empty reference", a: nil, b: []string{""}, want: false},
+		{name: "two empty references", a: []string{""}, b: []string{""}, want: true},
+		{name: "same elements", a: []string{ref, "b"}, b: []string{ref, "b"}, want: true},
+		{name: "different order", a: []string{ref, "b"}, b: []string{"b", ref}, want: false},
+		{name: "different count", a: []string{ref}, b: []string{ref, "b"}, want: false},
+		{name: "duplicate element", a: []string{ref, ref}, b: []string{ref}, want: false},
+		{name: "embedded separator", a: []string{"a\x00b"}, b: []string{"a", "b"}, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := EqualRefs(test.a, test.b); got != test.want {
+				t.Fatalf("EqualRefs(%#v, %#v) = %v, want %v", test.a, test.b, got, test.want)
+			}
+			if got := EqualRefs(test.b, test.a); got != test.want {
+				t.Fatalf("EqualRefs(%#v, %#v) = %v, want %v (not symmetric)", test.b, test.a, got, test.want)
+			}
+		})
+	}
+}
+
 func TestIntentBoundsEveryStringAndCausalCount(t *testing.T) {
 	original, _ := fixture(t)
 	oversized := strings.Repeat("x", MaxStringBytes+1)

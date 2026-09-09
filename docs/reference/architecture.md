@@ -123,7 +123,10 @@ The kernel owns:
 - binding an opaque schema name and opaque payload tree to the signed intent;
 - carrying the signed `rests_on` strings without assigning them application
   semantics, while refusing at admission a submitted reference that claims a
-  position in this log and does not name one;
+  position in this log and does not name one; a verified record's envelope
+  trailers must equal its signed references element by element, in order and
+  with duplicates, so a trailer the actor did not sign is refused even when its
+  value is empty;
 - idempotency namespaces, keys, replay, conflicting-retry detection, and the
   verified read-only exact-replay check used before mutable client preflight;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
