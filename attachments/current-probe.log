@@ -1,5 +1,0 @@
-=== RUN   TestPlannerAdmissionProfileDoesNotSelectLiveSubmissionRules
-    admission_test.go:628: governance resolver selected unavailable contract "unimplemented-audit-probe"; real Act/AcceptSubmission still appended one effective assertion; interpreter unchanged
---- PASS: TestPlannerAdmissionProfileDoesNotSelectLiveSubmissionRules (0.96s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/app	1.230s
