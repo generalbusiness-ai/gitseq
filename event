@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3d5ad43da311ffddb535ac37bebae063745b74e2","text":"Retire the S1 artifact at 557ef676 for internal/app/checkout_read.go; successor eef4b827fd5d381100ecea98d908cc27a79a91a9 at e962fa7b on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a2d6ef40d433a48bded6194c2f775f95ca7d365a","text":"Retire the S1 artifact at 557ef676 for internal/app/checkout_read_test.go; successor d526e121f15a4a07464d3b298ed5277968256ca3 at e962fa7b on the same promise a4c569b1."}
