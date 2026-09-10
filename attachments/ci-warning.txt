@@ -1,1 +1,0 @@
-Gitseq CI run34446823882, main869702241e4d28c9b8599e8caccaf3d01a2ca4d9, 2026-09-10T06:47:58.0422360Z, Install the locked UI dependencies: 1 high severity vulnerability. Run ultimately successful. Security34446823983 successful; existing jobs Go advisories and secrets.
