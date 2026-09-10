@@ -1,0 +1,26 @@
+[
+  {
+    "event_prefix": "e0ffb053",
+    "commit": "3f75695c0fcd67d32cb2150bb9c416c22ae85ccd",
+    "file": "internal/workroom/admission_profile.go",
+    "same_file_blob": true,
+    "old_blob": "ae9ff14c0883bcfbaf1545f595ed9a780b46ee4f",
+    "current_blob": "ae9ff14c0883bcfbaf1545f595ed9a780b46ee4f"
+  },
+  {
+    "event_prefix": "7d6f6997",
+    "commit": "1e868103416fea2ca832e2e740b4197940cf5057",
+    "file": "internal/app/host.go",
+    "same_file_blob": true,
+    "old_blob": "c394e458ae6a05ff8b8666fa419b9315f7674aad",
+    "current_blob": "c394e458ae6a05ff8b8666fa419b9315f7674aad"
+  },
+  {
+    "event_prefix": "7fbbacc9",
+    "commit": "3f75695c0fcd67d32cb2150bb9c416c22ae85ccd",
+    "file": "internal/app/host.go",
+    "same_file_blob": true,
+    "old_blob": "c394e458ae6a05ff8b8666fa419b9315f7674aad",
+    "current_blob": "c394e458ae6a05ff8b8666fa419b9315f7674aad"
+  }
+]
