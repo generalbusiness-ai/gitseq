@@ -1,0 +1,11 @@
+{
+  "head": "fc77b226c9216da40b058d9751f80bc010ed0436",
+  "files": {
+    "git22913-review-findings.md": "3fdcb55a4e6587ab7f6408177c09852ad6c7db5dc764c511ba3eafbd1a926117",
+    "git22913-numeric-controls_test.go": "ce252498ce2540328538bf54b0c916daab8b113dc7eb5ad3520272bf6ed2ad03",
+    "git22913-numeric-controls.log": "27fe48ecf6bb623902a6e2117326e9f4f1de0df05c472128d1eff3a95d82a906",
+    "git22913-prior-eleven.log": "b3e9a139ec3df0f882c75ec7cc713e07bbad3fbd6c6c48b4a90e232a5727ed1e",
+    "git22913-spike-suite.log": "0b5851b0601cc3eccca210417396713791f4fd45be3e86080114cd4dc3ed770e",
+    "git22913-docker-port-source-manifest.json": "86b01608864d7178081183a2f62aaad98512c9dc07887b9f7d604c3ba2fca53e"
+  }
+}

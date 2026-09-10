@@ -1,0 +1,32 @@
+=== RUN   TestCodexPortNumberBounds
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:65536:3000
+    compose_test.go:686: invalid numeric port cleared: "127.0.0.1:65536:3000"
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:3300:65536
+    compose_test.go:686: invalid numeric port cleared: "127.0.0.1:3300:65536"
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:3300:3001-3000
+    compose_test.go:686: invalid numeric port cleared: "127.0.0.1:3300:3001-3000"
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:999999999999999999999999999999:3000
+    compose_test.go:686: invalid numeric port cleared: "127.0.0.1:999999999999999999999999999999:3000"
+--- FAIL: TestCodexPortNumberBounds (0.00s)
+    --- FAIL: TestCodexPortNumberBounds/127.0.0.1:65536:3000 (0.00s)
+    --- FAIL: TestCodexPortNumberBounds/127.0.0.1:3300:65536 (0.00s)
+    --- FAIL: TestCodexPortNumberBounds/127.0.0.1:3300:3001-3000 (0.00s)
+    --- FAIL: TestCodexPortNumberBounds/127.0.0.1:999999999999999999999999999999:3000 (0.00s)
+=== RUN   TestCodexPortRangeBoundaries
+=== RUN   TestCodexPortRangeBoundaries/at_upper_bound
+=== RUN   TestCodexPortRangeBoundaries/host_range_single_target
+=== RUN   TestCodexPortRangeBoundaries/unequal_two_ranges
+    compose_test.go:698: got finding=false want=true
+=== RUN   TestCodexPortRangeBoundaries/long_target_too_large
+    compose_test.go:698: got finding=false want=true
+=== RUN   TestCodexPortRangeBoundaries/long_published_reversed
+    compose_test.go:698: got finding=false want=true
+--- FAIL: TestCodexPortRangeBoundaries (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/at_upper_bound (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/host_range_single_target (0.00s)
+    --- FAIL: TestCodexPortRangeBoundaries/unequal_two_ranges (0.00s)
+    --- FAIL: TestCodexPortRangeBoundaries/long_target_too_large (0.00s)
+    --- FAIL: TestCodexPortRangeBoundaries/long_published_reversed (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/forge	0.303s
+FAIL
