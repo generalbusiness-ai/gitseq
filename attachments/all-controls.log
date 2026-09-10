@@ -1,0 +1,61 @@
+=== RUN   TestCodexPortGateAdditionalBoundaries
+=== RUN   TestCodexPortGateAdditionalBoundaries/malformed_target_with_allowed_host
+=== RUN   TestCodexPortGateAdditionalBoundaries/unsupported_protocol_with_allowed_host
+=== RUN   TestCodexPortGateAdditionalBoundaries/IPv4_range
+=== RUN   TestCodexPortGateAdditionalBoundaries/bracketed_IPv6_range
+=== RUN   TestCodexPortGateAdditionalBoundaries/documented_unbracketed_IPv6_loopback
+=== RUN   TestCodexPortGateAdditionalBoundaries/second_document_wildcard_port
+--- PASS: TestCodexPortGateAdditionalBoundaries (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/malformed_target_with_allowed_host (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/unsupported_protocol_with_allowed_host (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/IPv4_range (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/bracketed_IPv6_range (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/documented_unbracketed_IPv6_loopback (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/second_document_wildcard_port (0.00s)
+=== RUN   TestCodexMalformedPortBoundaries
+=== RUN   TestCodexMalformedPortBoundaries/127.0.0.1:3300:
+=== RUN   TestCodexMalformedPortBoundaries/[::1:3300:3000
+=== RUN   TestCodexMalformedPortBoundaries/::1]:3300:3000
+=== RUN   TestCodexMalformedPortBoundaries/[[::1]]:3300:3000
+--- PASS: TestCodexMalformedPortBoundaries (0.00s)
+    --- PASS: TestCodexMalformedPortBoundaries/127.0.0.1:3300: (0.00s)
+    --- PASS: TestCodexMalformedPortBoundaries/[::1:3300:3000 (0.00s)
+    --- PASS: TestCodexMalformedPortBoundaries/::1]:3300:3000 (0.00s)
+    --- PASS: TestCodexMalformedPortBoundaries/[[::1]]:3300:3000 (0.00s)
+=== RUN   TestCodexDuplicateHostField
+--- PASS: TestCodexDuplicateHostField (0.00s)
+=== RUN   TestCodexPortNumberBounds
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:65536:3000
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:3300:65536
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:3300:3001-3000
+=== RUN   TestCodexPortNumberBounds/127.0.0.1:999999999999999999999999999999:3000
+--- PASS: TestCodexPortNumberBounds (0.00s)
+    --- PASS: TestCodexPortNumberBounds/127.0.0.1:65536:3000 (0.00s)
+    --- PASS: TestCodexPortNumberBounds/127.0.0.1:3300:65536 (0.00s)
+    --- PASS: TestCodexPortNumberBounds/127.0.0.1:3300:3001-3000 (0.00s)
+    --- PASS: TestCodexPortNumberBounds/127.0.0.1:999999999999999999999999999999:3000 (0.00s)
+=== RUN   TestCodexPortRangeBoundaries
+=== RUN   TestCodexPortRangeBoundaries/at_upper_bound
+=== RUN   TestCodexPortRangeBoundaries/host_range_single_target
+=== RUN   TestCodexPortRangeBoundaries/unequal_two_ranges
+=== RUN   TestCodexPortRangeBoundaries/long_target_too_large
+=== RUN   TestCodexPortRangeBoundaries/long_published_reversed
+--- PASS: TestCodexPortRangeBoundaries (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/at_upper_bound (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/host_range_single_target (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/unequal_two_ranges (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/long_target_too_large (0.00s)
+    --- PASS: TestCodexPortRangeBoundaries/long_published_reversed (0.00s)
+=== RUN   TestCodexAsymmetricAndPaddedPorts
+=== RUN   TestCodexAsymmetricAndPaddedPorts/single_host_container_range
+=== RUN   TestCodexAsymmetricAndPaddedPorts/padded_decimal_target
+    compose_test.go:801: got finding=true want=false
+=== RUN   TestCodexAsymmetricAndPaddedPorts/padded_long_published
+    compose_test.go:801: got finding=true want=false
+--- FAIL: TestCodexAsymmetricAndPaddedPorts (0.00s)
+    --- PASS: TestCodexAsymmetricAndPaddedPorts/single_host_container_range (0.00s)
+    --- FAIL: TestCodexAsymmetricAndPaddedPorts/padded_decimal_target (0.00s)
+    --- FAIL: TestCodexAsymmetricAndPaddedPorts/padded_long_published (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/forge	0.305s
+FAIL
