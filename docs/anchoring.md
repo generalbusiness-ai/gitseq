@@ -53,7 +53,7 @@ and on their own by `make docs`.
 |---|---|---|
 | Surface completeness | `TestGateSurfaceCoversEveryCLISubcommand`, `TestGateSurfaceCoversEveryMCPTool` | A subcommand, flag, tool or argument added or removed without the reference page following. |
 | Examples run | `TestGateDocumentedCommandsRun`, `TestGateEveryReferenceAndRecipePageRunsSomething` | A documented command that no longer works, or a page whose examples were never executable. |
-| No empty basis | `TestGateEveryPageNamesAGoverningAct`, `TestGateNoPageIsUnableToFlare`, `TestGateUnbridgedMarkStillFires`, `TestGateEveryNamedActResolvesToALiveRecord` | A page with no anchor, a malformed identifier, an identifier that resolves to nothing, a basis that is not an artifact, or the loss of the mark the convention depends on. |
+| No empty basis | `TestGateEveryPageNamesAGoverningAct`, `TestGateNoPageIsUnableToFlare`, `TestGateUnbridgedMarkStillFires`, `TestGateEveryNamedActResolvesToAUsableBasis` | A page with no anchor, a malformed identifier, an identifier that resolves to nothing, a basis that is not an artifact, or the loss of the mark the convention depends on. |
 | Flare | `TestGateRetiringOneActFlaresExactlyItsPages`, `TestGateVerifyPageCanFlareAlone` | Retiring one act flaring the wrong pages, in either direction. |
 
 The surface gate reads the flags and tool schemas out of the
