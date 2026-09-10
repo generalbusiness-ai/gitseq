@@ -1,0 +1,367 @@
+{
+  "4544": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:79fa7251ccb1c3f0cc23d558effd78f6df6e362c",
+    "commitment": {
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:79fa7251ccb1c3f0cc23d558effd78f6df6e362c",
+      "requester": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "performer": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:adc144ec55e27d9a54f43a8a42f12049019c5fb5",
+      "status": "stale",
+      "stale": true,
+      "waiting_on": "5f12e916d136b0c1ed941aa99f4c47af94021451e31d08159d8df368e9946123"
+    },
+    "landing": {},
+    "related_artifacts": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d190848e4753577481a8019f595a1dc54eca0c6",
+        "path": "cmd/gs/event_reference_test.go",
+        "commit": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f61f4b291692398eb802dda3dbe94dba114f7bef",
+        "live_predecessors": 2,
+        "succession_unrecorded": true
+      }
+    ]
+  },
+  "4648": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a49e991693371c12294fa4876f94be85023f7ab3",
+    "commitment": {
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a4a54e46766c73f8ce6220b949303cf9816bba2",
+      "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a49e991693371c12294fa4876f94be85023f7ab3",
+      "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d190848e4753577481a8019f595a1dc54eca0c6",
+      "status": "satisfied",
+      "stale": true,
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c650e07f587378c6ea3c919248bb9141e22e71fa",
+      "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d"
+    },
+    "landing": {
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c650e07f587378c6ea3c919248bb9141e22e71fa",
+      "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d",
+      "merge_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+      "git": {
+        "measured_at": 1789021395,
+        "state": "incorporated",
+        "target_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "ref_incorporated": true,
+        "remote": "origin",
+        "remote_ref": "refs/remotes/origin/main",
+        "remote_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "remote_contains": true
+      }
+    },
+    "related_artifacts": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14f7a0a63a7462223746bfd82d35e5790b7fcfe5",
+        "path": "cmd/gs/main.go",
+        "commit": "5cc098a8ecf9e7c460c08a458ed2baa069d7803b",
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+        "stale_because_path": "cmd/gs/main.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d190848e4753577481a8019f595a1dc54eca0c6",
+        "path": "cmd/gs/event_reference_test.go",
+        "commit": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22773,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:578d00850fc940091997b74a1040e705758c328f",
+        "stale_because_path": "cmd/gs/event_reference_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:578d00850fc940091997b74a1040e705758c328f",
+        "path": "cmd/gs/event_reference_test.go",
+        "commit": "5cc098a8ecf9e7c460c08a458ed2baa069d7803b",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:117b77f8515a6ce99ac580cafb9e44614fa9a6d2",
+        "stale_because_path": "cmd/gs/main.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26b0c73b8ba179e9fac1f3993bf3fd89ea7fb50e",
+        "path": "cmd/gs/event_reference_test.go",
+        "commit": "e7f8e6ffac01b8f5d1a305d72154b801caa1fe16",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22773,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:578d00850fc940091997b74a1040e705758c328f",
+        "stale_because_path": "cmd/gs/event_reference_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:27c39eb799e20dc8e788cea48c7653af486987de",
+        "path": "cmd/gs/event_reference_test.go",
+        "commit": "870ee66f89f53b5daa12a37d7127eab3001755be",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22773,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:578d00850fc940091997b74a1040e705758c328f",
+        "stale_because_path": "cmd/gs/event_reference_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:562e1d4a996333d4e53282e2bf04ade416d2615c",
+        "path": "cmd/gs/main_test.go",
+        "commit": "870ee66f89f53b5daa12a37d7127eab3001755be",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22774,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84c4f390761896bd672257e75daf42eb020498f2",
+        "stale_because_path": "cmd/gs/main_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:901289b5e5687f638850876566126c96e989a903",
+        "path": "cmd/gs/main_test.go",
+        "commit": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22774,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84c4f390761896bd672257e75daf42eb020498f2",
+        "stale_because_path": "cmd/gs/main_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc3dbaa1392939454356feb48d0cf14948e1a4cd",
+        "path": "cmd/gs/main_test.go",
+        "commit": "e7f8e6ffac01b8f5d1a305d72154b801caa1fe16",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22774,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84c4f390761896bd672257e75daf42eb020498f2",
+        "stale_because_path": "cmd/gs/main_test.go"
+      }
+    ]
+  },
+  "4649": {
+    "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:60cfc73894de42c3161ccb20384846183be360ff",
+    "commitment": {
+      "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2659dea1bfc13842904efc5abb5249cecdd786b",
+      "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+      "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+      "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:60cfc73894de42c3161ccb20384846183be360ff",
+      "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bdb9dea473a00245658e1e267491c21c36c92fa1",
+      "status": "satisfied",
+      "stale": true,
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0443554476d7ec04a2e95d50f2dbb3ec6bf89a42",
+      "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d"
+    },
+    "landing": {
+      "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+      "target_ref": "refs/heads/main",
+      "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0443554476d7ec04a2e95d50f2dbb3ec6bf89a42",
+      "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+      "terminal": "landed",
+      "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d",
+      "merge_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+      "git": {
+        "measured_at": 1789021396,
+        "state": "incorporated",
+        "target_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "ref_incorporated": true,
+        "remote": "origin",
+        "remote_ref": "refs/remotes/origin/main",
+        "remote_head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "remote_contains": true
+      }
+    },
+    "related_artifacts": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2fe11f1e769cf8a256f35f5c154c4f6e18db9cb9",
+        "path": "cmd/gitseq-perf/main.go",
+        "commit": "1a5f1586d14521949e1138d44b641a0d2fa3fe9b",
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bdb9dea473a00245658e1e267491c21c36c92fa1",
+        "path": "cmd/gitseq-perf/worker_process_test.go",
+        "commit": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22777,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f385a62c803d6d38649c192b2de5b8f8c0a2fb6b",
+        "stale_because_path": "cmd/gitseq-perf/worker_process_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f385a62c803d6d38649c192b2de5b8f8c0a2fb6b",
+        "path": "cmd/gitseq-perf/worker_process_test.go",
+        "commit": "1a5f1586d14521949e1138d44b641a0d2fa3fe9b",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "stale_because_truncated": true
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cfd97a503bc1ebb6ac9adf5f7e1d0711c3f9e644",
+        "path": "cmd/gitseq-perf/worker_process_test.go",
+        "commit": "870ee66f89f53b5daa12a37d7127eab3001755be",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22777,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f385a62c803d6d38649c192b2de5b8f8c0a2fb6b",
+        "stale_because_path": "cmd/gitseq-perf/worker_process_test.go"
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ed91ca808528d81c1e237d8a08ec6838bdde9e29",
+        "path": "cmd/gitseq-perf/worker_process_test.go",
+        "commit": "e7f8e6ffac01b8f5d1a305d72154b801caa1fe16",
+        "retired": true,
+        "succeeded": true,
+        "stale": true,
+        "describes_superseded_world": true,
+        "world_superseded_at": 22777,
+        "stale_because": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f385a62c803d6d38649c192b2de5b8f8c0a2fb6b",
+        "stale_because_path": "cmd/gitseq-perf/worker_process_test.go"
+      }
+    ]
+  },
+  "landing_verification": {
+    "checked_utc": "2026-09-10T06:25:01.007445+00:00",
+    "head": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+    "receipt": "2bf0b87b62989e44eb2f591797dfeca606c76a4d",
+    "native_commitments": [
+      {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a4a54e46766c73f8ce6220b949303cf9816bba2",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a49e991693371c12294fa4876f94be85023f7ab3",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d190848e4753577481a8019f595a1dc54eca0c6",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c650e07f587378c6ea3c919248bb9141e22e71fa",
+        "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d"
+      },
+      {
+        "request": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c2659dea1bfc13842904efc5abb5249cecdd786b",
+        "requester": "a6ac0d547ec6700408e435cb1cc54b9b546c379d2ac28e5528189b5d63592b84",
+        "performer": "a5d35aa7e4799472a208663d7f024917442bd513929f9eccf450628ccf70095d",
+        "promise": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:60cfc73894de42c3161ccb20384846183be360ff",
+        "report": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bdb9dea473a00245658e1e267491c21c36c92fa1",
+        "status": "satisfied",
+        "stale": true,
+        "target_repo": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+        "target_ref": "refs/heads/main",
+        "approval": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0443554476d7ec04a2e95d50f2dbb3ec6bf89a42",
+        "candidate": "f0e3c40b135f051f0a279190ad6013bf2b9a54b5",
+        "terminal": "landed",
+        "landing_receipt": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d"
+      }
+    ],
+    "seal_fields_equal": {
+      "Approval": true,
+      "Candidate": true,
+      "Target-Pre-Head": true,
+      "Retirements": true,
+      "Successors": true,
+      "Target-Repo": true,
+      "Target-Ref": true,
+      "Left-Live": true,
+      "Changed-Paths": true,
+      "Staleness": true
+    },
+    "merge_tree_equal": true,
+    "changed_paths": [
+      "cmd/gitseq-perf/worker_process_test.go",
+      "cmd/gs/event_reference_test.go",
+      "cmd/gs/main_test.go"
+    ],
+    "publications": [
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b6d6be00b1460dbfe8c7985f223067eda7bf754b",
+        "body": {
+          "commit": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+          "path": "cmd/gitseq-perf/worker_process_test.go",
+          "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:005460183c819676fead7d19fdd20633b48dc16c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015bb3acec403ed0d43bcd2a3c38bd188f7740ef, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0169ac61d80658478db25ce500d46d087c06fdde, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02bae1e811fde13104ef614631ac608dca7a7295 and 224 more"
+        },
+        "effective": true
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ffc9d6d40ebd8ed71e6ef6da5b83a07ad196b4f9",
+        "body": {
+          "commit": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+          "path": "cmd/gs/event_reference_test.go",
+          "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:005460183c819676fead7d19fdd20633b48dc16c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015bb3acec403ed0d43bcd2a3c38bd188f7740ef, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0169ac61d80658478db25ce500d46d087c06fdde, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02bae1e811fde13104ef614631ac608dca7a7295 and 224 more"
+        },
+        "effective": true
+      },
+      {
+        "event": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:5a826d510eee168b62906b22b8ab217d205258bd",
+        "body": {
+          "commit": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+          "path": "cmd/gs/main_test.go",
+          "stale_bases": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2bf0b87b62989e44eb2f591797dfeca606c76a4d stale; retired bases: git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:005460183c819676fead7d19fdd20633b48dc16c, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:015bb3acec403ed0d43bcd2a3c38bd188f7740ef, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0169ac61d80658478db25ce500d46d087c06fdde, git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:02bae1e811fde13104ef614631ac608dca7a7295 and 224 more"
+        },
+        "effective": true
+      }
+    ],
+    "retirements": {
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4d190848e4753577481a8019f595a1dc54eca0c6": "cmd/gs/event_reference_test.go",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:578d00850fc940091997b74a1040e705758c328f": "cmd/gs/event_reference_test.go",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:84c4f390761896bd672257e75daf42eb020498f2": "cmd/gs/main_test.go",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:901289b5e5687f638850876566126c96e989a903": "cmd/gs/main_test.go",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:bdb9dea473a00245658e1e267491c21c36c92fa1": "cmd/gitseq-perf/worker_process_test.go",
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f385a62c803d6d38649c192b2de5b8f8c0a2fb6b": "cmd/gitseq-perf/worker_process_test.go"
+    },
+    "left_live": {
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2a097018a3e48d083684443824d3f864755be8f1": {
+        "class": "carried"
+      },
+      "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:617a0446bf89ef5ce8ccff6d095052d602d1dfc7": {
+        "class": "carried"
+      }
+    },
+    "remote": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c\trefs/heads/main\nd3c46b4e03060584a5d38c1e7b08dcb1afac543a\trefs/seq/5d2622748872b7e2dec3fe5c59e4be73a35e0bc8",
+    "ci": [
+      {
+        "conclusion": "success",
+        "databaseId": 34444469326,
+        "headSha": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "name": "Security",
+        "status": "completed"
+      },
+      {
+        "conclusion": "success",
+        "databaseId": 34444469350,
+        "headSha": "0fd9abd8829cbde06844c4c7dcb5507f3b3ab52c",
+        "name": "CI",
+        "status": "completed"
+      }
+    ],
+    "worktree_absent": true,
+    "local_branch_absent": true,
+    "registered_worktree_absent": true,
+    "limits": "Read sealed receipt and native closures; no independent runtime rerun or resident rollout. Author pre-merge gate log not separately read in this verification."
+  }
+}
