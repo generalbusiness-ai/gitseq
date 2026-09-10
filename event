@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ba0d918c1e2ebb7a8ecc1c72605126d7a887b8b7","text":"Merge retired a covered predecessor; the successor is at internal/docset/anchor_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d425bca2af2770fcf7019a9209e5bb3bd4ca0a9f","text":"Merge retired a covered predecessor; the successor is at docs/anchoring.md."}
