@@ -1,0 +1,71 @@
+Gates for stage S1 after widening the response-disposition predicate (verdict e389d856).
+Bash with set -o pipefail; each rc is the exit status of the command named.
+
+--- gofmt -l ./internal ./cmd
+rc=0 (gofmt -l ./internal ./cmd)
+
+--- go vet ./...
+rc=0 (go vet ./...)
+
+--- go build ./...
+rc=0 (go build ./...)
+
+--- go test -count=1 ./internal/app/ ./internal/gitstore/ ./internal/service/ ./internal/reviewguard/ ./internal/statusview/
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	158.994s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	5.314s
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	35.573s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	1.031s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	1.075s
+rc=0 (go test -count=1 ./internal/app/ ./internal/gitstore/ ./internal/service/ ./internal/reviewguard/ ./internal/statusview/)
+
+--- go test -race -count=1 ./internal/app/ (the association package)
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	285.968s
+rc=0 (go test -race -count=1 ./internal/app/ (the association package))
+
+--- go test -count=1 ./internal/docset/...
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	59.480s
+rc=0 (go test -count=1 ./internal/docset/...)
+
+--- go test -count=1 ./...
+ok  	github.com/generalbusiness-ai/gitseq	0.269s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-github	38.244s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-mcp	131.845s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	2.119s
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gs	505.864s
+ok  	github.com/generalbusiness-ai/gitseq/host	34.979s
+ok  	github.com/generalbusiness-ai/gitseq/host/identity	22.463s
+ok  	github.com/generalbusiness-ai/gitseq/host/live	3.449s
+ok  	github.com/generalbusiness-ai/gitseq/internal/app	306.955s
+ok  	github.com/generalbusiness-ai/gitseq/internal/apphost	1.260s
+ok  	github.com/generalbusiness-ai/gitseq/internal/boundary	4.563s
+ok  	github.com/generalbusiness-ai/gitseq/internal/ciguard	3.739s
+ok  	github.com/generalbusiness-ai/gitseq/internal/connector/github	3.058s
+ok  	github.com/generalbusiness-ai/gitseq/internal/custody	7.239s
+ok  	github.com/generalbusiness-ai/gitseq/internal/docset	107.056s
+ok  	github.com/generalbusiness-ai/gitseq/internal/domain	2.803s
+ok  	github.com/generalbusiness-ai/gitseq/internal/eventref	1.470s
+ok  	github.com/generalbusiness-ai/gitseq/internal/gitstore	23.580s
+ok  	github.com/generalbusiness-ai/gitseq/internal/intent	4.709s
+ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	86.217s
+ok  	github.com/generalbusiness-ai/gitseq/internal/mergeplan	18.695s
+ok  	github.com/generalbusiness-ai/gitseq/internal/observe	3.818s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perflane	3.491s
+ok  	github.com/generalbusiness-ai/gitseq/internal/perfscenario	12.648s
+ok  	github.com/generalbusiness-ai/gitseq/internal/residentclient	3.678s
+ok  	github.com/generalbusiness-ai/gitseq/internal/reviewguard	3.391s
+?   	github.com/generalbusiness-ai/gitseq/internal/safetext	[no test files]
+ok  	github.com/generalbusiness-ai/gitseq/internal/service	83.882s
+ok  	github.com/generalbusiness-ai/gitseq/internal/statusview	4.763s
+ok  	github.com/generalbusiness-ai/gitseq/internal/telemetry	2.508s
+ok  	github.com/generalbusiness-ai/gitseq/internal/testgit	3.251s
+ok  	github.com/generalbusiness-ai/gitseq/internal/wireparity	1.493s
+ok  	github.com/generalbusiness-ai/gitseq/internal/workroom	11.403s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-report	1.904s
+ok  	github.com/generalbusiness-ai/gitseq/spike/cmd/gitseq-spike	5.504s
+ok  	github.com/generalbusiness-ai/gitseq/spike/forge	0.993s
+ok  	github.com/generalbusiness-ai/gitseq/spike/querysandbox	0.964s
+rc=0 (go test -count=1 ./...)
+
+--- git diff --check
+rc=0 (git diff --check)
+
