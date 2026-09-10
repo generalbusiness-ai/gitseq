@@ -103,9 +103,53 @@ type AssociationRow struct {
 // the rows are then unknown, because a partial association would read as an
 // absence of work rather than as an unfinished look for it.
 type AssociationTable struct {
-	Rows     []AssociationRow `json:"rows"`
-	Complete bool             `json:"complete"`
-	Reason   string           `json:"reason,omitempty"`
+	Rows []AssociationRow `json:"rows"`
+	// Attempts is every checkout attempt ref in the captured inventory, with
+	// the durable record its name claims. This is the direction the ref
+	// answers, and the reason it exists: a lane is findable here after its
+	// checkout has been removed and its branch deleted, because a ref in the
+	// common directory outlives both. It is the only direction. Given a tip,
+	// which record governs it stays the trailer plus durable corroboration,
+	// because a ref can be written by anyone with repository write access and
+	// can point anywhere.
+	Attempts []AssociationAttempt `json:"attempts,omitempty"`
+	// Records is what each captured checkout's own private record claims. A
+	// record is a claim like any other: a value the actor can write is a value
+	// the actor can unset, and reading one back never promotes anything.
+	Records  []AssociationRecord `json:"records,omitempty"`
+	Complete bool                `json:"complete"`
+	Reason   string              `json:"reason,omitempty"`
+}
+
+// AssociationAttempt is one `refs/gitseq/lanes/<governing event hash>/<n>`
+// ref, read back.
+//
+// Selector is the event hash the ref name carries, resolved here the same way
+// a trailer's is: through the verified event set, never by pasting the room's
+// prefix onto it. Grade is at most `claimed`, and is `corroborated` only when
+// the ordinary rule promotes it — a standing artifact statement naming that
+// exact tip, whose signing actor the owned edge ties to the same record.
+type AssociationAttempt struct {
+	Ref       string `json:"ref"`
+	Attempt   int    `json:"attempt,omitempty"`
+	Tip       string `json:"tip"`
+	Selector  string `json:"selector"`
+	Governing string `json:"governing,omitempty"`
+	Grade     string `json:"grade"`
+	Reason    string `json:"reason,omitempty"`
+	// Checkouts names the captured checkouts sitting at this tip, and is
+	// empty when the lane's checkout is gone — which is the case this whole
+	// field exists to make visible.
+	Checkouts []string `json:"checkouts,omitempty"`
+}
+
+// AssociationRecord is one checkout's private record, read back and graded.
+type AssociationRecord struct {
+	Checkout  string `json:"checkout"`
+	Selector  string `json:"selector"`
+	Governing string `json:"governing,omitempty"`
+	Grade     string `json:"grade"`
+	Reason    string `json:"reason,omitempty"`
 }
 
 // associationCacheKey names every input the table is derived from: the durable
@@ -118,11 +162,14 @@ type AssociationTable struct {
 // can move to another commit, without any ref or any durable record changing,
 // and the rows carry checkout labels and rows built for those detached heads.
 // A cache keyed on less than its inputs does not go stale after a while; it
-// stays wrong until something unrelated happens to move.
+// stays wrong until something unrelated happens to move. The captured records
+// are an input for the same reason: a checkout stamped, restamped or copied
+// into changes what this table says while no ref and no listing entry moves.
 type associationCacheKey struct {
 	frontier  string
 	refs      string
 	checkouts string
+	records   string
 }
 
 // Associations derives the reverse association from Git and the projection
@@ -162,6 +209,7 @@ func (w *Workspace) AssociateCheckouts(read *CheckoutRead, snapshot Snapshot) As
 		frontier:  snapshot.Head + ":" + strconv.Itoa(snapshot.Depth),
 		refs:      associationRefDigest(read.refs),
 		checkouts: associationCheckoutDigest(views),
+		records:   checkoutRecordDigest(read.records),
 	}
 	if table, hit := w.cachedAssociations(key); hit {
 		applyAssociationRows(views, table)
@@ -215,6 +263,11 @@ func copyAssociationTable(table AssociationTable) AssociationTable {
 		rows[i] = row
 	}
 	table.Rows = rows
+	table.Attempts = append([]AssociationAttempt(nil), table.Attempts...)
+	for i := range table.Attempts {
+		table.Attempts[i].Checkouts = append([]string(nil), table.Attempts[i].Checkouts...)
+	}
+	table.Records = append([]AssociationRecord(nil), table.Records...)
 	return table
 }
 
@@ -421,10 +474,126 @@ func (w *Workspace) associate(read *CheckoutRead, p workroom.Projection) Associa
 			return incompleteAssociation(exhausted)
 		}
 	}
+	attempts, ok := gradeCheckoutAttempts(read, views, grader, budget)
+	if !ok {
+		return incompleteAssociation(exhausted)
+	}
+	records, ok := gradeCheckoutRecords(read, views, room, grader, budget)
+	if !ok {
+		return incompleteAssociation(exhausted)
+	}
 	if !budget.take(0) {
 		return incompleteAssociation(exhausted)
 	}
-	return AssociationTable{Rows: rows, Complete: true}
+	return AssociationTable{Rows: rows, Attempts: attempts, Records: records, Complete: true}
+}
+
+// gradeCheckoutAttempts reads every attempt ref in the captured inventory back
+// to the durable record its name claims.
+//
+// The event hash in the ref name is resolved through the same verified event
+// set every other selector goes through. It is deliberately not turned into an
+// identifier by pasting this room's prefix onto it: a hash that names no event
+// here, or more than one, is `unresolved` and says so, and a builder that
+// pasted a prefix would have produced a confident identifier for both cases.
+//
+// A tip no branch reaches is the case this exists for, and it is not a
+// problem: the ref names the record, the record is claimed, and nothing is
+// promoted. Corroboration still needs a signed artifact naming that exact
+// commit, so an attempt ref left behind by a deleted branch grades `claimed`
+// unless somebody signed for its tip.
+func gradeCheckoutAttempts(read *CheckoutRead, views []WorktreeView, grader *associationGrader, budget *worktreeInspectionBudget) ([]AssociationAttempt, bool) {
+	names := make([]string, 0, len(read.refs))
+	for name := range read.refs {
+		if strings.HasPrefix(name, checkoutAttemptNamespace) {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	if !budget.take(len(names)) {
+		return nil, false
+	}
+	atTip := map[string][]string{}
+	for _, view := range views {
+		if view.Head != "" {
+			atTip[view.Head] = append(atTip[view.Head], view.Checkout)
+		}
+	}
+	attempts := make([]AssociationAttempt, 0, len(names))
+	for _, name := range names {
+		tip := read.refs[name]
+		hash, number := attemptRefParts(name)
+		entry := AssociationAttempt{Ref: name, Attempt: number, Tip: tip, Selector: hash, Checkouts: atTip[tip]}
+		if hash == "" {
+			entry.Grade, entry.Reason = GradeUnresolved, "the ref name carries no event hash"
+			attempts = append(attempts, entry)
+			continue
+		}
+		if !budget.take(1) {
+			return nil, false
+		}
+		claim := grader.grade(tip, hash)
+		entry.Grade, entry.Governing = claim.Grade, claim.Governing
+		entry.Reason = claim.Reason
+		attempts = append(attempts, entry)
+	}
+	return attempts, true
+}
+
+// attemptRefParts splits refs/gitseq/lanes/<hash>/<attempt> into its two
+// halves. A name that is not that shape yields no hash, which is reported
+// rather than guessed at: this namespace belongs to one writer and a ref in it
+// that this version does not recognise is a fact, not a parse to force.
+func attemptRefParts(name string) (hash string, attempt int) {
+	rest := strings.TrimPrefix(name, checkoutAttemptNamespace)
+	hash, number, found := strings.Cut(rest, "/")
+	if !found || strings.Contains(number, "/") || !exactObjectID(hash) {
+		return "", 0
+	}
+	value, err := strconv.Atoi(number)
+	if err != nil || value < 1 {
+		return "", 0
+	}
+	return hash, value
+}
+
+// gradeCheckoutRecords reads each captured checkout's private record back.
+//
+// A record naming another workroom is carried as typed and never resolved
+// here, which is what every foreign citation in this repository gets. The
+// genesis written inside the record is compared with the identifier it
+// carries as well: a record whose two halves disagree is not a record this
+// room may read as its own, whatever the identifier says.
+func gradeCheckoutRecords(read *CheckoutRead, views []WorktreeView, room eventref.Room, grader *associationGrader, budget *worktreeInspectionBudget) ([]AssociationRecord, bool) {
+	records := make([]AssociationRecord, 0, len(read.records))
+	for i, captured := range read.records {
+		if i >= len(views) {
+			break
+		}
+		if !captured.present && captured.reason == "" {
+			continue
+		}
+		if !budget.take(1) {
+			return nil, false
+		}
+		entry := AssociationRecord{Checkout: views[i].Checkout}
+		if !captured.present {
+			entry.Grade, entry.Reason = GradeUnknown, captured.reason
+			records = append(records, entry)
+			continue
+		}
+		entry.Selector = captured.record.Governing
+		if captured.record.Genesis != room.Genesis || captured.record.ObjectFormat != room.ObjectFormat {
+			entry.Grade = GradeForeign
+			entry.Reason = "the record names workroom git:" + captured.record.ObjectFormat + ":" + captured.record.Genesis
+			records = append(records, entry)
+			continue
+		}
+		claim := grader.grade(views[i].Head, captured.record.Governing)
+		entry.Grade, entry.Governing, entry.Reason = claim.Grade, claim.Governing, claim.Reason
+		records = append(records, entry)
+	}
+	return records, true
 }
 
 // gradeAssociationRow walks one tip's first-parent lineage, newest first,

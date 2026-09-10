@@ -1847,15 +1847,65 @@ registered entry is itself a symbolic link, is reported and protects. A
 checkout still holding the commit an artifact names, while a live unratified
 proposal rests on that artifact by a structural provenance edge and the
 artifact's own parent request is unsettled, is protected and names the
-proposal. The checkout root is derived as the directory holding the served
-checkout, because no configured root exists in this source; a root that is too
-narrow can only protect a checkout that did not need it.
+proposal. The checkout root is `gitseq.checkoutRoot` in the repository's own
+Git configuration, falling back to the directory holding the served checkout
+when nothing is configured; a fallback that is too narrow can only protect a
+checkout that did not need it. One value answers both this question and the
+containment refusal `gs worktree` makes, so the two never disagree, and a
+wider configured root marks fewer checkouts as outside it. That sits inside
+the trust boundary this layer already documents rather than widening it: a
+caller who can write this repository's configuration can already run a program
+of their choosing during an ordinary read.
 
-What this does not add: no `gs worktree` command, no per-checkout record, no
-`refs/gitseq/lanes` ref, and no `branch` field on any durable kind. Nothing
-here widens the deletable set, authorises a signature, moves a merge or
-licenses a deletion, and the association is not an input to any admission
-decision.
+Layer 3 adds `gs worktree`, guarded checkout creation for one governing
+record. It makes a directory, a branch, a private JSON record in the
+checkout's own Git directory, a commit-message template beside it carrying the
+exact `Rests-On:` line, and one
+`refs/gitseq/lanes/<governing event hash>/<attempt>` ref in the common
+directory. The governing record is a request addressed to the acting actor or
+an adopted decision, resolved through the same `internal/eventref` boundary
+every other command uses, and only the full canonical identifier is ever
+written. Every write goes through the existing atomic-file and flock pair, or
+through `gitstore.UpdateRef` with an expected old value: allocation is a
+create against a missing ref, an existing attempt is never reused, and
+allocation walks a bounded number of attempts and then refuses rather than
+waiting. Nothing S2 adds deletes anything, and creation signs nothing and
+reads no private key.
+
+Each eligibility check reports one of four words. `refused` stops creation on
+a determinate negative; `warned` reports one the design says must not refuse
+outright — a settled governing commitment or a duplicate head — behind its own
+confirmation flag; `passed` means the check looked and found nothing wrong;
+and `not established` means it could not look. An unreadable projection
+produces the last of these for the record kind, the addressee and the
+settlement, and creation proceeds, because unknown never proves a negative and
+is never a consent. The four determinate refusals — foreign or malformed
+governing identifier, unsafe destination, wrong repository, existing branch —
+need no projection and still fire. A short selector against an unreadable
+projection is refused by the resolver, for the reason every other command
+refuses it.
+
+The association reads both new claims back through that same one captured
+read. The bounded ref inventory now covers `refs/gitseq/lanes/` beside
+branches and remote-tracking refs, under the same 4,096-ref bound, so a lane is
+findable after its checkout has been removed and its branch deleted; each
+checkout's private record is read from its own Git directory as one small file,
+starting no Git process, and the captured records join the frontier, the refs
+and the listing in the association cache key. Both are graded by the same
+grader as a source trailer, so an attempt ref and a record are `claimed` and
+promotion still needs a signed artifact statement naming that exact commit; a
+record naming another genesis is `foreign` and is never resolved locally. A
+head an attempt ref names is reachable from a ref, so it is no longer a
+refless head.
+
+What this does not add: no `branch` field on any durable kind, no statement
+schema advance and no fold profile change, and no commit hook — a linked
+checkout resolves its hooks to the shared common directory, so a hook is
+repository-wide however narrowly it is asked for, and that contract is not
+settled. Nothing here widens the deletable set, authorises a signature, moves
+a merge or licenses a deletion; neither the confirmation flags nor the
+per-checkout record is an input to the fold, and the association is not an
+input to any admission decision.
 
 **What it owns:** presenting one application to people and programs.
 

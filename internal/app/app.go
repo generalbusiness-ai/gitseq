@@ -362,14 +362,20 @@ var gitStatedEnvironment = []string{
 	"GIT_CONFIG_GLOBAL=" + os.DevNull,
 }
 
-// repositoryLocalGit builds every read-only Git command this package runs
-// against a checkout, so that "the repository at repo" is what Git actually
-// reads. There is one constructor rather than a line at each of the five call
-// sites because the defect it closes is invisible at a call site: every one of
-// those commands looked correct, named its repository with -C, and answered out
-// of whichever repository the ambient environment pointed at. A site that forgot
-// the bounding would look exactly like one that did not, so the only reliable
+// repositoryLocalGit builds every Git command this package runs against a
+// checkout, so that "the repository at repo" is what Git actually reads. There
+// is one constructor rather than a line at each call site because the defect
+// it closes is invisible at a call site: every one of those commands looked
+// correct, named its repository with -C, and answered out of whichever
+// repository the ambient environment pointed at. A site that forgot the
+// bounding would look exactly like one that did not, so the only reliable
 // place to put it is where the command is built.
+//
+// Almost every caller is a read. The exception is checkout creation's `git
+// worktree add`, which takes the same environment for the same reason
+// inverted: ambient routing must not decide which repository is written
+// either. --no-optional-locks is harmless on it and stays rather than
+// splitting one constructor into two.
 //
 // What the bounding leaves admitted is a scope, not a file, and stating it as
 // "the repository's own configuration file" understates it by three cases that
@@ -740,16 +746,15 @@ func (w *Workspace) LocalWorktrees(ctx context.Context) (LocalRepo, error) {
 		selectedPath = strings.TrimSpace(string(top))
 	}
 	selected := canonicalPath(selectedPath)
-	// The checkout root is the directory holding the served checkout. Git
-	// records where every linked checkout of this repository is, and a
-	// checkout registered somewhere else entirely is a fact worth reporting
-	// even though nothing here removes one. The derivation takes no
-	// configuration because there is none to take: the design note names a
-	// "configured checkout root", and no such key exists in this source. A
-	// root that is too narrow can only protect a checkout that did not need
-	// it, never expose one that did, so the conservative direction is the one
-	// taken until the key exists.
-	root := filepath.Dir(selected)
+	// The checkout root this repository configures, or the directory holding
+	// the served checkout when it configures none. Git records where every
+	// linked checkout of this repository is, and a checkout registered
+	// somewhere else entirely is a fact worth reporting even though nothing
+	// here removes one. One value answers this question and the creation
+	// containment question both; see checkout_root.go, including what a
+	// configured value can do to the size of the deletable set.
+	configuredRoot, _ := w.checkoutRoot(ctx, selected)
+	root := canonicalPath(configuredRoot)
 	views := make([]WorktreeView, 0, len(entries))
 	inspectionCtx, cancelInspection := context.WithTimeout(ctx, 3*time.Second)
 	defer cancelInspection()

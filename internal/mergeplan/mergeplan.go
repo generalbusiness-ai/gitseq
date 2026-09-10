@@ -916,7 +916,7 @@ func protectionIndex(projection workroom.Projection, artifacts []workroom.Artifa
 	}
 	active := make(map[string]bool)
 	for _, commitment := range projection.Commitments {
-		if !unsettledCommitment(commitment.Status) {
+		if !workroom.UnsettledCommitment(commitment.Status) {
 			continue
 		}
 		for _, event := range []string{commitment.Request, commitment.Promise, commitment.Report} {
@@ -962,15 +962,6 @@ func protectionIndex(projection workroom.Projection, artifacts []workroom.Artifa
 		}
 	}
 	return protected
-}
-
-func unsettledCommitment(status string) bool {
-	switch status {
-	case "open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale":
-		return true
-	default:
-		return false
-	}
 }
 
 func provenanceClosure(provenance map[string][]string, effective map[string]bool, from string) map[string]bool {

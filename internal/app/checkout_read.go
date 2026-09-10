@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
 	"time"
 )
 
@@ -40,12 +43,31 @@ type CheckoutRead struct {
 	// against, read once with everything else.
 	remoteName string
 
+	// records is what each captured checkout's own private record claims, in
+	// the order of Worktrees. It is captured here with everything else so the
+	// association answers about the same repository the refs and the listing
+	// came from; reading a record later would answer about a checkout that may
+	// since have been stamped, removed or copied into.
+	records []capturedCheckoutRecord
+
 	// ctx carries the one deadline and budget the one step allowance. Both are
 	// spent by every judgment: exhaustion in one is exhaustion of the read,
 	// which is what makes the bound a bound on the request.
 	ctx    context.Context
 	budget *worktreeInspectionBudget
 	cancel context.CancelFunc
+}
+
+// capturedCheckoutRecord is one checkout's record as it was found. A checkout
+// with no record has neither: the absence is ordinary, because nothing
+// requires a checkout to have been created by `gs worktree`.
+type capturedCheckoutRecord struct {
+	present bool
+	record  CheckoutRecord
+	// reason says why a record that is there could not be read. A file that
+	// exists and does not decode is a different fact from no file at all, and
+	// reporting it as absence would hide a corrupted or copied record.
+	reason string
 }
 
 // Close releases the captured deadline. Every capture is closed.
@@ -83,6 +105,7 @@ func (w *Workspace) captureAround(ctx context.Context, views []WorktreeView) *Ch
 		LocalRepo:  LocalRepo{Worktrees: views},
 		refs:       refs,
 		refsKnown:  known,
+		records:    captureCheckoutRecords(views),
 		remoteName: landingRemote(bounded, w.Repo),
 		ctx:        bounded,
 		budget:     &worktreeInspectionBudget{ctx: bounded, remaining: worktreeInspectionLimit},
@@ -141,4 +164,56 @@ func (r *CheckoutRead) graph() *landingGraph {
 	g := newLandingGraph(r.refs, r.refsKnown)
 	g.inspectionBudget = r.budget
 	return g
+}
+
+// captureCheckoutRecords reads the private record each captured checkout
+// carries. It starts no Git process: a checkout names its own private Git
+// directory in its `.git` entry, so this is one small file read per checkout,
+// under the same 128-checkout cap the listing already enforces.
+//
+// Nothing here decides anything. A record is a claim, exactly like a source
+// trailer, and it is graded by the same grader against the same verified event
+// set. What is captured is the bytes that were there when everything else was
+// read.
+func captureCheckoutRecords(views []WorktreeView) []capturedCheckoutRecord {
+	records := make([]capturedCheckoutRecord, len(views))
+	for i, view := range views {
+		path, found := checkoutRecordPath(view.path)
+		if !found {
+			continue
+		}
+		record, err := decodeCheckoutRecord(path)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				records[i] = capturedCheckoutRecord{reason: err.Error()}
+			}
+			continue
+		}
+		records[i] = capturedCheckoutRecord{present: true, record: record}
+	}
+	return records
+}
+
+// checkoutRecordDigest is the captured records exactly as this pass used
+// them, for the association cache key. A record written, changed or removed
+// while no ref and no checkout moved is a different world to associate, and a
+// cache keyed on less than its inputs stays wrong rather than going stale.
+func checkoutRecordDigest(records []capturedCheckoutRecord) string {
+	sum := sha256.New()
+	for _, captured := range records {
+		present := byte(0)
+		if captured.present {
+			present = 1
+		}
+		sum.Write([]byte{present})
+		sum.Write([]byte(captured.record.Genesis))
+		sum.Write([]byte{0})
+		sum.Write([]byte(captured.record.ObjectFormat))
+		sum.Write([]byte{0})
+		sum.Write([]byte(captured.record.Governing))
+		sum.Write([]byte{0})
+		sum.Write([]byte(captured.reason))
+		sum.Write([]byte{0})
+	}
+	return hex.EncodeToString(sum.Sum(nil))
 }

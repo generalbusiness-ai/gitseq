@@ -28,7 +28,7 @@ The superseded design is absent from this head, so it is cited by revision as
 The adopted design named a real gap and it is still open: nothing joins a
 checkout or a branch to the durable work that governs it by the commit's own
 content. `refs/gitseq/lanes` holds nothing, `cmd/gs` has no `worktree`
-subcommand (`cmd/gs/main.go:107`), and no `gitseq.*` Git config key
+subcommand (`cmd/gs/main.go:108`), and no `gitseq.*` Git config key
 is read anywhere. Two deliveries since adoption narrow what is left: a read only
 checkout inventory with protection and deletion advice, and a validated durable
 field for the destination a request owes.
@@ -68,14 +68,14 @@ The resident derives from Git a table of checkouts and branches, the durable
 work each claims, and the durable work that corroborates it. It reuses, without
 adding a competing store: the checkout inventory with its 8 second cache, 128
 checkout cap, symlink resolution and basename only labels
-(`internal/app/app.go:662`); the hardened trailer scan with NUL
+(`internal/app/app.go:679`); the hardened trailer scan with NUL
 framing and per object hash re verification
 (`internal/gitstore/graph.go:40`); the bounded ref inventory and the
 ancestry graph that answers unknown rather than false
-(`internal/app/landing_graph.go:65`); canonical resolution
+(`internal/app/landing_graph.go:77`); canonical resolution
 with typed refusals naming at most eight candidates
 (`internal/eventref/eventref.go:32`); and the closed Git
-environment allowlist (`internal/app/app.go:346`). New is one
+environment allowlist (`internal/app/app.go:357`). New is one
 association pass, taking an explicit ref set and depth limit instead of the fixed
 newest 81 (`internal/service/ui.go:60`), walking first parent lineage
 from each branch tip until it meets the resolved target ref or a limit.
@@ -137,8 +137,9 @@ separately.
 
 **Local creation** makes a directory and a branch. It signs nothing and admits
 nothing, so it refuses only on what it checks itself, listed above. When the
-governing commitment is already settled by the existing word list
-(`internal/mergeplan/mergeplan.go:967`) it warns, names the
+governing commitment is already settled by the existing word list, now read
+through one shared vocabulary
+(`internal/workroom/commitment_status.go:50`), it warns, names the
 settling event, and proceeds only behind an explicit confirmation flag. It does
 not refuse on the per checkout record alone: a value the actor can write is a
 value the actor can unset, so refusing there stops only honest actors, and an
@@ -176,12 +177,12 @@ key.
 
 The JSON file wins on cost instead. Migration: worktree scope is read only once
 the repository sets `extensions.worktreeConfig`
-(`internal/app/app.go:366`), a repository wide change altering config
+(`internal/app/app.go:384`), a repository wide change altering config
 reading for every checkout and every actor, for one advisory value. Locking: the
 atomic write and flock pair already exists and already holds per checkout state,
 while `git config` offers no discipline this code shares. Maintenance: that
 configuration is a scope the source documents as executable rather than merely
-readable (`internal/app/app.go:369`), so anything kept there stays an
+readable (`internal/app/app.go:386`), so anything kept there stays an
 execution surface to reason about, while a private Git directory file is removed
 with the checkout by the machinery that made it.
 
@@ -199,7 +200,7 @@ it, because `gs merge` deliberately runs no commit hooks at all
 
 Tooling maintains `refs/gitseq/lanes/<governing event hash>/<attempt>` pointing
 at the lane tip, mirroring `refs/gitseq/merge-receipts/<key>`
-(`internal/mergeplan/mergeplan.go:1085`). The hash is the
+(`internal/mergeplan/mergeplan.go:1075`). The hash is the
 request's, or the adopted decision's for self initiated work, and the attempt
 suffix is what gives each recut its own ref; one ref per request hash cannot,
 because a recut under one request shares its hash. Every write goes through
@@ -234,7 +235,7 @@ prose. This advances the statement schema and the fold profile version
 No worktree path field is added to any durable kind. A path is machine local and
 not portable across the actors and repositories that read one log, and the
 current surface deliberately keeps other checkouts' paths inside the resident
-boundary (`internal/app/app.go:188`). The checkout label stays in the
+boundary (`internal/app/app.go:199`). The checkout label stays in the
 ephemeral endpoint.
 
 ## Cleanup, duplicates, refless heads, scratch trees
@@ -287,7 +288,7 @@ today. A refless head, a checkout whose `HEAD` is contained in no ref here, is
 reported, never deleted, and protects its checkout. Mutation test scratch trees
 follow the existing harness shape: created under the process temporary
 directory, hooks emptied as the disposable clone already does
-(`internal/mergeplan/mergeplan.go:1594`), removed by the
+(`internal/mergeplan/mergeplan.go:1585`), removed by the
 process that created them by recorded path only
 (`cmd/gitseq-perf/main.go:833`). Nothing searches for
 scratch trees it did not create.
@@ -342,6 +343,71 @@ not unwrite the event. So the isolation buys attribution and a clean source
 revert, not operational rollback. S3 documents the compatibility and refusal
 behaviour readers actually show and what would still have to happen to
 activate the change, and its landing restarts and rolls out nothing.
+
+## What S2 settled, and what it did not
+
+Layers 2 and 3 are implemented. This section records the five choices the
+adopted text left open, so a reader of the note is not left comparing it with
+the source to find out what was decided. Layer 4 is S3's and nothing here
+claims it: no durable kind gained a field, the statement schema did not
+advance, and the fold profile version is untouched.
+
+**The configured checkout root exists now.** It is `gitseq.checkoutRoot` in
+the repository's own Git configuration, read through the same closed Git
+environment as every other identity read. One value serves both directions:
+`gs worktree` refuses a destination outside it, and the layer 1 containment
+report protects a checkout whose resolved path is outside it. Unset is the
+absence of a boundary rather than a second boundary. Protection keeps the
+fallback it has always had, the directory holding the served checkout;
+creation refuses nothing and reports the check as not established, because a
+fallback nobody chose must not refuse an ordinary destination. A relative
+value resolves against the repository top level, and containment compares
+resolved paths by path elements.
+
+This is a newly proposed default with a consequence worth naming. Configuring
+a root narrows where checkouts may be created, and a root wider than the
+derived fallback marks fewer checkouts as outside it, so it enlarges the set
+cleanup advice offers. Both effects come from a value written into the
+repository's own configuration, which is a scope a caller can already execute
+code from during an ordinary read, so the boundary is unchanged.
+
+**Destinations are also refused on their own terms.** Independently of any
+root: a path that is not absolute-resolvable, a path whose final component is
+a symbolic link, a path that already exists as anything but an empty
+directory, a path inside this repository's own Git directory, and a path
+inside a checkout this repository already has. Neither the destination nor the
+branch has a default, because inventing a directory layout or a branch naming
+convention would be the tool deciding something nobody wrote down.
+
+**Reading a lane back is part of S2.** The adopted usable result is to find
+the lane after its checkout is gone, so the attempt refs and the checkout
+records are read back through layer 1's own captured read and layer 1's own
+grader, not through a second answer beside it. The bounded ref inventory
+covers `refs/gitseq/lanes/` under the existing 4,096-ref bound; each
+checkout's record is one small file read from the private Git directory its
+own `.git` entry names, starting no Git process; and the captured records join
+the frontier, the refs and the listing in the association cache key. Read
+back, both grade `claimed`, and promotion still needs a signed artifact naming
+that exact commit. One further true fact follows: a head an attempt ref names
+is reachable from a ref, so it is no longer a refless head.
+
+**The commit hook is not implemented.** A linked checkout resolves its hooks
+to the shared common directory, so installing a `prepare-commit-msg` hook "for
+a checkout" installs it for every checkout of the repository, and the adopted
+wording does not disclose that. The contract goes to the ratifier as a
+clarification before anything is installed. The commit-message template is
+separate, is adopted, and is shipped: an empty subject line, a blank line and
+the exact `Rests-On:` line, written beside the record. Nothing depends on a
+hook in any case, because `gs merge` commits through `commit-tree` and runs no
+commit hooks at all.
+
+**A short selector against an unreadable projection.** The note named refusing
+one as an S2 proposal item rather than as settled. Nothing was added to the
+adopted refusal list: a `#N` or a hash fragment is resolved by
+`internal/eventref`, and with the log unreadable that resolver refuses for the
+reason it has always refused. The message says the selector could not be
+resolved, which is what happened, rather than claiming the record was
+ineligible.
 
 ## Proof obligations
 

@@ -117,8 +117,15 @@ Four further reports protect and never delete:
 - `outside_checkout_root` says the resolved path is not under the checkout
   root, and `symlinked_path` says the registered checkout entry is itself a
   symbolic link, so the name a person would delete and the directory they
-  would delete are two different things. The root is the directory holding the
-  served checkout.
+  would delete are two different things. The root is `gitseq.checkoutRoot` in
+  the repository's own Git configuration, or the directory holding the served
+  checkout when nothing is configured. A relative value resolves against the
+  repository's top level, and containment compares resolved paths by path
+  elements rather than by string prefix. The same one value bounds where
+  [`gs worktree`](gs/worktree.md) may create, so the two never disagree; a
+  wider configured root marks fewer checkouts as outside it and so can enlarge
+  the deletable set, which is inside this repository's existing trust boundary
+  rather than a widening of it.
 - `pending_decision` names a live unratified proposal that rests, by a
   structural `rests_on` edge, on an artifact whose commit this checkout still
   holds, while that artifact's own parent request is unsettled. A retired
@@ -211,12 +218,49 @@ and three-second deadline, 512 first-parent commits per tip and one mebibyte
 per commit object. Each commit is re-verified against its own hash before any
 trailer on it is read.
 
+`associations` also carries `attempts` and `records`, the other two claims the
+grades above are about.
+
+`attempts` is every `refs/gitseq/lanes/<governing event hash>/<attempt>` ref in
+the captured inventory: its `ref`, `attempt` number, `tip`, the `selector` its
+name carries, the `governing` record that selector resolves to, a `grade`, and
+the captured `checkouts` sitting at that tip. That list is empty when the
+lane's checkout has been removed, which is the case these refs exist for: a ref
+in the common directory outlives the checkout and the branch, so a lane
+[`gs worktree`](gs/worktree.md) created is findable afterwards. The event hash
+is resolved through the same verified event set every other selector goes
+through, never by pasting this workroom's prefix onto it, so a hash naming no
+record here is `unresolved` and says so. A ref name this version cannot read
+is reported rather than parsed.
+
+`records` is what each captured checkout's own private record claims: the
+`checkout`, the `selector` it holds, the `governing` record it resolves to, a
+`grade`, and a `reason` when there is one. A record that is there and cannot be
+decoded reads `unknown` with the decoding failure as its reason, which is a
+different fact from no record at all. A record naming another genesis is
+`foreign` and is never resolved locally.
+
+Both are claims. An attempt ref can be written by anyone with repository write
+access and can point anywhere, and a record is a value the actor who wrote it
+can unset, so reading either back promotes nothing: `corroborated` still needs
+a standing artifact statement naming that exact commit. Neither is an input to
+the cleanup classification.
+
+One further consequence of reading the attempt refs: they are in the same
+bounded inventory as branches and remote-tracking refs, under the same
+4,096-ref bound, so a head an attempt ref names is reachable from a ref and is
+therefore not a `refless_head`. That is the truth about the head — removing the
+checkout does not take the commit with it — and it is one protection fewer for
+such a checkout.
+
 Results cache under the captured read: the durable frontier, a digest of the
-captured ref inventory, and a digest of the captured checkout listing (each
-checkout's label, branch, head and detached flag, in order). All three
-matter. A branch that moves, is renamed or is deleted changes the answer with
-no durable record moving, and a checkout that is added, removed, renamed or
-moved to another detached head changes it with no ref moving. A cache keyed on
+captured ref inventory, a digest of the captured checkout listing (each
+checkout's label, branch, head and detached flag, in order), and a digest of
+the captured checkout records. All four matter. A branch that moves, is
+renamed or is deleted changes the answer with no durable record moving; a
+checkout that is added, removed, renamed or moved to another detached head
+changes it with no ref moving; and a checkout stamped, restamped or copied
+into changes it with neither a ref nor a listing entry moving. A cache keyed on
 less than its inputs does not go stale; it stays wrong until something
 unrelated happens to move.
 

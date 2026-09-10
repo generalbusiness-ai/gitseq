@@ -45,21 +45,7 @@ type worktreeLandingInput struct {
 }
 
 func protectsWorktree(row WorktreeRow) bool {
-	return row.ApprovedNotLanded || !settledCommitment(row.Status)
-}
-
-// settledCommitment names the closed lifecycle words. It is a deny list rather
-// than an allow list on purpose: a status this client has never heard of is a
-// status it cannot settle, so it protects. Staleness is not on the list,
-// because staleness is not settlement — a stale request is a request whose
-// reasoning moved, and its work is still owed.
-func settledCommitment(status string) bool {
-	switch status {
-	case "satisfied", "abandoned", "superseded", "withdrawn", "cancelled", "reneged":
-		return true
-	default:
-		return false
-	}
+	return row.ApprovedNotLanded || !workroom.SettledCommitment(row.Status)
 }
 
 type worktreeLandingIndex struct {
@@ -185,7 +171,7 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 			return worktreeLandingIndex{}, false
 		}
 		rows[i] = worktreeLandingInput{row: WorktreeRow{Request: c.Request, Promise: c.Promise, Status: c.Status, LandingDetails: LandingDetailsFor(c)}, heads: map[string]bool{}, branches: map[string]bool{}}
-		scan.settled[c.Request] = settledCommitment(c.Status) && !c.ApprovedNotLanded
+		scan.settled[c.Request] = workroom.SettledCommitment(c.Status) && !c.ApprovedNotLanded
 		addHead(i, c.Candidate)
 		if c.TargetRef != "" {
 			if targets[c.TargetRepo] == nil {

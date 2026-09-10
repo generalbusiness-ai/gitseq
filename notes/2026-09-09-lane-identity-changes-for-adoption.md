@@ -66,12 +66,12 @@ signature is the attribution, and it explicitly keeps identity scoped to the
 process or the worktree. It does not forbid an advisory governing record key,
 and this design does not claim it does. The comparison is made on three costs
 instead. Migration: `--worktree` scope is read only once the repository sets
-`extensions.worktreeConfig` (`internal/app/app.go:366`), a
+`extensions.worktreeConfig` (`internal/app/app.go:384`), a
 repository wide change for one advisory value. Locking: the atomic write and
 flock pair already exists and already holds per checkout state, while `git
 config` offers no discipline this code shares. Maintenance: that configuration
 is a scope the source documents as executable rather than merely readable
-(`internal/app/app.go:369`), while a file in the private Git directory is
+(`internal/app/app.go:386`), while a file in the private Git directory is
 removed with the checkout by the machinery that made it, and
 `apphost.ResolveGitDirs` already separates that directory from the common one.
 
@@ -110,7 +110,7 @@ execs nothing else, and it never replaces a user hook.
 mutation with no durable authority behind it. Nothing may be load bearing on a
 hook in any case: `gs merge` deliberately runs no commit hooks at all
 (`docs/reference/gs/merge.md:239`), precisely because a hostile
-`pre-commit` hook can retarget `HEAD` (`cmd/gs/main.go:946`).
+`pre-commit` hook can retarget `HEAD` (`cmd/gs/main.go:1070`).
 
 ### A5. Cleanup is advised, never performed by merge or retirement
 
@@ -165,8 +165,8 @@ label stays in the ephemeral endpoint where it already lives.
 outright, so it needs an explicit decision. A filesystem path is machine local
 and is not portable across the actors and repositories that read one log; the
 current surface deliberately keeps other checkouts' paths inside the resident
-boundary and publishes basenames only (`internal/app/app.go:188`,
-`internal/app/app.go:751`). Recording paths durably would put one machine's
+boundary and publishes basenames only (`internal/app/app.go:199`,
+`internal/app/app.go:749`). Recording paths durably would put one machine's
 directory layout in the permanent record and disclose it to every reader.
 
 ### A9. The request `branch` field is kept and validated, beside `target_ref`
@@ -239,26 +239,31 @@ recut and review checkouts.
 7. **No new periodic job.** The old text hoped for "a periodic hygiene gate ...
    every planner tick". The existing endpoint already answers it under an
    8 second cache; the gate is a read, and it writes nothing.
-8. **Two settled word lists exist.**
-   `internal/mergeplan/mergeplan.go:967`
-   (`unsettledCommitment`) and
-   `internal/app/worktree_landing.go:47`
-   (`protectsWorktree`) express the same idea with different defaults. Reading
-   is unified on the first; the fail closed protect on unknown stays where it
-   belongs, on deletion, and is deliberately not carried into any refusal to
-   sign, which would deadlock.
+8. **Two settled readings, one vocabulary.** The merge plan asked whether a
+   commitment is still open and the checkout classification asked whether one
+   is closed, each from its own copy of the words, with opposite defaults.
+   Reading is unified on the first, `workroom.UnsettledCommitment`
+   (`internal/workroom/commitment_status.go:50`), where a word the vocabulary
+   does not know counts as settled and therefore warns; the fail closed
+   protect on unknown stays where it belongs, on deletion
+   (`internal/workroom/commitment_status.go:56`, read by `protectsWorktree` at
+   `internal/app/worktree_landing.go:47`), and is deliberately not carried
+   into any refusal to sign, which would deadlock. S2 moved the words beside
+   the field they describe and kept the two readings two: a status added to
+   one list and not the other made the same repository answer two ways about
+   one commitment, and nothing would have said so.
 9. **Containment, symlink direction and refless heads.** Protective additions
    the conditions name. They only ever move a checkout from candidate to
    protected.
 10. **Command environment.** `internal/app` runs Git under a closed environment
-    allowlist (`internal/app/app.go:346`), while `cmd/gs`'s helper
-    inherits the ambient environment (`cmd/gs/main.go:3282`). A
+    allowlist (`internal/app/app.go:357`), while `cmd/gs`'s helper
+    inherits the ambient environment (`cmd/gs/main.go:3406`). A
     new `gs worktree` uses the bounded path for every read it makes about
     identity.
 11. **Correction to the brief.** `mergeplan.Result.Mode` values are `fresh`,
     `used` and `resume`; there is no `complete` mode. No design consequence.
 12. **Scratch trees.** The existing patterns are the disposable clone with hooks
-    emptied (`internal/mergeplan/mergeplan.go:1594`) and the
+    emptied (`internal/mergeplan/mergeplan.go:1585`) and the
     perf harness's own add and remove pair
     (`cmd/gitseq-perf/main.go:833`,
     `cmd/gitseq-perf/main.go:839`). Reusing them is not new policy.

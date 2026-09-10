@@ -244,7 +244,7 @@ func TestAStaleGoverningRecordProtectsAndASettledOneDoesNot(t *testing.T) {
 	if deletable, view := classify("some-future-status", false); deletable != "" || view.Classification != "protected" {
 		t.Fatalf("an unknown status settled a commitment: %q %+v", deletable, view)
 	}
-	if settledCommitment("stale") {
+	if workroom.SettledCommitment("stale") {
 		t.Fatal("staleness is on the settled word list")
 	}
 }

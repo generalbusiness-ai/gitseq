@@ -23,6 +23,7 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
+	"github.com/generalbusiness-ai/gitseq/internal/eventref"
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
@@ -161,6 +162,8 @@ func main() {
 		err = serveCommand(ctx, os.Args[2:])
 	case "attach":
 		err = attachCommand(ctx, os.Args[2:])
+	case "worktree":
+		err = worktreeCommand(ctx, os.Args[2:])
 	default:
 		usage(os.Stderr)
 		fmt.Fprintf(os.Stderr, "\ngs: unknown command %q\n", os.Args[1])
@@ -178,7 +181,7 @@ func main() {
 
 func usage(output io.Writer) {
 	fmt.Fprintln(output, "usage: gs <command> [flags]")
-	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach")
+	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach, worktree")
 	fmt.Fprintln(output, "run `gs help <command>` for command flags")
 	fmt.Fprintln(output, "CLI walkthrough: docs/how-to/end-to-end.md")
 	fmt.Fprintln(output, "command reference: docs/reference/gs/")
@@ -243,6 +246,126 @@ func publishCommand(ctx context.Context, arguments []string) error {
 	return publishErr
 }
 
+// worktreeCommand creates one checkout for one governing record: a directory,
+// a branch, a private record naming the record it was made for, a
+// commit-message template carrying the exact `Rests-On:` line, and one
+// `refs/gitseq/lanes/<governing event hash>/<attempt>` ref that outlives both
+// the checkout and the branch.
+//
+// The template is the whole of the trailer assistance this command offers. An
+// optional commit hook that appends the same line is described by the adopted
+// design and is deliberately not here: a linked checkout resolves its hooks to
+// the shared common directory, so installing one is repository-wide however
+// narrowly a flag reads, and the adopted wording does not disclose that. That
+// contract is with the ratifier, and nothing in this stage depends on a hook.
+//
+// It signs nothing and reads no private key. `--as` names the acting actor so
+// that "a request addressed to me" is a question this command can ask, and
+// that is the whole of what identity is used for here. Nothing it writes is
+// evidence: the record, the branch name and the attempt ref are all claimed
+// identity, none of them widens what may be deleted, and none of them is an
+// input to any admission decision the fold makes.
+//
+// The durable record set is read once, before anything is resolved, and a
+// read that fails is carried rather than fatal. A canonical identifier needs
+// no log to be classified, so creation can still proceed on one, with every
+// projection-dependent check reported as not established rather than as
+// passed or as failed. A `#N` or a hash fragment is a different case: it is
+// resolved against the log, and with no log there is no identifier to stamp,
+// so the resolver's own refusal stands and nothing is created. That is the
+// existing resolver contract doing the work, not a new refusal.
+//
+// Neither the destination nor the branch has a default. A repository may
+// configure `gitseq.checkoutRoot` to bound where checkouts go, and this
+// command refuses a destination outside it, but inventing either a directory
+// layout or a branch naming convention here would be the command deciding
+// something nobody wrote down.
+func worktreeCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("worktree", arguments)
+	as := set.String("as", "", "acting actor; the addressee check asks about this name and no key is read")
+	path := set.String("path", "", "destination directory for the new checkout; required")
+	branch := set.String("branch", "", "branch to create for the new checkout; required")
+	start := set.String("start", "HEAD", "revision the new branch starts at")
+	settledOK := set.Bool("settled-ok", false, "create even though the governing commitment has already settled")
+	duplicateOK := set.Bool("duplicate-ok", false, "create even though another checkout of this repository is already at this head")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	if set.NArg() != 1 {
+		return errors.New("worktree takes exactly one governing record: a request addressed to you, or an adopted decision")
+	}
+	selector := set.Arg(0)
+	actorName, err := signingActor(*as)
+	if err != nil {
+		return err
+	}
+	workspace, err := app.Open(ctx, *repo)
+	if err != nil {
+		return err
+	}
+	// One read, kept whichever way it goes. The eligibility checks and the
+	// selector are answered from the same snapshot, so a frontier that moves
+	// between them cannot make one command answer about two worlds.
+	snapshot, snapshotErr := snapshotWithProgress(ctx, workspace)
+	if snapshotErr != nil {
+		fmt.Fprintln(os.Stderr, "gs: warning: the durable record set could not be read:", snapshotErr)
+	}
+	room := roomOf(workspace)
+	resolver := eventref.New(room, func() (eventref.Set, error) {
+		if snapshotErr != nil {
+			return eventref.Set{}, snapshotErr
+		}
+		return eventref.FromProjection(room, snapshot.Projection), nil
+	})
+	governing, err := resolver.One(selector)
+	if err != nil {
+		return err
+	}
+	showResolved(resolver)
+
+	result, createErr := workspace.CreateCheckout(ctx, app.CheckoutIntent{
+		Governing:   governing,
+		Actor:       actorName,
+		Path:        *path,
+		Branch:      *branch,
+		Start:       *start,
+		Snapshot:    snapshot,
+		Unreadable:  snapshotErr,
+		SettledOK:   *settledOK,
+		DuplicateOK: *duplicateOK,
+	})
+	for _, line := range result.Report() {
+		fmt.Fprintln(os.Stderr, "gs: check", line)
+	}
+	// What was made is reported even when something after it failed. Nothing
+	// here removes anything, so a half-finished creation leaves a directory,
+	// a branch or a ref that the person now has to know about.
+	printCheckout(result)
+	return createErr
+}
+
+// printCheckout names, on standard output, everything one creation made.
+func printCheckout(result app.CheckoutResult) {
+	if !result.Created {
+		return
+	}
+	fmt.Println("checkout ", result.Path)
+	fmt.Println("branch   ", result.Branch)
+	fmt.Println("head     ", result.Head)
+	if result.Attempt.Ref != "" {
+		fmt.Printf("attempt   %s (attempt %d)\n", result.Attempt.Ref, result.Attempt.Number)
+	}
+	if result.RecordPath != "" {
+		fmt.Println("record   ", result.RecordPath)
+	}
+	if result.TemplatePath != "" {
+		fmt.Println("template ", result.TemplatePath)
+	}
+	if result.Trailer != "" {
+		fmt.Println("trailer  ", result.Trailer)
+	}
+}
+
 func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 	set := flag.NewFlagSet(name, flag.ContinueOnError)
 	repo := set.String("repo", ".", "ordinary Git repository")
@@ -258,6 +381,8 @@ func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 			synopsis = "[flags] [file]"
 		case "inspect", "provenance":
 			synopsis = "[flags] <event>"
+		case "worktree":
+			synopsis = "[flags] <governing-record>"
 		}
 		fmt.Fprintf(set.Output(), "usage: gs %s %s\n\nFlags:\n", name, synopsis)
 		set.PrintDefaults()

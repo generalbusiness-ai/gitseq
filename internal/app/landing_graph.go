@@ -65,9 +65,18 @@ func landingGit(ctx context.Context, repo, input string, limit int, args ...stri
 // request reaches can share one observation: reading the refs twice answers
 // about two worlds whenever a branch moves in between, and there is no useful
 // sense in which those two answers are about the same repository.
+//
+// Three namespaces, under the one 4,096-ref bound. Branches and
+// remote-tracking refs are what landing is measured against. The checkout
+// attempt refs are here because a lane has to be findable after its checkout
+// and its branch are gone, and a second inventory read to find them would
+// answer about a different repository. They add one further true fact to the
+// cleanup advice on the way past: a head an attempt ref names is reachable
+// from a ref, so it is not a refless head, and removing the checkout that
+// holds it does not take the commit with it.
 func readRefInventory(ctx context.Context, repo string) (map[string]string, bool) {
 	refs := map[string]string{}
-	data, err := landingGit(ctx, repo, "", 2<<20, "for-each-ref", "--count="+strconv.Itoa(landingRefLimit+1), "--format=%(refname)%00%(objectname)", "refs/heads/", "refs/remotes/")
+	data, err := landingGit(ctx, repo, "", 2<<20, "for-each-ref", "--count="+strconv.Itoa(landingRefLimit+1), "--format=%(refname)%00%(objectname)", "refs/heads/", "refs/remotes/", checkoutAttemptNamespace)
 	if err != nil {
 		return refs, false
 	}
