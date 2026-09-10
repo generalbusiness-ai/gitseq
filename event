@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e060f426e69c8d4eef1e67f5ce5081432d76a67b","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-09-lane-identity-reconciled.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e2d8fbf941dacbea15243e781bca3ebb52a7262d","text":"Merge retired a covered predecessor; the successor is at internal/service/worktrees_remote_test.go."}
