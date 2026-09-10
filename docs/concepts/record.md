@@ -2,7 +2,11 @@
 title: The record
 summary: What a durable event is, what the fold makes of it, and why a recorded act may carry no force.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cbe62bb50224c40e9e0001e2b17194c75029eacd
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8a60f7689221433c1d85948c2bbe7c3cd6258388
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d6f6997c01a89e509dec03f68fc6ba4fb4125fe
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e0ffb053668e086b2121921df6c4a5820ff26bbb
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3f96b40f6ab49cf2de503c92db1787d8271b9669
 ---
 
 # The record
@@ -61,14 +65,27 @@ The declarations are what make commitments and staleness projectable. An
 `artifact` must have `body.path` and `body.commit`. A `request` must have
 `body.conditions` and names its performer in `body.to`.
 
-Which rules admit events is itself governed. A workroom runs the
-**admission profile** named by the newest live, ratified governance
-statement for its genesis — naming a bundle and a contract — and falls
-back to a bootstrap profile derived from genesis when there is none.
-Likewise, if the record has no fold binding, or the binding names an
-interpreter this reader does not hold, the projection reports `unbound`
-or `uninterpretable`. Those are audit gaps, not warnings to click
-through.
+Which rules admit events comes from the application, not from the record. The
+submitter installs that application's own allowlist and admission hook, and
+every genuinely new submission is judged by the hook against the verified world
+as it stood immediately before it. Which interpreter does the judging is settled
+when the workspace opens from its [host binding](../reference/architecture.md),
+and a binding recorded later does not change what an already open workspace
+means. Only a log that cannot be read has no binding to select; that repository
+does not open. A binding naming an application or fold version this build does
+not hold still opens, and kernel verification still stands — the repository is
+verifiable but uninterpretable, so application state is unavailable and reading
+or appending it is refused.
+
+An `admission-profile` statement is a different thing: a ratified governance
+record naming a bundle and a contract, which a library resolves for a given
+prefix of the log, falling back to a bootstrap profile derived from genesis when
+no activation is in force. Resolving is all it does. Nothing loads a bundle, no
+admission-profile record replaces or relaxes the installed guards, and the
+downstream machinery that would act on one is not implemented. Where the record
+has no fold binding, or the binding names an interpreter this reader does not
+hold, the projection reports `unbound` or `uninterpretable`. Those are audit
+gaps, not warnings to click through.
 
 ## The fold
 
@@ -79,9 +96,12 @@ their current roles, and a decision for every act.
 
 Two properties matter. It is **deterministic**, so every reader reaches
 the same verdicts without trusting a server. And it is **a library, not a
-service**: gitseq defines the record and never runs a fold on your
-behalf. `gs status` runs one for you; so does the browser view; both are
-readers like any other.
+service**: the fold is a function anyone can run over the record, and no
+running of it is authoritative. gitseq's own readers do run it — `gs status`
+folds the log for you, the resident folds it to serve the browser view — but
+they are readers like any other, and replaying the record yourself must reach
+the same projection, including which acts were recorded and which took
+effect.
 
 ## Recorded is not effective
 
