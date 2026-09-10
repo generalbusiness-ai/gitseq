@@ -82,11 +82,6 @@ type landedResponse struct {
 	Commits []gitstore.Landing `json:"commits"`
 }
 
-// The mainline, in the order a repository is likely to name it. Resolved here
-// rather than configured: the question this answers is "did it ship", and
-// shipping means reaching the branch the repository publishes.
-var mainlineRefs = []string{"refs/heads/main", "refs/heads/master"}
-
 // handleLanded joins the fold's answer to git's. The fold knows whether a
 // commitment closed; only git knows whether the code landed, and work that
 // shipped and stayed open is invisible on every other surface. Nothing here is
@@ -105,7 +100,7 @@ func (s *Server) handleLanded(writer http.ResponseWriter, request *http.Request)
 		input.Commits = input.Commits[:gitstore.LandingLimit]
 	}
 	branch := ""
-	for _, ref := range mainlineRefs {
+	for _, ref := range app.MainlineRefs {
 		if _, present, err := s.workspace.Store.RefValue(request.Context(), ref); err == nil && present {
 			branch = ref
 			break
@@ -132,16 +127,27 @@ type worktreesResponse struct {
 	Remote    string             `json:"remote,omitempty"`
 	Worktrees []app.WorktreeView `json:"worktrees"`
 	Deletable []string           `json:"deletable"`
+	// Associations is the read-only reverse association: every branch tip and
+	// every unbranched checkout head, and the durable record the implementing
+	// commits under it claim. It grants nothing and it writes nothing.
+	Associations app.AssociationTable `json:"associations"`
 }
 
 func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Request) {
-	local, err := s.workspace.LocalWorktrees(request.Context())
-	if local.Worktrees == nil {
-		local.Worktrees = []app.WorktreeView{}
-	}
+	// One captured read answers this whole request: one checkout listing, one
+	// bounded ref inventory, one deadline and one step budget, shared by both
+	// judgments below so that they describe one repository and cost what this
+	// endpoint says a request costs.
+	read, err := s.workspace.CaptureCheckouts(request.Context())
 	if err != nil {
 		write(writer, nil, err)
 		return
+	}
+	defer read.Close()
+	local := read.LocalRepo
+	if local.Worktrees == nil {
+		local.Worktrees = []app.WorktreeView{}
+		read.Worktrees = local.Worktrees
 	}
 	durable, err := s.workspace.Snapshot(request.Context())
 	if err != nil {
@@ -151,12 +157,20 @@ func (s *Server) handleWorktrees(writer http.ResponseWriter, request *http.Reque
 		for i := range local.Worktrees {
 			local.Worktrees[i].Classification = "unknown"
 			local.Worktrees[i].ClassificationReason = "durable projection unavailable"
+			local.Worktrees[i].Grade = app.GradeUnknown
 		}
-		write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees, Deletable: []string{}}, nil)
+		write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees, Deletable: []string{},
+			Associations: app.AssociationTable{Rows: []app.AssociationRow{}, Reason: "durable projection unavailable"}}, nil)
 		return
 	}
-	deletable := s.workspace.ClassifyWorktrees(request.Context(), durable.Projection, local.Worktrees)
-	write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: local.Worktrees, Deletable: deletable}, nil)
+	// Two judgments over that one read, and one answer about whether the read
+	// finished. A checkout's grade is about which work it claims and its
+	// classification is about whether that work is finished; neither result is
+	// an input to the other, and no unsigned claim reaches a deletion decision.
+	// What they share is the observation, the bound, and the whole-response
+	// discard when that bound is reached.
+	deletable, associations := s.workspace.AdviseCheckouts(read, durable)
+	write(writer, worktreesResponse{Repo: local.Path, Remote: local.Remote, Worktrees: read.Worktrees, Deletable: deletable, Associations: associations}, nil)
 }
 
 // actRequest is a session-bound durable act: the same custody model as

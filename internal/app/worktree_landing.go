@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -44,14 +45,20 @@ type worktreeLandingInput struct {
 }
 
 func protectsWorktree(row WorktreeRow) bool {
-	if row.ApprovedNotLanded {
-		return true
-	}
-	switch row.Status {
+	return row.ApprovedNotLanded || !settledCommitment(row.Status)
+}
+
+// settledCommitment names the closed lifecycle words. It is a deny list rather
+// than an allow list on purpose: a status this client has never heard of is a
+// status it cannot settle, so it protects. Staleness is not on the list,
+// because staleness is not settlement — a stale request is a request whose
+// reasoning moved, and its work is still owed.
+func settledCommitment(status string) bool {
+	switch status {
 	case "satisfied", "abandoned", "superseded", "withdrawn", "cancelled", "reneged":
-		return false
+		return true
 	default:
-		return true // including future statuses this client cannot settle
+		return false
 	}
 }
 
@@ -59,6 +66,89 @@ type worktreeLandingIndex struct {
 	rows    []worktreeLandingInput
 	objects map[string]bool
 	targets map[string]map[string]bool
+	// pending maps each commit a pending decision is about to the live
+	// proposal that makes it one. A checkout still holding such a commit is
+	// protected while the artifact's own parent request is unsettled.
+	pending map[string]string
+}
+
+// pendingDecisions finds the artifacts a live proposal cites and whose parent
+// request is not settled, and returns the commit each of those artifacts
+// names. It runs off the collections the one statement pass already made, so
+// it adds no second walk of the projection and no second bound.
+//
+// The loss this closes was real: a note artifact was retired and its branch
+// and checkout deleted while a proposal rested directly on it and the parent
+// request still held a live promise. The work survived only because the commit
+// outlived the deletion. Three things had to be got wrong at once for that to
+// happen, and each is answered here.
+//
+// The structural `rests_on` edge is what is read. Prose naming a head is not a
+// reference this can see, and assuming it was the only one is how a cited
+// artifact looks uncited.
+//
+// A retired artifact still protects. Retirement withdraws a pointer; it does
+// not decide the proposal that cites it, and reading one as the other is how a
+// pending decision loses its subject.
+//
+// Staleness is not settlement, and a filtered board view is not the record. A
+// request missing from a default actionable list is missing from a list, and
+// its commitment is what says whether it closed.
+func pendingDecisions(p workroom.Projection, scan pendingDecisionScan, budget *worktreeInspectionBudget) (map[string]string, bool) {
+	pending := map[string]string{}
+	for _, proposal := range scan.proposals {
+		for _, basis := range p.Provenance[proposal] {
+			if !budget.take(1) {
+				return nil, false
+			}
+			commit := scan.artifactCommit[basis]
+			if !exactObjectID(commit) {
+				continue
+			}
+			if request, _, owned := reviewguard.OwnedEdge(p, scan.artifactStatement[basis]); owned && scan.settled[request] {
+				continue
+			}
+			if existing := pending[commit]; existing == "" || proposal < existing {
+				pending[commit] = proposal
+			}
+		}
+	}
+	return pending, true
+}
+
+// pendingDecisionScan is what the one statement pass collects on the way past
+// for the pending-decision question. Every entry costs a step already charged
+// for visiting that record.
+type pendingDecisionScan struct {
+	settled           map[string]bool
+	proposals         []string
+	artifactCommit    map[string]string
+	artifactStatement map[string]workroom.Statement
+}
+
+func newPendingDecisionScan(commitments int) pendingDecisionScan {
+	return pendingDecisionScan{
+		settled:           make(map[string]bool, commitments),
+		artifactCommit:    map[string]string{},
+		artifactStatement: map[string]workroom.Statement{},
+	}
+}
+
+func (s *pendingDecisionScan) observe(statement workroom.Statement) {
+	switch statement.Kind {
+	case workroom.KindArtifact:
+		// The artifact's own statement, whatever its retirement: the owned
+		// edge is read from the record that was signed, and a withdrawn
+		// pointer was still signed by whoever signed it.
+		s.artifactCommit[statement.Event] = statement.Body["commit"]
+		s.artifactStatement[statement.Event] = statement
+	case workroom.KindPropose:
+		// A ratified proposal is a decision that has been taken, and a retired
+		// one has been withdrawn. Neither is pending.
+		if !statement.Ratified && !statement.Retired {
+			s.proposals = append(s.proposals, statement.Event)
+		}
+	}
 }
 
 // worktreeLandingInputs associates all directly named heads, not just the
@@ -69,6 +159,7 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 		return worktreeLandingIndex{}, false
 	}
 	rows := make([]worktreeLandingInput, len(p.Commitments))
+	scan := newPendingDecisionScan(len(p.Commitments))
 	byEvent := map[string][]int{}
 	byReceipt := map[string][]int{}
 	objects := map[string]bool{}
@@ -94,6 +185,7 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 			return worktreeLandingIndex{}, false
 		}
 		rows[i] = worktreeLandingInput{row: WorktreeRow{Request: c.Request, Promise: c.Promise, Status: c.Status, LandingDetails: LandingDetailsFor(c)}, heads: map[string]bool{}, branches: map[string]bool{}}
+		scan.settled[c.Request] = settledCommitment(c.Status) && !c.ApprovedNotLanded
 		addHead(i, c.Candidate)
 		if c.TargetRef != "" {
 			if targets[c.TargetRepo] == nil {
@@ -116,6 +208,7 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 		if !budget.take(1) {
 			return worktreeLandingIndex{}, false
 		}
+		scan.observe(s)
 		for _, i := range byReceipt[s.Event] {
 			if !budget.take(1) {
 				return worktreeLandingIndex{}, false
@@ -156,21 +249,43 @@ func worktreeLandingInputs(p workroom.Projection, budget *worktreeInspectionBudg
 			}
 		}
 	}
-	return worktreeLandingIndex{rows: rows, objects: objects, targets: targets}, complete && budget.take(0)
+	pending, ok := pendingDecisions(p, scan, budget)
+	if !ok {
+		return worktreeLandingIndex{}, false
+	}
+	for commit := range pending {
+		if !budget.take(1) {
+			return worktreeLandingIndex{}, false
+		}
+		if !objects[commit] && len(objects) == landingObjectLimit {
+			complete = false
+			break
+		}
+		objects[commit] = true
+	}
+	return worktreeLandingIndex{rows: rows, objects: objects, targets: targets, pending: pending}, complete && budget.take(0)
 }
 
-// ClassifyWorktrees is advice for W1, never a deletion operation. It uses one
+// ClassifyWorktrees is advice for W1, never a deletion operation. It captures
+// one read of this repository and answers from it. A caller that also wants
+// the reverse association captures the read itself and passes it to both, so
+// that the two judgments answer about one world and share one bound.
+func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection, views []WorktreeView) []string {
+	read := w.captureAround(ctx, views)
+	defer read.Close()
+	return w.ClassifyCheckouts(read, p)
+}
+
+// ClassifyCheckouts is that advice over an already captured read. It uses one
 // immutable graph for every checkout and every named commitment head. Missing
 // evidence protects the checkout rather than making the deletable set larger.
-func (w *Workspace) ClassifyWorktrees(ctx context.Context, p workroom.Projection, views []WorktreeView) []string {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-	budget := &worktreeInspectionBudget{ctx: ctx, remaining: worktreeInspectionLimit}
-	return w.classifyWorktrees(ctx, p, views, budget)
-}
-
-func (w *Workspace) classifyWorktrees(ctx context.Context, p workroom.Projection, views []WorktreeView, budget *worktreeInspectionBudget) []string {
-	unknown := func() []string { return unknownWorktrees(views) }
+//
+// It reads no association and no grade. Which durable record a checkout claims
+// is a different question from whether that work is finished, and an unsigned
+// source trailer is not something a deletion decision may stand on.
+func (w *Workspace) ClassifyCheckouts(read *CheckoutRead, p workroom.Projection) []string {
+	ctx, budget, views := read.ctx, read.budget, read.Worktrees
+	unknown := func() []string { return unknownWorktrees(views, exhaustedRead) }
 	if !budget.take(len(views)) {
 		return unknown()
 	}
@@ -178,10 +293,9 @@ func (w *Workspace) classifyWorktrees(ctx context.Context, p workroom.Projection
 	if !complete {
 		return unknown()
 	}
-	g := readLandingRefs(ctx, w.Repo)
-	g.inspectionBudget = budget
+	g := read.graph()
 	repository := "git:" + w.config.ObjectFormat + ":" + w.config.Genesis
-	remote := landingRemote(ctx, w.Repo)
+	remote := read.remoteName
 	tips, objects, targets, complete := index.gitInputs(views, g, repository, budget)
 	if !complete {
 		return unknown()
@@ -199,7 +313,7 @@ func (w *Workspace) classifyWorktrees(ctx context.Context, p workroom.Projection
 
 func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *landingGraph, repository, remote string, tracking map[string]string, budget *worktreeInspectionBudget) []string {
 	deletable := []string{}
-	unknown := func() []string { return unknownWorktrees(views) }
+	unknown := func() []string { return unknownWorktrees(views, exhaustedRead) }
 	rows := index.rows
 	targetRefs := index.targets[repository]
 	measuredAt := time.Now().Unix()
@@ -217,6 +331,35 @@ func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *l
 	if !complete {
 		return unknown()
 	}
+	// A ref inventory answers one question here that no commitment does:
+	// whether anything but this checkout can still reach its head.
+	refValues := map[string]bool{}
+	for _, oid := range g.refs {
+		if !budget.take(1) {
+			return unknown()
+		}
+		refValues[oid] = true
+	}
+	for commit, proposal := range index.pending {
+		if !budget.take(1) {
+			return unknown()
+		}
+		holders := matches.ancestry.positive[commit]
+		if holders == nil || !g.objects[commit] {
+			continue
+		}
+		for i := range views {
+			if !budget.take(1) {
+				return unknown()
+			}
+			// A checkout holding two pending decisions names the earlier
+			// proposal. Reporting whichever the map happened to yield would
+			// make the same repository answer differently between reads.
+			if holders.has(i) && (views[i].PendingDecision == "" || proposal < views[i].PendingDecision) {
+				views[i].PendingDecision = proposal
+			}
+		}
+	}
 	for i := range views {
 		if !budget.take(1) {
 			return unknown()
@@ -225,6 +368,7 @@ func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *l
 		view.Classification, view.ClassificationReason = "unmapped", ""
 		view.Row, view.Approved, view.LandedInto = "", "", ""
 		view.RemoteContains = nil
+		view.ReflessHead = g.refsKnown && view.Head != "" && !refValues[view.Head]
 		uncertain := !g.refsKnown || view.Head == "" || matches.uncertain.has(i)
 		protected, tipSettled := matches.protected.has(i), matches.settled.has(i)
 		var ok bool
@@ -249,6 +393,15 @@ func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *l
 		case view.Current || view.Detached || view.State != "clean" || targetRefs["refs/heads/"+view.Branch]:
 			view.Classification = "protected"
 			view.ClassificationReason = "current, detached, non-clean or target checkout"
+		case view.OutsideRoot || view.SymlinkedPath:
+			view.Classification = "protected"
+			view.ClassificationReason = "checkout path is outside the checkout root or reached through a symbolic link"
+		case view.ReflessHead:
+			view.Classification = "protected"
+			view.ClassificationReason = "no ref in this repository points at this head"
+		case view.PendingDecision != "":
+			view.Classification = "protected"
+			view.ClassificationReason = "a live proposal cites work this checkout holds"
 		case protected:
 			view.Classification = "protected"
 			view.ClassificationReason = "unsettled or approved-not-landed commitment"
@@ -269,13 +422,16 @@ func classifyWorktreeRows(index worktreeLandingIndex, views []WorktreeView, g *l
 	return deletable
 }
 
-func unknownWorktrees(views []WorktreeView) []string {
+func unknownWorktrees(views []WorktreeView, reason string) []string {
 	for i := range views {
 		views[i].Classification = "unknown"
-		views[i].ClassificationReason = "worktree inspection limit or cancellation"
+		views[i].ClassificationReason = reason
 		views[i].Approved, views[i].LandedInto, views[i].Row = "", "", ""
 		views[i].RemoteContains, views[i].Rows = nil, nil
 		views[i].RowsOmitted = 0
+		// A protection this pass never got to establish must not be reported
+		// as one it looked for and did not find.
+		views[i].ReflessHead, views[i].PendingDecision = false, ""
 	}
 	return []string{}
 }

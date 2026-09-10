@@ -39,17 +39,28 @@ type GraphCommit struct {
 // wanted it. Anyone who could push a branch could write history into this view.
 const graphFields = 8
 
+// graphFormat is the one NUL-framed record layout every commit read in this
+// package uses. Graph and Lineage share it so a field added to one cannot
+// desynchronise the stride the other parses with.
+const graphFormat = "%H%x00%P%x00%D%x00%s%x00%an%x00%at%x00%(trailers:key=Rests-On,valueonly=true)%x00%b"
+
+// emptyHistory reports the two refusals that mean "there is nothing to read
+// here" rather than "the read failed": an unborn repository and a revision
+// this repository does not hold.
+func emptyHistory(err error) bool {
+	return strings.Contains(err.Error(), "does not have any commits") || strings.Contains(err.Error(), "bad revision")
+}
+
 func (s Store) Graph(ctx context.Context, limit int) ([]GraphCommit, error) {
 	if limit <= 0 {
 		limit = 60
 	}
-	format := "%H%x00%P%x00%D%x00%s%x00%an%x00%at%x00%(trailers:key=Rests-On,valueonly=true)%x00%b"
 	output, err := s.run(ctx, nil, nil,
 		"log", "-z", "--topo-order", "-n", strconv.Itoa(limit),
-		"--branches", "--tags", "--format="+format)
+		"--branches", "--tags", "--format="+graphFormat)
 	if err != nil {
 		// An unborn repository (no commits yet) renders an empty railway.
-		if strings.Contains(err.Error(), "does not have any commits") || strings.Contains(err.Error(), "bad revision") {
+		if emptyHistory(err) {
 			return nil, nil
 		}
 		return nil, err

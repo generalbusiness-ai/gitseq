@@ -60,15 +60,20 @@ func landingGit(ctx context.Context, repo, input string, limit int, args ...stri
 	return output.buffer.Bytes(), err
 }
 
-func readLandingRefs(ctx context.Context, repo string) *landingGraph {
-	g := &landingGraph{refs: map[string]string{}, objects: map[string]bool{}, parents: map[string][]string{}, ancestors: map[string]landingAncestors{}, walkRemaining: landingWalkLimit}
+// readRefInventory is the one bounded `for-each-ref` a request makes. It is
+// separate from the graph built over it so that the several judgments a
+// request reaches can share one observation: reading the refs twice answers
+// about two worlds whenever a branch moves in between, and there is no useful
+// sense in which those two answers are about the same repository.
+func readRefInventory(ctx context.Context, repo string) (map[string]string, bool) {
+	refs := map[string]string{}
 	data, err := landingGit(ctx, repo, "", 2<<20, "for-each-ref", "--count="+strconv.Itoa(landingRefLimit+1), "--format=%(refname)%00%(objectname)", "refs/heads/", "refs/remotes/")
 	if err != nil {
-		return g
+		return refs, false
 	}
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	if len(lines) > landingRefLimit {
-		return g
+		return refs, false
 	}
 	for _, line := range lines {
 		if line == "" {
@@ -76,12 +81,27 @@ func readLandingRefs(ctx context.Context, repo string) *landingGraph {
 		}
 		ref, oid, ok := strings.Cut(line, "\x00")
 		if !ok || !exactObjectID(oid) {
-			return g
+			return map[string]string{}, false
 		}
-		g.refs[ref] = oid
+		refs[ref] = oid
 	}
-	g.refsKnown = true
-	return g
+	return refs, true
+}
+
+// newLandingGraph builds one traversal over an already captured inventory. The
+// map is shared rather than copied and no caller writes to it; everything the
+// traversal accumulates lives in this graph's own fields, so two graphs over
+// one inventory stay independent.
+func newLandingGraph(refs map[string]string, known bool) *landingGraph {
+	return &landingGraph{
+		refs: refs, refsKnown: known,
+		objects: map[string]bool{}, parents: map[string][]string{},
+		ancestors: map[string]landingAncestors{}, walkRemaining: landingWalkLimit,
+	}
+}
+
+func readLandingRefs(ctx context.Context, repo string) *landingGraph {
+	return newLandingGraph(readRefInventory(ctx, repo))
 }
 
 func (g *landingGraph) load(ctx context.Context, repo string, tips, objects []string) {
