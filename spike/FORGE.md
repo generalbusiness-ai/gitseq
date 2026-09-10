@@ -16,8 +16,17 @@ This forge is reachable only from the host that runs it. It publishes on
 authentication story of its own worth exposing: on a fresh data volume an
 unlocked installer hands administrator to whoever loads the page first, and a
 bare `3300:3000` mapping offers that page to every network the host is attached
-to. Neither guard is a preference. `compose.yaml` carries both and
-`spike/forge` fails the build if either is dropped.
+to. Docker's long mapping form does the same when `host_ip` is omitted or set to
+a wildcard, so the gate reads both forms, across every document in the file
+rather than only the first. What it reads is bounded and stated: a short entry
+of `[HOST:[HOST_PORT]:]CONTAINER_PORT[/PROTOCOL]` with numbers or ranges for the
+ports and `tcp` or `udp` for the protocol, and a long mapping using Docker's
+documented fields with scalar values. Anything outside that — an undocumented
+field, a port that is not a number, a protocol it does not know, a document that
+will not parse — is reported as a failure rather than skipped, because an entry
+nobody has read is not an entry anyone has cleared. Neither guard
+is a preference. `compose.yaml` carries both and `spike/forge` fails the build if
+either is dropped.
 
 Locking setup removes the browser path to the first administrator, so make it
 through the CLI instead.
