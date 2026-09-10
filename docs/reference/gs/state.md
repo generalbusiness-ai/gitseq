@@ -289,17 +289,31 @@ Required edges, by kind:
   log or active vocabulary moves after this local check;
 - a `promise` needs one basis that is an effective `request`, **and** the
   signer must be the performer that request named;
-- a `report` needs one basis that is an effective `promise`, signed by
-  the promisor. Before anything is appended, filing checks the active
-  vocabulary for exactly one effective promise-lifecycle basis and checks that
-  its promisor is the report signer. An error tells the caller which rule the
+- a `report` takes one of two shapes. The ordinary one needs one basis that is
+  an effective `promise`, signed by the promisor, and it closes that promise.
+  The other reports straight against the `request`, and is admitted only from
+  the actor that request addressed, and only while that actor holds no live
+  effective promise on it: one commitment takes one closure, so a claim already
+  made is the thing to report on. Before anything is appended, filing checks
+  whichever shape the draft uses. An error tells the caller which rule the
   draft violates; the fold remains authoritative if the log moves meanwhile.
 
 When these lifecycle edges do not match, the CLI keeps the precise reason and
 adds the recovery: a promise uses exactly one live request in `--rests-on`; a
 report uses the one live promise the reporter made, or the request directly
-only when that reporter made no promise. Report preflight adds that guidance
-to its refusal before append. If the fold records an ineffective act, the
+when that reporter made no promise. Report preflight adds that guidance to its
+refusal before append.
+
+Neither shape is a way around the other. Do not withdraw a live promise merely
+to bypass it and report against the request instead: close it through that
+promise. Retiring a promise is its own act with its own consequences, set out in
+[the work loop](../../concepts/work-loop.md); the admission check does permit
+the direct route once a promise is retired, which is why this is a discipline
+and not something the check will stop. And the direct shape is not a shortcut
+for a stranger: an actor the request did not address is refused whether or not
+anyone has promised it. Either way the request's outcome and landing obligation are unchanged, and
+the originating requester accepts the closure the same way — by ratifying the
+report — except where a sealed merge receipt accepts it instead. If the fold records an ineffective act, the
 human status and inspection views add it beside the fold's unchanged verdict,
 so a terse reason such as `dangling promise has no request` is actionable at
 the terminal.
@@ -307,7 +321,11 @@ the terminal.
 An artifact can report assigned implementation work without changing the
 governed artifact schema. It qualifies when its signer is the promisor, it
 names a commit, and its bases contain exactly one effective promise: the
-promise it fulfils. Other artifacts retain their ordinary meaning.
+promise it fulfils. Assigned work reported directly against the request takes
+the same route it always did — an artifact naming the exact head, independent
+review at that head, and closure through the sealed merge — so the absence of a
+promise is not a reason the work cannot be implemented and landed. Other
+artifacts retain their ordinary meaning.
 
 Anything else in `rests_on` is carried unchecked.
 
