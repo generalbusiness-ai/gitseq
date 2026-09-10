@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:95fd62b91921bc184c545018dfe5e75f6bd3464e","text":"Retire the S1 artifact at 557ef676 for internal/gitstore/lineage.go; successor ea44f2caef59b11b5671d11084a569a7f4d1f3c7 at e962fa7b on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:614aa527ae434f88984d1563267d16f8cea9413e","text":"Retire the S1 artifact at 557ef676 for internal/gitstore/lineage_test.go; successor 263866df286b4478c3176ddee19f471b2f07c569 at e962fa7b on the same promise a4c569b1."}
