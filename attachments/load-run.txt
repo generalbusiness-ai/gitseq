@@ -1,0 +1,244 @@
+machine: 18 cores; baseline  2:49  up 11 days,  8:19, 9 users, load averages: 9.79 15.71 13.06
+load: 32 busy loops (yes >/dev/null) started
+under load:  2:49  up 11 days,  8:19, 9 users, load averages: 22.14 18.17 14.01
+$ go test -count=20 -run TestTimeoutOracleRejectsAnOrdinaryExit -v ./cmd/gitseq-perf/
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.10s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.20s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.21s)
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== RUN   TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== PAUSE TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/silent
+=== CONT  TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic
+--- PASS: TestTimeoutOracleRejectsAnOrdinaryExit (0.00s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/with_a_diagnostic (0.11s)
+    --- PASS: TestTimeoutOracleRejectsAnOrdinaryExit/silent (0.20s)
+PASS
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.365s
+rc=0
+$ go test -count=10 -run TestWorkerProcessRetainsTimeout|TestWorkerProcessReportsAnExpiredDeadlineBeforeStarting ./cmd/gitseq-perf/
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	10.236s
+rc=0
+at end of run:  2:49  up 11 days,  8:19, 9 users, load averages: 28.93 19.86 14.68
+after kill:  2:49  up 11 days,  8:19, 9 users, load averages: 26.70 19.55 14.60
+
+=== reproduction: the one-second contract restored on the ordinary-exit control, same load ===
+under load:  2:50  up 11 days,  8:20, 9 users, load averages: 31.94 21.30 15.41
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.841s
+rc=0
+
+=== reproduction attempt 2: one-second contract restored, load = full cmd/gs suite (heavy process forking) plus 40 busy loops ===
+-- round 1,  2:51  up 11 days,  8:21, 9 users, load averages: 30.33 22.08 16.02
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.304s
+rc=0
+-- round 2,  2:51  up 11 days,  8:21, 9 users, load averages: 33.35 22.84 16.32
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.307s
+rc=0
+-- round 3,  2:51  up 11 days,  8:21, 9 users, load averages: 35.80 23.52 16.60
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.308s
+rc=0
+-- round 4,  2:51  up 11 days,  8:21, 9 users, load averages: 37.90 24.16 16.87
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.300s
+rc=0
+-- round 5,  2:51  up 11 days,  8:21, 9 users, load averages: 40.71 24.97 17.19
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.354s
+rc=0
+-- round 6,  2:51  up 11 days,  8:21, 9 users, load averages: 42.09 25.52 17.43
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.308s
+rc=0
+-- round 7,  2:51  up 11 days,  8:21, 9 users, load averages: 44.49 26.29 17.75
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.308s
+rc=0
+-- round 8,  2:51  up 11 days,  8:21, 9 users, load averages: 45.41 26.78 17.98
+ok  	github.com/generalbusiness-ai/gitseq/cmd/gitseq-perf	4.288s
+rc=0
+OLD_FORM_REPRODUCED=0
