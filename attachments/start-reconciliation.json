@@ -1,0 +1,13 @@
+{
+  "head": "32660749aad93bff40c93f6aedf6b80a186dd489",
+  "replaces": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d821c36c72ad274f49d68a487fb675d2b5ad67f8",
+  "current_assignment_basis": "git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cbe62bb50224c40e9e0001e2b17194c75029eacd",
+  "scope": "current source/prose inspection; no fresh probe or tests run by Planner for this refile",
+  "availability": "Claude6ac149e77c722fff96400758d9227eeed35a225b",
+  "unchanged": [
+    "conditions",
+    "performer",
+    "main destination",
+    "governing decisions"
+  ]
+}

@@ -1,6 +1,0 @@
-=== RUN   TestCodexDuplicateHostField
-    compose_test.go:623: duplicate host_ip cleared although ordinary YAML decode rejects it
---- FAIL: TestCodexDuplicateHostField (0.00s)
-FAIL
-FAIL	github.com/generalbusiness-ai/gitseq/spike/forge	0.926s
-FAIL
