@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7013fab03cff442c66c71f65bbb96bb939fc6364","text":"Retire the S1 artifact at e962fa7b for internal/reviewguard/binding.go; successor 0cb256ee584ecca238d95616b8f18cc5b1d431f8 at a5c0889f on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:72d831991ad9219879cf645d83873463e2e9f51f","text":"Retire the S1 artifact at e962fa7b for internal/app/landing.go; successor 2d29fe174fb8255c1c72d2f16590188242944ecd at a5c0889f on the same promise a4c569b1."}
