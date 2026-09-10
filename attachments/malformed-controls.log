@@ -1,0 +1,17 @@
+=== RUN   TestCodexMalformedPortBoundaries
+=== RUN   TestCodexMalformedPortBoundaries/127.0.0.1:3300:
+    compose_test.go:615: malformed entry cleared: "127.0.0.1:3300:"
+=== RUN   TestCodexMalformedPortBoundaries/[::1:3300:3000
+    compose_test.go:615: malformed entry cleared: "[::1:3300:3000"
+=== RUN   TestCodexMalformedPortBoundaries/::1]:3300:3000
+    compose_test.go:615: malformed entry cleared: "::1]:3300:3000"
+=== RUN   TestCodexMalformedPortBoundaries/[[::1]]:3300:3000
+    compose_test.go:615: malformed entry cleared: "[[::1]]:3300:3000"
+--- FAIL: TestCodexMalformedPortBoundaries (0.00s)
+    --- FAIL: TestCodexMalformedPortBoundaries/127.0.0.1:3300: (0.00s)
+    --- FAIL: TestCodexMalformedPortBoundaries/[::1:3300:3000 (0.00s)
+    --- FAIL: TestCodexMalformedPortBoundaries/::1]:3300:3000 (0.00s)
+    --- FAIL: TestCodexMalformedPortBoundaries/[[::1]]:3300:3000 (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/forge	0.254s
+FAIL
