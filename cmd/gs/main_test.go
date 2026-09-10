@@ -375,6 +375,13 @@ func TestFetchSummaryRejectsSlowAndMovingResident(t *testing.T) {
 	}
 }
 
+// slowAuditNotice is the exact line loadSnapshotWithProgress writes to
+// standard error once a local audit passes a second. It is a fact about how
+// loaded the machine is, not about the act a command was given, so tests that
+// check what a command said about its own work tolerate this line and nothing
+// else.
+const slowAuditNotice = "gs: verifying the durable log; this may take a while"
+
 func TestSlowLocalAuditReportsProgressWithoutChangingTheResult(t *testing.T) {
 	t.Parallel()
 	want := app.Snapshot{Genesis: "genesis", Head: "head", Depth: 7}
@@ -5057,7 +5064,7 @@ func TestBatchProcessReadsItsFileAndReportsFailures(t *testing.T) {
 			}
 
 			command := exec.Command(binary, "batch", "--repo", repo, "--as", "human", path)
-			const notice = "gs: verifying the durable log; this may take a while"
+			const notice = slowAuditNotice
 			withProgress := name == "positional file with stderr progress"
 			if withProgress {
 				// Emit a notice before exec replaces the shell with the real gs.
