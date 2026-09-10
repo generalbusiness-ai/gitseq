@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:78992382406ebb1e8139e3c9c0c71515578cbd7f","text":"Merge retired a covered predecessor; the successor is at notes/2026-09-09-lane-identity-changes-for-adoption.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:822463397a84096c736468e3360075136e4422c6","text":"Merge retired a covered predecessor; the successor is at internal/gitstore/lineage.go."}
