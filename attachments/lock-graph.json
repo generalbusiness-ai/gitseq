@@ -1,0 +1,48 @@
+{
+  "base_head": "869702241e4d28c9b8599e8caccaf3d01a2ca4d9",
+  "package_count": 151,
+  "changed_packages": [
+    "node_modules/nanoid"
+  ],
+  "before": {
+    "version": "3.3.17",
+    "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.17.tgz",
+    "integrity": "sha512-xQLf0A3HOMlgHq0n247/LRuAOYmB7dXJ/DvAxGvsSBij45XtBSmQycu+F8ODbHwns/XyFZagyL1+J0Offw1E0g==",
+    "dev": true,
+    "funding": [
+      {
+        "type": "github",
+        "url": "https://github.com/sponsors/ai"
+      }
+    ],
+    "license": "MIT",
+    "bin": {
+      "nanoid": "bin/nanoid.cjs"
+    },
+    "engines": {
+      "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
+    }
+  },
+  "after": {
+    "version": "3.3.18",
+    "resolved": "https://registry.npmjs.org/nanoid/-/nanoid-3.3.18.tgz",
+    "integrity": "sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==",
+    "dev": true,
+    "funding": [
+      {
+        "type": "github",
+        "url": "https://github.com/sponsors/ai"
+      }
+    ],
+    "license": "MIT",
+    "bin": {
+      "nanoid": "bin/nanoid.cjs"
+    },
+    "engines": {
+      "node": "^10 || ^12 || ^13.7 || ^14 || >=15.0.1"
+    }
+  },
+  "registry_integrity_matches": true,
+  "postcss_nanoid_range": "^3.3.17",
+  "unrelated_bundled_metadata_excluded": 6
+}

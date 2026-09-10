@@ -1,0 +1,28 @@
+{
+  "workflow_command": "npm audit --package-lock-only --include=dev --audit-level=high",
+  "job_working_directory": "ui",
+  "fixture_directory": "/var/folders/2x/wylr59t17ds36l1l7ng25y7w0000gn/T/git22846-audit-exit-xn805y1u",
+  "cases": [
+    {
+      "case": "high",
+      "exit": 1,
+      "diagnostic": "fixture high advisory"
+    },
+    {
+      "case": "swallow-status omission control",
+      "exit": 0,
+      "expected_failure_detected": true
+    },
+    {
+      "case": "registry",
+      "exit": 42,
+      "diagnostic": "fixture registry unavailable"
+    },
+    {
+      "case": "moderate",
+      "exit": 0,
+      "diagnostic": "fixture moderate advisory"
+    }
+  ],
+  "scope": "Ephemeral shell propagation fixture; not a live database regression test. Before/after real npm audits are separate."
+}
