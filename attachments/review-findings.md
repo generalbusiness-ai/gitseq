@@ -1,9 +1,0 @@
-Review findings at 810a947c267a1d929784a4bfd9c3cea8efe29735
-
-All twenty previous independent controls pass. The added single-host/container-range refusal also passes and agrees with the immutable Docker reference nat.go:208-214. The two added positive controls fail: short127.0.0.1:3300:003000 and long published:"003300" with target3000/host_ip127.0.0.1 are refused. The new len(port)>5 guard confuses representation length with numeric value; these values are3000 and3300. The complete23-case independent batch has21 passes and2 expected-success failures, exit1/0.305s. The unchanged spike suite passes.
-
-Docker go-connections9c9e2db764937383effc099843914897c8838056 uses strconv.ParseInt(rawPort,10,0) and then checks0..65535; decimal leading zeros are accepted. Source reference: https://github.com/docker/go-connections/blob/9c9e2db764937383effc099843914897c8838056/nat/parse.go#L47 . The previous digit-only implementation also allowed these strings; the length guard introduces the refusal during the numeric correction. No Docker runtime was executed.
-
-The smaller replacement is standard-library strconv.ParseUint(port,10,16), handling its error before using its returned value, then returning int(value). Preserve the existing empty-host-slot policy, range-order and width checks. An executed Go1.26.7 control confirms003000->3000,003300->3300,65535 succeeds, and65536/oversized all-digit input fail. This removes the custom length cap and digit accumulation without a new external dependency. Keep both padded-decimal success controls beside the existing upper-bound/refusal cases.
-
-The exact checkout remains clean; tests were appended through an owned overlay. Corrections remain on c800b95e, with fresh exact-head artifacts and independent review. No full-module or deployed-service test ran. This is a compatibility/simplification correction to the current request, not a new general Compose implementation.
