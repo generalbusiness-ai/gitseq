@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui/package-lock.json","body":{"commit":"32660749aad93bff40c93f6aedf6b80a186dd489","path":"ui/package-lock.json"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:079cec4173f106121408b8889732aa0d171883d0","text":"Merge retired a covered predecessor; the successor is at ui/package-lock.json."}
