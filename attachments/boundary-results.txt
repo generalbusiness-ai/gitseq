@@ -1,0 +1,21 @@
+=== RUN   TestCodexPortGateAdditionalBoundaries
+=== RUN   TestCodexPortGateAdditionalBoundaries/malformed_target_with_allowed_host
+    compose_test.go:485: unsafe=false, want true; findings=[]
+=== RUN   TestCodexPortGateAdditionalBoundaries/unsupported_protocol_with_allowed_host
+    compose_test.go:485: unsafe=false, want true; findings=[]
+=== RUN   TestCodexPortGateAdditionalBoundaries/IPv4_range
+=== RUN   TestCodexPortGateAdditionalBoundaries/bracketed_IPv6_range
+=== RUN   TestCodexPortGateAdditionalBoundaries/documented_unbracketed_IPv6_loopback
+    compose_test.go:485: unsafe=true, want false; findings=[forge port ::1:6000:6000 is not a short form this check understands; a port entry this check cannot read is not a port entry it can clear]
+=== RUN   TestCodexPortGateAdditionalBoundaries/second_document_wildcard_port
+    compose_test.go:485: unsafe=false, want true; findings=[]
+--- FAIL: TestCodexPortGateAdditionalBoundaries (0.00s)
+    --- FAIL: TestCodexPortGateAdditionalBoundaries/malformed_target_with_allowed_host (0.00s)
+    --- FAIL: TestCodexPortGateAdditionalBoundaries/unsupported_protocol_with_allowed_host (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/IPv4_range (0.00s)
+    --- PASS: TestCodexPortGateAdditionalBoundaries/bracketed_IPv6_range (0.00s)
+    --- FAIL: TestCodexPortGateAdditionalBoundaries/documented_unbracketed_IPv6_loopback (0.00s)
+    --- FAIL: TestCodexPortGateAdditionalBoundaries/second_document_wildcard_port (0.00s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/spike/forge	0.496s
+FAIL
