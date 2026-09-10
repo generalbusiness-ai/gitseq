@@ -44,6 +44,26 @@ jobs:
       - name: Scan Go dependencies for known advisories
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
+  npm-advisories:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out the candidate without stored credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      # Audit the locked build dependencies too, without installing them.
+      # The threshold changes the exit status, not the diagnostic output.
+      - name: Scan locked UI dependencies for known advisories
+        working-directory: ui
+        run: npm audit --package-lock-only --include=dev --audit-level=high
+
   secrets:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
