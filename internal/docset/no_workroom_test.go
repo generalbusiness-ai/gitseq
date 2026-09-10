@@ -52,7 +52,7 @@ rests_on:
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(executable, "-test.run=^TestGateEveryNamedActResolvesToALiveRecord$", "-test.v")
+	command := exec.Command(executable, "-test.run=^TestGateEveryNamedActResolvesToAUsableBasis$", "-test.v")
 	command.Dir = root
 	// app.Open resolves through git, which honours GIT_DIR over the walk-up, so
 	// an inherited Git environment points the subprocess at a real workroom and
@@ -70,7 +70,7 @@ rests_on:
 	if !strings.Contains(result, noWorkroomSkipReason) {
 		t.Fatalf("citation gate did not skip for the absent workroom; wanted %q in:\n%s", noWorkroomSkipReason, result)
 	}
-	if !strings.Contains(result, "--- SKIP: TestGateEveryNamedActResolvesToALiveRecord") {
+	if !strings.Contains(result, "--- SKIP: TestGateEveryNamedActResolvesToAUsableBasis") {
 		t.Fatalf("citation gate did not report an explicit skip without a workroom:\n%s", result)
 	}
 }

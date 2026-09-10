@@ -29,8 +29,14 @@ import (
 // *right* one for the prose on that page. That is a judgement about what the
 // text claims against what the code does, and nothing in this repository can
 // make it.
+//
+// Nor does it promise that every cited artifact is live. Live means not
+// retired, and a retirement that names a successor covering the same path
+// leaves the page somewhere to go: that is reported as a flare, along with
+// ordinary staleness. Only a citation that can never serve as a basis fails
+// here, which is what ClassifyCitation decides.
 
-func TestGateEveryNamedActResolvesToALiveRecord(t *testing.T) {
+func TestGateEveryNamedActResolvesToAUsableBasis(t *testing.T) {
 	root := mustRoot(t)
 	pages := mustPages(t, root)
 	acts := declaredActs(pages)
