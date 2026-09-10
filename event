@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:340ad444112d7f039c548fa3d7578bc88c8678a2","text":"Retire the S1 artifact at 557ef676 for docs/reference/architecture.md; successor a1d080b64ab7cb3786c466ee0f75d571bc06f755 at e962fa7b on the same promise a4c569b1."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:91245d4dbe4d6c913c4aa123a8c69e9675901cee","text":"Retire the S1 artifact at 557ef676 for docs/reference/landing-observations.md; successor 334160c59f1fbc0c849d9443e36a543400f8fbd8 at e962fa7b on the same promise a4c569b1."}
