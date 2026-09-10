@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cc3dbaa1392939454356feb48d0cf14948e1a4cd","text":"Retire cmd/gs/main_test.go artifact at e7f8e6ff (shared head moved); successor 562e1d4a996333d4e53282e2bf04ade416d2615c at 870ee66f."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:26b0c73b8ba179e9fac1f3993bf3fd89ea7fb50e","text":"Retire cmd/gs/event_reference_test.go artifact at e7f8e6ff (shared head moved); successor 27c39eb799e20dc8e788cea48c7653af486987de at 870ee66f on the same promise a49e9916."}
