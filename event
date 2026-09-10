@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/docset/no_workroom_test.go","body":{"commit":"2cc23f19e00e3b62c52cd1816c7a5b46c5eb554c","path":"internal/docset/no_workroom_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:54cbbade8878d60ebba373f1c3aceb5f6d9a0e08","text":"Merge retired a covered predecessor; the successor is at internal/docset/anchor_test.go."}
