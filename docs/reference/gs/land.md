@@ -13,9 +13,9 @@ head is in the target — remove the worktree and branch the work was done
 on.
 
 It adds no authority. The merge it runs is [`gs merge`](merge.md)'s own
-locked transaction, with the same validation, the same succession and the
-same receipt. What it adds is the order, and the refusals that cost most
-when they arrive late.
+locked transaction, with the same validation, succession and receipt. What
+it adds is the order, the refusals that cost most when they arrive late,
+and a lease on every deletion.
 
 ## Flags
 
@@ -126,11 +126,18 @@ than on the previous command appearing to work:
 - Exactly one local branch must point at the candidate. None, or more than
   one, is reported and nothing is deleted, because which branch the work
   was done on is then not decidable.
+- The local branch is deleted with `git update-ref -d <ref> <candidate>`,
+  one compare-and-swap against the tip just measured. A branch somebody
+  advanced in between keeps its commits, and the refusal names both tips.
+- On origin, the remote tip is read first. A tip that is not the head that
+  landed carries work this landing did not include: it is kept and
+  reported, never deleted. A tip that is the landed head is deleted under
+  `--force-with-lease=<ref>:<candidate>`, so one that moves between the
+  reading and the push is rejected by the remote rather than overwritten.
 - The worktree is removed first, then the local branch, then the branch on
   origin. A failure to remove the worktree stops the sequence with the
-  branch intact.
-- A branch that was never pushed makes the origin deletion fail. That is
-  reported and is not an error.
+  branch intact, and nothing about the remote can fail the command: the
+  landing is already complete, so what is left is reported.
 
 ## See also
 

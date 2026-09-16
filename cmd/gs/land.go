@@ -13,20 +13,13 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 )
 
-// landCommand finishes an approved lane: ratify the approval if that is yours
-// to do, run the read-only merge plan, run the merge, push the target, and —
-// only once the head is provably in the target — remove the worktree and
-// branch the work was done on.
-//
-// It adds no authority. The merge it runs is gs merge's own locked path, with
-// the same validation, the same succession and the same receipt. What it adds
-// is the order, and the two refusals that cost the most when they are found
-// late: --checkout is the *target* checkout, not the candidate's worktree, and
-// a dirty target checkout stops a merge after the approval has been reserved.
-//
-// Cleanup is gated on `git merge-base --is-ancestor`, never on the merge
-// having appeared to succeed. A deleted branch whose commits reached nowhere
-// is the one failure here that cannot be undone from the log.
+// landCommand finishes an approved lane: ratify when that is this actor's act,
+// preview, merge, push, and — only once Git says the head is in the target —
+// remove the worktree and branch. It adds no authority; the merge is gs merge's
+// own locked transaction. What it adds is the order, stated in
+// docs/reference/gs/land.md. Two invariants govern this file: nothing durable
+// is appended before the read-only refusals, and no deletion follows from a
+// durable act having succeeded.
 func landCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("land", arguments)
 	as := set.String("as", "", "actor recording the merge receipt")
@@ -93,9 +86,8 @@ func landCommand(ctx context.Context, arguments []string) error {
 	return cleanupCandidate(ctx, *checkout, candidate, targetRef, landed)
 }
 
-// approvedCandidate reads the exact head the verdict approved. Nothing else
-// says which commit a landing is of: an approval names an immutable head, and
-// asking the caller to repeat it is asking them to mistype it.
+// approvedCandidate reads the exact head the verdict approved, rather than
+// asking the caller to retype an immutable hash.
 func approvedCandidate(session *stepSession, approval string) (string, error) {
 	for _, review := range session.projection().Reviews {
 		if review.Report != approval {
@@ -116,10 +108,9 @@ func approvedCandidate(session *stepSession, approval string) (string, error) {
 	return "", fmt.Errorf("%s is not a review verdict in this workroom; gs land takes the approval report gs review filed (`gs reviews` lists them)", short(approval))
 }
 
-// ratifyApprovalIfOurs closes the one gap between an approval and a merge that
-// the merger can close themselves. The review requester ratifies the verdict,
-// and when the merger is that requester the extra command is ceremony: the
-// fold judges the act either way.
+// ratifyApprovalIfOurs closes the one gap the merger can close themselves. The
+// fold admits a ratification only from the review requester, so this offers it
+// only to that actor and judges nothing itself.
 func ratifyApprovalIfOurs(session *stepSession, approval string) error {
 	statement, found := session.statement(approval)
 	if !found {
@@ -148,9 +139,8 @@ func ratifyApprovalIfOurs(session *stepSession, approval string) error {
 }
 
 // landingTargetRef is where this approval's implementation is owed. A
-// self-initiated or evidence-only approval has no commitment lane, and that is
-// not an error here: the merge plan judges the destination either way, and
-// this is only what the checkout is compared against.
+// self-initiated or evidence-only approval has no lane, which is not an error:
+// the merge plan judges the destination either way.
 func landingTargetRef(session *stepSession, approval string) string {
 	commitment, err := approvalImplementationCommitment(session.projection(), approval)
 	if err != nil {
@@ -183,8 +173,8 @@ func currentBranchRef(ctx context.Context, checkout string) string {
 	return strings.TrimSpace(standing)
 }
 
-// requireCleanCheckout names the files, because "the checkout is dirty" sends
-// a reader to `git status` to learn what this command already read.
+// requireCleanCheckout names the files it found, rather than sending a reader
+// back to `git status`.
 func requireCleanCheckout(ctx context.Context, checkout string) error {
 	status, err := git(ctx, checkout, "status", "--porcelain=v1", "-uall")
 	if err != nil {
@@ -212,7 +202,7 @@ func requireCleanCheckout(ctx context.Context, checkout string) error {
 }
 
 // previewMerge runs the read-only plan first, so a refusal arrives before the
-// approval is reserved and before anything is staged in the checkout.
+// approval is reserved and before anything is staged.
 func previewMerge(ctx context.Context, session *stepSession, checkout, candidate, approval string) error {
 	_, private, err := session.workspace.Actor(session.actor)
 	if err != nil {
@@ -234,10 +224,9 @@ func previewMerge(ctx context.Context, session *stepSession, checkout, candidate
 	return fmt.Errorf("the merge plan refuses this landing, and nothing was appended or staged:\n  %s", strings.Join(refusals, "\n  "))
 }
 
-// runLandingMerge is gs merge's own locked transaction, run here rather than
-// reimplemented. A frontier that moved between planning and landing is
-// retried exactly once: the refusal leaves nothing behind, and the only
-// honest recovery is to plan again against the world as it is now.
+// runLandingMerge is gs merge's own locked transaction. A frontier that moved
+// between planning and landing is retried exactly once: that refusal leaves
+// nothing behind, so the only honest recovery is to plan again.
 func runLandingMerge(ctx context.Context, session *stepSession, checkout, candidate, approval, text string) error {
 	authorization := ""
 	merge := func() error {
@@ -254,10 +243,9 @@ func runLandingMerge(ctx context.Context, session *stepSession, checkout, candid
 	return err
 }
 
-// pushTarget publishes what landed. A repository with no origin is an ordinary
-// arrangement, not a failure, and says so; a push that fails with an origin
-// present is reported as the error it is, because the next step would delete
-// the only other copy of those commits.
+// pushTarget publishes what landed. No origin is an ordinary arrangement and
+// says so; a push that fails with an origin present is an error, because the
+// next step would delete the only other copy of those commits.
 func pushTarget(ctx context.Context, checkout, targetRef string) error {
 	if targetRef == "" {
 		fmt.Fprintln(os.Stderr, "gs: this landing states no target ref, so nothing was pushed")
@@ -276,8 +264,10 @@ func pushTarget(ctx context.Context, checkout, targetRef string) error {
 
 // cleanupCandidate removes the worktree and branch the work was done on, and
 // only after Git has said the candidate is in the target. Everything here is
-// irreversible, so each step is gated on the measurement before it rather than
-// on the previous command appearing to have worked.
+// irreversible, so each step is gated on a measurement taken immediately
+// before it rather than on the previous command appearing to have worked, and
+// each deletion carries the tip it expects so a ref somebody advanced in the
+// meantime keeps its commits.
 func cleanupCandidate(ctx context.Context, checkout, candidate, targetRef, landed string) error {
 	contained, err := isAncestor(ctx, checkout, candidate, targetRef)
 	if err != nil {
@@ -298,16 +288,59 @@ func cleanupCandidate(ctx context.Context, checkout, candidate, targetRef, lande
 		}
 		fmt.Fprintf(os.Stderr, "gs: removed worktree %s\n", worktree)
 	}
-	if _, err := git(ctx, checkout, "branch", "-D", branch); err != nil {
-		return fmt.Errorf("the landing is complete, but branch %s could not be deleted: %w", branch, err)
+	if err := deleteLandedBranch(ctx, checkout, branch, candidate); err != nil {
+		return err
 	}
-	fmt.Fprintf(os.Stderr, "gs: deleted branch %s\n", branch)
-	if _, err := git(ctx, checkout, "push", "origin", "--delete", branch); err != nil {
-		fmt.Fprintf(os.Stderr, "gs: branch %s was not deleted on origin (%v); it may never have been pushed\n", branch, err)
+	deleteLandedRemoteBranch(ctx, checkout, branch, candidate)
+	return nil
+}
+
+// deleteLandedBranch removes the local branch, and only while it still points
+// at the head that landed. `git update-ref -d` takes the value it expects, so
+// this is one compare-and-swap rather than a measurement followed by a forced
+// delete: a branch somebody advanced in between keeps its commits, and says so.
+func deleteLandedBranch(ctx context.Context, checkout, branch, candidate string) error {
+	ref := "refs/heads/" + branch
+	tip, err := git(ctx, checkout, "rev-parse", "--verify", "--end-of-options", ref+"^{commit}")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gs: branch %s is already gone here\n", branch)
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "gs: deleted branch %s on origin\n", branch)
+	if strings.TrimSpace(tip) != candidate {
+		return fmt.Errorf("the landing is complete, but branch %s is at %s, not the head that landed (%s), so it carries commits this landing did not include; nothing was deleted. Review them, then delete the branch yourself",
+			branch, short(strings.TrimSpace(tip)), short(candidate))
+	}
+	if _, err := git(ctx, checkout, "update-ref", "-d", ref, candidate); err != nil {
+		return fmt.Errorf("the landing is complete, but branch %s moved off %s while it was being deleted, so it was left alone: %w", branch, short(candidate), err)
+	}
+	fmt.Fprintf(os.Stderr, "gs: deleted branch %s\n", branch)
 	return nil
+}
+
+// deleteLandedRemoteBranch is the same rule one network hop away, and it never
+// fails the command: the landing is already complete, and what is left is a ref
+// on a remote that may hold work nobody here has seen. A remote tip that is not
+// the head that landed is reported and kept — deleting it would drop commits
+// this repository does not have — and the deletion itself carries a lease, so a
+// tip that moves between the reading and the push is rejected by the remote
+// rather than overwritten.
+func deleteLandedRemoteBranch(ctx context.Context, checkout, branch, candidate string) {
+	ref := "refs/heads/" + branch
+	tip, err := remoteBranchHead(ctx, checkout, "origin", ref)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gs: origin's %s could not be read (%v), so it was left alone; it may never have been pushed\n", branch, err)
+		return
+	}
+	if tip != candidate {
+		fmt.Fprintf(os.Stderr, "gs: origin's %s is at %s, not the head that landed (%s), so it carries work this landing did not include and was left alone; fetch and review it before deleting it\n",
+			branch, short(tip), short(candidate))
+		return
+	}
+	if _, err := git(ctx, checkout, "push", "origin", "--force-with-lease="+ref+":"+candidate, "--delete", ref); err != nil {
+		fmt.Fprintf(os.Stderr, "gs: origin's %s was not deleted (%v); it was left as it stands\n", branch, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "gs: deleted branch %s on origin\n", branch)
 }
 
 // candidateBranch is the one local branch still pointing at the approved head.

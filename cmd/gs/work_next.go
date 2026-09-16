@@ -14,16 +14,10 @@ import (
 // gs work --next answers the question the work page leaves to the reader:
 // given this row, what is the next act, exactly as it would be typed?
 //
-// It is a formatter, not a second rule set. Every row comes from the same
-// bounded query gs work already runs; this walks those rows and prints the one
-// command each one owes, with a `#` comment naming the row it came from. A row
-// that owes nothing says why, because "nothing printed" and "nothing owed"
-// must not look the same.
-//
-// Where a fact is not in the projection — the path a head changed, the
-// checkout a reviewer will read — the line carries an angle-bracketed
-// placeholder. A command line with a hole in it is still the shape of the act,
-// and it is honest about which part only the actor knows.
+// It is a formatter, not a second rule set: the rows are the same bounded query
+// gs work already runs, and the act is chosen from the row's own performer and
+// requester. A row that owes nothing says why, because "nothing printed" and
+// "nothing owed" must not look the same. See docs/reference/gs/work.md.
 type nextWorld struct {
 	projection  workroom.Projection
 	fingerprint string
@@ -84,25 +78,23 @@ func (w nextWorld) row(item statusview.WorkItem) string {
 	return out.String()
 }
 
-// acts maps one row to the act its reader owes. The question asked first is
-// *whose* row this is: a commitment has a performer and a requester, and the
-// acts are not interchangeable. Telling a requester to publish the performer's
-// artifacts prints a command the preflight would refuse, which is worse than
-// printing nothing.
+// acts maps one row to the act its reader owes. Whose row it is comes first: a
+// requester told to publish the performer's artifacts gets a line the preflight
+// refuses, which is worse than no line at all.
 func (w nextWorld) acts(item statusview.WorkItem, event string) []string {
 	performer := item.Performer != nil && item.Performer.Fingerprint == w.fingerprint
 	requester := item.Requester.Fingerprint == w.fingerprint
 	switch {
 	case item.Lane == statusview.LaneAwaitingRatification:
-		return []string{w.command("ratify", "%s", event)}
+		return []string{w.command("ratify", "%s", datum(event))}
 	case item.Lane == statusview.LaneAvailable:
-		return []string{w.command("promise", "%s", event),
-			"#   or decline: " + w.command("state", "--kind assert --rests-on %s --text '<why you decline>'", event) +
+		return []string{w.command("promise", "%s", datum(event)),
+			"#   or decline: " + w.command("state", "--kind assert --rests-on %s --text %s", datum(event), hole("why you decline")) +
 				", and ask " + item.Requester.Name + " to retire it"}
 	case item.Status == "reported" && requester && item.Report != "":
 		// The performer reported and the requester ratifies. This is the one
 		// row whose next act belongs to the actor who asked for the work.
-		return []string{w.command("ratify", "%s", item.Report)}
+		return []string{w.command("ratify", "%s", datum(item.Report))}
 	case performer && owesPublication(item):
 		return w.promised(item, event)
 	case performer && item.Status == "awaiting-review":
@@ -118,10 +110,9 @@ func (w nextWorld) acts(item statusview.WorkItem, event string) []string {
 	}
 }
 
-// owesPublication reports a claimed row that has published nothing yet.
-// "stale" is a lifecycle word the fold writes over "promised" when a basis
-// under the lane was retired and no report has landed, so a row wearing it
-// still owes exactly what a promised row owes.
+// owesPublication reports a claimed row that has published nothing yet. The
+// fold writes "stale" over "promised" when a basis moved and no report landed,
+// and such a row still owes what a promised row owes.
 func owesPublication(item statusview.WorkItem) bool {
 	if item.Status == "promised" {
 		return true
@@ -135,18 +126,18 @@ func owesPublication(item statusview.WorkItem) bool {
 // everything else reports by publishing its head.
 func (w nextWorld) promised(item statusview.WorkItem, event string) []string {
 	request := w.statements[event].Body
-	promise := orPlaceholder(item.Promise, "promise")
+	promise := dataOrHole(item.Promise, "promise")
 	switch {
 	case request["artifact"] != "":
 		return []string{w.command("review", "--checkout %s --artifact %s --promise %s --verdict %s --text-file %s",
-			placeholder("checkout at "+short(request["head"])), request["artifact"], promise,
-			placeholder("approved|changes-requested"), placeholder("your review"))}
+			hole("checkout at "+short(request["head"])), datum(request["artifact"]), promise,
+			hole("approved|changes-requested"), hole("your review"))}
 	case request["no_git_artifact"] == "true":
 		return []string{w.command("state", "--kind report --rests-on %s --text %s",
-			promise, placeholder("the result, and the conditions actually met"))}
+			promise, hole("the result, and the conditions actually met"))}
 	default:
 		return []string{w.command("artifact", "--head %s --promise %s %s",
-			orPlaceholder(item.ReportedHead, "head"), promise, placeholder("path…"))}
+			dataOrHole(item.ReportedHead, "head"), promise, hole("path…"))}
 	}
 }
 
@@ -154,22 +145,23 @@ func (w nextWorld) promised(item statusview.WorkItem, event string) []string {
 // depends on whether a verdict has been filed, and on whether that verdict has
 // been ratified by the actor who asked for it.
 func (w nextWorld) awaitingReview(item statusview.WorkItem, event string) []string {
-	head := orPlaceholder(item.ReportedHead, "head")
+	head := dataOrHole(item.ReportedHead, "head")
 	review := item.LatestReview
 	switch {
 	case review == nil && w.liveReviewRequest(item):
 		return []string{"#   nothing for you: a review request is live and no verdict has been filed yet"}
 	case review == nil:
-		return []string{w.command("review-request", "--head %s --to %s", head, placeholder("reviewer"))}
+		return []string{w.command("review-request", "--head %s --to %s", head, hole("reviewer"))}
 	case review.Verdict != "approved":
 		return []string{
 			fmt.Sprintf("#   %s: correct the head, then publish a fresh artifact and ask for review again", review.Verdict),
-			w.command("artifact", "--head %s --promise %s %s", placeholder("corrected head"), orPlaceholder(item.Promise, "promise"), placeholder("path…")),
+			w.command("artifact", "--head %s --promise %s %s", hole("corrected head"),
+				dataOrHole(item.Promise, "promise"), hole("path…")),
 		}
 	case !review.Ratified:
 		lines := []string{}
 		if w.requestedReview(review.Report) {
-			lines = append(lines, w.command("ratify", "%s", review.Report))
+			lines = append(lines, w.command("ratify", "%s", datum(review.Report)))
 		} else {
 			lines = append(lines, fmt.Sprintf("#   the approval is unratified; only its review requester may ratify it: gs ratify %s", short(review.Report)))
 		}
@@ -193,7 +185,7 @@ func (w nextWorld) landLine(approval, targetRef string) string {
 		where = "checkout on " + targetRef
 	}
 	return w.command("land", "--approval %s --checkout %s --text %s",
-		orPlaceholder(approval, "approval"), placeholder(where), placeholder("what landed and why it matters"))
+		dataOrHole(approval, "approval"), hole(where), hole("what landed and why it matters"))
 }
 
 // liveReviewRequest reports whether this actor already has an unclosed review
@@ -236,9 +228,9 @@ func (w nextWorld) requestedReview(report string) bool {
 	return false
 }
 
-// assertsOnPromises surfaces the breakdowns filed against this actor's
-// promises. They are not commitments and never appear as work rows, so
-// without this they are found only by somebody who thought to look.
+// assertsOnPromises surfaces breakdowns filed against this actor's promises.
+// They are not commitments and never appear as rows, so without this they are
+// found only by somebody who thought to look.
 func (w nextWorld) assertsOnPromises() []string {
 	mine := map[string]bool{}
 	for _, statement := range w.projection.Statements {
@@ -262,7 +254,7 @@ func (w nextWorld) assertsOnPromises() []string {
 			notes = append(notes, note{sequence: statement.Sequence,
 				line: fmt.Sprintf("\n# assert on your promise %s by %s\n#   %s\n%s\n",
 					short(basis), statusview.ActorName(w.projection, statement.Actor), oneLine(statement.Text, 110),
-					w.command("inspect", "%s", statement.Event))})
+					w.command("inspect", "%s", datum(statement.Event)))})
 			break
 		}
 	}
@@ -277,21 +269,79 @@ func (w nextWorld) assertsOnPromises() []string {
 	return lines
 }
 
-// command prints one line an actor can copy: the subcommand, the identity it
-// is signed as, and the rest. The identity is named because a line that signs
-// as whoever the environment happens to hold is not exact.
-func (w nextWorld) command(subcommand, format string, arguments ...any) string {
-	return "gs " + subcommand + " --as " + w.actor + " " + fmt.Sprintf(format, arguments...)
+// A generated line carries two kinds of argument, and they must not be treated
+// alike. A hole is written as it stands and is deliberately not shell-safe, so
+// that it cannot be mistaken for something runnable: the reader has to replace
+// it. Data — an actor name, an event identifier, a path — is quoted, because an
+// actor name may legally contain a space or a shell metacharacter, and a
+// copyable line that splits one name into two arguments is not the act it
+// claims to be.
+type token struct {
+	text  string
+	quote bool
 }
 
-func placeholder(what string) string { return "<" + what + ">" }
-
-func orPlaceholder(value, what string) string {
-	if value == "" {
-		return placeholder(what)
+// String is how a token reaches a line: quoted if it is data, verbatim if it
+// is a hole or a fixed word.
+func (t token) String() string {
+	if t.quote {
+		return shellQuote(t.text)
 	}
-	return value
+	return t.text
 }
+
+func hole(what string) token   { return token{text: "<" + what + ">"} }
+func datum(value string) token { return token{text: value, quote: true} }
+
+// dataOrHole is the distinction that matters at a call site: a fact the
+// projection carries is data, and its absence is a hole.
+func dataOrHole(value, what string) token {
+	if value == "" {
+		return hole(what)
+	}
+	return datum(value)
+}
+
+// commandTakesActor names the subcommands that sign as somebody, so a line is
+// never printed with a flag its command does not define. `gs inspect` reads and
+// signs nothing, and `--as` on it is a parse error rather than a nicety.
+var commandTakesActor = map[string]bool{
+	"promise": true, "artifact": true, "review-request": true, "review": true,
+	"land": true, "state": true, "ratify": true, "supersede": true, "merge": true,
+}
+
+// command prints one line an actor can copy: the subcommand, the identity it
+// signs as when that command takes one, and the arguments. The identity is
+// named because a line that signs as whoever the environment happens to hold
+// is not exact.
+func (w nextWorld) command(subcommand, format string, arguments ...any) string {
+	line := "gs " + subcommand
+	if commandTakesActor[subcommand] {
+		line += " --as " + shellQuote(w.actor)
+	}
+	if format == "" {
+		return line
+	}
+	return line + " " + fmt.Sprintf(format, arguments...)
+}
+
+// shellQuote writes one argument for the shell this output is meant to be
+// pasted into. Anything outside the unambiguous set is single-quoted, and an
+// embedded single quote is closed, escaped and reopened, which is the only
+// escape a POSIX single-quoted string has.
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	if strings.IndexFunc(value, func(r rune) bool { return !strings.ContainsRune(shellSafe, r) }) < 0 {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+// shellSafe is the set a shell passes through unchanged. Event identifiers and
+// ordinary paths are made of it, so the common line stays readable.
+const shellSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-#"
 
 // waitingName reads who the row is waiting on, falling back to the addressee:
 // an open request nobody has claimed waits on the actor it was addressed to,

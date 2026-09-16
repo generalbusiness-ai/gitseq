@@ -71,10 +71,8 @@ gs review-request --repo "$REPO" --as bot --head "$HEAD_COMMIT" --to @carol
 | `--to` names you | that a review is by a different actor |
 | `--to` names nobody on the roster | the live roster actors |
 
-The mixed-head refusal is the one that saves the most work. `gs review`
-refuses a set whose artifacts stand at different heads, and it refuses at
-*signing* — after the reviewer has read everything. Refusing here costs
-nobody a reading.
+The mixed-head refusal saves the most work: `gs review` refuses such a set
+at *signing*, after the reviewer has read everything.
 
 ## Refiling cancels work in flight
 

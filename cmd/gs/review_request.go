@@ -12,22 +12,14 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// reviewRequestCommand asks a different actor to review one exact head.
-//
-// The shape it encodes is the one gs review will judge later: the request
-// rests on every live artifact standing at that head, and names the reporting
-// artifact — the newest artifact on the promise — in body.artifact, because
-// the verdict resolves its lane through that field. A review request that
-// rests on the promise instead of the artifacts, or that names the wrong
-// artifact first, produces a verdict bound to nothing and a merge that cannot
-// use it.
-//
-// It refuses a set that does not stand at one head, because gs review refuses
-// a mixed-head set at signing, after the reviewer has done the reading. And it
-// refuses a second live review request for the same promise unless --replace,
-// because refiling cancels review work already in flight: the reviewer's
-// promise is on the request that was retired, and a verdict filed against it
-// lands bound to nothing.
+// reviewRequestCommand writes the shape gs review judges later: the request
+// rests on every live artifact standing at the head — not on the promise — and
+// names the reporting artifact in body.artifact, because the verdict resolves
+// its lane through that field. It refuses a mixed-head set, which gs review
+// refuses only at signing, after the reviewer has read everything; and it
+// refuses a second live review request, because refiling releases the
+// reviewer's promise and a verdict filed against the retired request binds to
+// nothing. See docs/reference/gs/review-request.md.
 type reviewArtifact struct {
 	event    string
 	path     string
@@ -144,8 +136,7 @@ func reviewRequestCommand(ctx context.Context, arguments []string) error {
 }
 
 // artifactsAt is every live artifact this actor has standing at one head, in
-// the order they were signed. The last of them is the newest, which is the
-// reporting artifact the lane reads and the one a verdict must name first.
+// the order they were signed.
 func (s *stepSession) artifactsAt(head string) []reviewArtifact {
 	var standing []reviewArtifact
 	for _, artifact := range s.projection().Artifacts {
@@ -159,11 +150,9 @@ func (s *stepSession) artifactsAt(head string) []reviewArtifact {
 	return standing
 }
 
-// singlePromiseUnder reads the lane straight out of the artifacts' own bases.
-// Two promises under one head are two commitments, and one request cannot ask
-// for a review of both: the verdict would close one and leave the other
-// holding an approval nobody can merge on. Self-initiated work rests on no
-// promise, which is not an error and returns an empty lane.
+// singlePromiseUnder reads the lane out of the artifacts' own bases. Two
+// promises under one head are two commitments, and one verdict cannot close
+// both. Self-initiated work rests on no promise and returns an empty lane.
 func (s *stepSession) singlePromiseUnder(standing []reviewArtifact) (string, error) {
 	found := map[string]bool{}
 	for _, artifact := range standing {
@@ -194,9 +183,9 @@ func (s *stepSession) singlePromiseUnder(standing []reviewArtifact) (string, err
 }
 
 // reportingArtifact is the newest artifact *on the promise* at this head. The
-// newest of everything standing there is a different artifact whenever the
-// head also carries a pointer filed for another reason, and naming that one
-// hands the verdict a lane it does not report.
+// newest of everything standing there is another artifact whenever the head
+// also carries a pointer filed for another reason, and naming that one hands
+// the verdict a lane it does not report.
 func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise string) reviewArtifact {
 	if promise == "" {
 		return standing[len(standing)-1]
@@ -216,8 +205,6 @@ func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise strin
 }
 
 // requireOneHead refuses a set that does not all stand at the reviewed head.
-// gs review makes the same check when the verdict is signed, which is after
-// the reviewer has read everything; making it here costs nobody a reading.
 func (s *stepSession) requireOneHead(promise, head string) error {
 	if promise == "" {
 		return nil
@@ -243,9 +230,9 @@ func (s *stepSession) requireOneHead(promise, head string) error {
 		short(promise), strings.Join(elsewhere, ", "), short(head), head, short(promise))
 }
 
-// liveReviewRequestFor finds the actor's own live, unclosed review request for
-// this lane: a request of theirs resting on any artifact that rests on the
-// promise. That is what a second request would cancel.
+// liveReviewRequestFor finds the actor's own unclosed review request for this
+// lane — a request resting on any artifact of that promise — which is what a
+// second one would cancel.
 func (s *stepSession) liveReviewRequestFor(promise string) string {
 	if promise == "" {
 		return ""
@@ -272,9 +259,8 @@ func (s *stepSession) liveReviewRequestFor(promise string) string {
 	return ""
 }
 
-// rosterFingerprint reads the addressee out of the durable roster before
-// anything is signed, so a misspelled name is a refusal here rather than a
-// request addressed to nobody.
+// rosterFingerprint reads the addressee out of the durable roster, so a
+// misspelled name refuses here rather than addressing a request to nobody.
 func rosterFingerprint(session *stepSession, reference string) (string, error) {
 	name := strings.TrimPrefix(reference, "@")
 	if actor, ok := session.projection().Actors[name]; ok && !actor.Retired {

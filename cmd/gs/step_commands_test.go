@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/docset"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
@@ -191,6 +192,36 @@ func TestPromiseRefusesASecondClaimItDidNotFile(t *testing.T) {
 	f.refuses(t, "you already hold promise", func() error {
 		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", lane.request})
 	})
+}
+
+// A claim filed after a withdrawal has its own key, and repeating that exact
+// command must replay it: only the first claim's key being recognised meant an
+// actor who reneged, claimed again, and repeated the command was told they
+// already held a promise they had just filed.
+func TestPromiseReplaysARetryOfAClaimFiledAfterReneging(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "retry-after-renege", "reviewer", "operator", "retry-after-renege.txt")
+	first := f.promiseLane(t, lane, "operator")
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbSupersede, Target: first, Text: "withdrawn", IdempotencyKey: "renege-retry-after",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	second := f.promiseLane(t, lane, "operator")
+	if second == first {
+		t.Fatal("the second claim replayed the withdrawn promise")
+	}
+	before := f.snapshot(t).Depth
+	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--branch", lane.branch, lane.request}); err != nil {
+		t.Fatalf("repeating the claim filed after reneging: %v", err)
+	}
+	if after := f.snapshot(t).Depth; after != before {
+		t.Fatalf("depth moved from %d to %d; the retry filed a second promise", before, after)
+	}
+	if latest := f.latestStatement(t).Event; latest != second {
+		t.Fatalf("the newest statement is %s, want the promise the retry replayed %s", latest, second)
+	}
 }
 
 // Reneging is visible forever, and it is not a locked door: the fold admits a
@@ -812,6 +843,64 @@ func TestLandCleanupRefusesACandidateTheTargetDoesNotHave(t *testing.T) {
 	}
 }
 
+// A remote branch may hold work this repository has never seen. Landing the
+// commit it was built on says nothing about the commits on top of it, so the
+// remote ref is kept and reported rather than deleted.
+func TestLandCleanupKeepsARemoteBranchThatMovedAhead(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane, _, approval := f.approvedLane(t, "ahead-remote", true)
+	origin := filepath.Join(filepath.Dir(f.repo), "origin.git")
+	testGit(t, "", "init", "-q", "--bare", origin)
+	testGit(t, f.repo, "remote", "add", "origin", origin)
+	testGit(t, f.repo, "push", "-q", "origin", "main")
+	// A commit only origin has: built here, pushed, and never merged.
+	tree := testGit(t, f.repo, "rev-parse", lane.head+"^{tree}")
+	newer := testGit(t, f.repo, "commit-tree", tree, "-p", lane.head, "-m", "remote work nobody merged")
+	testGit(t, f.repo, "push", "-q", "origin", newer+":refs/heads/"+lane.branch)
+
+	notice, err := captureStderr(t, func() error {
+		_, runErr := captureStdout(t, func() error {
+			return landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+				"--checkout", f.repo, "--text", "Land the approved head and leave the remote alone.", "--cleanup"})
+		})
+		return runErr
+	})
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if tip := testGit(t, origin, "rev-parse", "refs/heads/"+lane.branch); tip != newer {
+		t.Fatalf("origin's %s is at %s, want the unmerged tip %s kept", lane.branch, tip, newer)
+	}
+	if !strings.Contains(notice, "carries work this landing did not include") {
+		t.Fatalf("stderr %q does not report the remote it left alone", notice)
+	}
+	// The local branch pointed at the landed head, so that one goes.
+	if branches := testGit(t, f.repo, "branch", "--format=%(refname:short)"); strings.Contains(branches, lane.branch) {
+		t.Fatalf("the local branch was kept although it held nothing new: %q", branches)
+	}
+}
+
+// The local deletion is a compare-and-swap on the tip it measured, so a branch
+// somebody advanced in between keeps its commits and says so.
+func TestLandCleanupRefusesABranchThatMovedAfterMeasurement(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "moved-branch", "reviewer", "operator", "moved-branch.txt")
+	if err := os.WriteFile(filepath.Join(lane.checkout, "moved-branch.txt"), []byte("more\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, lane.checkout, "commit", "-qam", "work the landing did not include")
+	advanced := testGit(t, lane.checkout, "rev-parse", "HEAD")
+
+	err := deleteLandedBranch(f.ctx, f.repo, lane.branch, lane.head)
+	if err == nil || !strings.Contains(err.Error(), "not the head that landed") {
+		t.Fatalf("deleteLandedBranch error = %v, want a refusal naming the moved tip", err)
+	}
+	if tip := testGit(t, f.repo, "rev-parse", "refs/heads/"+lane.branch); tip != advanced {
+		t.Fatalf("branch %s is at %s, want its own tip %s untouched", lane.branch, tip, advanced)
+	}
+}
+
 func TestLandRefusesBeforeItTouchesGitOrTheLog(t *testing.T) {
 	t.Parallel()
 	f := newWorkflowFixture(t)
@@ -1066,7 +1155,7 @@ func TestWorkNextPrintsOneCommandPerOwedAct(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if printed := next("operator"); !strings.Contains(printed, "gs inspect --as operator "+blockage.Record.ID) ||
+	if printed := next("operator"); !strings.Contains(printed, "gs inspect "+blockage.Record.ID) ||
 		!strings.Contains(printed, "needs a decision first") {
 		t.Fatalf("gs work --next printed\n%s\nwant the assert on the promise", printed)
 	}
@@ -1168,6 +1257,154 @@ func TestWorkNextStillOwesArtifactsOnAStalePromisedRow(t *testing.T) {
 	if strings.Contains(printed, "nothing for you: this row is stale") {
 		t.Fatalf("gs work --next called a stale promised row done:\n%s", printed)
 	}
+}
+
+// Every line gs work --next prints is meant to be pasted, so every flag on it
+// has to be a flag that command defines. The comparison is against the
+// implementation's own flag surface, read out of the source, not against a list
+// kept beside it here.
+func TestWorkNextPrintsOnlyFlagsTheCommandsDefine(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "parsed", "reviewer", "operator", "parsed.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "parsed.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.workspace.Act(f.ctx, "reviewer", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "a breakdown to read",
+		RestsOn: []string{promise}, IdempotencyKey: "parsed-assert",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root, err := docset.Root()
+	if err != nil {
+		t.Skipf("no repository root above this package: %v", err)
+	}
+	surface, err := docset.CLISurface(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defined := map[string]map[string]bool{}
+	for _, command := range surface {
+		defined[command.Name] = map[string]bool{}
+		for _, flag := range command.Flags {
+			defined[command.Name]["--"+flag] = true
+		}
+	}
+	for _, actor := range []string{"operator", "reviewer"} {
+		printed, err := captureStdout(t, func() error {
+			return workCommand(f.ctx, []string{"--repo", f.repo, "--as", actor, "--next", "--server", "-"})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range commandLines(t, printed) {
+			words := shellWords(t, line)
+			if len(words) < 2 || words[0] != "gs" {
+				t.Fatalf("line %q is not a gs invocation", line)
+			}
+			flags, ok := defined[words[1]]
+			if !ok {
+				t.Fatalf("line %q names a subcommand gs does not have", line)
+			}
+			for _, word := range words[2:] {
+				if strings.HasPrefix(word, "--") && !flags[word] {
+					t.Fatalf("line %q passes %s, which gs %s does not define", line, word, words[1])
+				}
+			}
+		}
+	}
+	// The one command a reader is sent to that signs nothing must carry no
+	// identity, and the real parser is what says so.
+	line := (nextWorld{actor: "operator"}).command("inspect", "%s", datum("some-event"))
+	if err := inspectCommand(f.ctx, append([]string{"--repo", f.repo}, shellWords(t, line)[2:]...)); err != nil &&
+		strings.Contains(err.Error(), "flag provided but not defined") {
+		t.Fatalf("generated line %q does not parse: %v", line, err)
+	}
+}
+
+// An actor name may contain a space or a shell metacharacter, and a copyable
+// line that splits one name into two arguments is not the act it claims to be.
+func TestWorkNextQuotesDataForTheShell(t *testing.T) {
+	t.Parallel()
+	for _, actor := range []string{"build bot", "bot;$(rm -rf /)", "o'brien"} {
+		line := (nextWorld{actor: actor}).command("promise", "%s", datum("git:sha1:abc#git:sha1:def"))
+		words := shellWords(t, line)
+		if len(words) != 5 || words[3] != actor {
+			t.Fatalf("line %q split into %q; want --as to carry %q as one argument", line, words, actor)
+		}
+		if words[4] != "git:sha1:abc#git:sha1:def" {
+			t.Fatalf("line %q lost the event argument: %q", line, words)
+		}
+	}
+	// A hole is left unquoted on purpose: it is not runnable, and it must not
+	// look as though it were.
+	line := (nextWorld{actor: "bot"}).command("review", "--verdict %s", hole("approved|changes-requested"))
+	if !strings.Contains(line, "<approved|changes-requested>") {
+		t.Fatalf("line %q no longer shows the hole a reader must fill", line)
+	}
+}
+
+// commandLines returns the copyable lines of a --next page: everything that is
+// not a comment.
+func commandLines(t *testing.T, page string) []string {
+	t.Helper()
+	var lines []string
+	for _, line := range strings.Split(page, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		t.Fatalf("the page carries no command lines:\n%s", page)
+	}
+	return lines
+}
+
+// shellWords splits a generated line the way the shell it is meant for would,
+// which is the only reading that says whether a quoted argument survived. It
+// understands the one quoting this output produces: POSIX single quotes.
+func shellWords(t *testing.T, line string) []string {
+	t.Helper()
+	var words []string
+	var current strings.Builder
+	quoted, started := false, false
+	for index := 0; index < len(line); index++ {
+		character := line[index]
+		switch {
+		case quoted && character == '\'':
+			quoted = false
+		case quoted:
+			current.WriteByte(character)
+		case character == '\'':
+			quoted, started = true, true
+		case character == '\\' && index+1 < len(line):
+			// Outside quotes a backslash escapes the next byte, which is how a
+			// single quote inside a single-quoted argument is written.
+			index++
+			current.WriteByte(line[index])
+			started = true
+		case character == ' ':
+			if started {
+				words = append(words, current.String())
+				current.Reset()
+				started = false
+			}
+		default:
+			current.WriteByte(character)
+			started = true
+		}
+	}
+	if quoted {
+		t.Fatalf("line %q has an unterminated quote", line)
+	}
+	if started {
+		words = append(words, current.String())
+	}
+	return words
 }
 
 func TestWorkNextNotesAStaleRowAndItsRepair(t *testing.T) {

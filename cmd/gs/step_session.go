@@ -12,23 +12,16 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// The working cycle has steps, and each step has one durable shape: which
-// event to rest on, which body fields to carry, which artifact to name first,
-// what order to publish in. AGENTS.md and SKILL.md state those shapes in
-// prose, and an actor who reconstructs them by hand gets them wrong in the
-// same few ways every time. gs promise, gs artifact, gs review-request and
-// gs land encode one step each.
+// The step commands — gs promise, gs artifact, gs review-request, gs land —
+// encode one step of the working cycle each. Each preflights what the fold
+// already requires, refuses with the fix named, and composes the existing
+// state, batch, ratify, merge-plan and merge paths. docs/reference/gs/ states
+// what each one does; the comments here stay on ordering, recovery and safety.
 //
-// None of them is a new rule. Every one preflights what the fold already
-// requires, refuses with the fix named, and then composes the existing state,
-// batch, ratify, merge-plan and merge paths. A refusal here is a refusal the
-// fold would make later, moved to where nothing has been appended yet.
-//
-// stepSession is the opening every one of them shares: the actor, the
-// destination sequencer, one verified projection, and the resolver that
-// answers every short reference from that same projection. Reading the
-// projection once is what lets a preflight judge a whole act against one
-// world.
+// stepSession is their shared opening: the actor, the destination sequencer,
+// one verified projection, and the resolver that answers every short reference
+// from that same projection. Reading the projection once is what lets a whole
+// act be judged against one world.
 type stepSession struct {
 	ctx         context.Context
 	workspace   *app.Workspace
@@ -47,11 +40,8 @@ type stepSession struct {
 	byReport   map[string]workroom.Commitment
 }
 
-// stepUsage states the positional form a step command takes. The shared flag
-// set prints "[flags]" for a command it does not know, and Go's flag parsing
-// stops at the first positional, so a caller who writes the paths before the
-// flags gets a refusal that has to explain itself. This is where the form is
-// said once.
+// stepUsage states the positional form a step command takes: Go's flag parsing
+// stops at the first positional, so the form has to be said somewhere.
 func stepUsage(set *flag.FlagSet, form string) {
 	set.Usage = func() {
 		fmt.Fprintf(set.Output(), "usage: %s\n\nFlags:\n", form)
@@ -136,9 +126,8 @@ func (s *stepSession) commitmentByReport(report string) (workroom.Commitment, bo
 	return commitment, found
 }
 
-// name is how a refusal talks about another actor: by the name the durable
-// roster gives their fingerprint, because a fingerprint in a refusal tells a
-// reader nothing they can act on.
+// name is how a refusal talks about another actor: a fingerprint tells a reader
+// nothing they can act on.
 func (s *stepSession) name(fingerprint string) string {
 	if fingerprint == "" {
 		return "nobody"
@@ -147,6 +136,28 @@ func (s *stepSession) name(fingerprint string) string {
 		return name
 	}
 	return short(fingerprint)
+}
+
+// latestWithdrawnPromise is the newest promise of this actor's, on this
+// request, that they have since superseded. Every claim after a withdrawal
+// names the one it follows, so this is what makes the key of the current claim
+// recomputable rather than remembered.
+func (s *stepSession) latestWithdrawnPromise(request string) string {
+	withdrawn, at := "", 0
+	for _, statement := range s.projection().Statements {
+		if statement.Kind != workroom.KindPromise || statement.Actor != s.fingerprint || !statement.Retired {
+			continue
+		}
+		if statement.Sequence < at {
+			continue
+		}
+		for _, basis := range s.projection().Provenance[statement.Event] {
+			if basis == request {
+				withdrawn, at = statement.Event, statement.Sequence
+			}
+		}
+	}
+	return withdrawn
 }
 
 // retrying reports whether an event the log already holds is the very act
@@ -169,10 +180,9 @@ func (s *stepSession) submit(act app.Act) (workroom.Record, error) {
 	return submitAct(s.ctx, s.workspace, s.serverURL, s.actor, act)
 }
 
-// requireFullCommit refuses an abbreviated head before anything is signed. A
-// review verdict finds its artifact by comparing this field as an exact
-// string, and gs merge resolves nothing shorter, so an abbreviated commit is
-// an artifact that can take no part in either.
+// requireFullCommit refuses an abbreviated head before anything is signed: a
+// verdict finds its artifact by exact string comparison and gs merge resolves
+// nothing shorter, so an abbreviation can take no part in either.
 func requireFullCommit(flagName, head string) error {
 	if len(head) == 40 || len(head) == 64 {
 		hex := true
@@ -189,9 +199,8 @@ func requireFullCommit(flagName, head string) error {
 	return fmt.Errorf("%s %s is not a full canonical object ID; pass the whole hash, from `git rev-parse HEAD`", flagName, head)
 }
 
-// oneLine keeps a quoted statement to one readable line of a refusal or a
-// default text. The whole statement stays where it was written; this is a
-// label for it, not a copy of it.
+// oneLine keeps a quoted statement to one readable line: a label for it, not a
+// copy of it.
 func oneLine(text string, limit int) string {
 	// Cut the raw text first. The display filter escapes a newline into a
 	// visible \x0a, so a line taken after filtering carries the rest of the
@@ -214,9 +223,8 @@ func oneLine(text string, limit int) string {
 	return line
 }
 
-// staleWarning is the one sentence AGENTS.md step 1 owes a stale row: the
-// staleness is named, the repair belongs to the request's author, and the
-// command carries on. Ordinary staleness is not a question.
+// staleWarning names the staleness and whose repair it is, and the command
+// carries on: ordinary staleness is not a question.
 func staleWarning(kind, event, because, author string) string {
 	cause := ""
 	if because != "" {

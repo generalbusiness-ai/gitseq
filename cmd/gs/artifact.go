@@ -11,21 +11,12 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// artifactCommand publishes the pointers one head owes: one artifact per
-// changed path, each resting on exactly one promise — the actor's own — with
-// the reporting artifact published last.
-//
-// Three facts make this worth a command rather than a sequence of gs state
-// calls. An artifact resting on two promises closes neither, so the basis set
-// is built here and not typed. The reporting artifact is whichever artifact on
-// that promise is newest, so publish order is load-bearing and is not left to
-// the order a shell loop happens to run in. And a path no commit changed is a
-// wire to nowhere: staleness travels along paths, so naming one the head did
-// not touch anchors later work to a pointer that will never flare.
-//
-// Every act carries a key derived from the actor, the head and the path, so an
-// interrupted run replays what landed and continues, rather than publishing a
-// second artifact at a path that already has one for this head.
+// artifactCommand publishes one artifact per changed path at one head, each
+// resting on exactly one promise — the actor's own — with the reporting
+// artifact last, because the lane reads its report off the newest artifact on
+// the promise. Publish order is therefore load-bearing, and the keys are
+// derived from actor, head and path so an interrupted run resumes rather than
+// publishing twice. See docs/reference/gs/artifact.md.
 func artifactCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("artifact", arguments)
 	as := set.String("as", "", "actor publishing the artifacts")
@@ -111,9 +102,7 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 }
 
 // requireOwnLivePromise is the basis rule, checked before anything is signed:
-// an artifact reports exactly one promise, and that promise is the signer's
-// own live one. A report resting on somebody else's promise, or on a promise
-// that has been withdrawn, closes nothing at all.
+// one promise, the signer's own, live. Anything else closes nothing.
 func requireOwnLivePromise(session *stepSession, promise string) (workroom.Commitment, error) {
 	statement, found := session.statement(promise)
 	if !found {
@@ -137,10 +126,9 @@ func requireOwnLivePromise(session *stepSession, promise string) (workroom.Commi
 	return commitment, nil
 }
 
-// refuseSecondPromise keeps the rule this command exists for. An artifact
-// resting on two promises closes neither, and --rests-on is the one way a
-// second one could still get in: it is there for the behaviour a page
-// describes and the decision the work adopts, not for another commitment.
+// refuseSecondPromise closes the one way a second promise could still get in.
+// --rests-on carries the behaviour a page describes or the decision the work
+// adopts, not another commitment.
 func refuseSecondPromise(session *stepSession, promise string, extra []string) error {
 	for _, basis := range extra {
 		if basis == promise {
@@ -155,15 +143,11 @@ func refuseSecondPromise(session *stepSession, promise string, extra []string) e
 	return nil
 }
 
-// requireChangedPaths compares the paths named against the paths this head
-// actually changes, measured from where it left the request's target. A path
-// the head did not change is refused; a changed path no artifact names is a
-// warning, because a first artifact somewhere else in the tree is legitimate
-// and the author is the one who knows which.
-//
-// A directory path covers the files under it, which is how an area-wide
-// pointer such as internal/statusview is maintained. Everything else matches as
-// an exact string, exactly as the fold matches it.
+// requireChangedPaths compares the paths named against what this head changes
+// against the request's target. A path the head did not change is refused, and
+// a changed path no artifact names is a warning: a first artifact elsewhere is
+// legitimate and only the author knows which. A directory path covers the files
+// under it; everything else matches as an exact string, as the fold does.
 func requireChangedPaths(ctx context.Context, repo, head string, commitment workroom.Commitment, paths []string) error {
 	if commitment.TargetRef == "" {
 		fmt.Fprintf(os.Stderr, "note: request %s states no target ref, so the paths this head changes cannot be measured; check them yourself\n", short(commitment.Request))
@@ -231,8 +215,7 @@ func coveredBy(changed string, paths []string) bool {
 }
 
 // artifactActs orders the chain: every other path first, the reporting
-// artifact last. The lane reads its report off the newest artifact on the
-// promise, so the last act of this batch is the one a review request names.
+// artifact last, because that one is what a review request names.
 func artifactActs(fingerprint, head, branch, promise, request, reportPath, reportText string, paths, extra []string) []batchAct {
 	acts := make([]batchAct, 0, len(paths))
 	add := func(path string) {
@@ -269,9 +252,8 @@ func artifactKey(fingerprint, head, path string) string {
 	return "gs-artifact/" + fingerprint + "/" + head + "/" + path
 }
 
-// branchAtHead names the branch a head sits on when exactly one does. Two
-// branches at one commit say nothing about which one this work is on, and
-// nothing about the head depends on the answer, so the text simply omits it.
+// branchAtHead names the branch a head sits on when exactly one does. Nothing
+// depends on the answer, so an ambiguous one is simply omitted.
 func branchAtHead(ctx context.Context, repo, head string) string {
 	output, err := git(ctx, repo, "for-each-ref", "--points-at", head, "--format=%(refname:short)", "refs/heads")
 	if err != nil {

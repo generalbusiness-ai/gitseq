@@ -10,19 +10,11 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// promiseCommand claims one request. A promise is the board's only sign that
-// work is in flight, and its durable shape is fixed: exactly one request as
-// its basis, signed by the actor that request is addressed to, once.
-//
-// Everything it refuses, the fold or the work loop refuses later and more
-// expensively: a promise on somebody else's request is a dangling act nobody
-// can close, a second promise on a request you already hold splits one
-// commitment across two closures, and a promise on a closed request claims
-// work that is not owed.
-//
-// The idempotency key is derived from the actor and the request, so a retry
-// after a lost answer replays the promise already recorded instead of filing
-// a second one.
+// promiseCommand claims one request: one basis, signed by the addressee, once.
+// Every refusal here is one the fold or the work loop makes later and more
+// expensively — a promise on somebody else's request is a dangling act nobody
+// can close, and a second live promise splits one commitment across two
+// closures. See docs/reference/gs/promise.md.
 func promiseCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("promise", arguments)
 	as := set.String("as", "", "actor accepting the request")
@@ -62,43 +54,34 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 			short(request), short(request), session.name(statement.Actor))
 	}
 	requester := session.name(commitment.Requester)
-	// The promise row is read for three different facts. A promise this actor
-	// withdrew still names them as the performer — reneging is visible
-	// forever — and it is not a promise anybody holds: the lifecycle check
-	// below decides whether the request can be claimed again, and the
-	// withdrawn promise goes into the key so the fresh claim is its own act.
-	// A live promise this command filed under this very key is a lost answer
-	// being retried, and replays. Any other live promise of theirs is the
-	// second closure one commitment cannot take.
-	withdrawn, retry := "", false
-	if held, holds := session.statement(commitment.Promise); holds && commitment.Performer == session.fingerprint {
-		switch {
-		case held.Retired:
-			withdrawn = commitment.Promise
-		case session.retrying(promiseKey(session.fingerprint, request, ""), commitment.Promise):
-			retry = true
-		default:
+	// The key a claim lands under is a function of this actor, the request,
+	// and the promise it follows, so it can be recomputed here: the claim that
+	// follows the newest withdrawn promise carries that promise's identifier.
+	// Recomputing it is what tells a lost answer being retried, which must
+	// replay, from a second closure on one commitment, which the fold cannot
+	// pay off.
+	withdrawn := session.latestWithdrawnPromise(request)
+	key := promiseKey(session.fingerprint, request, withdrawn)
+	retry := false
+	if held, holds := session.statement(commitment.Promise); holds && !held.Retired && commitment.Performer == session.fingerprint {
+		if !session.retrying(key, commitment.Promise) {
 			return fmt.Errorf("you already hold promise %s on request %s; one commitment takes one closure. Report against that promise with `gs artifact --head <sha> --promise %s <path…>`, or withdraw it with `gs supersede %s --text '<why>'` and claim it again",
 				short(commitment.Promise), short(request), short(commitment.Promise), short(commitment.Promise))
 		}
+		retry = true
 	}
 	if commitment.AddressedTo != "" && commitment.AddressedTo != session.fingerprint {
 		return fmt.Errorf("request %s is addressed to %s, not to you (%s); ask %s to move it with `gs reassign-if-unclaimed %s --to %s`, or promise a request addressed to you (`gs work --next`)",
 			short(request), session.name(commitment.AddressedTo), session.actor, requester, short(request), session.actor)
 	}
-	// "stale" is the lifecycle word an unclaimed request wears when a basis
-	// under it was retired. It is still unclaimed, and still yours to answer;
-	// the warning below is the answer AGENTS.md step 1 asks for. "reneged" is
-	// a request whose promise was withdrawn: the fold admits a fresh promise
-	// on it, and refusing here would leave an actor who reneged by mistake no
-	// way back.
+	// "stale" and "reneged" are both still claimable: a moved basis retires
+	// nothing, and the fold admits a fresh promise after a withdrawal.
 	if !retry && !claimableStatus[commitment.Status] {
 		return fmt.Errorf("request %s is %s, not open, so there is nothing here to claim; `gs inspect %s` shows the commitment and `gs work --next` prints what you do owe",
 			short(request), commitment.Status, short(request))
 	}
-	// Staleness is not a refusal. The reasoning under the request moved; the
-	// conditions did not, and only its author can replace it. Say so and file
-	// the promise, which is what keeps the board honest in the meantime.
+	// Staleness is not a refusal: only the request's author can replace it, and
+	// the promise is what keeps the board honest meanwhile.
 	if commitment.Stale || statement.Stale {
 		fmt.Fprintln(os.Stderr, "gs:", staleWarning("request", request, statement.StaleBecause, requester))
 	}
@@ -112,7 +95,7 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 	}
 	record, err := session.submit(app.Act{
 		Verb: app.VerbState, Kind: workroom.KindPromise, Text: promiseText, Body: body,
-		RestsOn: []string{request}, IdempotencyKey: promiseKey(session.fingerprint, request, withdrawn),
+		RestsOn: []string{request}, IdempotencyKey: key,
 	})
 	if err != nil {
 		return err
@@ -121,16 +104,15 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-// claimableStatus is every lifecycle word that leaves a request there to be
-// claimed: never promised, promised on bases that later moved, or promised and
-// withdrawn.
+// claimableStatus is every lifecycle word that leaves a request to be claimed:
+// never promised, promised on bases that later moved, or promised and withdrawn.
 var claimableStatus = map[string]bool{"open": true, "stale": true, "reneged": true}
 
-// promiseKey is the deterministic retry key. Two runs of the same claim by the
-// same actor are the same act, so the second replays rather than filing a
-// second promise on one request. Claiming again after reneging is a different
-// act: it names the promise it follows, so it neither replays the withdrawn
-// one nor collides with its key.
+// promiseKey is the deterministic retry key: this actor, this request, and the
+// promise this claim follows. Two runs of the same claim are the same act and
+// the second replays. Claiming again after reneging is a different act, so it
+// names the promise it follows and neither replays the withdrawn one nor
+// collides with its key.
 func promiseKey(fingerprint, request, withdrawn string) string {
 	key := "gs-promise/" + fingerprint + "/" + request
 	if withdrawn != "" {

@@ -81,18 +81,13 @@ are confirmed unchanged.
 
 ## Declining is not silence
 
-A request addressed to you gets an answer every working cycle: a promise,
-an explicit decline, or an assert saying why it is not yet actionable. The
-fold admits a request's retirement only from its author or a `ratifier`,
-never from you, so declining is an `assert` resting on the request plus a
-request to the author to retire it:
+Declining is an `assert` resting on the request, plus asking its author to
+retire it — the fold admits that retirement only from the author or a
+`ratifier`, never from you, so the row stays open until they act:
 
 ```text
 gs state --kind assert --rests-on <request> --text '<why you decline>'
 ```
-
-The row stays open until the author retires it. That is their pending
-retirement, not your neglect.
 
 ## What it produces
 

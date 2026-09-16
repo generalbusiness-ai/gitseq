@@ -12,11 +12,11 @@ changed, each resting on exactly one promise — yours — and the reporting
 artifact published last.
 
 Three facts make this a command rather than a loop over
-[`gs state`](state.md). An artifact resting on two promises closes
-neither. The reporting artifact is whichever artifact on the promise is
-*newest*, so the order acts land in decides which one a review verdict may
-name. And a path the head did not change is a wire to nowhere: staleness
-travels along paths, so an artifact at an untouched path can never flare.
+[`gs state`](state.md): an artifact resting on two promises closes neither,
+the reporting artifact is whichever artifact on the promise is *newest* so
+publish order decides which one a verdict may name, and a path the head did
+not change is a wire to nowhere — staleness travels along paths, so an
+artifact at an untouched path can never flare.
 
 ## Flags
 
@@ -113,8 +113,7 @@ One `artifact` statement per path, in one batch, each carrying
 `--text` as a second paragraph; the others do not.
 
 An artifact is the implementation report for assigned work, so no separate
-`ready-for-review` report follows it. The commitment moves to
-`awaiting-review`.
+report follows it and the commitment moves to `awaiting-review`.
 
 ## See also
 
