@@ -1,0 +1,261 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"strings"
+
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
+)
+
+// artifactCommand publishes the pointers one head owes: one artifact per
+// changed path, each resting on exactly one promise — the actor's own — with
+// the reporting artifact published last.
+//
+// Three facts make this worth a command rather than a sequence of gs state
+// calls. An artifact resting on two promises closes neither, so the basis set
+// is built here and not typed. The reporting artifact is whichever artifact on
+// that promise is newest, so publish order is load-bearing and is not left to
+// the order a shell loop happens to run in. And a path no commit changed is a
+// wire to nowhere: staleness travels along paths, so naming one the head did
+// not touch anchors later work to a pointer that will never flare.
+//
+// Every act carries a key derived from the actor, the head and the path, so an
+// interrupted run replays what landed and continues, rather than publishing a
+// second artifact at a path that already has one for this head.
+func artifactCommand(ctx context.Context, arguments []string) error {
+	set, repo := flags("artifact", arguments)
+	as := set.String("as", "", "actor publishing the artifacts")
+	head := set.String("head", "", "the exact full commit every artifact stands at")
+	promise := set.String("promise", "", "the actor's own live promise these artifacts report")
+	branch := set.String("branch", "", "branch the head is on; the default is a branch that points at it")
+	report := set.String("report", "", "which path carries the reporting artifact; the default is the first path")
+	text := set.String("text", "", "extra text for the reporting artifact")
+	var extra values
+	set.Var(&extra, "rests-on", "an extra basis for every artifact, such as the behaviour a documentation page describes (repeatable)")
+	serverFlag := set.String("server", "", "resident sequencer URL")
+	stepUsage(set, "gs artifact [flags] <path…>")
+	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	paths := set.Args()
+	if *head == "" || *promise == "" || len(paths) == 0 {
+		return errors.New("artifact requires --head, --promise and at least one path, with the paths after the flags: gs artifact --head <sha> --promise <promise> <path…>")
+	}
+	if err := requireFullCommit("--head", *head); err != nil {
+		return err
+	}
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		if seen[path] {
+			return fmt.Errorf("path %q is named twice; publish one artifact per exact path", path)
+		}
+		seen[path] = true
+	}
+	reportPath := paths[0]
+	if *report != "" {
+		if !seen[*report] {
+			return fmt.Errorf("--report %s is not one of the paths given; the reporting artifact is one of the artifacts this head publishes", *report)
+		}
+		reportPath = *report
+	}
+	session, err := openStep(ctx, *repo, *as, *serverFlag)
+	if err != nil {
+		return err
+	}
+	bases := []string(extra)
+	if err := resolveRefs(session.resolver, []*string{promise}, &bases); err != nil {
+		return err
+	}
+	showResolved(session.resolver)
+	if err := validateArtifactCommit(ctx, *repo, *head); err != nil {
+		return fmt.Errorf("--head %s: %w; fetch the commit into %s, or name the head this work actually produced", *head, err, *repo)
+	}
+	commitment, err := requireOwnLivePromise(session, *promise)
+	if err != nil {
+		return err
+	}
+	if *branch == "" {
+		*branch = branchAtHead(ctx, *repo, *head)
+	}
+	if err := requireChangedPaths(ctx, *repo, *head, commitment, paths); err != nil {
+		return err
+	}
+	if commitment.Stale {
+		fmt.Fprintf(os.Stderr, "note: promise %s is stale; the artifacts are admitted and record their stale bases, and ordinary staleness is not a reason to replace a promise\n", short(*promise))
+	}
+	acts := artifactActs(session.fingerprint, *head, *branch, *promise, commitment.Request, reportPath, *text, paths, bases)
+	_, private, err := session.workspace.Actor(session.actor)
+	if err != nil {
+		return err
+	}
+	discloseBases(session.resolver, chainCitations(acts))
+	published, err := runBatch(ctx, session.workspace, session.serverURL, session.actor, private, acts, false)
+	for _, act := range published.Acts {
+		if act.Event != "" {
+			fmt.Println(act.Event)
+		}
+	}
+	noteBatchDeadRestsOn(ctx, session.workspace, acts, published)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "gs: reporting artifact at %s is the newest artifact on promise %s; name it first when you ask for review\n", reportPath, short(*promise))
+	return nil
+}
+
+// requireOwnLivePromise is the basis rule, checked before anything is signed:
+// an artifact reports exactly one promise, and that promise is the signer's
+// own live one. A report resting on somebody else's promise, or on a promise
+// that has been withdrawn, closes nothing at all.
+func requireOwnLivePromise(session *stepSession, promise string) (workroom.Commitment, error) {
+	statement, found := session.statement(promise)
+	if !found {
+		return workroom.Commitment{}, fmt.Errorf("--promise %s names no statement in this workroom; claim the request with `gs promise <request>` first", short(promise))
+	}
+	if statement.Kind != workroom.KindPromise {
+		return workroom.Commitment{}, fmt.Errorf("--promise %s is a %s, not a promise; an artifact reports exactly one promise. `gs work --next` prints the promise for each row you owe",
+			short(promise), statement.Kind)
+	}
+	if statement.Actor != session.fingerprint {
+		return workroom.Commitment{}, fmt.Errorf("--promise %s was signed by %s, not by you (%s); an artifact must rest on your own promise, so file one with `gs promise <request>`",
+			short(promise), session.name(statement.Actor), session.actor)
+	}
+	if statement.Retired {
+		return workroom.Commitment{}, fmt.Errorf("--promise %s is retired, so it closes nothing; file a fresh promise with `gs promise <request>`", short(promise))
+	}
+	commitment, live := session.commitmentByPromise(promise)
+	if !live {
+		return workroom.Commitment{}, fmt.Errorf("--promise %s rests on no request, so it projects dangling and nobody can close it; promise the request itself with `gs promise <request>`", short(promise))
+	}
+	return commitment, nil
+}
+
+// requireChangedPaths compares the paths named against the paths this head
+// actually changes, measured from where it left the request's target. A path
+// the head did not change is refused; a changed path no artifact names is a
+// warning, because a first artifact somewhere else in the tree is legitimate
+// and the author is the one who knows which.
+//
+// A directory path covers the files under it, which is how an area-wide
+// pointer such as internal/statusview is maintained. Everything else matches as
+// an exact string, exactly as the fold matches it.
+func requireChangedPaths(ctx context.Context, repo, head string, commitment workroom.Commitment, paths []string) error {
+	if commitment.TargetRef == "" {
+		fmt.Fprintf(os.Stderr, "note: request %s states no target ref, so the paths this head changes cannot be measured; check them yourself\n", short(commitment.Request))
+		return nil
+	}
+	base, err := git(ctx, repo, "merge-base", "--end-of-options", commitment.TargetRef, head)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "note: %s and %s have no common ancestor in %s, so the paths this head changes cannot be measured; check them yourself\n",
+			commitment.TargetRef, short(head), repo)
+		return nil
+	}
+	changes, err := mergeChangesBetween(ctx, repo, strings.TrimSpace(base), head)
+	if err != nil {
+		return err
+	}
+	changed := mergeChangedPaths(changes)
+	for _, path := range paths {
+		if !coversAny(path, changed) {
+			return fmt.Errorf("path %q is not changed by %s against %s; staleness travels along paths, so an artifact there could never flare. Name a path this head changes (`git diff --name-only %s %s`), or fix --head",
+				path, short(head), commitment.TargetRef, strings.TrimSpace(base), head)
+		}
+	}
+	var unnamed []string
+	for _, path := range changed {
+		if !coveredBy(path, paths) {
+			unnamed = append(unnamed, path)
+		}
+	}
+	if len(unnamed) > 0 {
+		shown, omitted := unnamed, 0
+		if len(shown) > 8 {
+			shown, omitted = shown[:8], len(unnamed)-8
+		}
+		more := ""
+		if omitted > 0 {
+			more = fmt.Sprintf(" and %d more", omitted)
+		}
+		fmt.Fprintf(os.Stderr, "warning: %s also changes %s%s, which no artifact here names; publish each changed path, or be able to say why not\n",
+			short(head), strings.Join(shown, ", "), more)
+	}
+	return nil
+}
+
+// coversAny reports whether a named path is one of the changed paths, or the
+// directory holding one of them.
+func coversAny(path string, changed []string) bool {
+	for _, candidate := range changed {
+		if candidate == path || strings.HasPrefix(candidate, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func coveredBy(changed string, paths []string) bool {
+	for _, path := range paths {
+		if changed == path || strings.HasPrefix(changed, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// artifactActs orders the chain: every other path first, the reporting
+// artifact last. The lane reads its report off the newest artifact on the
+// promise, so the last act of this batch is the one a review request names.
+func artifactActs(fingerprint, head, branch, promise, request, reportPath, reportText string, paths, extra []string) []batchAct {
+	acts := make([]batchAct, 0, len(paths))
+	add := func(path string) {
+		text := artifactText(path, head, branch, promise, request)
+		if path == reportPath && reportText != "" {
+			text += "\n\n" + reportText
+		}
+		bases := append([]string{promise}, extra...)
+		acts = append(acts, batchAct{
+			Verb: app.VerbState, Kind: workroom.KindArtifact, Text: text,
+			Body:           map[string]string{"path": path, "commit": head},
+			RestsOn:        bases,
+			IdempotencyKey: artifactKey(fingerprint, head, path),
+		})
+	}
+	for _, path := range paths {
+		if path != reportPath {
+			add(path)
+		}
+	}
+	add(reportPath)
+	return acts
+}
+
+func artifactText(path, head, branch, promise, request string) string {
+	where := "at exact " + head
+	if branch != "" {
+		where += " on " + branch
+	}
+	return fmt.Sprintf("%s %s, under promise %s on request %s", path, where, short(promise), short(request))
+}
+
+func artifactKey(fingerprint, head, path string) string {
+	return "gs-artifact/" + fingerprint + "/" + head + "/" + path
+}
+
+// branchAtHead names the branch a head sits on when exactly one does. Two
+// branches at one commit say nothing about which one this work is on, and
+// nothing about the head depends on the answer, so the text simply omits it.
+func branchAtHead(ctx context.Context, repo, head string) string {
+	output, err := git(ctx, repo, "for-each-ref", "--points-at", head, "--format=%(refname:short)", "refs/heads")
+	if err != nil {
+		return ""
+	}
+	names := strings.Fields(output)
+	if len(names) != 1 {
+		return ""
+	}
+	return names[0]
+}
