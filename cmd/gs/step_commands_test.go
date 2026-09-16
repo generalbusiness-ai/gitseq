@@ -1330,7 +1330,11 @@ func TestWorkNextPrintsOnlyFlagsTheCommandsDefine(t *testing.T) {
 // line that splits one name into two arguments is not the act it claims to be.
 func TestWorkNextQuotesDataForTheShell(t *testing.T) {
 	t.Parallel()
-	for _, actor := range []string{"build bot", "bot;$(rm -rf /)", "o'brien", "#bot"} {
+	// The metacharacter sample must stay harmless: shellWords runs the line
+	// in a real shell, so a quoting regression would execute whatever the
+	// substitution says. printf is the payload; the control below shows the
+	// shell really does run an unquoted one.
+	for _, actor := range []string{"build bot", "bot;$(printf regressed)", "o'brien", "#bot"} {
 		line := (nextWorld{actor: actor}).command("promise", "%s", datum("git:sha1:abc#git:sha1:def"))
 		words := shellWords(t, line)
 		if len(words) != 5 || words[3] != actor {
@@ -1339,6 +1343,12 @@ func TestWorkNextQuotesDataForTheShell(t *testing.T) {
 		if words[4] != "git:sha1:abc#git:sha1:def" {
 			t.Fatalf("line %q lost the event argument: %q", line, words)
 		}
+	}
+	// Negative control: an unquoted actor is split and substituted by the
+	// shell, harmlessly, which is what the quoting above prevents.
+	control := shellWords(t, "gs promise --as bot $(printf regressed) event")
+	if len(control) != 6 || control[3] != "bot" || control[4] != "regressed" {
+		t.Fatalf("the shell did not interpret the unquoted control line as expected: %q", control)
 	}
 	// A hole is left unquoted on purpose: it is not runnable, and it must not
 	// look as though it were.
