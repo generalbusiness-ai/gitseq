@@ -29,6 +29,13 @@ const (
 	branchRefPrefix = "refs/heads/"
 )
 
+// IncorporationPrior is the only value a receipt's merge_incorporation field
+// ever carries. It says the approved candidate was already contained in the
+// target when the receipt was signed, so the receipt reports a landing rather
+// than performing one. It is exported because the merge client writes the
+// field the fold reads, and one spelling for both is what keeps them agreeing.
+const IncorporationPrior = "prior"
+
 // requestResult is the section-1 result choice for one request, decided once at
 // that request's own position and never recomputed. A request either owes a Git
 // artifact landed into a named ref, or owes no Git artifact at all; there is no

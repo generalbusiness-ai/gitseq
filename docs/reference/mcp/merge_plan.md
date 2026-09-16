@@ -42,6 +42,12 @@ successors; and stable allow or refusal reasons. The five classifications are
 `reviewed candidate`, `in-target predecessor`, `carried`, `protected sibling`,
 and `abandoned`.
 
+`mode: incorporate` means the target already contains the approved candidate.
+The plan carries the reason code `candidate_incorporated` and no retirement,
+successor or changed path: `gs merge` would record one receipt saying the head
+already landed and leave Git untouched. See
+[`gs merge`](../gs/merge.md#incorporation-the-head-the-target-already-has).
+
 For an existing sealed receipt at the matching target and head, `mode: resume`
 means succession acts remain. `mode: complete` with `allowed: true` means all
 canonical acts are already recorded and retrying merge appends nothing. The

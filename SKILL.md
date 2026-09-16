@@ -163,7 +163,10 @@ you until a ratified independent approval names the exact head, then
 `awaiting-landing` on you: an artifact has satisfier `none`, so
 asking the requester to ratify it would ask for an act the fold refuses, and
 the merge of the approved head is yours to sign. That independently approved merge closes the commitment, with
-no duplicate report or post-merge ratification. The review
+no duplicate report or post-merge ratification. If the target already contains
+the approved head — somebody landed it out of band — run the same `gs merge`
+anyway: it records one incorporation receipt saying so, closes the commitment,
+and changes nothing in Git. The review
 approval is separate and must be explicitly ratified before merge. Work
 that resolves without a merge uses an explicit `report` against the promise,
 or against the request when there is no promise, which the *requester*

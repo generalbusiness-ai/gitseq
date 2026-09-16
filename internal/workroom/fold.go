@@ -1668,6 +1668,9 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	if err := json.Unmarshal([]byte(state.Body["merge_retirements"]), &plan); err != nil || plan == nil {
 		return nil
 	}
+	if !validIncorporation(state.Body, plan) {
+		return nil
+	}
 	reached := make(map[string]string, len(plan))
 	for target, successor := range plan {
 		path, isArtifact := f.artifactPath(target)
@@ -1683,6 +1686,54 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 	}
 	receipt.mergeArtifacts = reviewed
 	return reached
+}
+
+// validIncorporation judges the one receipt field that says a landing was
+// recorded rather than performed.
+//
+// A receipt carrying merge_incorporation=prior says the approved candidate was
+// already contained in the target when it was signed. Nothing landed at that
+// moment, so nothing may be published or retired on its authority: its plan
+// must be empty in all four encodings. The fold holds no repository and cannot
+// check the containment claim, and it does not need to — an empty plan reaches
+// no path and changes no artifact's liveness, so the receipt closes exactly
+// the commitment whose ratified approval names the artifact at its candidate
+// and nothing else. A prior receipt whose plan is not empty is the one shape
+// that would turn this field into succession authority, so it confers nothing
+// at all rather than being trimmed down.
+//
+// Any other value is refused outright. merge_incorporation has a single
+// meaning; a receipt spelling it some other way is making a claim no rule
+// here reads, and admitting it would let the spelling drift into an authority
+// nobody checked.
+func validIncorporation(body map[string]string, plan map[string]string) bool {
+	switch body["merge_incorporation"] {
+	case "":
+		return true
+	case IncorporationPrior:
+		if len(plan) != 0 {
+			return false
+		}
+		var successors []string
+		if err := json.Unmarshal([]byte(body["merge_successors"]), &successors); err != nil || len(successors) != 0 {
+			return false
+		}
+		if raw, present := body["merge_left_live"]; present {
+			var leftLive map[string]json.RawMessage
+			if err := json.Unmarshal([]byte(raw), &leftLive); err != nil || leftLive == nil || len(leftLive) != 0 {
+				return false
+			}
+		}
+		if raw, present := body["merge_changed_paths"]; present {
+			var paths []string
+			if err := json.Unmarshal([]byte(raw), &paths); err != nil || paths == nil || len(paths) != 0 {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }
 
 // validateMergeLeftLiveNow verifies non-authoritative receipt testimony and
