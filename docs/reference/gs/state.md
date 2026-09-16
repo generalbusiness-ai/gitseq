@@ -22,7 +22,8 @@ the only two acts it cannot make.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The signing actor. |
 | `--kind` | *(required)* | The speech act, from the room's declared vocabulary: `assert`, `propose`, `request`, `promise`, `report`, `dissent`, `artifact`, or a governance kind. |
-| `--text` | *(required)* | The statement itself, in plain language. |
+| `--text` | *(required, or `--text-file`)* | The statement itself, in plain language, typed on the command line. |
+| `--text-file` | | The statement, read from this file instead. Give one of the two, never both; the contents become the statement text as written, apart from trailing whitespace. |
 | `--body` | | `key=value`, repeatable. Structured fields. |
 | `--rests-on` | | An event reference, repeatable. What this act bears on. |
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
@@ -46,9 +47,35 @@ REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
   --body to=@bot --body conditions='CHANGELOG.md exists' \
   --body target_ref=refs/heads/main --rests-on "$SEED")
 
-gs state --repo "$REPO" --as bot --kind promise \
-  --text 'I will add it' --rests-on "$REQUEST"
+PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
+  --text 'I will add it' --rests-on "$REQUEST")
+
+printf '# Done\n\nCHANGELOG.md exists, with one entry.\n' > report.md
+gs state --repo "$REPO" --as bot --kind report \
+  --text-file report.md --rests-on "$PROMISE"
 ```
+
+## Writing the statement to a file
+
+A report or an assert is often formatted text: headings, tables, quoted
+findings, code. Passing that through `--text` on a command line means shell
+quoting, escaped newlines and truncated pastes, and the workroom then holds a
+mangled statement. Write it to a file and name it with `--text-file`, as the
+example above does. `--text` is still there for the one-line statement that
+needs no file.
+
+The file's contents become the statement text exactly as written, apart from
+trailing whitespace, which is trimmed. Nothing about how the text is signed or
+displayed changes.
+
+The two flags are exclusive. Each of these is refused before anything is read
+or signed, and the message names the flag:
+
+| what you gave | refusal |
+|---|---|
+| both `--text` and `--text-file` | `--text and --text-file cannot both be given` |
+| a file that is empty or only whitespace | `--text-file <path> is empty` |
+| a path that cannot be read | `--text-file <path>: <the read error>` |
 
 ## Body fields the fold reads
 
