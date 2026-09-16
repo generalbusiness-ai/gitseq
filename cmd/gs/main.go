@@ -504,12 +504,12 @@ func resolveText(set *flag.FlagSet, required bool) (string, error) {
 	given := map[string]bool{}
 	set.Visit(func(f *flag.Flag) { given[f.Name] = true })
 	if given["text"] && given["text-file"] {
-		return "", errors.New("--text and --text-file cannot both be given")
+		return "", usageErrorf(set, "--text and --text-file cannot both be given")
 	}
 	if !given["text-file"] {
 		text := set.Lookup("text").Value.String()
 		if required && text == "" {
-			return "", errors.New("--text or --text-file is required")
+			return "", usageErrorf(set, "--text or --text-file is required")
 		}
 		return text, nil
 	}
@@ -549,7 +549,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -665,7 +665,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if err != nil {
 		return err
 	}
-	reviewer, err := signingActor(*as)
+	reviewer, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -1789,7 +1789,7 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	if set.NArg() != 1 {
 		return usageErrorf(set, "ratify requires one target event")
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -1838,7 +1838,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	if set.NArg() != 1 {
 		return usageErrorf(set, "supersede requires one target event")
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -1906,7 +1906,7 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	if *key == "" {
 		return usageErrorf(set, "reassign-if-unclaimed requires --idempotency-key for two-act retry recovery")
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}

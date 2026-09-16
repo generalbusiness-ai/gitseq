@@ -37,6 +37,24 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 			wantUsage: []string{"usage: gs merge", "Example:", "gs merge --as bot"},
 		},
 		{
+			name: "missing statement text",
+			run: func(fixture preflightFixture) error {
+				return stateCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--as", "worker", "--kind", "promise", "--rests-on", fixture.request,
+				})
+			},
+			wantError: []string{"--text or --text-file is required"},
+			wantUsage: []string{"usage: gs state", "Example:", "gs state --as bot"},
+		},
+		{
+			name: "no signing identity",
+			run: func(fixture preflightFixture) error {
+				return ratifyCommand(context.Background(), []string{"--repo", fixture.repo, fixture.report})
+			},
+			wantError: []string{"--as"},
+			wantUsage: []string{"usage: gs ratify", "Example:", "gs ratify --as alice"},
+		},
+		{
 			name: "no positional at all",
 			run: func(fixture preflightFixture) error {
 				return ratifyCommand(context.Background(), []string{"--repo", fixture.repo, "--as", "operator"})
@@ -97,6 +115,9 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 		},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
+			// A command with no --as reads the environment for the identity,
+			// and a shell that names one would hide the refusal under test.
+			t.Setenv(actorEnvironment, "")
 			fixture := newPreflightFixture(t)
 			before := fixture.snapshot()
 			printed, err := quiet(t, func() error {

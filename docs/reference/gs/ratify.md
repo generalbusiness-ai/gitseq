@@ -80,6 +80,15 @@ Nothing about an admitted act changes. `--no-preflight` skips the check and
 files the act exactly as written — for the deliberate replay of a shape the fold
 refuses, or to record an attempt that should be visible as one.
 
+A retry is judged as a fresh act. Whether the log already holds this act under
+its `--idempotency-key` is a question only the signing key can answer, and the
+check runs before that key is read, so an exact retry of an act the log already
+accepted is judged against the world as it stands now. If that world has moved
+under the act — the target retired since, the role that authorized it revoked
+since — the retry is refused although the append would have replayed the
+accepted event and changed nothing. `--no-preflight` is the escape, and the
+replay is exactly the act it always was.
+
 A malformed invocation is answered differently, and earlier still: an undefined
 flag, a missing required flag, a subject given as a flag where a positional
 argument belongs, or an event reference that names nothing here prints this

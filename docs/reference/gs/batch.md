@@ -95,8 +95,9 @@ gs batch --repo "$REPO" --as alice "$REPO/chain.json"
 ## Refused before signing
 
 Before the first append, this command asks the fold what it would decide about
-every act of the chain, in order, and refuses the whole chain when the answer
-for any of them is not effective. The refusal names the act by its position:
+every act of the chain, each against the frontier the first act joins, and
+refuses the whole chain when the answer for any of them is not effective. The
+refusal names the act by its position:
 
 ```text
 gs: act 1: the fold would rule this act ineffective: artifact state requires body.path
@@ -116,9 +117,16 @@ against the world it actually joins. That second judgement is the one that
 counts. When the question cannot be put honestly the command stays quiet and
 files the act as it always did: a workroom this process cannot fold, an act
 whose shape this boundary does not build, or an act citing a `$label`, which
-names an act the chain has yet to mint and so has no world to be judged in. `--server` is the case worth knowing:
-the act joins the resident's frontier, so the check runs only while the resident
-stands exactly where this checkout does, and is skipped otherwise.
+names an act the chain has yet to mint and so has no world to be judged in.
+`--server` is the case worth knowing: the act joins the resident's frontier, so
+the check runs only while the resident stands exactly where this checkout does,
+and is skipped otherwise.
+
+No act is judged against what the acts before it in the chain will make of the
+world. An act this check admits can therefore still be refused by the fold
+because an earlier act of the same chain invalidated it — retiring what a later
+act ratifies, say. That is the case this check does not catch and the fold
+does.
 
 Nothing about an admitted act changes. `--no-preflight` skips the check and
 files the chain exactly as written — for the deliberate replay of a shape the fold

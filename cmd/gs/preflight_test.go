@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -207,11 +208,14 @@ func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
 		name string
 		// arguments are appended to --repo/--as/--kind/--text, which every case
 		// shares.
-		refused   []string
-		admitted  []string
-		actor     string
-		kind      string
-		wantWords []string
+		refused  []string
+		admitted []string
+		actor    string
+		// admittedActor is who files the satisfied act, when satisfying the
+		// precondition means a different actor rather than different arguments.
+		admittedActor string
+		kind          string
+		wantWords     []string
 	}{
 		{
 			name: "artifact with no path", actor: "worker", kind: "artifact",
@@ -232,10 +236,13 @@ func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
 			wantWords: []string{"dangling promise has no request", "rest the promise on the request"},
 		},
 		{
+			// The precondition is being the actor the request addresses, so the
+			// same promise on the same request lands from the worker.
 			name: "promise by an actor the request does not address", actor: "operator", kind: "promise",
-			refused:   []string{"--rests-on", "REQUEST"},
-			admitted:  nil,
-			wantWords: []string{"promise actor is not the requested performer", "body.to"},
+			refused:       []string{"--rests-on", "REQUEST"},
+			admitted:      []string{"--rests-on", "REQUEST"},
+			admittedActor: "worker",
+			wantWords:     []string{"promise actor is not the requested performer", "body.to"},
 		},
 		{
 			name: "report standing on nothing", actor: "worker", kind: "report",
@@ -247,9 +254,9 @@ func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
 		t.Run(probe.name, func(t *testing.T) {
 			fixture := newPreflightFixture(t)
 			before := fixture.snapshot()
-			arguments := func(extra []string, key string) []string {
+			arguments := func(actor string, extra []string, key string) []string {
 				resolved := []string{
-					"--repo", fixture.repo, "--as", probe.actor, "--kind", probe.kind,
+					"--repo", fixture.repo, "--as", actor, "--kind", probe.kind,
 					"--text", probe.name, "--idempotency-key", key,
 				}
 				for _, argument := range extra {
@@ -275,7 +282,7 @@ func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
 			}
 			output, err := quiet(t, func() error {
 				return fixture.withoutKey(t, probe.actor, func() error {
-					return stateCommand(fixture.ctx, arguments(probe.refused, "refused"))
+					return stateCommand(fixture.ctx, arguments(probe.actor, probe.refused, "refused"))
 				})
 			})
 			if err == nil {
@@ -292,8 +299,12 @@ func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
 			if probe.admitted == nil {
 				return
 			}
+			admittedActor := probe.actor
+			if probe.admittedActor != "" {
+				admittedActor = probe.admittedActor
+			}
 			landed, err := quiet(t, func() error {
-				return stateCommand(fixture.ctx, arguments(probe.admitted, "admitted"))
+				return stateCommand(fixture.ctx, arguments(admittedActor, probe.admitted, "admitted"))
 			})
 			if err != nil {
 				t.Fatalf("the satisfied act was refused: %v", err)
@@ -359,16 +370,26 @@ func TestPreflightRefusesAReportCitingTheWrongRequest(t *testing.T) {
 
 func TestPreflightRefusesRatifications(t *testing.T) {
 	for _, probe := range []struct {
-		name      string
-		actor     string
-		target    func(f preflightFixture) string
-		admitted  string
-		wantWords []string
+		name  string
+		actor string
+		// target is the one the refusal names. admitted is the actor whose
+		// ratification of admittedTarget must land instead — the same act with
+		// its precondition satisfied. admittedTarget defaults to target, for
+		// the cases where only the ratifier had to change.
+		target         func(f preflightFixture) string
+		admitted       string
+		admittedTarget func(f preflightFixture) string
+		wantWords      []string
 	}{
 		{
+			// The precondition is that something stands at the target. A record
+			// the fold refused stands for nothing; the report beside it, which
+			// the fold admitted, is ratified by the same actor without trouble.
 			name: "target the fold refused", actor: "operator",
-			target:    func(f preflightFixture) string { return f.refused },
-			wantWords: []string{"ratify target is not effective", "gs inspect"},
+			target:         func(f preflightFixture) string { return f.refused },
+			admitted:       "operator",
+			admittedTarget: func(f preflightFixture) string { return f.report },
+			wantWords:      []string{"ratify target is not effective", "gs inspect"},
 		},
 		{
 			name: "kind with no satisfier", actor: "operator",
@@ -388,9 +409,12 @@ func TestPreflightRefusesRatifications(t *testing.T) {
 			wantWords: []string{"only the requester may declare satisfaction", "originating requester"},
 		},
 		{
+			// The precondition is that this workroom holds the target at all.
 			name: "target from another workroom", actor: "operator",
-			target:    func(f preflightFixture) string { return foreignEvent() },
-			wantWords: []string{"ratify target is unknown", "full event id"},
+			target:         func(f preflightFixture) string { return foreignEvent() },
+			admitted:       "operator",
+			admittedTarget: func(f preflightFixture) string { return f.report },
+			wantWords:      []string{"ratify target is unknown", "full event id"},
 		},
 	} {
 		t.Run(probe.name, func(t *testing.T) {
@@ -418,9 +442,13 @@ func TestPreflightRefusesRatifications(t *testing.T) {
 			if probe.admitted == "" {
 				return
 			}
+			admitted := target
+			if probe.admittedTarget != nil {
+				admitted = probe.admittedTarget(fixture)
+			}
 			landed, err := quiet(t, func() error {
 				return ratifyCommand(fixture.ctx, []string{
-					"--repo", fixture.repo, "--as", probe.admitted, "--idempotency-key", "admitted", target,
+					"--repo", fixture.repo, "--as", probe.admitted, "--idempotency-key", "admitted", admitted,
 				})
 			})
 			if err != nil {
@@ -657,4 +685,50 @@ func TestPreflightRefusesABatchBeforeItsFirstAppend(t *testing.T) {
 // the wrong repository produces.
 func foreignEvent() string {
 	return "git:sha1:" + strings.Repeat("f", 40) + "#git:sha1:" + strings.Repeat("e", 40)
+}
+
+// The fix table is keyed on the fold's own words, so a reason the fold rewords
+// stops matching and its advice disappears with no test failing anywhere near
+// it. This is the failure: every key, and every fragment matched by shape, must
+// still be written in the fold.
+func TestEveryFixNamesAReasonTheFoldStillWrites(t *testing.T) {
+	source := foldSource(t)
+	for reason := range preflightFixes {
+		if !strings.Contains(source, strconv.Quote(reason)) {
+			t.Errorf("no fold reason is written %q; the fix for it can never print", reason)
+		}
+	}
+	for _, pattern := range preflightFixPatterns {
+		if !strings.Contains(source, pattern) {
+			t.Errorf("the fold writes no reason containing %q; the fix for it can never print", pattern)
+		}
+	}
+}
+
+// foldSource is every non-test Go file of the fold, concatenated. The reasons
+// are string literals there, so this reads them as the fold spells them rather
+// than as some list kept beside it.
+func foldSource(t *testing.T) string {
+	t.Helper()
+	directory := filepath.Join("..", "..", "internal", "workroom")
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var source strings.Builder
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(directory, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		source.Write(content)
+	}
+	if source.Len() == 0 {
+		t.Fatal("no fold source was read; this test proves nothing")
+	}
+	return source.String()
 }

@@ -21,8 +21,13 @@ import (
 //     holds is not the one the snapshot describes;
 //   - the act is a verb whose payload this boundary does not build, which is
 //     every guarded act: their own two-act admission guards judge them;
-//   - the act would be refused before signing anyway, by the same builder
-//     submission runs, which says so in better words than a fold reason.
+//   - the act's body cannot be settled here at all — an undefined kind, a
+//     request that states no result, a reserved field supplied as input —
+//     because the shared builder path this uses refuses to produce one. That
+//     path refuses the act again, in its own words, when it is signed. It is
+//     not the whole of what the builder refuses: a cited retirement, a report
+//     basis and an unratifiable target are judged later, after a key is read,
+//     and this says nothing about them.
 //
 // The judgement is advisory in one more way that matters. It reads the local
 // verified log, and an act submitted to a resident joins that resident's

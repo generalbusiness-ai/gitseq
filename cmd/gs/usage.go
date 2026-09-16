@@ -146,3 +146,16 @@ func usageReferenceError(set *flag.FlagSet, err error) error {
 	set.Usage()
 	return err
 }
+
+// signingActorOrUsage resolves the identity this act will be signed with, and
+// answers a missing one the way every other malformed invocation is answered:
+// the command's flags, one worked example, and the resolver's own message. A
+// caller who did not say who they are has not typed a complete command, so this
+// is the same class of refusal as a missing required flag.
+func signingActorOrUsage(set *flag.FlagSet, flagValue string) (string, error) {
+	actor, err := signingActor(flagValue)
+	if err != nil {
+		return "", usageReferenceError(set, err)
+	}
+	return actor, nil
+}

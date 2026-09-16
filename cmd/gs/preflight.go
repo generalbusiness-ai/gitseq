@@ -78,6 +78,42 @@ func preflightWorldIsCurrent(ctx context.Context, workspace *app.Workspace, serv
 	return validateRemoteFrontier(ctx, workspace, summary.Durable.Genesis, summary.Durable.Head) == nil
 }
 
+// preflightFixes maps a fold reason to the one line that says what would make
+// that act land. Every key is a reason string internal/workroom writes, and a
+// test holds it to that: a reason the fold rewords stops matching silently
+// otherwise, and the advice under it would quietly disappear. A value carrying
+// %s takes one argument from fixArgument.
+var preflightFixes = map[string]string{
+	"actor may not supersede target":                                "only %s may retire it; ask one of them to file the supersede",
+	"supersede target is unknown":                                   "name the target by its full event id, as a positional argument; gs work and gs inspect print the ids this workroom holds",
+	"ratify target is unknown":                                      "name the target by its full event id, as a positional argument; gs work and gs inspect print the ids this workroom holds",
+	"ratify target is not effective":                                "the fold refused that record, so nothing stands there to ratify; gs inspect %s says why",
+	"retired statement cannot be ratified":                          "that record was retired; ratify its successor instead",
+	"statement kind is not ratifiable":                              "that kind has no satisfier: an artifact is closed by an approved merge, a request by a promise, report or supersession",
+	"only statements may be ratified":                               "ratify names a statement, not a ratification or a supersession",
+	"ratify must rest on exactly its target":                        "gs ratify builds its own basis; pass the target as the positional argument and no --rests-on",
+	"only the requester may declare satisfaction":                   "the originating requester ratifies this report; ask them to file it",
+	"dangling promise has no request":                               "rest the promise on the request it claims: --rests-on <request-event>",
+	"report has no promise or request":                              "rest the report on your promise, or on the request when you made no promise: --rests-on <event>",
+	"report cites a request other than the one its promise answers": "cite only the request your promise rests on, or drop the request and cite the promise alone",
+	"only the promisor may report completion":                       "the actor who promised reports on it; report on your own promise or against the request",
+	"only the requested performer may report directly on a request": "only the addressee may report straight against a request; file a promise first, or ask the addressee to report",
+	"promise actor is not the requested performer":                  "only the actor named in body.to may promise this request; ask the requester to reassign it",
+	"requested performer is not in the live roster":                 "address the request to a live actor: --body to=<actor name>, as gs actors lists them",
+	"participant roster state requires body.kind":                   "a participant roster state names what the actor is: --body kind=human or --body kind=agent",
+}
+
+// preflightFixPatterns are the reason fragments the table below matches by
+// shape rather than by the whole string, because the fold builds those reasons
+// around a field, a role or an event. The same test holds these to the fold
+// source.
+var preflightFixPatterns = []string{
+	" state requires body.",
+	"actor lacks ",
+	"report rests on the request while promise ",
+	"undefined kind ",
+}
+
 // preflightFix is one line saying what would make this act land. The mapping is
 // from the fold's own reason, so a reason nobody has written a line for prints
 // alone rather than guessing.
@@ -100,47 +136,29 @@ func preflightFix(ctx context.Context, workspace *app.Workspace, act app.Act, re
 		role = strings.TrimSuffix(role, " role")
 		return "ask an actor holding " + role + " to file this act"
 	}
-	switch reason {
-	case "actor may not supersede target":
-		return "only " + supersedeAuthority(ctx, workspace, act.Target) + " may retire it; ask one of them to file the supersede"
-	case "supersede target is unknown", "ratify target is unknown":
-		return "name the target by its full event id, as a positional argument; gs work and gs inspect print the ids this workroom holds"
-	case "ratify target is not effective":
-		return "the fold refused that record, so nothing stands there to ratify; gs inspect " + act.Target + " says why"
-	case "retired statement cannot be ratified":
-		return "that record was retired; ratify its successor instead"
-	case "statement kind is not ratifiable":
-		return "that kind has no satisfier: an artifact is closed by an approved merge, a request by a promise, report or supersession"
-	case "only statements may be ratified":
-		return "ratify names a statement, not a ratification or a supersession"
-	case "ratify must rest on exactly its target":
-		return "gs ratify builds its own basis; pass the target as the positional argument and no --rests-on"
-	case "only the requester may declare satisfaction":
-		return "the originating requester ratifies this report; ask them to file it"
-	case "dangling promise has no request":
-		return "rest the promise on the request it claims: --rests-on <request-event>"
-	case "report has no promise or request":
-		return "rest the report on your promise, or on the request when you made no promise: --rests-on <event>"
-	case "report cites a request other than the one its promise answers":
-		return "cite only the request your promise rests on, or drop the request and cite the promise alone"
-	case "only the promisor may report completion":
-		return "the actor who promised reports on it; report on your own promise or against the request"
-	case "only the requested performer may report directly on a request":
-		return "only the addressee may report straight against a request; file a promise first, or ask the addressee to report"
-	case "promise actor is not the requested performer":
-		return "only the actor named in body.to may promise this request; ask the requester to reassign it"
-	case "requested performer is not in the live roster":
-		return "address the request to a live actor: --body to=<actor name>, as gs actors lists them"
-	case "participant roster state requires body.kind":
-		return "a participant roster state names what the actor is: --body kind=human or --body kind=agent"
-	}
 	if strings.HasPrefix(reason, "report rests on the request while promise ") {
 		return "report on that promise instead, or supersede it first"
 	}
 	if strings.HasPrefix(reason, "undefined kind ") {
 		return "gs status prints the kinds this workroom defines; a new one needs a ratified kind-def"
 	}
-	return ""
+	fix, known := preflightFixes[reason]
+	if !known {
+		return ""
+	}
+	if !strings.Contains(fix, "%s") {
+		return fix
+	}
+	return fmt.Sprintf(fix, fixArgument(ctx, workspace, act, reason))
+}
+
+// fixArgument is the one value a fix line names: who may retire this target, or
+// the target to go and read.
+func fixArgument(ctx context.Context, workspace *app.Workspace, act app.Act, reason string) string {
+	if reason == "actor may not supersede target" {
+		return supersedeAuthority(ctx, workspace, act.Target)
+	}
+	return act.Target
 }
 
 // missingBodyField reads the field out of the fold's missing-field reason,
