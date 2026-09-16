@@ -4,7 +4,9 @@ import (
 	"context"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1328,7 +1330,7 @@ func TestWorkNextPrintsOnlyFlagsTheCommandsDefine(t *testing.T) {
 // line that splits one name into two arguments is not the act it claims to be.
 func TestWorkNextQuotesDataForTheShell(t *testing.T) {
 	t.Parallel()
-	for _, actor := range []string{"build bot", "bot;$(rm -rf /)", "o'brien"} {
+	for _, actor := range []string{"build bot", "bot;$(rm -rf /)", "o'brien", "#bot"} {
 		line := (nextWorld{actor: actor}).command("promise", "%s", datum("git:sha1:abc#git:sha1:def"))
 		words := shellWords(t, line)
 		if len(words) != 5 || words[3] != actor {
@@ -1364,47 +1366,30 @@ func commandLines(t *testing.T, page string) []string {
 	return lines
 }
 
+var holePattern = regexp.MustCompile(`<[^<>]+>`)
+
 // shellWords splits a generated line the way the shell it is meant for would,
 // which is the only reading that says whether a quoted argument survived. It
 // understands the one quoting this output produces: POSIX single quotes.
+// shellWords splits a generated line the way the shell it is meant for does:
+// a real sh runs it with gs replaced by a function that prints each argument
+// on its own line, so quoting, comments and word splitting are the shell's,
+// not a test's imitation of them.
 func shellWords(t *testing.T, line string) []string {
 	t.Helper()
-	var words []string
-	var current strings.Builder
-	quoted, started := false, false
-	for index := 0; index < len(line); index++ {
-		character := line[index]
-		switch {
-		case quoted && character == '\'':
-			quoted = false
-		case quoted:
-			current.WriteByte(character)
-		case character == '\'':
-			quoted, started = true, true
-		case character == '\\' && index+1 < len(line):
-			// Outside quotes a backslash escapes the next byte, which is how a
-			// single quote inside a single-quoted argument is written.
-			index++
-			current.WriteByte(line[index])
-			started = true
-		case character == ' ':
-			if started {
-				words = append(words, current.String())
-				current.Reset()
-				started = false
-			}
-		default:
-			current.WriteByte(character)
-			started = true
-		}
+	// A hole such as <reviewer> is deliberately not runnable; the shell would
+	// read it as a redirection, so it is replaced by a plain word first.
+	line = holePattern.ReplaceAllString(line, "HOLE")
+	script := "gs() { for a in \"$@\"; do printf '%s\\n' \"$a\"; done; }; " + line
+	output, err := exec.Command("sh", "-c", script).CombinedOutput()
+	if err != nil {
+		t.Fatalf("sh could not run %q: %v\n%s", line, err, output)
 	}
-	if quoted {
-		t.Fatalf("line %q has an unterminated quote", line)
+	text := strings.TrimSuffix(string(output), "\n")
+	if text == "" {
+		return []string{"gs"}
 	}
-	if started {
-		words = append(words, current.String())
-	}
-	return words
+	return append([]string{"gs"}, strings.Split(text, "\n")...)
 }
 
 func TestWorkNextNotesAStaleRowAndItsRepair(t *testing.T) {

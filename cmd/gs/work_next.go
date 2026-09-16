@@ -333,7 +333,9 @@ func shellQuote(value string) string {
 	if value == "" {
 		return "''"
 	}
-	if strings.IndexFunc(value, func(r rune) bool { return !strings.ContainsRune(shellSafe, r) }) < 0 {
+	// A leading # opens a comment, so it is safe only inside a word, where
+	// event identifiers carry it.
+	if !strings.HasPrefix(value, "#") && strings.IndexFunc(value, func(r rune) bool { return !strings.ContainsRune(shellSafe, r) }) < 0 {
 		return value
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
