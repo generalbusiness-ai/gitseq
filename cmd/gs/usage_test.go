@@ -65,6 +65,16 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 			wantUsage: []string{"usage: gs supersede", "Example:"},
 		},
 		{
+			name: "read command's event given as a flag",
+			run: func(fixture preflightFixture) error {
+				return inspectCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--event", fixture.report,
+				})
+			},
+			wantError: []string{"gs inspect takes its <event> as a positional argument, not --event"},
+			wantUsage: []string{"usage: gs inspect", "Example:", "gs inspect"},
+		},
+		{
 			name: "event reference that names nothing",
 			run: func(fixture preflightFixture) error {
 				return ratifyCommand(context.Background(), []string{

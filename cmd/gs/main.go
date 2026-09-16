@@ -1891,6 +1891,9 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	var rests, bodyValues values
 	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
 	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
+	if err := refusePositionalAsFlag(set, arguments); err != nil {
+		return err
+	}
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -2920,6 +2923,9 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("inspect", arguments)
 	jsonOutput := set.Bool("json", false, "render JSON")
 	serverFlag := set.String("server", "", "resident sequencer URL")
+	if err := refusePositionalAsFlag(set, arguments); err != nil {
+		return err
+	}
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
@@ -3061,6 +3067,9 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 
 func provenanceCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("provenance", arguments)
+	if err := refusePositionalAsFlag(set, arguments); err != nil {
+		return err
+	}
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
