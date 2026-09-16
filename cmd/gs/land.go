@@ -55,14 +55,18 @@ func landCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	if err := ratifyApprovalIfOurs(session, *approval); err != nil {
-		return err
-	}
+	// Every read-only refusal runs before the ratification. A ratification is
+	// a durable act, and a run that is going to refuse over the checkout must
+	// leave the log exactly as long as it found it; the merge preview below
+	// is what actually needs the approval ratified.
 	targetRef := landingTargetRef(session, *approval)
 	if err := requireTargetCheckout(ctx, *checkout, targetRef); err != nil {
 		return err
 	}
 	if err := requireCleanCheckout(ctx, *checkout); err != nil {
+		return err
+	}
+	if err := ratifyApprovalIfOurs(session, *approval); err != nil {
 		return err
 	}
 	if err := previewMerge(ctx, session, *checkout, candidate, *approval); err != nil {

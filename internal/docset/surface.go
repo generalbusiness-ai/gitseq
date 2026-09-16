@@ -33,7 +33,6 @@ type Tool struct {
 // the mistake the gate exists to catch.
 const (
 	gsPackage = "cmd/gs"
-	gsMain    = gsPackage + "/main.go"
 	mcpMain   = "cmd/gitseq-mcp/main.go"
 )
 
@@ -48,20 +47,20 @@ func CLISurface(root string) ([]Subcommand, error) {
 	}
 	shared, err := collectFlags(file, "flags", map[string]bool{})
 	if err != nil {
-		return nil, fmt.Errorf("%s: shared flags: %w", gsMain, err)
+		return nil, fmt.Errorf("%s: shared flags: %w", gsPackage, err)
 	}
 	if len(shared) == 0 {
-		return nil, fmt.Errorf("%s: no shared flags found; the extractor no longer matches the source", gsMain)
+		return nil, fmt.Errorf("%s: no shared flags found; the extractor no longer matches the source", gsPackage)
 	}
 	dispatch, err := dispatchTable(file)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", gsMain, err)
+		return nil, fmt.Errorf("%s: %w", gsPackage, err)
 	}
 	commands := make([]Subcommand, 0, len(dispatch))
 	for name, function := range dispatch {
 		own, err := flagsIn(file, function)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %s: %w", gsMain, name, err)
+			return nil, fmt.Errorf("%s: %s: %w", gsPackage, name, err)
 		}
 		flags := append(append([]string(nil), shared...), own...)
 		sort.Strings(flags)
@@ -69,7 +68,7 @@ func CLISurface(root string) ([]Subcommand, error) {
 	}
 	sort.Slice(commands, func(i, j int) bool { return commands[i].Name < commands[j].Name })
 	if len(commands) == 0 {
-		return nil, fmt.Errorf("%s: no subcommands found; the extractor no longer matches the source", gsMain)
+		return nil, fmt.Errorf("%s: no subcommands found; the extractor no longer matches the source", gsPackage)
 	}
 	return commands, nil
 }

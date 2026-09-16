@@ -90,17 +90,27 @@ It is a formatter over the same rows, not a second rule set, and it prints
 the same selection: `--lane`, `--status`, `--stale`, `--limit` and
 `--cursor` all still apply. The mapping is one line per lane:
 
+Whose row it is decides what it prints. A commitment has a performer and a
+requester, and their acts are not interchangeable: the performer's acts
+appear only on the performer's page, and telling a requester to publish
+somebody else's artifacts would print a command the preflight refuses.
+
 | the row | the act it owes |
 |---|---|
 | an unclaimed request addressed to you | [`gs promise`](promise.md), with the decline written out beside it |
 | a proposal awaiting your ratification | [`gs ratify`](ratify.md) |
-| a promise of yours with nothing published | [`gs artifact`](artifact.md) |
-| a promised review request | [`gs review`](review.md), as a skeleton |
-| an artifact awaiting review with no request out | [`gs review-request`](review-request.md) |
+| your promise with nothing published yet | [`gs artifact`](artifact.md) — or, when the request owes no Git artifact, an explicit `gs state --kind report` |
+| your promised review request | [`gs review`](review.md), as a skeleton, with the verdict left as a placeholder to choose |
+| your artifact awaiting review with no request out | [`gs review-request`](review-request.md) |
 | an approved head you asked the review for | [`gs ratify`](ratify.md), then [`gs land`](land.md) |
-| a row awaiting landing | [`gs land`](land.md) |
+| your row awaiting landing | [`gs land`](land.md) |
 | a report you must ratify as its requester | [`gs ratify`](ratify.md) |
 | an assert resting on one of your promises | [`gs inspect`](inspect.md), with its first line |
+| somebody else's move | nothing, and the name of who it waits on |
+
+A claimed row whose bases moved wears the lifecycle word `stale` in place
+of `promised`, and it still owes exactly what a promised row owes, so it
+prints that act with the stale note above it.
 
 A row that owes you nothing says so and says why — "waiting on carol", "a
 review request is live and no verdict has been filed yet" — because a row

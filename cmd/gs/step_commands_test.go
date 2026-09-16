@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -158,12 +159,75 @@ func TestPromiseClaimsOneRequestAddressedToTheActor(t *testing.T) {
 	}
 
 	// A retry of the same claim is the same act. The deterministic key makes
-	// it replay rather than file a second promise on one request.
-	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--branch", lane.branch, lane.request}); err == nil {
-		t.Fatal("a second promise on the same request was accepted")
+	// it replay the promise already recorded, which is what a caller who lost
+	// the answer needs: the same event id, and nothing appended.
+	repeated, err := captureStdout(t, func() error {
+		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--branch", lane.branch, lane.request})
+	})
+	if err != nil {
+		t.Fatalf("repeating the claim: %v", err)
+	}
+	if strings.TrimSpace(repeated) != promise.Event {
+		t.Fatalf("the retry printed %q, want the promise already recorded %s", repeated, promise.Event)
 	}
 	if after := f.snapshot(t).Depth; after != before+1 {
 		t.Fatalf("depth = %d after a repeated claim, want %d", after, before+1)
+	}
+}
+
+// A promise filed some other way — by hand, by the MCP adapter, by an earlier
+// version of this command — is not this run's act, so claiming again is the
+// second closure on one commitment that the fold cannot pay off.
+func TestPromiseRefusesASecondClaimItDidNotFile(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "held-elsewhere", "reviewer", "operator", "held-elsewhere.txt")
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "claimed by hand",
+		RestsOn: []string{lane.request}, IdempotencyKey: "by-hand",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.refuses(t, "you already hold promise", func() error {
+		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", lane.request})
+	})
+}
+
+// Reneging is visible forever, and it is not a locked door: the fold admits a
+// fresh promise on the request, and the new claim carries the promise it
+// follows in its key so it neither replays nor collides with the withdrawn one.
+func TestPromiseCanClaimARequestAgainAfterReneging(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "reclaimed", "reviewer", "operator", "reclaimed.txt")
+	first := f.promiseLane(t, lane, "operator")
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbSupersede, Target: first, Text: "cannot keep this", IdempotencyKey: "renege-reclaimed",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before := f.snapshot(t).Depth
+	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", lane.request}); err != nil {
+		t.Fatalf("claiming again after reneging: %v", err)
+	}
+	snapshot := f.snapshot(t)
+	if snapshot.Depth != before+1 {
+		t.Fatalf("depth = %d, want %d: one fresh promise", snapshot.Depth, before+1)
+	}
+	second := snapshot.Projection.Statements[len(snapshot.Projection.Statements)-1]
+	if second.Event == first || second.Kind != workroom.KindPromise {
+		t.Fatalf("the second claim filed %s (%s), want a new promise", second.Event, second.Kind)
+	}
+	// The reneged row stays in history and the fresh claim opens its own,
+	// which is what "visible forever" means: both rows are readable.
+	claimed := false
+	for _, commitment := range snapshot.Projection.Commitments {
+		if commitment.Request == lane.request && commitment.Promise == second.Event {
+			claimed = true
+		}
+	}
+	if !claimed {
+		t.Fatalf("no commitment row on request %s carries the fresh promise %s", lane.request, second.Event)
 	}
 }
 
@@ -179,18 +243,13 @@ func commitmentForRequest(projection workroom.Projection, request string) (workr
 func TestPromiseRefusesWhatTheFoldWouldNotClose(t *testing.T) {
 	t.Parallel()
 	f := newWorkflowFixture(t)
-	mine := f.buildStepLane(t, "mine", "reviewer", "operator", "mine.txt")
 	theirs := f.buildStepLane(t, "theirs", "operator", "reviewer", "theirs.txt")
-	f.promiseLane(t, mine, "operator")
 
 	f.refuses(t, "is addressed to reviewer", func() error {
 		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", theirs.request})
 	})
 	f.refuses(t, "not a request", func() error {
 		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", f.ground})
-	})
-	f.refuses(t, "you already hold promise", func() error {
-		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", mine.request})
 	})
 	f.refuses(t, "takes exactly one request event", func() error {
 		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator"})
@@ -240,15 +299,19 @@ func TestReviewRequestRefusesTwoPromisesUnderOneHead(t *testing.T) {
 
 func TestPromiseRefusesARequestThatIsNotOpenAndWarnsOnAStaleOne(t *testing.T) {
 	f := newWorkflowFixture(t)
-	closed := f.buildStepLane(t, "closed", "reviewer", "operator", "closed.txt")
-	promise := f.promiseLane(t, closed, "operator")
+	// Reported straight against the request, with no promise in between: the
+	// commitment is closed and there is nothing left to claim.
+	closed := f.stateV3(t, "reviewer", workroom.KindRequest, "answer directly", map[string]string{
+		"to": f.fingerprint(t, "operator"), "conditions": "answer in the report", "no_git_artifact": "true",
+	}, f.ground)
 	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
-		Verb: app.VerbSupersede, Target: promise, Text: "withdrawn", IdempotencyKey: "renege-closed",
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "answered directly",
+		RestsOn: []string{closed}, IdempotencyKey: "direct-report",
 	}); err != nil {
 		t.Fatal(err)
 	}
 	err := f.refuses(t, "not open", func() error {
-		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", closed.request})
+		return promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", closed})
 	})
 	if !strings.Contains(err.Error(), "gs work --next") {
 		t.Fatalf("refusal %q does not name where to look next", err)
@@ -550,6 +613,106 @@ func statementFor(projection workroom.Projection, event string) (workroom.Statem
 	return workroom.Statement{}, false
 }
 
+// Staleness retires nothing. The reviewer's promise is still live on a review
+// request whose bases moved, so a second request would still cancel work in
+// flight and is still refused without --replace.
+func TestReviewRequestRefusesASecondRequestWhenTheFirstWentStale(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "stale-review", "reviewer", "operator", "stale-review.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "stale-review.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--to", "reviewer"}); err != nil {
+		t.Fatal(err)
+	}
+	first := f.latestStatement(t).Event
+	f.moveTheWorld(t)
+	if commitment, ok := commitmentForRequest(f.snapshot(t).Projection, first); !ok || !commitment.Stale {
+		t.Fatalf("the review request %+v is not stale; the fixture no longer moves the world under it", commitment)
+	}
+	f.refuses(t, "refiling cancels review work already in flight", func() error {
+		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", lane.head, "--to", "reviewer", "--text", "again"})
+	})
+}
+
+// --rests-on carries the behaviour a page describes, not another commitment:
+// an artifact resting on two promises closes neither.
+func TestArtifactRefusesASecondPromiseAsAnExtraBasis(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	first := f.buildStepLane(t, "basis-one", "reviewer", "operator", "basis-one.txt")
+	firstPromise := f.promiseLane(t, first, "operator")
+	second := f.buildStepLane(t, "basis-two", "reviewer", "operator", "basis-two.txt")
+	secondPromise := f.promiseLane(t, second, "operator")
+	f.refuses(t, "an artifact resting on two promises closes neither", func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", first.head, "--promise", firstPromise, "--rests-on", secondPromise, "basis-one.txt"})
+	})
+	f.refuses(t, "is named once, by --promise", func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", first.head, "--promise", firstPromise, "--rests-on", firstPromise, "basis-one.txt"})
+	})
+}
+
+// The reporting artifact is the newest artifact *on the promise*. A newer
+// pointer filed at the same head for another reason is not the report, and
+// naming it would hand the verdict a lane it does not report.
+func TestReviewRequestNamesTheNewestArtifactOnThePromise(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "reporting", "reviewer", "operator", "reporting.txt", "docs/reporting.md")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "reporting.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	reporting := f.latestStatement(t).Event
+	// A later live artifact of the same actor at the same head, resting on
+	// something else entirely.
+	if _, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "a pointer filed for another reason",
+		Body:    map[string]string{"path": "docs/reporting.md", "commit": lane.head},
+		RestsOn: []string{f.ground}, IdempotencyKey: "sideways-artifact",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--to", "reviewer"}); err != nil {
+		t.Fatal(err)
+	}
+	request := f.latestStatement(t)
+	if request.Body["artifact"] != reporting {
+		t.Fatalf("body.artifact = %s, want the newest artifact on the promise %s", request.Body["artifact"], reporting)
+	}
+}
+
+// The change set cannot be measured without the target, and a note saying so
+// while the page says the check happened is the worst of both.
+func TestArtifactRefusesATargetThisCloneDoesNotHave(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	request := f.stateV3(t, "reviewer", workroom.KindRequest, "implement elsewhere", map[string]string{
+		"to": f.fingerprint(t, "operator"), "conditions": "publish the exact head",
+		"target_repo": mergeplan.WorkroomRepo(f.workspace),
+		"target_ref":  "refs/heads/absent", "target_head": testGit(t, f.repo, "rev-parse", "refs/heads/main"),
+	}, f.ground)
+	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", request}); err != nil {
+		t.Fatal(err)
+	}
+	promise := f.latestStatement(t).Event
+	err := f.refuses(t, "refs/heads/absent", func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", f.candidate, "--promise", promise, "feature.txt"})
+	})
+	if !strings.Contains(err.Error(), "fetch") {
+		t.Fatalf("refusal %q does not name the fix", err)
+	}
+}
+
 // landedLane carries a lane all the way to a ratified approval, through the
 // commands under test, so the landing tests below start where an actor does.
 func (f workflowFixture) approvedLane(t *testing.T, name string, ratify bool) (stepLane, string, string) {
@@ -695,6 +858,37 @@ func TestLandRefusesBeforeItTouchesGitOrTheLog(t *testing.T) {
 	})
 }
 
+// The ratification is a durable act, so it must not happen on a run that is
+// going to refuse. Both checkout refusals are proved against an approval this
+// actor could have ratified.
+func TestLandRatifiesNothingOnARunThatRefuses(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane, _, approval := f.approvedLane(t, "unratified-refusal", false)
+
+	f.refuses(t, "--checkout is the target checkout", func() error {
+		return landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+			"--checkout", lane.checkout, "--text", "no"})
+	})
+	if statement, ok := statementFor(f.snapshot(t).Projection, approval); !ok || statement.Ratified {
+		t.Fatal("the approval was ratified by a run that refused over the checkout")
+	}
+
+	if err := os.WriteFile(filepath.Join(f.repo, "untracked-refusal.txt"), []byte("stray\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.refuses(t, "is not clean", func() error {
+		return landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+			"--checkout", f.repo, "--text", "no"})
+	})
+	if statement, ok := statementFor(f.snapshot(t).Projection, approval); !ok || statement.Ratified {
+		t.Fatal("the approval was ratified by a run that refused over a dirty checkout")
+	}
+	if err := os.Remove(filepath.Join(f.repo, "untracked-refusal.txt")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestLandRefusesAnUnratifiedApprovalItCannotRatify(t *testing.T) {
 	t.Parallel()
 	f := newWorkflowFixture(t)
@@ -758,6 +952,79 @@ func TestLandReportsAMissingOriginWithoutFailing(t *testing.T) {
 	}
 	if !strings.Contains(notice, "has no origin remote") {
 		t.Fatalf("stderr %q does not report the missing origin", notice)
+	}
+}
+
+// A frontier that moved between planning and landing leaves nothing behind, so
+// the only honest recovery is to plan again. Not parallel: it replaces the
+// package's plan builder and reads standard error.
+func TestLandPlansAgainWhenTheFrontierMovesUnderTheMerge(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane, _, approval := f.approvedLane(t, "moving", true)
+	previous := buildMergePlan
+	plans := 0
+	buildMergePlan = func(ctx context.Context, workspace *app.Workspace, checkout, candidate, approval, merger string, signer mergeplan.Signer) mergeplan.Result {
+		result := previous(ctx, workspace, checkout, candidate, approval, merger, signer)
+		// The first call is gs land's read-only preview; the second is the
+		// merge's own. Moving the frontier after that one is what the merge
+		// refuses and this command retries.
+		plans++
+		if plans == 2 {
+			if _, err := workspace.Act(ctx, "reviewer", app.Act{
+				Verb: app.VerbState, Kind: workroom.KindAssert, Text: "something else landed meanwhile",
+				RestsOn: []string{f.ground}, IdempotencyKey: "frontier-mover",
+			}); err != nil {
+				t.Error(err)
+			}
+		}
+		return result
+	}
+	t.Cleanup(func() { buildMergePlan = previous })
+
+	notice, err := captureStderr(t, func() error {
+		_, runErr := captureStdout(t, func() error {
+			return landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+				"--checkout", f.repo, "--text", "Land it although the workroom moved under the plan."})
+		})
+		return runErr
+	})
+	if err != nil {
+		t.Fatalf("land: %v", err)
+	}
+	if !strings.Contains(notice, "planning again against the current frontier") {
+		t.Fatalf("stderr %q does not report the retry", notice)
+	}
+	if contained := testGit(t, f.repo, "branch", "--contains", lane.head, "--format=%(refname:short)"); !strings.Contains(contained, "main") {
+		t.Fatalf("the retry did not land the candidate: %q", contained)
+	}
+}
+
+// A push that fails with an origin present is an error, not a note: the next
+// step would delete the only other copy of those commits.
+func TestLandFailsWhenTheTargetCannotBePushed(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane, _, approval := f.approvedLane(t, "unpushable", true)
+	testGit(t, f.repo, "remote", "add", "origin", filepath.Join(filepath.Dir(f.repo), "no-such-origin.git"))
+
+	_, err := captureStdout(t, func() error {
+		return landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+			"--checkout", f.repo, "--text", "Land it with an origin that is not there.", "--cleanup"})
+	})
+	if err == nil || !strings.Contains(err.Error(), "pushing refs/heads/main to origin failed") {
+		t.Fatalf("land error = %v, want the push failure named", err)
+	}
+	if !strings.Contains(err.Error(), "rerun gs land") {
+		t.Fatalf("refusal %q does not name the repair", err)
+	}
+	// The merge landed, and nothing was deleted on the way out.
+	if contained := testGit(t, f.repo, "branch", "--contains", lane.head, "--format=%(refname:short)"); !strings.Contains(contained, "main") {
+		t.Fatalf("the merge did not land: %q", contained)
+	}
+	if _, statErr := os.Stat(lane.checkout); statErr != nil {
+		t.Fatalf("the worktree was removed although the push failed: %v", statErr)
+	}
+	if branches := testGit(t, f.repo, "branch", "--format=%(refname:short)"); !strings.Contains(branches, lane.branch) {
+		t.Fatalf("branch %s was deleted although the push failed: %q", lane.branch, branches)
 	}
 }
 
@@ -827,8 +1094,79 @@ func TestWorkNextPrintsOneCommandPerOwedAct(t *testing.T) {
 	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "reviewer", reviewRequest}); err != nil {
 		t.Fatal(err)
 	}
-	if printed := next("reviewer"); !strings.Contains(printed, "gs review --as reviewer --checkout") {
+	printed = next("reviewer")
+	if !strings.Contains(printed, "gs review --as reviewer --checkout") {
 		t.Fatalf("gs work --next for the reviewer printed\n%s\nwant the review skeleton", printed)
+	}
+	if !strings.Contains(printed, "--verdict <approved|changes-requested>") {
+		t.Fatalf("gs work --next for the reviewer printed\n%s\nwant a verdict placeholder, not a pre-filled one", printed)
+	}
+}
+
+// A commitment has a performer and a requester, and their acts are not
+// interchangeable. Printing the performer's acts on the requester's page
+// prints commands the preflight refuses, which is worse than printing nothing.
+func TestWorkNextNeverPrintsTheOtherPartysActs(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "sided", "reviewer", "operator", "sided.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	next := func(actor string) string {
+		t.Helper()
+		printed, err := captureStdout(t, func() error {
+			return workCommand(f.ctx, []string{"--repo", f.repo, "--as", actor, "--next", "--server", "-"})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return printed
+	}
+
+	// Promised: the performer owes the artifacts; the requester owes nothing.
+	requesterPage := next("reviewer")
+	for _, forbidden := range []string{"gs artifact", "gs review-request", "gs land"} {
+		if strings.Contains(requesterPage, forbidden) {
+			t.Fatalf("the requester's page printed %q, an act only the performer can file:\n%s", forbidden, requesterPage)
+		}
+	}
+	if !strings.Contains(requesterPage, "nothing for you: waiting on operator") {
+		t.Fatalf("the requester's page does not say who it waits on:\n%s", requesterPage)
+	}
+	if !strings.Contains(next("operator"), "gs artifact --as operator") {
+		t.Fatalf("the performer's page does not print the act they owe:\n%s", next("operator"))
+	}
+
+	// Awaiting review: still the performer's move, and still not the
+	// requester's, even though the row is theirs to watch.
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "sided.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if page := next("reviewer"); strings.Contains(page, "gs review-request") || strings.Contains(page, "gs artifact") {
+		t.Fatalf("the requester's page printed a performer act for an awaiting-review row:\n%s", page)
+	}
+	if page := next("operator"); !strings.Contains(page, "gs review-request --as operator --head "+lane.head) {
+		t.Fatalf("the performer's page does not ask for the review:\n%s", page)
+	}
+}
+
+// A basis under a claimed lane can move before anything is published. The fold
+// writes "stale" over "promised" then, and the row still owes its artifacts.
+func TestWorkNextStillOwesArtifactsOnAStalePromisedRow(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "stale-promised", "reviewer", "operator", "stale-promised.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	f.moveTheWorld(t)
+	printed, err := captureStdout(t, func() error {
+		return workCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--next", "--server", "-", "--stale", "include"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(printed, "gs artifact --as operator --head <head> --promise "+promise) {
+		t.Fatalf("gs work --next printed\n%s\nwant the artifacts a stale promised row still owes", printed)
+	}
+	if strings.Contains(printed, "nothing for you: this row is stale") {
+		t.Fatalf("gs work --next called a stale promised row done:\n%s", printed)
 	}
 }
 

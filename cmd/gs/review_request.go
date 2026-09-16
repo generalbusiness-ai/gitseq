@@ -77,7 +77,7 @@ func reviewRequestCommand(ctx context.Context, arguments []string) error {
 	if err := session.requireOneHead(promise, *head); err != nil {
 		return err
 	}
-	reporting := standing[len(standing)-1]
+	reporting := session.reportingArtifact(standing, promise)
 	request, commitment := "", workroom.Commitment{}
 	if promise != "" {
 		commitment, _ = session.commitmentByPromise(promise)
@@ -147,18 +147,13 @@ func reviewRequestCommand(ctx context.Context, arguments []string) error {
 // the order they were signed. The last of them is the newest, which is the
 // reporting artifact the lane reads and the one a verdict must name first.
 func (s *stepSession) artifactsAt(head string) []reviewArtifact {
-	sequences := make(map[string]int)
-	owners := make(map[string]string)
-	for _, statement := range s.projection().Statements {
-		sequences[statement.Event] = statement.Sequence
-		owners[statement.Event] = statement.Actor
-	}
 	var standing []reviewArtifact
 	for _, artifact := range s.projection().Artifacts {
-		if artifact.Commit != head || artifact.Retired || owners[artifact.Event] != s.fingerprint {
+		statement, found := s.statement(artifact.Event)
+		if artifact.Commit != head || artifact.Retired || !found || statement.Actor != s.fingerprint {
 			continue
 		}
-		standing = append(standing, reviewArtifact{event: artifact.Event, path: artifact.Path, sequence: sequences[artifact.Event]})
+		standing = append(standing, reviewArtifact{event: artifact.Event, path: artifact.Path, sequence: statement.Sequence})
 	}
 	sort.Slice(standing, func(i, j int) bool { return standing[i].sequence < standing[j].sequence })
 	return standing
@@ -170,16 +165,10 @@ func (s *stepSession) artifactsAt(head string) []reviewArtifact {
 // holding an approval nobody can merge on. Self-initiated work rests on no
 // promise, which is not an error and returns an empty lane.
 func (s *stepSession) singlePromiseUnder(standing []reviewArtifact) (string, error) {
-	kinds := make(map[string]workroom.Kind)
-	owners := make(map[string]string)
-	for _, statement := range s.projection().Statements {
-		kinds[statement.Event] = statement.Kind
-		owners[statement.Event] = statement.Actor
-	}
 	found := map[string]bool{}
 	for _, artifact := range standing {
 		for _, basis := range s.projection().Provenance[artifact.event] {
-			if kinds[basis] == workroom.KindPromise && owners[basis] == s.fingerprint {
+			if statement, ok := s.statement(basis); ok && statement.Kind == workroom.KindPromise && statement.Actor == s.fingerprint {
 				found[basis] = true
 			}
 		}
@@ -204,6 +193,28 @@ func (s *stepSession) singlePromiseUnder(standing []reviewArtifact) (string, err
 	}
 }
 
+// reportingArtifact is the newest artifact *on the promise* at this head. The
+// newest of everything standing there is a different artifact whenever the
+// head also carries a pointer filed for another reason, and naming that one
+// hands the verdict a lane it does not report.
+func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise string) reviewArtifact {
+	if promise == "" {
+		return standing[len(standing)-1]
+	}
+	reporting := reviewArtifact{}
+	for _, artifact := range standing {
+		for _, basis := range s.projection().Provenance[artifact.event] {
+			if basis == promise {
+				reporting = artifact
+			}
+		}
+	}
+	if reporting.event == "" {
+		return standing[len(standing)-1]
+	}
+	return reporting
+}
+
 // requireOneHead refuses a set that does not all stand at the reviewed head.
 // gs review makes the same check when the verdict is signed, which is after
 // the reviewer has read everything; making it here costs nobody a reading.
@@ -211,13 +222,10 @@ func (s *stepSession) requireOneHead(promise, head string) error {
 	if promise == "" {
 		return nil
 	}
-	owners := make(map[string]string)
-	for _, statement := range s.projection().Statements {
-		owners[statement.Event] = statement.Actor
-	}
 	var elsewhere []string
 	for _, artifact := range s.projection().Artifacts {
-		if artifact.Retired || artifact.Commit == head || owners[artifact.Event] != s.fingerprint {
+		statement, found := s.statement(artifact.Event)
+		if artifact.Retired || artifact.Commit == head || !found || statement.Actor != s.fingerprint {
 			continue
 		}
 		for _, basis := range s.projection().Provenance[artifact.Event] {
@@ -250,10 +258,9 @@ func (s *stepSession) liveReviewRequestFor(promise string) string {
 			}
 		}
 	}
-	open := map[string]bool{"open": true, "promised": true, "reported": true}
 	for index := len(s.projection().Commitments) - 1; index >= 0; index-- {
 		commitment := s.projection().Commitments[index]
-		if commitment.Requester != s.fingerprint || !open[commitment.Status] {
+		if commitment.Requester != s.fingerprint || !unclosedRequestStatus[commitment.Status] {
 			continue
 		}
 		for _, basis := range s.projection().Provenance[commitment.Request] {

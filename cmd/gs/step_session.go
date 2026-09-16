@@ -38,6 +38,13 @@ type stepSession struct {
 	serverURL   string
 	snapshot    app.Snapshot
 	resolver    *eventref.Resolver
+	// One pass over the projection answers every lookup these commands make.
+	// The snapshot is taken once and never moves under them, so the indexes
+	// cannot disagree with the world the preflight judged.
+	statements map[string]workroom.Statement
+	byRequest  map[string]workroom.Commitment
+	byPromise  map[string]workroom.Commitment
+	byReport   map[string]workroom.Commitment
 }
 
 // stepUsage states the positional form a step command takes. The shared flag
@@ -73,10 +80,27 @@ func openStep(ctx context.Context, repo, as, server string) (*stepSession, error
 	if err != nil {
 		return nil, err
 	}
-	return &stepSession{
+	session := &stepSession{
 		ctx: ctx, workspace: workspace, repo: repo, actor: actor, fingerprint: fingerprint,
 		serverURL: serverURL, snapshot: snapshot, resolver: newResolverFrom(workspace, snapshot),
-	}, nil
+		statements: make(map[string]workroom.Statement, len(snapshot.Projection.Statements)),
+		byRequest:  make(map[string]workroom.Commitment),
+		byPromise:  make(map[string]workroom.Commitment),
+		byReport:   make(map[string]workroom.Commitment),
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		session.statements[statement.Event] = statement
+	}
+	for _, commitment := range snapshot.Projection.Commitments {
+		session.byRequest[commitment.Request] = commitment
+		if commitment.Promise != "" {
+			session.byPromise[commitment.Promise] = commitment
+		}
+		if commitment.Report != "" {
+			session.byReport[commitment.Report] = commitment
+		}
+	}
+	return session, nil
 }
 
 // resolve answers every short reference this command was given from the one
@@ -93,39 +117,23 @@ func (s *stepSession) resolve(references ...*string) error {
 func (s *stepSession) projection() workroom.Projection { return s.snapshot.Projection }
 
 func (s *stepSession) statement(event string) (workroom.Statement, bool) {
-	for _, statement := range s.projection().Statements {
-		if statement.Event == event {
-			return statement, true
-		}
-	}
-	return workroom.Statement{}, false
+	statement, found := s.statements[event]
+	return statement, found
 }
 
 func (s *stepSession) commitmentByRequest(request string) (workroom.Commitment, bool) {
-	for _, commitment := range s.projection().Commitments {
-		if commitment.Request == request {
-			return commitment, true
-		}
-	}
-	return workroom.Commitment{}, false
+	commitment, found := s.byRequest[request]
+	return commitment, found
 }
 
 func (s *stepSession) commitmentByPromise(promise string) (workroom.Commitment, bool) {
-	for _, commitment := range s.projection().Commitments {
-		if commitment.Promise == promise {
-			return commitment, true
-		}
-	}
-	return workroom.Commitment{}, false
+	commitment, found := s.byPromise[promise]
+	return commitment, found
 }
 
 func (s *stepSession) commitmentByReport(report string) (workroom.Commitment, bool) {
-	for _, commitment := range s.projection().Commitments {
-		if commitment.Report == report {
-			return commitment, true
-		}
-	}
-	return workroom.Commitment{}, false
+	commitment, found := s.byReport[report]
+	return commitment, found
 }
 
 // name is how a refusal talks about another actor: by the name the durable
@@ -139,6 +147,22 @@ func (s *stepSession) name(fingerprint string) string {
 		return name
 	}
 	return short(fingerprint)
+}
+
+// retrying reports whether an event the log already holds is the very act
+// this run would submit under this key. It is what separates a caller
+// repeating a command after a lost answer — which must replay — from a
+// second, different act on the same commitment.
+func (s *stepSession) retrying(key, event string) bool {
+	if key == "" || event == "" {
+		return false
+	}
+	_, private, err := s.workspace.Actor(s.actor)
+	if err != nil {
+		return false
+	}
+	accepted, held := s.workspace.AcceptedActUnderKey(s.ctx, private, s.actor, key)
+	return held && accepted == event
 }
 
 func (s *stepSession) submit(act app.Act) (workroom.Record, error) {

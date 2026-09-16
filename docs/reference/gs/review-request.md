@@ -11,7 +11,8 @@ Files the request that asks a different actor to review one exact head.
 
 The shape it writes is the one [`gs review`](review.md) judges later. The
 request rests on every live artifact of yours standing at that head — not
-on the promise — and names the reporting artifact in `body.artifact`,
+on the promise — and names the reporting artifact, the newest artifact
+*resting on the promise*, in `body.artifact`,
 because the verdict resolves its lane through that field. A review request
 written any other way produces a verdict bound to nothing and a merge that
 cannot use it.
@@ -77,7 +78,9 @@ nobody a reading.
 
 ## Refiling cancels work in flight
 
-A second review request for a lane is not additive. The reviewer's promise
+A second review request for a lane is not additive. Staleness makes no
+difference to this: a basis moving under the first request retires
+nothing, so the reviewer's promise is still live on it. The reviewer's promise
 is on the first request, so refiling without retiring it leaves two open
 rows, and a verdict filed against the retired one binds to nothing.
 

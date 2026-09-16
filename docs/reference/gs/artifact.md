@@ -84,10 +84,18 @@ you ask for review.
 | `--promise` rests on no request | that it projects dangling, and `gs promise` |
 | a path the head did not change | the `git diff` that lists what it did change |
 | a path given twice, or a `--report` outside the set | the path |
+| `--rests-on` names a promise | that an artifact resting on two promises closes neither |
+| the request's target ref is not in this repository | the ref, and the `git fetch` that brings it |
+| the head and the target share no ancestor | the ref to recut the work onto |
 
 The change set is measured from the merge base of the head and the
 request's target ref, so it is the whole of what this work adds to the
-target, not only its last commit. A directory path covers the files under
+target, not only its last commit. When the target cannot be measured —
+the ref is not in this repository, or it shares no ancestor with the head
+— the command refuses rather than publishing unchecked: a note saying the
+check was skipped, on a page that says the check happens, is the worst of
+both. The one case that is only a note is a request that states no target
+at all, such as a review: there is nothing to measure against. A directory path covers the files under
 it, which is how an area-wide pointer such as `internal/statusview` is
 maintained; every other comparison is an exact string, exactly as the fold
 compares them.

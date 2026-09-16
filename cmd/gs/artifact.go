@@ -78,6 +78,9 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	if err := refuseSecondPromise(session, *promise, bases); err != nil {
+		return err
+	}
 	if *branch == "" {
 		*branch = branchAtHead(ctx, *repo, *head)
 	}
@@ -134,6 +137,24 @@ func requireOwnLivePromise(session *stepSession, promise string) (workroom.Commi
 	return commitment, nil
 }
 
+// refuseSecondPromise keeps the rule this command exists for. An artifact
+// resting on two promises closes neither, and --rests-on is the one way a
+// second one could still get in: it is there for the behaviour a page
+// describes and the decision the work adopts, not for another commitment.
+func refuseSecondPromise(session *stepSession, promise string, extra []string) error {
+	for _, basis := range extra {
+		if basis == promise {
+			return fmt.Errorf("--rests-on %s is the promise these artifacts already report; it is named once, by --promise", short(basis))
+		}
+		statement, found := session.statement(basis)
+		if found && statement.Kind == workroom.KindPromise {
+			return fmt.Errorf("--rests-on %s is a promise, and an artifact resting on two promises closes neither; publish this head under one promise at a time",
+				short(basis))
+		}
+	}
+	return nil
+}
+
 // requireChangedPaths compares the paths named against the paths this head
 // actually changes, measured from where it left the request's target. A path
 // the head did not change is refused; a changed path no artifact names is a
@@ -148,11 +169,14 @@ func requireChangedPaths(ctx context.Context, repo, head string, commitment work
 		fmt.Fprintf(os.Stderr, "note: request %s states no target ref, so the paths this head changes cannot be measured; check them yourself\n", short(commitment.Request))
 		return nil
 	}
+	if _, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commitment.TargetRef+"^{commit}"); err != nil {
+		return fmt.Errorf("%s, where request %s says this work is owed, is not in %s, so the paths this head changes cannot be measured; fetch it (`git -C %s fetch origin %s`) and run this again",
+			commitment.TargetRef, short(commitment.Request), repo, repo, strings.TrimPrefix(commitment.TargetRef, "refs/heads/"))
+	}
 	base, err := git(ctx, repo, "merge-base", "--end-of-options", commitment.TargetRef, head)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "note: %s and %s have no common ancestor in %s, so the paths this head changes cannot be measured; check them yourself\n",
-			commitment.TargetRef, short(head), repo)
-		return nil
+		return fmt.Errorf("%s and %s share no common ancestor in %s, so what this head changes against the target cannot be measured; rebase or recut the work onto %s",
+			commitment.TargetRef, short(head), repo, commitment.TargetRef)
 	}
 	changes, err := mergeChangesBetween(ctx, repo, strings.TrimSpace(base), head)
 	if err != nil {

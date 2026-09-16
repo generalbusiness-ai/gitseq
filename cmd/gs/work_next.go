@@ -84,43 +84,70 @@ func (w nextWorld) row(item statusview.WorkItem) string {
 	return out.String()
 }
 
+// acts maps one row to the act its reader owes. The question asked first is
+// *whose* row this is: a commitment has a performer and a requester, and the
+// acts are not interchangeable. Telling a requester to publish the performer's
+// artifacts prints a command the preflight would refuse, which is worse than
+// printing nothing.
 func (w nextWorld) acts(item statusview.WorkItem, event string) []string {
+	performer := item.Performer != nil && item.Performer.Fingerprint == w.fingerprint
+	requester := item.Requester.Fingerprint == w.fingerprint
 	switch {
 	case item.Lane == statusview.LaneAwaitingRatification:
-		return []string{w.command("gs ratify %s", event)}
+		return []string{w.command("ratify", "%s", event)}
 	case item.Lane == statusview.LaneAvailable:
-		return []string{w.command("gs promise %s", event),
-			"#   or decline: " + w.command("gs state --kind assert --rests-on %s --text '<why you decline>'", event) +
+		return []string{w.command("promise", "%s", event),
+			"#   or decline: " + w.command("state", "--kind assert --rests-on %s --text '<why you decline>'", event) +
 				", and ask " + item.Requester.Name + " to retire it"}
-	case item.Status == "promised":
-		return w.promised(item, event)
-	case item.Status == "awaiting-review":
-		return w.awaitingReview(item, event)
-	case item.Status == "reported" && item.Requester.Fingerprint == w.fingerprint && item.Report != "":
+	case item.Status == "reported" && requester && item.Report != "":
 		// The performer reported and the requester ratifies. This is the one
 		// row whose next act belongs to the actor who asked for the work.
-		return []string{w.command("gs ratify %s", item.Report)}
-	case item.Status == "awaiting-landing":
+		return []string{w.command("ratify", "%s", item.Report)}
+	case performer && owesPublication(item):
+		return w.promised(item, event)
+	case performer && item.Status == "awaiting-review":
+		return w.awaitingReview(item, event)
+	case performer && item.Status == "awaiting-landing":
 		return []string{w.landCommand(item)}
 	case item.Status == "awaiting-authorization":
 		return []string{fmt.Sprintf("#   nothing for you: the landing is held, waiting on %s to file its release", waitingName(item))}
-	case item.Lane == statusview.LaneYouAreWaitingOn:
+	case !performer:
 		return []string{fmt.Sprintf("#   nothing for you: waiting on %s", waitingName(item))}
 	default:
 		return []string{fmt.Sprintf("#   nothing for you: this row is %s", item.Status)}
 	}
 }
 
-// promised is the row you claimed and have not reported. A review lane reports
-// with a verdict; an implementation lane reports with its artifacts.
-func (w nextWorld) promised(item statusview.WorkItem, event string) []string {
-	if artifact := w.statements[event].Body["artifact"]; artifact != "" {
-		head := w.statements[event].Body["head"]
-		return []string{w.command("gs review --checkout %s --artifact %s --promise %s --verdict approved --text-file <your review>",
-			placeholder("checkout at "+short(head)), artifact, orPlaceholder(item.Promise, "promise"))}
+// owesPublication reports a claimed row that has published nothing yet.
+// "stale" is a lifecycle word the fold writes over "promised" when a basis
+// under the lane was retired and no report has landed, so a row wearing it
+// still owes exactly what a promised row owes.
+func owesPublication(item statusview.WorkItem) bool {
+	if item.Status == "promised" {
+		return true
 	}
-	return []string{w.command("gs artifact --head %s --promise %s %s",
-		orPlaceholder(item.ReportedHead, "head"), orPlaceholder(item.Promise, "promise"), placeholder("path…"))}
+	return item.Status == "stale" && item.Promise != "" && item.Report == ""
+}
+
+// promised is the row you claimed and have not reported. How a lane reports is
+// read from what its request says it owes: a review names the artifact it is
+// of, a request owing no Git artifact closes with an explicit report, and
+// everything else reports by publishing its head.
+func (w nextWorld) promised(item statusview.WorkItem, event string) []string {
+	request := w.statements[event].Body
+	promise := orPlaceholder(item.Promise, "promise")
+	switch {
+	case request["artifact"] != "":
+		return []string{w.command("review", "--checkout %s --artifact %s --promise %s --verdict %s --text-file %s",
+			placeholder("checkout at "+short(request["head"])), request["artifact"], promise,
+			placeholder("approved|changes-requested"), placeholder("your review"))}
+	case request["no_git_artifact"] == "true":
+		return []string{w.command("state", "--kind report --rests-on %s --text %s",
+			promise, placeholder("the result, and the conditions actually met"))}
+	default:
+		return []string{w.command("artifact", "--head %s --promise %s %s",
+			orPlaceholder(item.ReportedHead, "head"), promise, placeholder("path…"))}
+	}
 }
 
 // awaitingReview is the row whose artifacts stand at a head. What it owes
@@ -133,16 +160,16 @@ func (w nextWorld) awaitingReview(item statusview.WorkItem, event string) []stri
 	case review == nil && w.liveReviewRequest(item):
 		return []string{"#   nothing for you: a review request is live and no verdict has been filed yet"}
 	case review == nil:
-		return []string{w.command("gs review-request --head %s --to %s", head, placeholder("reviewer"))}
+		return []string{w.command("review-request", "--head %s --to %s", head, placeholder("reviewer"))}
 	case review.Verdict != "approved":
 		return []string{
 			fmt.Sprintf("#   %s: correct the head, then publish a fresh artifact and ask for review again", review.Verdict),
-			w.command("gs artifact --head %s --promise %s %s", placeholder("corrected head"), orPlaceholder(item.Promise, "promise"), placeholder("path…")),
+			w.command("artifact", "--head %s --promise %s %s", placeholder("corrected head"), orPlaceholder(item.Promise, "promise"), placeholder("path…")),
 		}
 	case !review.Ratified:
 		lines := []string{}
 		if w.requestedReview(review.Report) {
-			lines = append(lines, w.command("gs ratify %s", review.Report))
+			lines = append(lines, w.command("ratify", "%s", review.Report))
 		} else {
 			lines = append(lines, fmt.Sprintf("#   the approval is unratified; only its review requester may ratify it: gs ratify %s", short(review.Report)))
 		}
@@ -165,7 +192,7 @@ func (w nextWorld) landLine(approval, targetRef string) string {
 	if targetRef != "" {
 		where = "checkout on " + targetRef
 	}
-	return w.command("gs land --approval %s --checkout %s --text %s",
+	return w.command("land", "--approval %s --checkout %s --text %s",
 		orPlaceholder(approval, "approval"), placeholder(where), placeholder("what landed and why it matters"))
 }
 
@@ -177,7 +204,7 @@ func (w nextWorld) liveReviewRequest(item statusview.WorkItem) bool {
 		return false
 	}
 	artifact := item.Report
-	open := map[string]bool{"open": true, "promised": true, "reported": true}
+	open := unclosedRequestStatus
 	for _, commitment := range w.projection.Commitments {
 		if commitment.Requester != w.fingerprint || !open[commitment.Status] {
 			continue
@@ -190,6 +217,12 @@ func (w nextWorld) liveReviewRequest(item statusview.WorkItem) bool {
 	}
 	return false
 }
+
+// unclosedRequestStatus is every lifecycle word a request wears while it is
+// still owed. "stale" belongs here: a basis under the lane moved, which
+// retires nothing — the reviewer's promise is still live on that request, and
+// filing a second one would cancel their work in flight.
+var unclosedRequestStatus = map[string]bool{"open": true, "promised": true, "reported": true, "stale": true}
 
 // requestedReview reports whether this actor asked for the review whose
 // verdict this is: the fold admits a ratification of a report only from the
@@ -229,7 +262,7 @@ func (w nextWorld) assertsOnPromises() []string {
 			notes = append(notes, note{sequence: statement.Sequence,
 				line: fmt.Sprintf("\n# assert on your promise %s by %s\n#   %s\n%s\n",
 					short(basis), statusview.ActorName(w.projection, statement.Actor), oneLine(statement.Text, 110),
-					w.command("gs inspect %s", statement.Event))})
+					w.command("inspect", "%s", statement.Event))})
 			break
 		}
 	}
@@ -244,19 +277,11 @@ func (w nextWorld) assertsOnPromises() []string {
 	return lines
 }
 
-// command prints one line an actor can copy. The identity is named because a
-// line that signs as whoever the environment happens to hold is not exact.
-func (w nextWorld) command(format string, arguments ...any) string {
-	command := fmt.Sprintf(format, arguments...)
-	parts := strings.SplitN(command, " ", 3)
-	if len(parts) < 2 {
-		return command
-	}
-	line := parts[0] + " " + parts[1] + " --as " + w.actor
-	if len(parts) == 3 {
-		line += " " + parts[2]
-	}
-	return line
+// command prints one line an actor can copy: the subcommand, the identity it
+// is signed as, and the rest. The identity is named because a line that signs
+// as whoever the environment happens to hold is not exact.
+func (w nextWorld) command(subcommand, format string, arguments ...any) string {
+	return "gs " + subcommand + " --as " + w.actor + " " + fmt.Sprintf(format, arguments...)
 }
 
 func placeholder(what string) string { return "<" + what + ">" }

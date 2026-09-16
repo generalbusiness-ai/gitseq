@@ -22,7 +22,7 @@ when they arrive late.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor recording the merge receipt. It must be the implementer the approval names. |
+| `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor recording the merge receipt. [`gs merge`](merge.md) requires it to be the implementer the approval names, and refuses anyone else. |
 | `--approval` | *(required)* | The approval report [`gs review`](review.md) filed. The head it approved is read from it. |
 | `--checkout` | *(required)* | The **target** checkout: the working tree standing on the request's target ref, not the candidate's worktree. |
 | `--text` | *(required)* | A plain-language description of the change and its impact, for a reader who will never see an event id. |
@@ -83,15 +83,19 @@ error. The landed head is printed on standard output.
 1. **Read the approval.** The head to land is read from the verdict, not
    retyped. A `changes-requested` verdict, or a retired one, is refused
    here.
-2. **Ratify it if it is yours to ratify.** Only the review requester may.
-   When you are that requester the separate command is ceremony; when you
-   are not, the refusal names who must run [`gs ratify`](ratify.md).
-3. **Check the checkout.** `--checkout` must stand on the request's target
+2. **Check the checkout.** `--checkout` must stand on the request's target
    ref. Passing the candidate's worktree is the common mistake, and the
    refusal says so in those words.
-4. **Check it is clean.** A merge refuses a dirty checkout, including
+3. **Check it is clean.** A merge refuses a dirty checkout, including
    untracked files — after it has reserved the approval. This refusal
    names the files instead.
+4. **Ratify the approval if it is yours to ratify.** Only the review
+   requester may. When you are that requester the separate command is
+   ceremony; when you are not, the refusal names who must run
+   [`gs ratify`](ratify.md). It happens *after* the two checks above, and
+   before the preview that needs it, because a ratification is a durable
+   act and a run that is going to refuse over the checkout must leave the
+   log exactly as long as it found it.
 5. **Preview.** The read-only [merge plan](merge-plan.md) runs before
    anything is staged or reserved. A refusal prints every reason it gave.
 6. **Merge.** `gs merge`'s locked path. If the workroom frontier moved

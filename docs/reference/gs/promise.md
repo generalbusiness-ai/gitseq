@@ -32,8 +32,10 @@ It takes one positional argument, the request, after the flags:
 the canonical identifier, and what is signed is always the full identifier.
 
 The idempotency key is derived from your fingerprint and the request, so
-running the same claim twice replays the promise you already made instead
-of filing a second one.
+running the same claim twice replays the promise you already made — same
+event identifier, nothing appended — instead of filing a second one. A
+promise filed some other way, by hand or by another surface, is not this
+command's act: claiming again over one of those is refused.
 
 ## Example
 
@@ -63,7 +65,12 @@ names what to do instead:
 | the request is retired | its author, and `gs work --next` |
 | the request is addressed to someone else | the addressee, and `gs reassign-if-unclaimed` |
 | you already hold a live promise on it | that promise, `gs artifact` to report it, and `gs supersede` to withdraw it |
-| the request is closed, withdrawn or reneged | its lifecycle status, and `gs inspect` |
+| the request is closed or withdrawn | its lifecycle status, and `gs inspect` |
+
+A **reneged** request is not refused either. Withdrawing a promise is
+visible forever, and it is not a locked door: the fold admits a fresh
+promise on the request, and the new claim carries the promise it follows
+in its key, so it neither replays the withdrawn one nor collides with it.
 
 A **stale** request is not refused. Staleness means a basis under the
 request was retired: the reasoning moved, the conditions did not, and only
