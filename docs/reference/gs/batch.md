@@ -95,9 +95,8 @@ gs batch --repo "$REPO" --as alice "$REPO/chain.json"
 ## Refused before signing
 
 Before the first append, this command asks the fold what it would decide about
-every act of the chain, each against the frontier the first act joins, and
-refuses the whole chain when the answer for any of them is not effective. The
-refusal names the act by its position:
+every act of the chain, and refuses the whole chain when the answer for any of
+them is not effective. The refusal names the act by its position:
 
 ```text
 gs: act 1: the fold would rule this act ineffective: artifact state requires body.path
@@ -105,37 +104,17 @@ fix: an artifact names one file: --body path=<file>, at the exact string the mer
 file it as written with --no-preflight
 ```
 
-The reason is the fold's own, word for word. The line beneath it is the only
-thing this boundary adds, and a reason nobody has written a line for prints
-alone. Nothing has happened when this prints: no signing key has been read, no
-act has been built, and the log stands where it stood.
+The chain is judged in order, in a fold built for the question and thrown away.
+Each act is judged against the world the acts before it would make, so a
+`$label` is resolved to the identifier its act will be judged under and an act
+resting on one is judged against it: a promise on `$request` is as effective
+here as it will be in the log. The projection this process holds is untouched.
 
-It is advice, not authority. No rule lives here — the check folds the
-prospective record with the same fold the sequencer runs, over the projection
-this checkout last verified — and the fold judges the act again at sequencing,
-against the world it actually joins. That second judgement is the one that
-counts. When the question cannot be put honestly the command stays quiet and
-files the act as it always did: a workroom this process cannot fold, an act
-whose shape this boundary does not build, or an act citing a `$label`, which
-names an act the chain has yet to mint and so has no world to be judged in.
-`--server` is the case worth knowing: the act joins the resident's frontier, so
-the check runs only while the resident stands exactly where this checkout does,
-and is skipped otherwise.
-
-No act is judged against what the acts before it in the chain will make of the
-world. An act this check admits can therefore still be refused by the fold
-because an earlier act of the same chain invalidated it — retiring what a later
-act ratifies, say. That is the case this check does not catch and the fold
-does.
-
-Nothing about an admitted act changes. `--no-preflight` skips the check and
-files the chain exactly as written — for the deliberate replay of a shape the fold
-refuses, or to record an attempt that should be visible as one.
-
-A malformed invocation is answered differently, and earlier still: an undefined
-flag, a missing required flag, a subject given as a flag where a positional
-argument belongs, or an event reference that names nothing here prints this
-command's flags and one worked example, and exits non-zero with nothing touched.
+[Refused before signing](state.md#refused-before-signing) states the rest of
+the rule: the reason is the fold's own, the fold decides again per act at
+sequencing, and `--no-preflight` files the chain as written. A chain carrying
+an `idempotency_key` this actor already holds is a retry, and the whole chain
+is left to the sequencer to replay or refuse.
 
 ## The report
 

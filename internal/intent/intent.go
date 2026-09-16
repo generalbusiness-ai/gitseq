@@ -190,8 +190,16 @@ func (s Signed) DedupKey() (string, error) {
 // enters it, which is what lets a filer that must measure the repository before
 // it can sign ask whether this key already stands before it measures anything.
 func DedupIdentity(target string, actorKey []byte, namespace, key string) string {
-	fingerprint := sha256.Sum256(actorKey)
-	return target + "\x00" + hex.EncodeToString(fingerprint[:]) + "\x00" + namespace + "\x00" + key
+	return DedupIdentityFor(target, ActorFingerprint(actorKey), namespace, key)
+}
+
+// DedupIdentityFor is the same identity for a caller that holds the actor's
+// fingerprint rather than its key. The identity never contained anything else:
+// the fingerprint is what the key contributes to it. So a surface that can name
+// an actor from the roster can ask whether a key already stands there without
+// reading the private key that would sign the act.
+func DedupIdentityFor(target, actorFingerprint, namespace, key string) string {
+	return target + "\x00" + actorFingerprint + "\x00" + namespace + "\x00" + key
 }
 
 func (s Signed) Equal(other Signed) bool {

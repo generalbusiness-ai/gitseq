@@ -37,6 +37,40 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 			wantUsage: []string{"usage: gs merge", "Example:", "gs merge --as bot"},
 		},
 		{
+			// Without a kind there is no act at all, and the vocabulary check
+			// that would have said so runs after the key is read.
+			name: "missing required kind",
+			run: func(fixture preflightFixture) error {
+				return stateCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--as", "worker", "--server", "-",
+					"--text", "a fact", "--rests-on", fixture.genesis,
+				})
+			},
+			wantError: []string{"state requires --kind"},
+			wantUsage: []string{"usage: gs state", "Example:", "gs state --as bot"},
+		},
+		{
+			name: "missing retirement reason",
+			run: func(fixture preflightFixture) error {
+				return supersedeCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--as", "worker", fixture.assert,
+				})
+			},
+			wantError: []string{"supersede requires --text"},
+			wantUsage: []string{"usage: gs supersede", "Example:"},
+		},
+		{
+			name: "missing verdict",
+			run: func(fixture preflightFixture) error {
+				return reviewCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--as", "worker", "--checkout", fixture.repo,
+					"--artifact", fixture.artifact, "--promise", fixture.promise, "--text", "looks right",
+				})
+			},
+			wantError: []string{"review requires --verdict approved"},
+			wantUsage: []string{"usage: gs review", "Example:"},
+		},
+		{
 			name: "missing statement text",
 			run: func(fixture preflightFixture) error {
 				return stateCommand(context.Background(), []string{
@@ -140,6 +174,48 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 				t.Fatalf("a malformed invocation moved the workroom: %s/%d -> %s/%d", before.Head, before.Depth, after.Head, after.Depth)
 			}
 		})
+	}
+}
+
+// A flag's value is not a flag, however it is spelled. Scanning the raw
+// arguments could not tell the two apart and refused a legitimate retirement
+// whose reason began with two dashes, while the joined spelling of the same
+// thing passed. The parser decides what was a flag; this only reads its answer.
+func TestAValueThatLooksLikeAFlagIsNotAMistake(t *testing.T) {
+	for _, spelling := range [][]string{
+		{"--text", "--target"},
+		{"--text=--target"},
+		{"--text", "-target"},
+	} {
+		t.Run(strings.Join(spelling, " "), func(t *testing.T) {
+			fixture := newPreflightFixture(t)
+			before := fixture.snapshot()
+			arguments := append([]string{"--repo", fixture.repo, "--as", "worker"}, spelling...)
+			if _, err := quiet(t, func() error {
+				return supersedeCommand(fixture.ctx, append(arguments, fixture.assert))
+			}); err != nil {
+				t.Fatalf("a retirement whose reason looks like a flag was refused: %v", err)
+			}
+			if after := fixture.snapshot(); after.Depth != before.Depth+1 {
+				t.Fatalf("the retirement did not land: depth %d -> %d", before.Depth, after.Depth)
+			}
+		})
+	}
+}
+
+// The genuine mistake still gets the line that says where the value belongs.
+func TestTheGenuinePositionalMistakeIsStillHelpful(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	printed, err := quiet(t, func() error {
+		return supersedeCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "worker", "--text", "retire it", "--target", fixture.assert,
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "takes its <target-event> as a positional argument, not --target") {
+		t.Fatalf("error = %v", err)
+	}
+	if !strings.Contains(printed, "Example:") {
+		t.Fatalf("no example was printed:\n%s", printed)
 	}
 }
 

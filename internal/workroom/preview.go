@@ -36,3 +36,11 @@ func (f *foldState) preview(record Record) Decision {
 	}
 	return decision
 }
+
+// Decision is what this fold decided about one event it holds. A caller that
+// appended a prospective record to a fold of its own reads the answer here
+// instead of rendering a whole projection for one row.
+func (f *Folder) Decision(event string) (Decision, bool) {
+	decision, decided := f.state.decisions[event]
+	return decision, decided
+}

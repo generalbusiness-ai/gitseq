@@ -53,7 +53,9 @@ gs ratify --repo "$REPO" --as alice "$REPORT"
 ## Refused before signing
 
 Before anything is signed, this command asks the fold what it would decide
-about the act as written, and refuses when the answer is not effective:
+about the ratification, and refuses when the answer is not effective: an
+unknown target, a record the fold refused, a retired one, a kind nobody may
+ratify, a role this actor does not hold.
 
 ```text
 gs: the fold would rule this act ineffective: statement kind is not ratifiable
@@ -61,38 +63,12 @@ fix: that kind has no satisfier: an artifact is closed by an approved merge, a r
 file it as written with --no-preflight
 ```
 
-The reason is the fold's own, word for word. The line beneath it is the only
-thing this boundary adds, and a reason nobody has written a line for prints
-alone. Nothing has happened when this prints: no signing key has been read, no
-act has been built, and the log stands where it stood.
-
-It is advice, not authority. No rule lives here — the check folds the
-prospective record with the same fold the sequencer runs, over the projection
-this checkout last verified — and the fold judges the act again at sequencing,
-against the world it actually joins. That second judgement is the one that
-counts. When the question cannot be put honestly the command stays quiet and
-files the act as it always did: a workroom this process cannot fold, or an act
-whose shape this boundary does not build. `--server` is the case worth knowing:
-the act joins the resident's frontier, so the check runs only while the resident
-stands exactly where this checkout does, and is skipped otherwise.
-
-Nothing about an admitted act changes. `--no-preflight` skips the check and
-files the act exactly as written — for the deliberate replay of a shape the fold
-refuses, or to record an attempt that should be visible as one.
-
-A retry is judged as a fresh act. Whether the log already holds this act under
-its `--idempotency-key` is a question only the signing key can answer, and the
-check runs before that key is read, so an exact retry of an act the log already
-accepted is judged against the world as it stands now. If that world has moved
-under the act — the target retired since, the role that authorized it revoked
-since — the retry is refused although the append would have replayed the
-accepted event and changed nothing. `--no-preflight` is the escape, and the
-replay is exactly the act it always was.
-
-A malformed invocation is answered differently, and earlier still: an undefined
-flag, a missing required flag, a subject given as a flag where a positional
-argument belongs, or an event reference that names nothing here prints this
-command's flags and one worked example, and exits non-zero with nothing touched.
+[Refused before signing](state.md#refused-before-signing) states the whole
+rule: the reason is the fold's own, the fold decides again at sequencing,
+`--no-preflight` files the act as written, and four cases are left to the fold
+with no refusal here — including an exact retry under an `--idempotency-key`
+this actor already holds, which replays the accepted event however far the
+world has moved since.
 
 ## Who may ratify what
 
@@ -133,12 +109,13 @@ appended, judged ineffective, and listed under **Attempts** in
 [`gs status`](status.md), permanently. Read current state before retrying; do
 not retry blindly.
 
-This command now refuses most of those attempts before they are signed, so
-fewer of them reach the log at all — see
+This command refuses most of those attempts before they are signed, so fewer
+of them reach the log at all — see
 [Refused before signing](#refused-before-signing). The ones that still land are
-the ones it could not judge: an act filed with `--no-preflight`, one whose world
-moved between the check and the sequencer, and one filed by a surface that makes
-no such check. The record of an attempt is permanent either way.
+the ones it did not judge: an act filed with `--no-preflight`, a retry under a
+key this actor already holds, an act whose world moved between the check and
+the sequencer, and an act filed by a surface that makes no such check. The
+record of an attempt is permanent either way.
 
 ## See also
 

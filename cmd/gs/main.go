@@ -542,9 +542,14 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
-	// The text is settled before an actor is loaded or a key is touched, so a
-	// mistyped or missing source refuses with nothing signed. The schema would
-	// refuse a textless statement later anyway; refusing here names the flag.
+	// Both required arguments are settled before an actor is resolved, a
+	// repository is opened or a key is touched, so a mistyped or missing one
+	// refuses with nothing signed and names the flag. Without a kind there is
+	// no act to judge at all: the vocabulary check would have refused it later,
+	// after the key was read, saying nothing about the flag that was missing.
+	if *kind == "" {
+		return usageErrorf(set, "state requires --kind, from the vocabulary this workroom defines")
+	}
 	text, err := resolveText(set, true)
 	if err != nil {
 		return err
@@ -657,6 +662,13 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	}
 	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" {
 		return usageErrorf(set, "review requires --checkout, --artifact, and --promise")
+	}
+	// The verdict word is checked here rather than by the guard: the guard runs
+	// after a checkout read and a verified projection, which is a long way to
+	// go to be told a flag is missing.
+	if !*prepare && !reviewguard.IsVerdictWord(*verdict) {
+		return usageErrorf(set, "review requires --verdict %s or --verdict %s",
+			reviewguard.VerdictApproved, reviewguard.VerdictChangesRequested)
 	}
 	// A verdict is the longest text this tool writes, so it is also the one
 	// most often read from a file. Settle it before anything is read or
@@ -1780,11 +1792,8 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "ratify requires one target event")
@@ -1829,14 +1838,17 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	var rests values
 	set.Var(&rests, "rests-on", "additional causal event id")
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "supersede requires one target event")
+	}
+	// The reason is what a later reader of the retirement gets, and the
+	// reference page has always called it required. Nothing downstream enforces
+	// it, so a retirement could be filed saying nothing about why.
+	if strings.TrimSpace(*message) == "" {
+		return usageErrorf(set, "supersede requires --text saying why")
 	}
 	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
@@ -1891,11 +1903,8 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	var rests, bodyValues values
 	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
 	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "reassign-if-unclaimed requires one old request event")
@@ -2069,11 +2078,8 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites a target")
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() > 1 {
 		return usageErrorf(set, "batch takes one file, or - for standard input")
@@ -2109,6 +2115,19 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
+	}
+	// Act shape is settled before the signing key is read, so a chain that
+	// could never be built does not first ask for a key. runBatch checks it
+	// again, because it is the function that must not append a malformed act,
+	// whoever called it.
+	if position, failure := checkBatch(acts); failure != nil {
+		report := skippedBatchReport(acts)
+		report.Acts[position].Outcome = "failed"
+		report.Error = failure
+		if err := printJSON(report); err != nil {
+			return err
+		}
+		return failure
 	}
 	// Before the signing key is read, and so before anything at all can be
 	// appended: an act the fold would rule ineffective stops the whole chain
@@ -2204,10 +2223,7 @@ func readBatch(path string) ([]batchAct, error) {
 // runBatch checks the whole chain, then appends it act by act against the one
 // verified frontier the workspace already holds.
 func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct, citedOK bool) (batchReport, error) {
-	report := batchReport{Acts: make([]batchOutcome, len(acts))}
-	for position, entry := range acts {
-		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
-	}
+	report := skippedBatchReport(acts)
 	if position, failure := checkBatch(acts); failure != nil {
 		report.Acts[position].Outcome = "failed"
 		report.Error = failure
@@ -2245,6 +2261,16 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		}
 	}
 	return report, nil
+}
+
+// skippedBatchReport is what a chain reports before any of it has run: every
+// act named, in order, and none of it done.
+func skippedBatchReport(acts []batchAct) batchReport {
+	report := batchReport{Acts: make([]batchOutcome, len(acts))}
+	for position, entry := range acts {
+		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
+	}
+	return report
 }
 
 // preflightBatchAdmission constructs every request with the same application
@@ -2923,11 +2949,8 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("inspect", arguments)
 	jsonOutput := set.Bool("json", false, "render JSON")
 	serverFlag := set.String("server", "", "resident sequencer URL")
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "inspect requires one event")
@@ -3067,11 +3090,8 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 
 func provenanceCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("provenance", arguments)
-	if err := refusePositionalAsFlag(set, arguments); err != nil {
-		return err
-	}
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "provenance requires one event")

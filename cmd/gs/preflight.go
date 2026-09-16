@@ -12,41 +12,44 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
-// noPreflightFlag names the one escape from the pre-signing fold check. An act
-// the fold would refuse is sometimes exactly the act an author means to file —
-// replaying a shape the log already holds under a key, or recording an attempt
-// deliberately — and the check is a courtesy, not a rule. It is one flag, it
-// changes nothing about what an admitted act contains, and the fold decides
-// either way.
+// noPreflightFlag names the one escape from the pre-signing fold check, for the
+// author who means to file a shape the fold refuses. It changes nothing about
+// what an admitted act contains.
 const noPreflightFlag = "no-preflight"
 
 // refuseIneffectiveAct asks the fold what it would decide about this act and
-// refuses before a signing key is read when the answer is not effective. It is
-// called after every reference is resolved and before the act is built, which
-// is the last moment at which nothing has been touched: no key, no log, no
-// resident.
-//
-// It never invents a refusal of its own. The reason printed is the fold's, word
-// for word, and the fix line beneath it is this boundary's only addition. When
-// the question cannot be put — an unfoldable world, a resident standing
-// somewhere this checkout cannot see, an act shape this boundary does not build
-// — it says nothing and the act goes to the fold as before.
+// refuses when the answer is not effective. It runs after every reference is
+// resolved and before the act is built: no key, no log, no resident touched
+// yet. The reason printed is the fold's, word for word; the fix line beneath it
+// is all this boundary adds.
 func refuseIneffectiveAct(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, skip bool, act app.Act) error {
-	if skip {
+	filer, ok := preflightFiler(ctx, workspace, serverURL, actorName, skip)
+	if !ok {
 		return nil
 	}
-	actor, err := workspace.ResolveActor(actorName)
-	if err != nil {
-		return nil
-	}
-	if !preflightWorldIsCurrent(ctx, workspace, serverURL) {
-		return nil
-	}
-	decision, judged := workspace.PreflightAct(ctx, actor.Fingerprint, act)
+	decision, judged := workspace.PreflightAct(ctx, filer, act)
 	if !judged || decision.Verdict == workroom.Effective {
 		return nil
 	}
 	return ineffectiveActError(ctx, workspace, act, decision)
+}
+
+// preflightFiler names who the act would be signed as, and reports whether the
+// question may be put at all: not when the caller turned the check off, not when
+// this checkout cannot name the actor, and not when the resident stands
+// somewhere this checkout cannot see.
+func preflightFiler(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, skip bool) (app.Filer, bool) {
+	if skip {
+		return app.Filer{}, false
+	}
+	actor, err := workspace.ResolveActor(actorName)
+	if err != nil {
+		return app.Filer{}, false
+	}
+	if !preflightWorldIsCurrent(ctx, workspace, serverURL) {
+		return app.Filer{}, false
+	}
+	return app.Filer{Name: actorName, Fingerprint: actor.Fingerprint}, true
 }
 
 // ineffectiveActError renders one refusal: the fold's verdict and reason, the
@@ -61,12 +64,10 @@ func ineffectiveActError(ctx context.Context, workspace *app.Workspace, act app.
 }
 
 // preflightWorldIsCurrent reports whether the world this process folded is the
-// world the act would join. A local act always joins the log this checkout
-// holds. An act submitted to a resident joins the resident's frontier, and a
-// checkout that has not caught up with it would refuse acts the fold admits —
-// the one failure this whole mechanism must not introduce. So the resident is
-// asked where it stands, cheaply, and anything but exact agreement leaves the
-// judgement to the fold.
+// world the act would join. A local act joins this checkout's log; an act
+// submitted to a resident joins that resident's frontier, and a checkout behind
+// it would refuse acts the fold admits. So the resident is asked where it
+// stands, and anything but exact agreement leaves the judgement to the fold.
 func preflightWorldIsCurrent(ctx context.Context, workspace *app.Workspace, serverURL string) bool {
 	if serverURL == "" {
 		return true
@@ -80,9 +81,9 @@ func preflightWorldIsCurrent(ctx context.Context, workspace *app.Workspace, serv
 
 // preflightFixes maps a fold reason to the one line that says what would make
 // that act land. Every key is a reason string internal/workroom writes, and a
-// test holds it to that: a reason the fold rewords stops matching silently
-// otherwise, and the advice under it would quietly disappear. A value carrying
-// %s takes one argument from fixArgument.
+// test holds it to that, because a reason the fold rewords would otherwise stop
+// matching and take its advice with it. A value carrying %s takes one argument
+// from fixArgument.
 var preflightFixes = map[string]string{
 	"actor may not supersede target":                                "only %s may retire it; ask one of them to file the supersede",
 	"supersede target is unknown":                                   "name the target by its full event id, as a positional argument; gs work and gs inspect print the ids this workroom holds",
@@ -201,50 +202,59 @@ func supersedeAuthority(ctx context.Context, workspace *app.Workspace, target st
 }
 
 // refuseIneffectiveBatch asks the fold about every act of a chain before the
-// first one is appended, for the same reason the chain is read and resolved
-// whole: a batch that cannot land cleanly should land nothing, and half a chain
-// in the log is worse than none of it.
+// first one is appended: half a chain in the log is worse than none of it.
 //
-// An act that cites a label names an act this batch has yet to mint. The fold
-// cannot be asked about a world that does not exist yet, so those acts are left
-// to it, exactly as they were before. Every other act is judged against the
-// world as it stands now, which is the world the first act of the chain will
-// join.
+// Labels included. An act citing a `$label` names an act the chain has yet to
+// mint, so each label is resolved to the identifier its act will be judged
+// under and the chain is folded in order: act two is judged against the world
+// act one would make. Skipping labeled acts left the commonest chain shape
+// unchecked.
 func refuseIneffectiveBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, skip bool, acts []batchAct) error {
-	if skip {
+	filer, ok := preflightFiler(ctx, workspace, serverURL, actorName, skip)
+	if !ok {
 		return nil
 	}
-	actor, err := workspace.ResolveActor(actorName)
-	if err != nil {
+	prospective, ok := prospectiveChain(workspace, acts)
+	if !ok {
 		return nil
 	}
-	if !preflightWorldIsCurrent(ctx, workspace, serverURL) {
+	position, decision, refused := workspace.PreflightChain(ctx, filer, prospective)
+	if !refused {
 		return nil
 	}
-	for position, entry := range acts {
-		if citesUnmintedAct(entry) {
-			continue
-		}
-		act := resolveBatchAct(entry, nil, false)
-		decision, judged := workspace.PreflightAct(ctx, actor.Fingerprint, act)
-		if !judged || decision.Verdict == workroom.Effective {
-			continue
-		}
-		return fmt.Errorf("act %d: %w", position, ineffectiveActError(ctx, workspace, act, decision))
-	}
-	return nil
+	return fmt.Errorf("act %d: %w", position, ineffectiveActError(ctx, workspace, prospective[position], decision))
 }
 
-// citesUnmintedAct reports whether this act names another act of the same
-// chain, which has no identifier until the chain runs.
-func citesUnmintedAct(entry batchAct) bool {
-	if isBatchLabel(entry.Target) || isBatchLabel(entry.Retirement) {
-		return true
+// prospectiveChain is the chain as the fold would read it: every act built the
+// way submission builds it, with each `$label` replaced by the identifier the
+// act it names will be judged under. A label naming no act of this chain leaves
+// an empty reference behind, and the chain is left to the fold; checkBatch has
+// already refused that shape.
+func prospectiveChain(workspace *app.Workspace, acts []batchAct) ([]app.Act, bool) {
+	minted := make(map[string]string, len(acts))
+	for position, entry := range acts {
+		if entry.Label != "" {
+			minted[entry.Label] = workspace.ProspectiveEventID(position)
+		}
 	}
-	for _, basis := range entry.RestsOn {
-		if isBatchLabel(basis) {
+	prospective := make([]app.Act, 0, len(acts))
+	for _, entry := range acts {
+		act := resolveBatchAct(entry, minted, false)
+		if unresolvedReference(entry, act) {
+			return nil, false
+		}
+		prospective = append(prospective, act)
+	}
+	return prospective, true
+}
+
+// unresolvedReference reports whether label resolution left one of this act's
+// references empty, which is what a label no act of the chain defines leaves.
+func unresolvedReference(entry batchAct, act app.Act) bool {
+	for _, reference := range act.RestsOn {
+		if reference == "" {
 			return true
 		}
 	}
-	return false
+	return (entry.Target != "" && act.Target == "") || (entry.Retirement != "" && act.Retirement == "")
 }

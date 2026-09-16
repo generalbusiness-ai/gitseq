@@ -12,11 +12,10 @@ import (
 const commandNames = "init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach"
 
 // commandExamples is one worked invocation per command: the shortest line that
-// actually works, in the same shape as that command's reference page under
-// docs/reference/gs/. A person who mistyped a command needs to see one correct
-// call more than they need a second copy of the flag list they just failed to
-// use. Short references stand in for event ids, because the ids themselves are
-// too long to read in an error and teach nothing.
+// works, in the shape of that command's reference page under docs/reference/gs/.
+// A person who mistyped a command needs one correct call more than a second copy
+// of the flag list they just failed to use. Short references stand in for event
+// ids, which are too long to read in an error.
 var commandExamples = map[string]string{
 	"init":                  `gs init --repo . --operator alice`,
 	"actor-add":             `gs actor-add --as alice --name bot --kind agent`,
@@ -50,9 +49,8 @@ var commandExamples = map[string]string{
 
 // positionalSubjects names, per command, the flags a caller reaches for when
 // that command takes its subject as a positional argument. Guessing `--target`
-// at a command that wants `<target-event>` is the single commonest malformed
-// invocation here, and the flag package's own answer — "flag provided but not
-// defined" — never says where the value should have gone.
+// where `<target-event>` belongs is the commonest malformed invocation here, and
+// "flag provided but not defined" never says where the value should have gone.
 var positionalSubjects = map[string][]string{
 	"ratify":                {"target", "event", "statement", "report"},
 	"supersede":             {"target", "event", "statement"},
@@ -92,46 +90,41 @@ func usageErrorf(set *flag.FlagSet, format string, arguments ...any) error {
 	return fmt.Errorf(format, arguments...)
 }
 
-// refusePositionalAsFlag refuses a subject offered as a flag before the flag
-// package can call it undefined, and says where the value belongs. It reads the
-// raw arguments, because this has to happen before parsing: the flag package
-// stops at the first thing it does not know, and by then its own message has
-// already been printed.
-func refusePositionalAsFlag(set *flag.FlagSet, arguments []string) error {
-	guesses, watched := positionalSubjects[set.Name()]
-	if !watched {
-		return nil
+// parseRefusal answers an undefined flag whose name is the one a caller reaches
+// for instead of this command's positional argument. The flag package has
+// already printed its refusal and the usage this file adds the example to; this
+// adds the line saying where the value belongs.
+//
+// It reads the parser's refusal rather than the raw arguments, because a scan of
+// the arguments cannot tell a flag from a flag's value: it refused
+// `gs supersede --text "--target" <event>`, a legitimate act whose reason begins
+// with two dashes, while the joined spelling passed. The parser has consumed
+// values and honoured the end-of-options marker already.
+func parseRefusal(set *flag.FlagSet, err error) error {
+	name, undefined := undefinedFlagName(err)
+	if !undefined {
+		return err
 	}
-	for _, argument := range arguments {
-		if argument == "--" {
-			return nil
-		}
-		name, ok := flagName(argument)
-		if !ok || set.Lookup(name) != nil {
-			continue
-		}
-		for _, guess := range guesses {
-			if name != guess {
-				continue
-			}
-			return usageErrorf(set, "gs %s takes its %s as a positional argument, not --%s",
+	for _, guess := range positionalSubjects[set.Name()] {
+		if name == guess {
+			return fmt.Errorf("gs %s takes its %s as a positional argument, not --%s",
 				set.Name(), positionalNames[set.Name()], name)
 		}
 	}
-	return nil
+	return err
 }
 
-// flagName reads the name out of one raw argument, in either of the two spellings
-// the flag package accepts, and reports whether the argument was a flag at all.
-func flagName(argument string) (string, bool) {
-	if len(argument) < 2 || !strings.HasPrefix(argument, "-") {
+// undefinedFlagName reads the flag name out of the parser's own message for a
+// flag it does not define. Anything else — a bad value, a help request — is not
+// this case and travels on untouched.
+func undefinedFlagName(err error) (string, bool) {
+	if err == nil {
 		return "", false
 	}
-	name := strings.TrimPrefix(strings.TrimPrefix(argument, "-"), "-")
-	if name == "" || strings.HasPrefix(name, "-") {
+	name, found := strings.CutPrefix(err.Error(), "flag provided but not defined: -")
+	if !found || name == "" || strings.ContainsAny(name, " =") {
 		return "", false
 	}
-	name, _, _ = strings.Cut(name, "=")
 	return name, true
 }
 
@@ -148,10 +141,9 @@ func usageReferenceError(set *flag.FlagSet, err error) error {
 }
 
 // signingActorOrUsage resolves the identity this act will be signed with, and
-// answers a missing one the way every other malformed invocation is answered:
-// the command's flags, one worked example, and the resolver's own message. A
-// caller who did not say who they are has not typed a complete command, so this
-// is the same class of refusal as a missing required flag.
+// answers a missing one the way every malformed invocation is answered: the
+// command's flags, one worked example, and the resolver's own message. A caller
+// who did not say who they are has not typed a complete command.
 func signingActorOrUsage(set *flag.FlagSet, flagValue string) (string, error) {
 	actor, err := signingActor(flagValue)
 	if err != nil {

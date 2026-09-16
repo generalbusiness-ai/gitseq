@@ -16,10 +16,6 @@ import (
 
 // preflightFixture is a small finished world: one request from the operator to
 // the worker, the worker's promise on it, the worker's report closing it, one
-// assert, and one artifact. Between them they reach every refusal the
-// pre-signing fold check is meant to catch, and every act that satisfies it.
-// preflightFixture is a small finished world: one request from the operator to
-// the worker, the worker's promise on it, the worker's report closing it, one
 // assert, one artifact, and one promise the fold already refused. Between them
 // they reach every refusal the pre-signing fold check is meant to catch, and
 // every act that satisfies it.
@@ -677,6 +673,179 @@ func TestPreflightRefusesABatchBeforeItsFirstAppend(t *testing.T) {
 	}
 	if after := fixture.snapshot(); after.Depth != before.Depth+2 {
 		t.Fatalf("the satisfied chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// An exact retry is the one recovery a filer must always have. The act was
+// accepted; the world has moved since; repeating the same command under the same
+// key must replay the event the log already holds rather than be judged as a
+// fresh act against a world that would now refuse it.
+func TestPreflightReplaysAnAcceptedActAfterItsWorldMoved(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	arguments := []string{
+		"--repo", fixture.repo, "--as", "operator", "--idempotency-key", "ratify-once", fixture.assert,
+	}
+	first, err := quiet(t, func() error { return ratifyCommand(fixture.ctx, arguments) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The author retires the target, so the same act would now be refused.
+	fixture.act(t, "worker", app.Act{
+		Verb: app.VerbSupersede, Target: fixture.assert, Text: "withdrawn",
+		IdempotencyKey: "retire-the-target",
+	})
+	before := fixture.snapshot()
+	second, err := quiet(t, func() error { return ratifyCommand(fixture.ctx, arguments) })
+	if err != nil {
+		t.Fatalf("the exact retry was refused: %v", err)
+	}
+	if printedEvent(second) != printedEvent(first) {
+		t.Fatalf("the retry returned %q, not the accepted event %q", printedEvent(second), printedEvent(first))
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the retry appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// The key buys nothing else. A different act under the same key is still
+	// refused, by the kernel, as the reused key it is.
+	_, err = quiet(t, func() error {
+		return ratifyCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--idempotency-key", "ratify-once", fixture.report,
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "idempotency key") {
+		t.Fatalf("a different act under the same key was answered %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the reused key appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// The same recovery through a chain: a key the log already holds makes the chain
+// a retry, and the kernel answers each act of it.
+func TestPreflightReplaysAnAcceptedChainAfterItsWorldMoved(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	acts := []map[string]any{
+		{"verb": "ratify", "target": fixture.assert, "idempotency_key": "chain-ratify-once"},
+	}
+	if _, err := fixture.runChain(t, "operator", acts); err != nil {
+		t.Fatal(err)
+	}
+	fixture.act(t, "worker", app.Act{
+		Verb: app.VerbSupersede, Target: fixture.assert, Text: "withdrawn",
+		IdempotencyKey: "retire-the-chain-target",
+	})
+	before := fixture.snapshot()
+	output, err := fixture.runChain(t, "operator", acts)
+	if err != nil {
+		t.Fatalf("the exact chain retry was refused: %v", err)
+	}
+	if !strings.Contains(output, `"replayed"`) || strings.Contains(output, `"landed": 1`) {
+		t.Fatalf("the chain retry did not replay: %s", output)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the chain retry appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// runChain writes a chain and runs it, with both streams captured.
+func (f preflightFixture) runChain(t *testing.T, actor string, acts []map[string]any, flags ...string) (string, error) {
+	t.Helper()
+	encoded, err := json.Marshal(acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "chain.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	arguments := append([]string{"--repo", f.repo, "--as", actor}, flags...)
+	return quiet(t, func() error { return batchCommand(f.ctx, append(arguments, path)) })
+}
+
+// A label names an act the chain has yet to mint, and skipping those acts left
+// the commonest chain shape unchecked: an artifact missing its path, behind one
+// label, landed ineffective. Every act is judged now, each against the world the
+// acts before it would make.
+func TestPreflightJudgesALabeledChainInOrder(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	commit := fixture.workspace.View().Genesis
+	acts := []map[string]any{
+		{"label": "first", "verb": "state", "kind": "assert", "text": "fine", "rests_on": []string{fixture.genesis}},
+		{"verb": "state", "kind": "artifact", "text": "a head with no path",
+			"body": map[string]string{"commit": commit}, "rests_on": []string{"$first"}},
+	}
+	output, err := fixture.runChain(t, "worker", acts)
+	if err == nil {
+		t.Fatalf("the malformed act behind a label was not refused: %s", output)
+	}
+	for _, want := range []string{"act 1", "artifact state requires body.path"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
+		}
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused labeled chain appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// The same chain with the field supplied lands whole, and every act of it is
+	// effective: an act resting on a label must be judged against the act that
+	// label will name, not refused for standing on nothing.
+	acts[1]["body"] = map[string]string{"commit": commit, "path": "notes/labelled.md"}
+	if _, err := fixture.runChain(t, "worker", acts); err != nil {
+		t.Fatalf("the satisfied labeled chain was refused: %v", err)
+	}
+	after := fixture.snapshot()
+	if after.Depth != before.Depth+2 {
+		t.Fatalf("the satisfied chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
+	}
+	for _, decision := range after.Projection.Decisions {
+		if decision.Verdict != workroom.Effective && decision.Event != fixture.refused {
+			t.Fatalf("the landed chain left %s: %s", decision.Verdict, decision.Reason)
+		}
+	}
+}
+
+// A chain judged act by act against one unchanging world would refuse this: the
+// promise is effective only once the request it rests on exists.
+func TestPreflightAdmitsAChainThatOnlyItsOwnEarlierActsMakeValid(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	worker := fixture.workspace.View().Actors["worker"].Fingerprint
+	acts := []map[string]any{
+		{"label": "ask", "verb": "state", "kind": "request", "text": "do it",
+			"body":     map[string]string{"to": worker, "conditions": "it is done", "no_git_artifact": "true"},
+			"rests_on": []string{fixture.genesis}},
+		{"verb": "state", "kind": "promise", "text": "on it", "rests_on": []string{"$ask"}},
+	}
+	if _, err := fixture.runChain(t, "worker", acts); err != nil {
+		t.Fatalf("a chain whose own first act makes the second valid was refused: %v", err)
+	}
+	after := fixture.snapshot()
+	if after.Depth != before.Depth+2 {
+		t.Fatalf("the chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// The judging fold is this call's own. The projection every reader in the
+// process holds must be exactly what it was, whether the chain was refused or
+// admitted.
+func TestPreflightLeavesTheProjectionUnchangedWhenItRefusesAChain(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	acts := []map[string]any{
+		{"label": "first", "verb": "state", "kind": "assert", "text": "fine", "rests_on": []string{fixture.genesis}},
+		{"verb": "state", "kind": "artifact", "text": "no path",
+			"body": map[string]string{"commit": fixture.workspace.View().Genesis}, "rests_on": []string{"$first"}},
+	}
+	if _, err := fixture.runChain(t, "worker", acts); err == nil {
+		t.Fatal("the chain was not refused")
+	}
+	after := fixture.snapshot()
+	if after.Head != before.Head || after.Depth != before.Depth ||
+		len(after.Projection.Statements) != len(before.Projection.Statements) ||
+		len(after.Projection.Decisions) != len(before.Projection.Decisions) {
+		t.Fatalf("judging a chain changed the projection: %s/%d -> %s/%d",
+			before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 

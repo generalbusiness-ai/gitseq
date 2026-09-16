@@ -3357,9 +3357,14 @@ func TestMergeGuardRefusesApprovalNotRestingOnNamedArtifact(t *testing.T) {
 
 // chainBatch is the ordinary case: a request, then a promise resting on it by
 // intra-batch label. The verb argument is the genesis event the request rests on.
+//
+// One actor signs a whole chain, so the request is addressed to that actor: a
+// promise is effective only from the performer the request names, and this chain
+// used to address somebody else and land a promise the fold ruled ineffective.
+// Both acts being effective is what makes it the ordinary case.
 const chainBatch = `[
   {"label": "req", "verb": "state", "kind": "request", "text": "do the thing",
-   "body": {"to": "@worker", "conditions": "tests green", "no_git_artifact": "true"},
+   "body": {"to": "@operator", "conditions": "tests green", "no_git_artifact": "true"},
    "rests_on": [%q], "idempotency_key": "chain-request"},
   {"label": "promise", "verb": "state", "kind": "promise", "text": "I will do the thing",
    "rests_on": ["$req"], "idempotency_key": "chain-promise"}
