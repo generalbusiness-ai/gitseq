@@ -28,7 +28,7 @@ resumable batch.
 | `--candidate` | *(required)* | The full, lowercase, approved commit object ID. |
 | `--approval` | *(required)* | The ratified approval report event. |
 | `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. For a held state@3 request, this is the hold owner's exact release; an unheld state@3 request refuses it. Legacy lanes retain optional phase-one authorization. See the held-landing compatibility window below. |
-| `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message. |
+| `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message, or — when the target already contains the candidate — is the text of the incorporation receipt. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 It takes no positional arguments.
@@ -164,7 +164,6 @@ world is a projection this command cannot date, not a permission to land.
 | `--as` is not the actor whose approved work is landing | A ratified approval is public. Without this, any participant could spend its single use, move the target, and strand the succession the fold would then refuse. |
 | The artifact's commit differs from `--candidate` | Same, from the other end. |
 | The approval was already used or is reserved by another merge | One approval authorizes exactly one merge. |
-| The candidate is already contained in the target | There is no new approved landing to record. |
 | `--text` is blank | The immutable merge receipt also needs a useful merge description. |
 | The checkout is dirty | The merge result would contain unreviewed work. |
 | The checkout belongs to another repository | The workroom does not govern it. |
@@ -417,6 +416,78 @@ A cause the fold cannot date fails closed and settles nothing.
 already present at the verdict still invalidates merge authority, a world that
 moved after the verdict is still recorded, and every other basis of the
 successor is read exactly as before.
+
+## Incorporation: the head the target already has
+
+An approved head sometimes reaches its target branch without this command: a
+pull request merged in a forge, a push by hand, a fast-forward somebody took
+locally. The work landed, but nothing signed for it, so the commitment stays
+`awaiting-landing` with `approved_not_landed` set. There is no new landing to
+merge, a plain report on a landing request is ineffective, and supersession
+would say the head was carried or abandoned, which is false.
+
+So `gs merge` records the truth instead of refusing it. Run the same command
+you would have run to land the head — same `--checkout`, `--candidate`,
+`--approval`, `--authorization`, `--text`, `--server`. When the candidate is
+already contained in the checkout's target ref and every other check passes,
+the command appends one durable receipt and touches nothing in Git.
+
+There is no flag. Containment is measured, not claimed, with the same
+`git merge-base --is-ancestor` the preflight already ran.
+
+**What the receipt carries.** The ordinary merge-receipt assertion, with one
+added field and an empty succession:
+
+| field | value |
+|---|---|
+| `merge_incorporation` | `prior`, the only value it ever takes |
+| `merge_head` | the candidate itself, because no merge commit was made |
+| `merge_candidate` | the approved head |
+| `merge_target_repo`, `merge_target_ref`, `merge_target_pre_head` | the destination measured in the checkout, exactly as an ordinary merge measures it |
+| `merge_retirements`, `merge_successors`, `merge_left_live`, `merge_changed_paths` | `{}`, `[]`, `{}` and `[]` |
+
+The assertion's own text is the `--text` you gave. An ordinary merge keeps that
+text in the merge commit message; an incorporation writes no commit, so the
+receipt is the only place it can live.
+
+**What Git keeps.** The target ref, `HEAD`, the index and the working tree are
+exactly as they were. No commit object is written, no receipt ref is created,
+and no branch is advanced. The command prints the candidate as the head and
+says on standard error that it recorded an incorporation rather than a merge.
+
+**What the receipt may do.** It closes its own commitment, under the ordinary
+receipt rules: the fold reads the same ratified, independent, exact-head
+approval chain it reads for any receipt, and the row becomes `satisfied`,
+terminal `landed`, with `approved_not_landed` false. No requester ratification
+follows, exactly as for an ordinary landing.
+
+It may do nothing else. An empty plan reaches no path, publishes no successor
+and retires no predecessor, so reachability never becomes succession authority.
+A receipt carrying `merge_incorporation=prior` and anything at all in its plan
+confers nothing: the encoder refuses to write one, the recorded-plan reader
+refuses to read one, and the fold gives one written by hand no authority and no
+delivery. Any other value of `merge_incorporation` is refused the same way.
+
+**Single use.** One approval still buys one receipt. A second run is refused
+naming the receipt the first appended. Two runs that race past that check use
+the same deterministic idempotency key: when they built the identical act the
+second replays the first, and when their observations differ (another `--text`,
+a target head that moved between them) the second is refused as an idempotency
+conflict. Either way exactly one receipt exists.
+
+**What is not re-checked.** Containment is measured once, before the durable
+append, and no Git reference transaction guards the window between them. A
+target that moves forward in that window still contains the candidate. A
+force-push that drops the candidate in that window leaves a receipt whose
+`merge_target_pre_head` was true when it was read; the fold cannot verify
+containment for any receipt, so this is the same exposure a receipt written by
+hand has always had, accepted rather than closed.
+
+**What this does not solve.** Containment is about commits, not content. A
+squashed or rebased landing puts different commits in the target, so the
+approved candidate is not contained in it and no incorporation is available:
+those rows still have no admissible closer. Recognising a landing by its
+content rather than its commits is a separate design and is not attempted here.
 
 ## One mutating merge at a time
 

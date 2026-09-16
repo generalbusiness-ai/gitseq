@@ -10,7 +10,7 @@ import (
 )
 
 func TestReceiptAccountingRejectsPriorProjectionCaches(t *testing.T) {
-	for _, prior := range []string{"workroom-fold@20", "workroom-fold@21", "workroom-fold@22", "workroom-fold@23"} {
+	for _, prior := range []string{"workroom-fold@20", "workroom-fold@21", "workroom-fold@22", "workroom-fold@23", "workroom-fold@24"} {
 		t.Run(prior, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, _, err := Init(ctx, testRepo(t), "human", 1<<20)

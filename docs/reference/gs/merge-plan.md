@@ -56,7 +56,7 @@ gs merge-plan --repo "$REPO" --as alice --checkout "$REPO" \
 
 ## Result
 
-`mode` is `fresh`, `resume`, `complete`, or `used`. A fresh plan reports the exact durable
+`mode` is `fresh`, `incorporate`, `resume`, `complete`, or `used`. A fresh plan reports the exact durable
 frontier, approval, candidate head, implementer, target pre-head, candidate
 artifacts, reviewed paths, canonical changed paths, and every live covering
 artifact. Each covering artifact is classified as `reviewed candidate`,
@@ -81,6 +81,16 @@ recorded: repeating the merge appends nothing. Effective acts are matched by
 merger, content and ordered citations, preserving their original staleness
 record. A retired receipt or ambiguous match refuses. A receipt already used
 in another checkout is `used` and refuses.
+
+`incorporate` is the mode for an approved candidate the target already
+contains. The plan reports the reason code `candidate_incorporated`, lists the
+candidate artifacts, and proposes no retirement, successor or changed path,
+because [`gs merge`](merge.md#incorporation-the-head-the-target-already-has)
+would record that the head already landed and leave Git untouched. It signs
+nothing and reserves nothing, exactly like every other mode here. The plan does
+not check the request's landing target, so a checkout of the candidate's own
+branch trivially contains it and previews as `incorporate`; `gs merge` refuses
+that checkout because it is not the branch the request owes its landing to.
 
 The prospective Git merge is staged only in a disposable clone. The governed
 repository is read with optional locks disabled. `gs merge` consumes this same

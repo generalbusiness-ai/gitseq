@@ -203,6 +203,13 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 			return successionPlan{}, false, errors.New("recorded merge hold warning does not match the sealed Git receipt")
 		}
 		var plan successionPlan
+		// This reader resumes a receipt sealed in Git. An incorporation is
+		// recorded and never sealed, so a recorded receipt that carries the
+		// field while a Git receipt names the same approval and head is
+		// claiming both shapes at once; it is refused rather than resumed.
+		if incorporation := statement.Body["merge_incorporation"]; incorporation != "" {
+			return successionPlan{}, false, fmt.Errorf("recorded merge receipt claims merge_incorporation %q, but a receipt sealed in Git is never an incorporation", incorporation)
+		}
 		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.Retire); err != nil {
 			return successionPlan{}, false, fmt.Errorf("decode recorded merge retirements: %w", err)
 		}

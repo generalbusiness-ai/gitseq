@@ -110,7 +110,10 @@ per ISO 24495-1, for a technical audience.
    ratified before merge. Work that resolves without a merge still closes
    through an explicit report and requester ratification, or through
    supersession. Merge commits must include a concise plain-language
-   description of the change and its impact.
+   description of the change and its impact. If the approved head is already in
+   the target — a forge merge, a push by hand — run the same `gs merge` anyway:
+   it records one incorporation receipt, closes the commitment, and leaves Git
+   untouched.
 6. After a worktree is merged, delete it.
 7. After a change to main, ensure that it is pushed to origin.
 

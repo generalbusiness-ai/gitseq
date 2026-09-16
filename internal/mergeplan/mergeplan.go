@@ -37,6 +37,20 @@ const (
 	LeftLiveAbandoned        = "abandoned"
 )
 
+// ModeIncorporate is the plan mode for an approved candidate the target
+// already contains. It records the landing that already happened and writes
+// nothing to Git, so it is neither a fresh merge nor a resume of one.
+const ModeIncorporate = "incorporate"
+
+// IncorporationPrior is the workroom's merge_incorporation value, re-exported
+// so the merge client writes exactly the string the fold reads.
+const IncorporationPrior = workroom.IncorporationPrior
+
+// defaultIncorporationText is the receipt text used when a plan carries none.
+// Only the read-only preview reaches it: merge requires --text and passes it
+// through, and the eventual receipt carries the signer's own words.
+const defaultIncorporationText = "approved candidate already contained in the target"
+
 type Frontier struct {
 	Genesis string `json:"genesis"`
 	Head    string `json:"head"`
@@ -239,6 +253,19 @@ type Succession struct {
 	Retire       map[string]string
 	ChangedPaths []string
 	LeftLive     map[string]LeftLive
+	// Incorporation marks the one plan that records a landing rather than
+	// performing it: the approved candidate is already contained in the
+	// target, so there is nothing to publish, nothing to retire and no Git
+	// object to write. Every collection above must be present and empty, and
+	// SuccessionActs refuses the plan otherwise, because a receipt claiming
+	// prior containment must not also claim succession authority.
+	Incorporation bool
+	// Text is the signer's plain-language description of what is being
+	// recorded. An ordinary merge carries it in the merge commit message and
+	// its receipt assertion keeps a fixed text; an incorporation writes no
+	// commit, so the receipt assertion is the only place the description can
+	// live. It is read only when Incorporation is set.
+	Text string
 }
 
 // ValidatedSuccession returns the exact succession that Build checked for
@@ -1263,6 +1290,23 @@ func SuccessionActs(approval, authorization, authorizationRatification, candidat
 		"merge_target_pre_head": target.PreHead, "merge_head": mergeHead,
 		"merge_retirements": string(retirements), "merge_successors": string(successors),
 	}
+	receiptText := "approved candidate merged"
+	if plan.Incorporation {
+		// The empty plan is the whole point of this receipt, so it is checked
+		// where the receipt is encoded rather than only where it is read. A
+		// caller that hands this encoder a prior incorporation with anything
+		// to publish or retire gets no acts at all, and the fold refuses the
+		// same shape from the other side if one is ever written by hand.
+		if plan.Retire == nil || plan.Publish == nil || plan.LeftLive == nil || plan.ChangedPaths == nil ||
+			len(plan.Retire) != 0 || len(plan.Publish) != 0 || len(plan.LeftLive) != 0 || len(plan.ChangedPaths) != 0 {
+			return nil
+		}
+		receiptBody["merge_incorporation"] = IncorporationPrior
+		receiptText = plan.Text
+		if strings.TrimSpace(receiptText) == "" {
+			receiptText = defaultIncorporationText
+		}
+	}
 	// A legacy receipt names no destination and must keep naming none, so the
 	// resumed durable body is byte-for-byte the one that merge would have
 	// written. Only a merge that measured the destination seals it.
@@ -1298,7 +1342,7 @@ func SuccessionActs(approval, authorization, authorizationRatification, candidat
 		receiptBody["staleness"] = staleness
 	}
 	acts := []ProspectiveAct{{Label: "merge", Act: app.Act{
-		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "approved candidate merged",
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: receiptText,
 		Body: receiptBody, RestsOn: receiptBases, IdempotencyKey: ReceiptKey(approval), AllowDeadBasis: true,
 	}}}
 	labels := make(map[string]string, len(plan.Publish))
@@ -1497,21 +1541,53 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 	}
 	result.TargetRepo, result.TargetRef, result.TargetPreHead = target.Repo, target.Ref, target.PreHead
 	result.Reasons = append(result.Reasons, Reason{Code: "target_allowed", Check: "target", Allowed: true, Reason: "the governed checkout is on branch " + target.Ref + " of the workroom repository, at an exact pre-head commit"})
-	if _, err := git(ctx, checkout, "merge-base", "--is-ancestor", candidate, result.TargetPreHead); err == nil {
-		return fail("candidate", errors.New("approved candidate is already contained in the target"))
-	}
-	result.Reasons = append(result.Reasons, Reason{Code: "candidate_allowed", Check: "candidate", Allowed: true, Reason: "approved candidate is not already contained in the target"})
-	authors := make(map[string]string)
+	authors := make(map[string]string, len(snapshot.Projection.Statements))
 	for _, statement := range snapshot.Projection.Statements {
 		authors[statement.Event] = statement.Actor
 	}
-	for _, artifact := range snapshot.Projection.Artifacts {
-		if artifact.Retired || artifact.Commit != candidate {
-			continue
+	// An approved head the target already contains has landed. Refusing here
+	// used to leave the commitment with no admissible closer at all, because
+	// there is no new landing to merge and a plain report on a landing request
+	// is ineffective. The merge records what is true instead: one receipt
+	// saying the candidate was already contained, with an empty succession
+	// plan and no Git write of any kind. Only commits actually reachable from
+	// the target qualify — a squashed or rebased landing produces different
+	// commits, so it is not contained and is not covered by this.
+	if _, err := git(ctx, checkout, "merge-base", "--is-ancestor", candidate, result.TargetPreHead); err == nil {
+		result.Mode = ModeIncorporate
+		result.Reasons = append(result.Reasons, Reason{Code: "candidate_incorporated", Check: "candidate", Allowed: true,
+			Reason: "approved candidate is already contained in the target; an incorporation receipt will be recorded and Git left unchanged"})
+		result.CandidateArtifacts = append(result.CandidateArtifacts, candidateArtifacts(snapshot.Projection, authors, candidate, approved.ReviewedArtifacts)...)
+		// Nothing is classified and nothing is planned: an incorporation
+		// publishes no successor, retires no predecessor and declares no
+		// changed path, so there is no tentative merge to stage and no
+		// covering artifact to account for. The empty collections are present
+		// rather than absent so that the receipt carries the empty encodings
+		// the fold requires of a prior incorporation.
+		plan := Succession{Publish: []string{}, Retire: map[string]string{}, LeftLive: map[string]LeftLive{}, ChangedPaths: []string{}, Incorporation: true}
+		// The preview validates the default receipt text, not the --text the
+		// eventual merge will carry, because no text exists yet. An
+		// incorporation writes nothing before its durable append, so a size
+		// refusal at merge time leaves nothing behind to resume.
+		acts := SuccessionActs(approvalEvent, "", "", candidate, target, candidate, approved.Staleness, false, plan)
+		if acts == nil {
+			return fail("admission", errors.New("merge incorporation could not be represented as a durable act suffix"))
 		}
-		result.CandidateArtifacts = append(result.CandidateArtifacts, CandidateArtifact{Event: artifact.Event, Path: artifact.Path, Commit: artifact.Commit, Author: authors[artifact.Event], Reviewed: approved.ReviewedArtifacts[artifact.Event]})
+		if err := ValidateAdmission(ctx, workspace, snapshot, signer, acts); err != nil {
+			return fail("admission", err)
+		}
+		result.validatedSuccession = &plan
+		result.Allowed = true
+		result.Reasons = append(result.Reasons,
+			Reason{Code: "approval_allowed", Check: "approval", Allowed: true, Reason: "ratified independent approval names the exact candidate head"},
+			Reason{Code: "implementer_allowed", Check: "implementer", Allowed: true, Reason: "merger is the approved implementation artifact's author"},
+			Reason{Code: "succession_allowed", Check: "succession", Allowed: true, Reason: "an incorporation receipt publishes no successor and retires no predecessor"},
+			Reason{Code: "admission_allowed", Check: "admission", Allowed: true, Reason: "the authorization-independent durable incorporation receipt is representable and within its admission ceilings"},
+		)
+		return result
 	}
-	sort.Slice(result.CandidateArtifacts, func(i, j int) bool { return result.CandidateArtifacts[i].Event < result.CandidateArtifacts[j].Event })
+	result.Reasons = append(result.Reasons, Reason{Code: "candidate_allowed", Check: "candidate", Allowed: true, Reason: "approved candidate is not already contained in the target"})
+	result.CandidateArtifacts = append(result.CandidateArtifacts, candidateArtifacts(snapshot.Projection, authors, candidate, approved.ReviewedArtifacts)...)
 	mergeCheckout, changes, cleanup, err := disposableMergeChanges(ctx, checkout, result.TargetPreHead, candidate)
 	if err != nil {
 		return fail("tentative_merge", err)
@@ -1563,6 +1639,22 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		Reason{Code: "admission_allowed", Check: "admission", Allowed: true, Reason: "the authorization-independent durable succession suffix is representable and within its admission ceilings"},
 	)
 	return result
+}
+
+// candidateArtifacts lists the live pointers standing at the approved head,
+// in event order, marking the ones the approval reviewed. Both plan modes
+// report them: what the head publishes is the same question whether the merge
+// is about to land it or is recording that it already landed.
+func candidateArtifacts(projection workroom.Projection, authors map[string]string, candidate string, reviewed map[string]bool) []CandidateArtifact {
+	found := []CandidateArtifact{}
+	for _, artifact := range projection.Artifacts {
+		if artifact.Retired || artifact.Commit != candidate {
+			continue
+		}
+		found = append(found, CandidateArtifact{Event: artifact.Event, Path: artifact.Path, Commit: artifact.Commit, Author: authors[artifact.Event], Reviewed: reviewed[artifact.Event]})
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].Event < found[j].Event })
+	return found
 }
 
 func boundResult(result Result) Result {

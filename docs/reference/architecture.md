@@ -1206,6 +1206,22 @@ repository and ref. A later receipt for another destination cannot replace that
 matching witness or satisfy work addressed elsewhere. This correction advances
 the profile to `workroom-fold@24`; earlier cached projections are rebuilt.
 
+**Incorporation receipts.** A receipt may carry `merge_incorporation=prior`,
+which says the approved candidate was already contained in its target when the
+receipt was signed: the head landed out of band and this receipt reports that
+rather than performing it. The fold holds no repository and checks no
+containment claim. It requires the plan to be empty in all four encodings —
+`merge_retirements` `{}`, `merge_successors` `[]`, and, when present,
+`merge_left_live` `{}` and `merge_changed_paths` `[]` — and gives a receipt
+that says `prior` with anything else in its plan no authority and no delivery
+at all. Any other value of the field is refused the same way. An empty plan
+reaches no path and changes no artifact's liveness, so such a receipt closes
+exactly the commitment its ratified exact-head approval already named, through
+the same delivery rule above, and reachability never becomes succession
+authority. Reading one more receipt field changes what the projection contains
+for a log carrying one, so it advances the profile to `workroom-fold@25`; a
+cache written under `@24` is rejected and history replayed.
+
 **Rejected-round successor transfer.** A ratified `changes-requested` verdict
 rejects an implementation head but does not say where its required repair went.
 The fold recognizes that transfer only from an explicit supersession of the old
@@ -2083,6 +2099,20 @@ decision.
   landed head is still contained in its ref afterwards, and whether a remote
   carries it, are repository-derived advisory facts that no receipt claims and
   no fold satisfaction reads.
+
+  An approved candidate the target already contains has landed without a
+  receipt, and refusing it left the commitment with no admissible closer. The
+  same command records the truth instead: with containment measured by
+  `git merge-base --is-ancestor` — no flag, and no claim taken from a signer —
+  the merge plan reports mode `incorporate` and the command appends one durable
+  receipt carrying `merge_incorporation=prior`, `merge_head` equal to the
+  candidate, and the empty succession. It writes nothing to Git: no commit
+  object, no receipt ref, no branch advance, no index or working-tree change.
+  Having nothing to hold an approval across, it takes no Git reservation
+  either; the durable append is the only act, and the deterministic receipt key
+  makes a racing second attempt replay the first or refuse as an idempotency
+  conflict, so exactly one receipt exists. Containment is about commits,
+  so a squashed or rebased landing is not contained and gets no incorporation.
 
   A receipt carrying neither target field predates them: it reads as
   `refs/heads/main` of this workroom's own repository, is flagged legacy, and

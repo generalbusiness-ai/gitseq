@@ -934,6 +934,10 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 	if validation.HoldWarning {
 		fmt.Fprintf(os.Stderr, "warning: the implementation request's landing is held and no effective release names this candidate and approval; the compatibility window permits this merge, and the receipt records it\n")
 	}
+	if prospective.Mode == mergeplan.ModeIncorporate {
+		return recordMergeIncorporation(ctx, workspace, *checkout, serverURL, actor, private, *approval,
+			*candidate, *mergeText, target, validation, prospective)
+	}
 	targetPreHead := target.PreHead
 	receiptRef := mergeReceiptRef(*approval)
 	if _, err := git(ctx, *checkout, "update-ref", receiptRef, targetPreHead, ""); err != nil {
@@ -1051,6 +1055,85 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 	return nil
 }
 
+// recordMergeIncorporation closes a commitment whose approved head is already
+// in the target. It appends one durable receipt carrying
+// merge_incorporation=prior and an empty succession plan, and writes nothing
+// to Git: no commit object, no receipt ref, no branch ref, no index or
+// working-tree change. There is therefore no Git reservation to take, because
+// nothing has to be held across anything.
+//
+// Single use comes from two places. The durable check in validateMerge refuses
+// a second run naming the receipt the first appended. Two attempts racing past
+// that check — the meta lock serialises them on one machine, so this is the
+// cross-machine case against one resident — carry the same deterministic
+// idempotency key, ReceiptKey(approval): identical acts replay, and acts that
+// differ in text or observed pre-head are refused as an idempotency conflict.
+// Exactly one receipt exists either way.
+func recordMergeIncorporation(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string,
+	private ed25519.PrivateKey, approval, candidate, text string, target mergeplan.Target,
+	validation mergeValidation, prospective mergeplan.Result) error {
+	plan, ok := prospective.ValidatedSuccession()
+	if !ok {
+		return errors.New("allowed merge incorporation did not preserve its validated succession")
+	}
+	// The preview validated the default text; the receipt carries the words
+	// the actor actually wrote, because no merge commit exists to hold them.
+	plan.Text = text
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	if snapshot.Head != prospective.Frontier.Head || snapshot.Depth != prospective.Frontier.Depth {
+		return fmt.Errorf("workroom frontier moved after planning: planned %s at depth %d, now %s at depth %d",
+			prospective.Frontier.Head, prospective.Frontier.Depth, snapshot.Head, snapshot.Depth)
+	}
+	acts := successionActs(approval, validation.Authorization, validation.AuthorizationRatification, candidate,
+		target, candidate, validation.Staleness, validation.HoldWarning, plan)
+	// An incorporation is one receipt and nothing else. The encoder returns no
+	// acts at all for a prior incorporation whose plan is not empty, so this
+	// is where such a plan stops, before anything durable is appended.
+	if len(acts) != 1 {
+		return errors.New("an incorporation is exactly one durable receipt act")
+	}
+	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
+		return fmt.Errorf("merge incorporation admission preflight: %w", err)
+	}
+	if _, err := recordIncorporationBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
+		return fmt.Errorf("record merge incorporation: %w", err)
+	}
+	if err := verifyIncorporation(ctx, workspace, approval, candidate); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "note: %s already contains %s, so this records an incorporation rather than a merge; Git is unchanged\n",
+		target.Ref, candidate)
+	fmt.Println(candidate)
+	return nil
+}
+
+// verifyIncorporation reads the receipt back out of a fresh projection. The
+// batch reports what it submitted; this reports what the fold admitted, which
+// is the fact the commitment closes on.
+func verifyIncorporation(ctx context.Context, workspace *app.Workspace, approval, candidate string) error {
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	for _, statement := range snapshot.Projection.Statements {
+		if statement.Body["merge_approval"] != approval || statement.Retired ||
+			!mergeplan.DecisionEffective(snapshot.Projection, statement.Event) {
+			continue
+		}
+		if statement.Body["merge_incorporation"] != mergeplan.IncorporationPrior {
+			return fmt.Errorf("durable receipt %s is not an incorporation", statement.Event)
+		}
+		if statement.Body["merge_head"] != candidate || statement.Body["merge_candidate"] != candidate {
+			return fmt.Errorf("durable receipt %s does not name candidate %s", statement.Event, candidate)
+		}
+		return nil
+	}
+	return fmt.Errorf("no durable incorporation receipt for approval %s", approval)
+}
+
 // mergePlanCommand exposes fresh-merge preflight without reserving an
 // approval, touching the governed checkout, or appending a durable act.
 func mergePlanCommand(ctx context.Context, arguments []string) error {
@@ -1107,6 +1190,14 @@ func residentSubmissionCeiling(serverURL string) func(kernel.Request) error {
 }
 
 var buildMergePlan = mergeplan.Build
+
+// recordIncorporationBatch is where an incorporation leaves this process. It
+// is a variable for the same reason buildMergePlan is: a test needs to hold
+// two independently planned incorporations exactly here — past their frontier
+// remeasure, before either has appended — and release them together against
+// one resident, which is the only arrangement that exercises the deterministic
+// receipt key rather than the merge lock.
+var recordIncorporationBatch = runBatch
 
 type mergeReceipt = mergeplan.Receipt
 
