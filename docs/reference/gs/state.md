@@ -68,12 +68,14 @@ The file's contents become the statement text exactly as written, apart from
 trailing whitespace, which is trimmed. Nothing about how the text is signed or
 displayed changes.
 
-The two flags are exclusive. Each of these is refused before anything is read
-or signed, and the message names the flag:
+The two flags are exclusive, and every statement needs one of them. Each of
+these is refused before anything is read or signed, and the message names the
+flag:
 
 | what you gave | refusal |
 |---|---|
 | both `--text` and `--text-file` | `--text and --text-file cannot both be given` |
+| neither | `--text or --text-file is required` |
 | a file that is empty or only whitespace | `--text-file <path> is empty` |
 | a path that cannot be read | `--text-file <path>: <the read error>` |
 

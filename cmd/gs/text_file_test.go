@@ -211,6 +211,11 @@ func TestStateRefusesEveryBadTextSourceBeforeSigning(t *testing.T) {
 			refusal: "--text and --text-file cannot both be given",
 		},
 		{
+			name:    "neither source",
+			text:    func(t *testing.T) []string { return nil },
+			refusal: "--text or --text-file is required",
+		},
+		{
 			name:    "a blank file",
 			text:    func(t *testing.T) []string { return []string{"--text-file", writeText(t, "   \n")} },
 			refusal: "is empty",

@@ -540,8 +540,9 @@ func stateCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	// The text is settled before an actor is loaded or a key is touched, so a
-	// mistyped source refuses with nothing signed.
-	text, err := resolveText(*message, *messageFile, false)
+	// mistyped or missing source refuses with nothing signed. The schema would
+	// refuse a textless statement later anyway; refusing here names the flag.
+	text, err := resolveText(*message, *messageFile, true)
 	if err != nil {
 		return err
 	}
