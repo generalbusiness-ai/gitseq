@@ -1010,23 +1010,18 @@ func mergeLocked(ctx context.Context, workspace *app.Workspace, as, checkout, ca
 
 // recordMergeIncorporation closes a commitment whose approved head is already
 // in the target. It appends one durable receipt carrying
-// merge_incorporation=prior and an empty succession plan, and it writes
-// nothing to Git: no commit object, no receipt ref, no branch ref, no index or
-// working-tree change. The command that reaches here is the same `gs merge`
-// the actor would have run to land the head, with the same flags, and every
-// check but containment has already passed above.
-//
-// There is no Git reservation because there is nothing to hold an approval
-// across: the durable append is the only act, so a failure at any point before
-// it leaves the world exactly as it was, and there is no half-state to resume.
+// merge_incorporation=prior and an empty succession plan, and writes nothing
+// to Git: no commit object, no receipt ref, no branch ref, no index or
+// working-tree change. There is therefore no Git reservation to take, because
+// nothing has to be held across anything.
 //
 // Single use comes from two places. The durable check in validateMerge refuses
-// a second run naming the receipt the first one appended. Two attempts racing
-// past that check — the meta lock serialises them on one machine, so this is
-// the cross-machine case against one resident — build the identical act under
-// the same deterministic idempotency key, ReceiptKey(approval), so the second
-// replays the first instead of appending beside it. Exactly one receipt
-// exists either way.
+// a second run naming the receipt the first appended. Two attempts racing past
+// that check — the meta lock serialises them on one machine, so this is the
+// cross-machine case against one resident — carry the same deterministic
+// idempotency key, ReceiptKey(approval): identical acts replay, and acts that
+// differ in text or observed pre-head are refused as an idempotency conflict.
+// Exactly one receipt exists either way.
 func recordMergeIncorporation(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string,
 	private ed25519.PrivateKey, approval, candidate, text string, target mergeplan.Target,
 	validation mergeValidation, prospective mergeplan.Result) error {
@@ -1056,7 +1051,7 @@ func recordMergeIncorporation(ctx context.Context, workspace *app.Workspace, che
 	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("merge incorporation admission preflight: %w", err)
 	}
-	if _, err := runBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
+	if _, err := recordIncorporationBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("record merge incorporation: %w", err)
 	}
 	if err := verifyIncorporation(ctx, workspace, approval, candidate); err != nil {
@@ -1148,6 +1143,14 @@ func residentSubmissionCeiling(serverURL string) func(kernel.Request) error {
 }
 
 var buildMergePlan = mergeplan.Build
+
+// recordIncorporationBatch is where an incorporation leaves this process. It
+// is a variable for the same reason buildMergePlan is: a test needs to hold
+// two independently planned incorporations exactly here — past their frontier
+// remeasure, before either has appended — and release them together against
+// one resident, which is the only arrangement that exercises the deterministic
+// receipt key rather than the merge lock.
+var recordIncorporationBatch = runBatch
 
 type mergeReceipt = mergeplan.Receipt
 

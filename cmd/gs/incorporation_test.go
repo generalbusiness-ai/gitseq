@@ -2,14 +2,19 @@ package main
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"io"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
+	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -277,5 +282,185 @@ func TestVerifyIncorporationRefusesAnOrdinaryReceipt(t *testing.T) {
 	err := verifyIncorporation(f.ctx, f.workspace, lane.approval, lane.candidate)
 	if err == nil || !strings.Contains(err.Error(), "is not an incorporation") {
 		t.Fatalf("verification of an ordinary merge receipt = %v", err)
+	}
+}
+
+// incorporationAttempt is one independently planned incorporation: its own
+// workspace, its own preflight, its own measured destination. Two of these
+// stand in for two processes that each planned before either appended.
+type incorporationAttempt struct {
+	workspace  *app.Workspace
+	private    ed25519.PrivateKey
+	plan       mergeplan.Result
+	validation mergeValidation
+	text       string
+}
+
+func planIncorporation(t *testing.T, f workflowFixture, serverURL string, lane landingLane, text string) incorporationAttempt {
+	t.Helper()
+	// A workspace of its own, opened on the same repository: separate caches
+	// and a separate frontier reading, which is what makes the two plans
+	// independent rather than two views of one snapshot.
+	workspace, err := app.Open(f.ctx, f.repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actor, private, err := workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer := mergeplan.Signer{Name: "operator", Private: private, ResidentCeiling: residentSubmissionCeiling(serverURL)}
+	plan := buildMergePlan(f.ctx, workspace, f.repo, lane.candidate, lane.approval, actor.Fingerprint, signer)
+	if plan.Mode != mergeplan.ModeIncorporate || !plan.Allowed {
+		t.Fatalf("attempt planned mode = %q allowed = %v, want an allowed incorporation: %+v", plan.Mode, plan.Allowed, plan.Reasons)
+	}
+	validation, err := validateMerge(f.ctx, workspace, f.repo, lane.candidate, lane.approval, "", false)
+	if err != nil {
+		t.Fatalf("attempt validation: %v", err)
+	}
+	return incorporationAttempt{workspace: workspace, private: private, plan: plan, validation: validation, text: text}
+}
+
+func (a incorporationAttempt) submit(f workflowFixture, serverURL string, lane landingLane) error {
+	return recordMergeIncorporation(f.ctx, a.workspace, f.repo, serverURL, "operator", a.private,
+		lane.approval, lane.candidate, a.text, a.validation.Target, a.validation, a.plan)
+}
+
+// Two independently planned incorporations submitted through one resident,
+// held at the submission boundary until both have passed the no-receipt check
+// and their frontier remeasure. The merge lock serialises two `gs merge`
+// processes on one machine, so this is the arrangement that actually reaches
+// the deterministic receipt key: it proves the key, the kernel's dedup, and
+// what the command does with each outcome. It does not prove anything about
+// two machines' clocks, two residents, or a partitioned log, none of which
+// this design claims.
+//
+// Not parallel: it replaces the package-level submission seam.
+func TestConcurrentIncorporationsLeaveExactlyOneReceipt(t *testing.T) {
+	const shared = "Record that main already carries this approved head."
+	for _, test := range []struct {
+		name         string
+		secondText   string
+		advanceFirst bool
+		wantAccepted int
+	}{
+		// Identical observations rebuild the identical act, so the loser of
+		// the race replays the winner's receipt and both calls succeed.
+		{name: "identical acts", secondText: shared, wantAccepted: 2},
+		// Everything else is the same approval spending its one key on a
+		// different claim, and is refused.
+		{name: "different text", secondText: "A different description of the same recording.", wantAccepted: 1},
+		{name: "different observed pre-head", secondText: shared, advanceFirst: true, wantAccepted: 1},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			f := newWorkflowFixture(t)
+			resident, err := service.NewObserved(f.workspace, nopObserver{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var hits atomic.Int64
+			listener := countingServer(t, &hits, resident.Handler())
+			lane := f.buildLandingLane(t, "raced", map[string]string{
+				"target_repo": mergeplan.WorkroomRepo(f.workspace),
+				"target_ref":  "refs/heads/main",
+				"target_head": testGit(t, f.repo, "rev-parse", "HEAD"),
+			})
+			testGit(t, f.repo, "merge", "--ff-only", "-q", lane.candidate)
+
+			first := planIncorporation(t, f, listener.URL, lane, shared)
+			if test.advanceFirst {
+				// Unrelated traffic on the target between the two plans. The
+				// candidate is still contained, so the second attempt plans a
+				// valid incorporation against a different pre-head.
+				testGit(t, f.repo, "commit", "-q", "--allow-empty", "-m", "unrelated traffic on the target")
+			}
+			second := planIncorporation(t, f, listener.URL, lane, test.secondText)
+			if sameHead := first.validation.Target.PreHead == second.validation.Target.PreHead; sameHead == test.advanceFirst {
+				t.Fatalf("attempts observed pre-heads %s and %s, advanceFirst=%v",
+					first.validation.Target.PreHead, second.validation.Target.PreHead, test.advanceFirst)
+			}
+			before := readGitState(t, f.repo, "refs/heads/main")
+
+			// The barrier. Both attempts reach the submission boundary — past
+			// the durable no-receipt check and past the frontier remeasure —
+			// before either is allowed to append.
+			arrived, release := make(chan struct{}, 2), make(chan struct{})
+			previous := recordIncorporationBatch
+			recordIncorporationBatch = func(ctx context.Context, workspace *app.Workspace, serverURL, actorName string,
+				private ed25519.PrivateKey, acts []batchAct, citedOK bool) (batchReport, error) {
+				arrived <- struct{}{}
+				<-release
+				return previous(ctx, workspace, serverURL, actorName, private, acts, citedOK)
+			}
+			t.Cleanup(func() { recordIncorporationBatch = previous })
+
+			results := make([]error, 2)
+			var running sync.WaitGroup
+			for index, attempt := range []incorporationAttempt{first, second} {
+				running.Add(1)
+				go func() {
+					defer running.Done()
+					results[index] = attempt.submit(f, listener.URL, lane)
+				}()
+			}
+			// An attempt that fails before the seam never arrives, and
+			// waiting for it forever would report as a package timeout rather
+			// than as this test.
+			for waiting := 2; waiting > 0; waiting-- {
+				select {
+				case <-arrived:
+				case <-time.After(time.Minute):
+					close(release)
+					running.Wait()
+					t.Fatalf("only %d of 2 incorporations reached the submission boundary: %v", 2-waiting, results)
+				}
+			}
+			close(release)
+			running.Wait()
+
+			accepted, refusals := 0, []error{}
+			for _, err := range results {
+				if err == nil {
+					accepted++
+					continue
+				}
+				refusals = append(refusals, err)
+			}
+			if accepted != test.wantAccepted {
+				t.Fatalf("%d of 2 racing incorporations were accepted, want %d; refusals %v", accepted, test.wantAccepted, refusals)
+			}
+			for _, err := range refusals {
+				// Both doors — the client's own accepted-act classifier and
+				// the kernel's dedup index — refuse with the kernel's words,
+				// so the assertion does not depend on which one won.
+				if !strings.Contains(err.Error(), "idempotency key reused with different intent") {
+					t.Fatalf("racing refusal = %v, want an idempotency conflict", err)
+				}
+			}
+			if hits.Load() == 0 {
+				t.Fatal("the racing incorporations never reached the resident")
+			}
+
+			// The invariant, whatever the race decided.
+			receipts := []string{}
+			for _, statement := range f.snapshot(t).Projection.Statements {
+				if statement.Body["merge_approval"] == lane.approval {
+					receipts = append(receipts, statement.Event)
+				}
+			}
+			if len(receipts) != 1 {
+				t.Fatalf("racing incorporations left %d durable receipts: %v", len(receipts), receipts)
+			}
+			if after := readGitState(t, f.repo, "refs/heads/main"); after != before {
+				t.Fatalf("the racing incorporations moved Git\nbefore: %+v\nafter:  %+v", before, after)
+			}
+			if _, err := git(f.ctx, f.repo, "show-ref", "--verify", mergeReceiptRef(lane.approval)); err == nil {
+				t.Error("the racing incorporations created a Git receipt ref")
+			}
+			row := laneCommitment(t, f, lane.request)
+			if row.Status != "satisfied" || row.Terminal != "landed" || row.ApprovedNotLanded || row.LandingReceipt != receipts[0] {
+				t.Fatalf("raced commitment row = %+v, want satisfied/landed on receipt %s", row, receipts[0])
+			}
+		})
 	}
 }

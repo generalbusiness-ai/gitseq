@@ -1689,23 +1689,14 @@ func (f *foldState) validateMergeReceiptNow(receipt *parsedRecord) map[string]st
 }
 
 // validIncorporation judges the one receipt field that says a landing was
-// recorded rather than performed.
-//
-// A receipt carrying merge_incorporation=prior says the approved candidate was
-// already contained in the target when it was signed. Nothing landed at that
-// moment, so nothing may be published or retired on its authority: its plan
-// must be empty in all four encodings. The fold holds no repository and cannot
-// check the containment claim, and it does not need to — an empty plan reaches
-// no path and changes no artifact's liveness, so the receipt closes exactly
-// the commitment whose ratified approval names the artifact at its candidate
-// and nothing else. A prior receipt whose plan is not empty is the one shape
-// that would turn this field into succession authority, so it confers nothing
-// at all rather than being trimmed down.
-//
-// Any other value is refused outright. merge_incorporation has a single
-// meaning; a receipt spelling it some other way is making a claim no rule
-// here reads, and admitting it would let the spelling drift into an authority
-// nobody checked.
+// recorded rather than performed. A receipt carrying
+// merge_incorporation=prior says the candidate was already in the target, so
+// nothing landed at that moment and nothing may be published or retired on its
+// authority. The invariant: its plan is empty in all four encodings, and any
+// other value of the field is refused. The fold cannot check the containment
+// claim and does not need to, because an empty plan reaches no path; a prior
+// receipt whose plan is not empty is the one shape that would turn this field
+// into succession authority, so it confers nothing at all.
 func validIncorporation(body map[string]string, plan map[string]string) bool {
 	switch body["merge_incorporation"] {
 	case "":
