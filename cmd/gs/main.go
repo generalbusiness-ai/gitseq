@@ -20,6 +20,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/apphost"
@@ -493,11 +494,42 @@ func whoamiCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
+// resolveText reads a command's text from --text or --text-file, exactly one
+// of them. Presence is what counts, not value: giving both flags is refused
+// even when one is empty. A file's contents are carried byte for byte apart
+// from trailing whitespace. required says the command cannot proceed without
+// text. Every refusal here happens before the caller signs anything.
+func resolveText(set *flag.FlagSet, required bool) (string, error) {
+	given := map[string]bool{}
+	set.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if given["text"] && given["text-file"] {
+		return "", errors.New("--text and --text-file cannot both be given")
+	}
+	if !given["text-file"] {
+		text := set.Lookup("text").Value.String()
+		if required && text == "" {
+			return "", errors.New("--text or --text-file is required")
+		}
+		return text, nil
+	}
+	textFile := set.Lookup("text-file").Value.String()
+	contents, err := os.ReadFile(textFile)
+	if err != nil {
+		return "", fmt.Errorf("--text-file %s: %w", textFile, err)
+	}
+	trimmed := strings.TrimRightFunc(string(contents), unicode.IsSpace)
+	if trimmed == "" {
+		return "", fmt.Errorf("--text-file %s is empty", textFile)
+	}
+	return trimmed, nil
+}
+
 func stateCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("state", arguments)
 	as := set.String("as", "", "actor name")
 	kind := set.String("kind", "", "statement kind")
-	message := set.String("text", "", "statement text")
+	set.String("text", "", "statement text")
+	set.String("text-file", "", "read the statement text from this file instead of --text")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	deadOK := set.Bool("allow-dead-basis", false, "rest on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted and recorded without it")
@@ -506,6 +538,13 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")
 	set.Var(&evidence, "evidence", "attachment name=path (repeatable)")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	// The text is settled before an actor is loaded or a key is touched, so a
+	// mistyped or missing source refuses with nothing signed. The schema would
+	// refuse a textless statement later anyway; refusing here names the flag.
+	text, err := resolveText(set, true)
+	if err != nil {
 		return err
 	}
 	actor, err := signingActor(*as)
@@ -560,7 +599,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// being signed, ratified, and then refused by the merge. It rides as the
 	// act's new-submission precondition, so an exact retry of a report already
 	// accepted replays it instead of being measured a second time.
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: *message, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK,
+	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: text, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK,
 		NewSubmission: mergeplan.AuthorizationTargetPrecondition(workspace.Repo, body)})
 	if err != nil {
 		return err
@@ -590,7 +629,8 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	set.Var(&artifactsFlag, "artifact", "artifact event standing at the reviewed head; repeat to sign the whole reviewed set")
 	promise := set.String("promise", "", "review promise event")
 	verdict := set.String("verdict", "", "approved or changes-requested")
-	message := set.String("text", "", "review report")
+	set.String("text", "", "review report")
+	set.String("text-file", "", "read the review report from this file instead of --text")
 	var headNews repeatedFlag
 	set.Var(&headNews, "ack-head-news", "durable statement sequenced after the review request that names this head or lane; repeat per event")
 	var implementations repeatedFlag
@@ -606,8 +646,15 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if set.NArg() != 0 {
 		return errors.New("review takes no positional arguments")
 	}
-	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" || (!*prepare && *message == "") {
-		return errors.New("review requires --checkout, --artifact, --promise, and --text")
+	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" {
+		return errors.New("review requires --checkout, --artifact, and --promise")
+	}
+	// A verdict is the longest text this tool writes, so it is also the one
+	// most often read from a file. Settle it before anything is read or
+	// signed: --prepare records no verdict and so needs none.
+	report, err := resolveText(set, !*prepare)
+	if err != nil {
+		return err
 	}
 	reviewer, err := signingActor(*as)
 	if err != nil {
@@ -660,12 +707,12 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 		fmt.Println("No verdict recorded.")
 		return nil
 	}
-	body, restsOn, err := reviewguard.ConfirmSelection(read, selection, cited, headNews, *verdict, *message)
+	body, restsOn, err := reviewguard.ConfirmSelection(read, selection, cited, headNews, *verdict, report)
 	if err != nil {
 		return err
 	}
 	record, err := submitAct(ctx, workspace, serverURL, reviewer, app.Act{
-		Verb: app.VerbState, Kind: workroom.KindReport, Text: *message,
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: report,
 		Body: body, RestsOn: restsOn, GuardedReview: true, IdempotencyKey: *key,
 	})
 	if err != nil {

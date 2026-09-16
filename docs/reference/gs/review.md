@@ -25,7 +25,8 @@ review of nothing in particular, because the branch can move afterwards.
 | `--artifact` | *(required)* | An artifact standing at the reviewed head. Repeat it to sign the whole set you read: the first is the artifact the verdict names, and every citation bounds what a later [`gs merge`](merge.md) receipt may retire. Each must be live and stand at the same head. |
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
-| `--text` | *(required)* | The review itself. |
+| `--text` | *(required, or `--text-file`)* | The review itself, typed on the command line. |
+| `--text-file` | | The review, read from this file instead. Give one of the two, never both; the contents become the report text as written, apart from trailing whitespace. |
 | `--implementation` | | An implementation request, or its exact promise or report, repeatable. Disambiguates the lifecycle of a cited report when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the first selected report must be the primary. A selector never narrows the delivery: every other cited artifact that reports a commitment still joins the resolved set, with its target and hold, exactly as it would with no selector. |
 | `--self-initiated` | | The adopted decision a self-initiated primary rests on directly: a ratified proposal, or a satisfied authority-bearing request. Without it, an artifact no commitment reports is refused, never assumed independent. |
 | `--evidence-only` | | The primary was filed by its performer straight against a request that owes no Git artifact. The verdict is valid and not mergeable. |
@@ -77,10 +78,36 @@ REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
 REVIEW_PROMISE=$(gs state --repo "$REPO" --as carol --kind promise \
   --text 'I will review it' --rests-on "$REVIEW_REQUEST")
 
+printf 'APPROVED; the changelog exists at this head\n' > review.md
 gs review --repo "$REPO" --as carol --checkout "$REPO" \
   --artifact "$ARTIFACT" --promise "$REVIEW_PROMISE" \
-  --verdict approved --text 'APPROVED; the changelog exists at this head'
+  --verdict approved --text-file review.md
 ```
+
+## Writing the review to a file
+
+A review is formatted text: headings, tables, quoted findings, code. Passing
+that through `--text` on a command line means shell quoting, escaped newlines
+and truncated pastes, and the workroom then holds a mangled verdict. Write the
+review to a file and name it with `--text-file`, as the example above does.
+`--text` is still there for the one-line verdict that needs no file.
+
+The file's contents become the report text exactly as written, apart from
+trailing whitespace, which is trimmed. Nothing about how the text is signed or
+displayed changes.
+
+The two flags are exclusive, judged by presence rather than value, and filing
+a verdict needs one of them. Each of these is refused before signing, and the
+message names the flag:
+
+| what you gave | refusal |
+|---|---|
+| both `--text` and `--text-file`, even with one of them empty | `--text and --text-file cannot both be given` |
+| neither, without `--prepare` | `--text or --text-file is required` |
+| a file that is empty or only whitespace | `--text-file <path> is empty` |
+| a path that cannot be read | `--text-file <path>: <the read error>` |
+
+`--prepare` records no verdict, so it needs neither flag.
 
 ## What the review is of
 
