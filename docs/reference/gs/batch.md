@@ -112,9 +112,17 @@ here as it will be in the log. The projection this process holds is untouched.
 
 [Refused before signing](state.md#refused-before-signing) states the rest of
 the rule: the reason is the fold's own, the fold decides again per act at
-sequencing, and `--no-preflight` files the chain as written. A chain carrying
-an `idempotency_key` this actor already holds is a retry, and the whole chain
-is left to the sequencer to replay or refuse.
+sequencing, and `--no-preflight` files the chain as written.
+
+A retry is judged per act, because a chain is not all one thing. An act whose
+`idempotency_key` this actor already holds is one the log has: it is not judged
+again, it is already in the world the rest of the chain is judged against, and
+the sequencer replays it or refuses its key. Its label names that real event, so
+the acts behind it stand on what actually landed. Everything else in the chain
+is new and is judged as new. So a chain whose prefix landed and whose suffix is
+fresh — the ordinary way a broken chain is resumed — replays the prefix and
+holds the suffix to the same check any first filing gets, and an exact retry of
+the whole chain replays whole and appends nothing.
 
 ## The report
 

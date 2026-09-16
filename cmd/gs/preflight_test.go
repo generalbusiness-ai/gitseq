@@ -747,6 +747,92 @@ func TestPreflightReplaysAnAcceptedChainAfterItsWorldMoved(t *testing.T) {
 	}
 }
 
+// A chain is not all one thing. A retry whose prefix already landed carries
+// accepted acts and new ones together, and one accepted key used to stand the
+// whole check down: a malformed new act landed ineffective behind a replayed
+// prefix. Replay is decided per act now.
+func TestPreflightJudgesANewSuffixBehindAnAcceptedPrefix(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	prefix := map[string]any{
+		"label": "first", "verb": "state", "kind": "assert", "text": "an accepted prefix",
+		"rests_on": []string{fixture.genesis}, "idempotency_key": "accepted-prefix",
+	}
+	if _, err := fixture.runChain(t, "worker", []map[string]any{prefix}); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot()
+
+	// The same prefix, and a new act behind it that the fold would refuse.
+	malformed := map[string]any{
+		"verb": "state", "kind": "artifact", "text": "a head with no path",
+		"body":     map[string]string{"commit": fixture.workspace.View().Genesis},
+		"rests_on": []string{"$first"}, "idempotency_key": "new-suffix",
+	}
+	output, err := fixture.runChain(t, "worker", []map[string]any{prefix, malformed})
+	if err == nil {
+		t.Fatalf("the new suffix was not judged: %s", output)
+	}
+	for _, want := range []string{"act 1", "artifact state requires body.path"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
+		}
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the refused suffix appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+
+	// The same shape with the missing field supplied lands exactly one act: the
+	// prefix replays, and the suffix is judged against the world it made.
+	wellFormed := map[string]any{
+		"verb": "state", "kind": "artifact", "text": "a head with a path",
+		"body":     map[string]string{"commit": fixture.workspace.View().Genesis, "path": "notes/suffix.md"},
+		"rests_on": []string{"$first"}, "idempotency_key": "new-suffix",
+	}
+	landed, err := fixture.runChain(t, "worker", []map[string]any{prefix, wellFormed})
+	if err != nil {
+		t.Fatalf("the valid suffix behind an accepted prefix was refused: %v", err)
+	}
+	if !strings.Contains(landed, `"replayed": 1`) || !strings.Contains(landed, `"landed": 1`) {
+		t.Fatalf("the prefix did not replay beside a landed suffix: %s", landed)
+	}
+	after := fixture.snapshot()
+	if after.Depth != before.Depth+1 {
+		t.Fatalf("the suffix did not land exactly one act: depth %d -> %d", before.Depth, after.Depth)
+	}
+	for _, decision := range after.Projection.Decisions {
+		if decision.Verdict != workroom.Effective && decision.Event != fixture.refused {
+			t.Fatalf("the landed suffix left %s: %s", decision.Verdict, decision.Reason)
+		}
+	}
+}
+
+// The whole-batch exact retry still replays: every act is accepted, so there is
+// nothing to judge and nothing to append.
+func TestPreflightReplaysAWholeChainRetry(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	acts := []map[string]any{
+		{"label": "first", "verb": "state", "kind": "assert", "text": "one",
+			"rests_on": []string{fixture.genesis}, "idempotency_key": "whole-first"},
+		{"verb": "state", "kind": "artifact", "text": "two",
+			"body":     map[string]string{"commit": fixture.workspace.View().Genesis, "path": "notes/whole.md"},
+			"rests_on": []string{"$first"}, "idempotency_key": "whole-second"},
+	}
+	if _, err := fixture.runChain(t, "worker", acts); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot()
+	output, err := fixture.runChain(t, "worker", acts)
+	if err != nil {
+		t.Fatalf("the exact chain retry was refused: %v", err)
+	}
+	if !strings.Contains(output, `"replayed": 2`) || strings.Contains(output, `"landed": 1`) {
+		t.Fatalf("the chain did not replay whole: %s", output)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the chain retry appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
 // runChain writes a chain and runs it, with both streams captured.
 func (f preflightFixture) runChain(t *testing.T, actor string, acts []map[string]any, flags ...string) (string, error) {
 	t.Helper()

@@ -48,7 +48,7 @@ type Filer struct {
 // submitted to a resident joins that resident's frontier, which may have moved.
 // The fold at sequencing remains the authority.
 func (w *Workspace) PreflightAct(ctx context.Context, filer Filer, act Act) (workroom.Decision, bool) {
-	if w.heldUnderKey(ctx, filer, act.IdempotencyKey) {
+	if _, held := w.AcceptedUnderKey(ctx, filer, act.IdempotencyKey); held {
 		return workroom.Decision{}, false
 	}
 	snapshot, err := w.Snapshot(ctx)
@@ -62,40 +62,53 @@ func (w *Workspace) PreflightAct(ctx context.Context, filer Filer, act Act) (wor
 	return w.previewDecision(snapshot, record)
 }
 
-// PreflightChain asks the fold about a whole chain before any of it is signed,
-// and names the first act the fold would not admit. refused is false when it has
+// ChainAct is one act of a chain as the fold will read it.
+type ChainAct struct {
+	Act Act
+	// Event is the identifier this act is judged under: a prospective one for an
+	// act still to be minted, or the identifier the log already holds it as.
+	Event string
+	// Replayed says the log already holds this act under its idempotency key.
+	// The fold's world therefore contains it already: it is neither judged again
+	// nor applied, and the sequencer will replay it or refuse its key.
+	Replayed bool
+}
+
+// PreflightChain asks the fold about a chain before any of it is signed, and
+// names the first act the fold would not admit. refused is false when it has
 // nothing to say — every act admitted, or the question not honestly askable —
 // because those are the same answer to a caller: carry on, the fold decides.
 //
 // Each act is judged against the world the acts before it would make, in a fold
 // this call builds for the question and throws away, so an act citing one the
-// chain has yet to mint is judged like any other. The verified projection this
-// process publishes is untouched: appending to that is what the sequencer does.
+// chain has yet to mint is judged against the act that will exist. The verified
+// projection this process publishes is untouched: appending to that is what the
+// sequencer does.
 //
-// The unaskable cases are one act's, plus one. A chain carrying an idempotency
-// key the log already holds is a retry, and the kernel answers each of its acts.
-func (w *Workspace) PreflightChain(ctx context.Context, filer Filer, acts []Act) (position int, decision workroom.Decision, refused bool) {
+// Replay is per act, because a chain is not all one thing. A retry of a chain
+// whose prefix already landed carries accepted acts and new ones together: the
+// accepted ones are already in the fold's world and are left to the sequencer,
+// and the new suffix is judged against that world like any other act. Treating
+// one accepted key as a replay of the whole chain let a malformed new act
+// through behind it.
+func (w *Workspace) PreflightChain(ctx context.Context, filer Filer, acts []ChainAct) (position int, decision workroom.Decision, refused bool) {
 	snapshot, err := w.Snapshot(ctx)
 	if err != nil {
 		return 0, workroom.Decision{}, false
-	}
-	records := make([]workroom.Record, len(acts))
-	for index, act := range acts {
-		if w.heldUnderKey(ctx, filer, act.IdempotencyKey) {
-			return 0, workroom.Decision{}, false
-		}
-		record, ok := w.prospectiveRecord(ctx, snapshot, filer.Fingerprint, act)
-		if !ok {
-			return 0, workroom.Decision{}, false
-		}
-		record.ID = w.ProspectiveEventID(index)
-		records[index] = record
 	}
 	folder, ok := w.scratchFold(ctx, snapshot.Head)
 	if !ok {
 		return 0, workroom.Decision{}, false
 	}
-	for index, record := range records {
+	for index, entry := range acts {
+		if entry.Replayed {
+			continue
+		}
+		record, ok := w.prospectiveRecord(ctx, snapshot, filer.Fingerprint, entry.Act)
+		if !ok {
+			return 0, workroom.Decision{}, false
+		}
+		record.ID = entry.Event
 		folder.Append(record)
 		verdict, decided := folder.Decision(record.ID)
 		if !decided {
@@ -118,19 +131,21 @@ func (w *Workspace) ProspectiveEventID(index int) string {
 	return w.EventID(object[len(object)-len(w.config.Genesis):])
 }
 
-// heldUnderKey reports whether this filer already holds an accepted act under
-// this idempotency key. It asks the kernel's own dedup index, and it asks
-// without the signing key: the identity that index is written under is the
-// actor's fingerprint, which local configuration holds. An error is answered as
-// no, because this only decides whether to put a question, never whether to
-// admit an act.
-func (w *Workspace) heldUnderKey(ctx context.Context, filer Filer, key string) bool {
+// AcceptedUnderKey names the act this filer already holds under this idempotency
+// key. It asks the kernel's own dedup index, and asks without the signing key:
+// the identity that index is written under is the actor's fingerprint, which
+// local configuration holds. An error is answered as nothing held, because this
+// only decides whether to put a question, never whether to admit an act.
+func (w *Workspace) AcceptedUnderKey(ctx context.Context, filer Filer, key string) (string, bool) {
 	if key == "" || filer.Fingerprint == "" {
-		return false
+		return "", false
 	}
 	dedup := intent.DedupIdentityFor(w.workroomID(), filer.Fingerprint, w.idempotencyNamespace(filer.Name), key)
-	_, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	return err == nil && held
+	prior, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
+	if err != nil || !held {
+		return "", false
+	}
+	return w.EventID(prior.Commit), true
 }
 
 // prospectiveRecord builds the record this act would become, by the same schema

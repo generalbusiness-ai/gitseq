@@ -85,7 +85,7 @@ Four cases are left to the fold, with no refusal here:
 |---|---|
 | this process cannot fold the workroom | there is no world to judge against |
 | `--server` names a resident standing anywhere but where this checkout stands | the act joins that resident's frontier, not this one |
-| the act carries an `--idempotency-key` this actor already holds | it is a retry: the sequencer replays the accepted event, or refuses the key as reused, and a judgement against today's world would refuse a recovery |
+| the act carries an `--idempotency-key` this actor already holds | it is a retry: the sequencer replays the accepted event, or refuses the key as reused, and a judgement against today's world would refuse a recovery. This is decided per act, so in a chain it stands down for that act alone — see [`gs batch`](batch.md#refused-before-signing) |
 | the act's body cannot be built at all — an undefined kind, a request stating no result, a reserved field | the builder refuses it at signing, in its own words |
 
 Not everything the builder refuses is judged here. A retirement documentation

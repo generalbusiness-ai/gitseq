@@ -1754,9 +1754,14 @@ it reads the local verified log, so an act bound for a resident is judged only
 while that resident stands exactly where this checkout does. It is also skipped
 for a retry — an idempotency key this actor already holds means the sequencer
 replays the accepted event or refuses the key, and judging it against today's
-world would refuse a recovery — and `--no-preflight` files any act as written. An
-act the check admits is signed exactly as it would have been, and no rule lives
-here that the fold does not already hold.
+world would refuse a recovery. In a chain that is decided per act: an accepted
+act is left to the sequencer and taken as part of the world, with its label
+naming the event the log holds, while every new act of the same chain is judged
+against that world. A resumed chain is the ordinary case, and one accepted key
+standing the whole check down let a malformed new act through behind a replayed
+prefix. `--no-preflight` files any act as written. An act the check admits is
+signed exactly as it would have been, and no rule lives here that the fold does
+not already hold.
 
 A malformed invocation is answered the same way everywhere: the command's own
 flags and one worked example on standard error, and a non-zero exit with nothing

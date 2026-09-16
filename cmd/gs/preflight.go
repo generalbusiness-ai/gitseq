@@ -214,38 +214,51 @@ func refuseIneffectiveBatch(ctx context.Context, workspace *app.Workspace, serve
 	if !ok {
 		return nil
 	}
-	prospective, ok := prospectiveChain(workspace, acts)
+	chain, ok := prospectiveChain(ctx, workspace, filer, acts)
 	if !ok {
 		return nil
 	}
-	position, decision, refused := workspace.PreflightChain(ctx, filer, prospective)
+	position, decision, refused := workspace.PreflightChain(ctx, filer, chain)
 	if !refused {
 		return nil
 	}
-	return fmt.Errorf("act %d: %w", position, ineffectiveActError(ctx, workspace, prospective[position], decision))
+	return fmt.Errorf("act %d: %w", position, ineffectiveActError(ctx, workspace, chain[position].Act, decision))
 }
 
 // prospectiveChain is the chain as the fold would read it: every act built the
-// way submission builds it, with each `$label` replaced by the identifier the
-// act it names will be judged under. A label naming no act of this chain leaves
-// an empty reference behind, and the chain is left to the fold; checkBatch has
-// already refused that shape.
-func prospectiveChain(workspace *app.Workspace, acts []batchAct) ([]app.Act, bool) {
+// way submission builds it, and every `$label` replaced by the identifier the
+// act it names will be judged under.
+//
+// Which identifier that is depends on the act. An act whose idempotency key this
+// actor already holds is one the log has, so its label names that real event and
+// the acts after it are judged against it; anything else is judged under a
+// prospective identifier no log can hold. A retry of a chain whose prefix landed
+// is therefore judged as what it is: the prefix left to the sequencer, the new
+// suffix judged against the world that prefix made.
+//
+// A label naming no act of this chain leaves an empty reference behind, and the
+// chain is left to the fold; checkBatch has already refused that shape.
+func prospectiveChain(ctx context.Context, workspace *app.Workspace, filer app.Filer, acts []batchAct) ([]app.ChainAct, bool) {
+	chain := make([]app.ChainAct, len(acts))
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
+		event, replayed := workspace.AcceptedUnderKey(ctx, filer, entry.IdempotencyKey)
+		if !replayed {
+			event = workspace.ProspectiveEventID(position)
+		}
+		chain[position] = app.ChainAct{Event: event, Replayed: replayed}
 		if entry.Label != "" {
-			minted[entry.Label] = workspace.ProspectiveEventID(position)
+			minted[entry.Label] = event
 		}
 	}
-	prospective := make([]app.Act, 0, len(acts))
-	for _, entry := range acts {
+	for position, entry := range acts {
 		act := resolveBatchAct(entry, minted, false)
 		if unresolvedReference(entry, act) {
 			return nil, false
 		}
-		prospective = append(prospective, act)
+		chain[position].Act = act
 	}
-	return prospective, true
+	return chain, true
 }
 
 // unresolvedReference reports whether label resolution left one of this act's
