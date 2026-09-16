@@ -50,9 +50,9 @@ REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
 PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
   --text 'I will add it' --rests-on "$REQUEST")
 
-printf '# Done\n\nCHANGELOG.md exists, with one entry.\n' > report.md
-gs state --repo "$REPO" --as bot --kind report \
-  --text-file report.md --rests-on "$PROMISE"
+printf '# Starting\n\nThe first entry will describe the request itself.\n' > note.md
+gs state --repo "$REPO" --as bot --kind assert \
+  --text-file note.md --rests-on "$PROMISE"
 ```
 
 ## Writing the statement to a file
@@ -68,13 +68,13 @@ The file's contents become the statement text exactly as written, apart from
 trailing whitespace, which is trimmed. Nothing about how the text is signed or
 displayed changes.
 
-The two flags are exclusive, and every statement needs one of them. Each of
-these is refused before anything is read or signed, and the message names the
-flag:
+The two flags are exclusive, judged by presence rather than value, and every
+statement needs one of them. Each of these is refused before signing, and the
+message names the flag:
 
 | what you gave | refusal |
 |---|---|
-| both `--text` and `--text-file` | `--text and --text-file cannot both be given` |
+| both `--text` and `--text-file`, even with one of them empty | `--text and --text-file cannot both be given` |
 | neither | `--text or --text-file is required` |
 | a file that is empty or only whitespace | `--text-file <path> is empty` |
 | a path that cannot be read | `--text-file <path>: <the read error>` |

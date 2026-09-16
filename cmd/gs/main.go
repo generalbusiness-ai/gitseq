@@ -494,24 +494,25 @@ func whoamiCommand(ctx context.Context, arguments []string) error {
 	return nil
 }
 
-// resolveText answers where a command's text comes from: typed on the command
-// line with --text, or read from a file with --text-file. A long report is
-// formatted prose — headings, tables, quoted findings, code — and passing it
-// through a shell mangles it, so the file is the way in for anything longer
-// than a line. Exactly one source may be given. The file's contents are
-// carried byte for byte apart from trailing whitespace, which an editor adds
-// and nobody typed. required says the command cannot proceed without text.
-// Everything here is decided before the caller signs anything.
-func resolveText(text, textFile string, required bool) (string, error) {
-	if textFile == "" {
+// resolveText reads a command's text from --text or --text-file, exactly one
+// of them. Presence is what counts, not value: giving both flags is refused
+// even when one is empty. A file's contents are carried byte for byte apart
+// from trailing whitespace. required says the command cannot proceed without
+// text. Every refusal here happens before the caller signs anything.
+func resolveText(set *flag.FlagSet, required bool) (string, error) {
+	given := map[string]bool{}
+	set.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	if given["text"] && given["text-file"] {
+		return "", errors.New("--text and --text-file cannot both be given")
+	}
+	if !given["text-file"] {
+		text := set.Lookup("text").Value.String()
 		if required && text == "" {
 			return "", errors.New("--text or --text-file is required")
 		}
 		return text, nil
 	}
-	if text != "" {
-		return "", errors.New("--text and --text-file cannot both be given")
-	}
+	textFile := set.Lookup("text-file").Value.String()
 	contents, err := os.ReadFile(textFile)
 	if err != nil {
 		return "", fmt.Errorf("--text-file %s: %w", textFile, err)
@@ -527,8 +528,8 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("state", arguments)
 	as := set.String("as", "", "actor name")
 	kind := set.String("kind", "", "statement kind")
-	message := set.String("text", "", "statement text")
-	messageFile := set.String("text-file", "", "read the statement text from this file instead of --text")
+	set.String("text", "", "statement text")
+	set.String("text-file", "", "read the statement text from this file instead of --text")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	deadOK := set.Bool("allow-dead-basis", false, "rest on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted and recorded without it")
@@ -542,7 +543,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// The text is settled before an actor is loaded or a key is touched, so a
 	// mistyped or missing source refuses with nothing signed. The schema would
 	// refuse a textless statement later anyway; refusing here names the flag.
-	text, err := resolveText(*message, *messageFile, true)
+	text, err := resolveText(set, true)
 	if err != nil {
 		return err
 	}
@@ -628,8 +629,8 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	set.Var(&artifactsFlag, "artifact", "artifact event standing at the reviewed head; repeat to sign the whole reviewed set")
 	promise := set.String("promise", "", "review promise event")
 	verdict := set.String("verdict", "", "approved or changes-requested")
-	message := set.String("text", "", "review report")
-	messageFile := set.String("text-file", "", "read the review report from this file instead of --text")
+	set.String("text", "", "review report")
+	set.String("text-file", "", "read the review report from this file instead of --text")
 	var headNews repeatedFlag
 	set.Var(&headNews, "ack-head-news", "durable statement sequenced after the review request that names this head or lane; repeat per event")
 	var implementations repeatedFlag
@@ -651,7 +652,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	// A verdict is the longest text this tool writes, so it is also the one
 	// most often read from a file. Settle it before anything is read or
 	// signed: --prepare records no verdict and so needs none.
-	report, err := resolveText(*message, *messageFile, !*prepare)
+	report, err := resolveText(set, !*prepare)
 	if err != nil {
 		return err
 	}

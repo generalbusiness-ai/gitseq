@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,27 +48,35 @@ func TestResolveTextTakesExactlyOneSource(t *testing.T) {
 
 	for _, test := range []struct {
 		name     string
-		text     string
-		textFile string
+		args     []string
 		required bool
 		want     string
 		refusal  string
 	}{
-		{name: "typed", text: "a one-line verdict", required: true, want: "a one-line verdict"},
-		{name: "from a file", textFile: file, required: true, want: strings.TrimRight(report, "\n")},
+		{name: "typed", args: []string{"--text", "a one-line verdict"}, required: true, want: "a one-line verdict"},
+		{name: "from a file", args: []string{"--text-file", file}, required: true, want: strings.TrimRight(report, "\n")},
 		{name: "absent where text is optional", want: ""},
-		{name: "both sources", text: "typed", textFile: file, required: true, refusal: "--text and --text-file cannot both be given"},
-		{name: "both sources where text is optional", text: "typed", textFile: file, refusal: "--text and --text-file cannot both be given"},
+		{name: "both sources", args: []string{"--text", "typed", "--text-file", file}, required: true, refusal: "--text and --text-file cannot both be given"},
+		{name: "both sources where text is optional", args: []string{"--text", "typed", "--text-file", file}, refusal: "--text and --text-file cannot both be given"},
+		{name: "both sources with an empty --text", args: []string{"--text", "", "--text-file", file}, required: true, refusal: "--text and --text-file cannot both be given"},
+		{name: "both sources with an empty --text-file", args: []string{"--text", "typed", "--text-file", ""}, required: true, refusal: "--text and --text-file cannot both be given"},
 		{name: "neither where text is required", required: true, refusal: "--text or --text-file is required"},
-		{name: "a blank file", textFile: blank, required: true, refusal: "is empty"},
-		{name: "a path that cannot be read", textFile: missing, required: true, refusal: "--text-file " + missing + ":"},
+		{name: "an empty --text where text is required", args: []string{"--text", ""}, required: true, refusal: "--text or --text-file is required"},
+		{name: "a blank file", args: []string{"--text-file", blank}, required: true, refusal: "is empty"},
+		{name: "a path that cannot be read", args: []string{"--text-file", missing}, required: true, refusal: "--text-file " + missing + ":"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			got, err := resolveText(test.text, test.textFile, test.required)
+			set := flag.NewFlagSet("probe", flag.ContinueOnError)
+			set.String("text", "", "")
+			set.String("text-file", "", "")
+			if err := set.Parse(test.args); err != nil {
+				t.Fatal(err)
+			}
+			got, err := resolveText(set, test.required)
 			if test.refusal != "" {
 				if err == nil || !strings.Contains(err.Error(), test.refusal) {
-					t.Fatalf("resolveText(%q, %q, %v) error = %v, want one naming %q", test.text, test.textFile, test.required, err, test.refusal)
+					t.Fatalf("resolveText(%q, %v) error = %v, want one naming %q", test.args, test.required, err, test.refusal)
 				}
 				if got != "" {
 					t.Fatalf("a refused resolveText still returned %q", got)
@@ -121,6 +130,16 @@ func TestReviewRefusesEveryBadTextSourceBeforeSigning(t *testing.T) {
 		{
 			name:    "both sources",
 			text:    func(t *testing.T) []string { return []string{"--text", "typed", "--text-file", writeText(t, report)} },
+			refusal: "--text and --text-file cannot both be given",
+		},
+		{
+			name:    "both sources with an empty --text",
+			text:    func(t *testing.T) []string { return []string{"--text", "", "--text-file", writeText(t, report)} },
+			refusal: "--text and --text-file cannot both be given",
+		},
+		{
+			name:    "both sources with an empty --text-file",
+			text:    func(t *testing.T) []string { return []string{"--text", "typed", "--text-file", ""} },
 			refusal: "--text and --text-file cannot both be given",
 		},
 		{
@@ -208,6 +227,16 @@ func TestStateRefusesEveryBadTextSourceBeforeSigning(t *testing.T) {
 		{
 			name:    "both sources",
 			text:    func(t *testing.T) []string { return []string{"--text", "typed", "--text-file", writeText(t, report)} },
+			refusal: "--text and --text-file cannot both be given",
+		},
+		{
+			name:    "both sources with an empty --text",
+			text:    func(t *testing.T) []string { return []string{"--text", "", "--text-file", writeText(t, report)} },
+			refusal: "--text and --text-file cannot both be given",
+		},
+		{
+			name:    "both sources with an empty --text-file",
+			text:    func(t *testing.T) []string { return []string{"--text", "typed", "--text-file", ""} },
 			refusal: "--text and --text-file cannot both be given",
 		},
 		{
