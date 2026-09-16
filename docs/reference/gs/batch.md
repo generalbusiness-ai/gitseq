@@ -22,6 +22,7 @@ the log, and then appends every act against that one frontier.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
 | `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--cited-ok` | `false` | Allow a `supersede` or `retire-if-unclaimed` act whose target tracked documentation still names. Guarded retirement signs this admission observation separately from its fold-enforced commitment guard. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The one positional argument is the file to read. `-`, or no argument at
 all, reads standard input.
@@ -90,6 +91,43 @@ JSON
 
 gs batch --repo "$REPO" --as alice "$REPO/chain.json"
 ```
+
+## Refused before signing
+
+Before the first append, this command asks the fold what it would decide about
+every act of the chain, in order, and refuses the whole chain when the answer
+for any of them is not effective. The refusal names the act by its position:
+
+```text
+gs: act 1: the fold would rule this act ineffective: artifact state requires body.path
+fix: an artifact names one file: --body path=<file>, at the exact string the merge will publish
+file it as written with --no-preflight
+```
+
+The reason is the fold's own, word for word. The line beneath it is the only
+thing this boundary adds, and a reason nobody has written a line for prints
+alone. Nothing has happened when this prints: no signing key has been read, no
+act has been built, and the log stands where it stood.
+
+It is advice, not authority. No rule lives here — the check folds the
+prospective record with the same fold the sequencer runs, over the projection
+this checkout last verified — and the fold judges the act again at sequencing,
+against the world it actually joins. That second judgement is the one that
+counts. When the question cannot be put honestly the command stays quiet and
+files the act as it always did: a workroom this process cannot fold, an act
+whose shape this boundary does not build, or an act citing a `$label`, which
+names an act the chain has yet to mint and so has no world to be judged in. `--server` is the case worth knowing:
+the act joins the resident's frontier, so the check runs only while the resident
+stands exactly where this checkout does, and is skipped otherwise.
+
+Nothing about an admitted act changes. `--no-preflight` skips the check and
+files the chain exactly as written — for the deliberate replay of a shape the fold
+refuses, or to record an attempt that should be visible as one.
+
+A malformed invocation is answered differently, and earlier still: an undefined
+flag, a missing required flag, a subject given as a flag where a positional
+argument belongs, or an event reference that names nothing here prints this
+command's flags and one worked example, and exits non-zero with nothing touched.
 
 ## The report
 

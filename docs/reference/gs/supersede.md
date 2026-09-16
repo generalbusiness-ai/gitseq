@@ -25,6 +25,7 @@ Prefer supersession to contradiction.
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The target is a **positional argument**, and flag parsing stops at the
 first positional. Put every flag before it.
@@ -55,6 +56,41 @@ gs status --repo "$REPO"
 
 The note resting on the retired claim is now stale. That is a signal to
 re-check it, not a verdict that it is wrong.
+
+## Refused before signing
+
+Before anything is signed, this command asks the fold what it would decide
+about the act as written, and refuses when the answer is not effective:
+
+```text
+gs: the fold would rule this act ineffective: actor may not supersede target
+fix: only alice or an actor holding ratifier may retire it; ask one of them to file the supersede
+file it as written with --no-preflight
+```
+
+The reason is the fold's own, word for word. The line beneath it is the only
+thing this boundary adds, and a reason nobody has written a line for prints
+alone. Nothing has happened when this prints: no signing key has been read, no
+act has been built, and the log stands where it stood.
+
+It is advice, not authority. No rule lives here — the check folds the
+prospective record with the same fold the sequencer runs, over the projection
+this checkout last verified — and the fold judges the act again at sequencing,
+against the world it actually joins. That second judgement is the one that
+counts. When the question cannot be put honestly the command stays quiet and
+files the act as it always did: a workroom this process cannot fold, or an act
+whose shape this boundary does not build. `--server` is the case worth knowing:
+the act joins the resident's frontier, so the check runs only while the resident
+stands exactly where this checkout does, and is skipped otherwise.
+
+Nothing about an admitted act changes. `--no-preflight` skips the check and
+files the act exactly as written — for the deliberate replay of a shape the fold
+refuses, or to record an attempt that should be visible as one.
+
+A malformed invocation is answered differently, and earlier still: an undefined
+flag, a missing required flag, a subject given as a flag where a positional
+argument belongs, or an event reference that names nothing here prints this
+command's flags and one worked example, and exits non-zero with nothing touched.
 
 ## What it is for
 

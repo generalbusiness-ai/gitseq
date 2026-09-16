@@ -19,6 +19,7 @@ is decided by the fold, from who signed it and what the target is.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The ratifying actor. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The target event is a **positional argument**, and flag parsing stops at
 the first positional. Put every flag before it, or the flags after it are
@@ -48,6 +49,41 @@ REPORT=$(gs state --repo "$REPO" --as bot --kind report \
 
 gs ratify --repo "$REPO" --as alice "$REPORT"
 ```
+
+## Refused before signing
+
+Before anything is signed, this command asks the fold what it would decide
+about the act as written, and refuses when the answer is not effective:
+
+```text
+gs: the fold would rule this act ineffective: statement kind is not ratifiable
+fix: that kind has no satisfier: an artifact is closed by an approved merge, a request by a promise, report or supersession
+file it as written with --no-preflight
+```
+
+The reason is the fold's own, word for word. The line beneath it is the only
+thing this boundary adds, and a reason nobody has written a line for prints
+alone. Nothing has happened when this prints: no signing key has been read, no
+act has been built, and the log stands where it stood.
+
+It is advice, not authority. No rule lives here — the check folds the
+prospective record with the same fold the sequencer runs, over the projection
+this checkout last verified — and the fold judges the act again at sequencing,
+against the world it actually joins. That second judgement is the one that
+counts. When the question cannot be put honestly the command stays quiet and
+files the act as it always did: a workroom this process cannot fold, or an act
+whose shape this boundary does not build. `--server` is the case worth knowing:
+the act joins the resident's frontier, so the check runs only while the resident
+stands exactly where this checkout does, and is skipped otherwise.
+
+Nothing about an admitted act changes. `--no-preflight` skips the check and
+files the act exactly as written — for the deliberate replay of a shape the fold
+refuses, or to record an attempt that should be visible as one.
+
+A malformed invocation is answered differently, and earlier still: an undefined
+flag, a missing required flag, a subject given as a flag where a positional
+argument belongs, or an event reference that names nothing here prints this
+command's flags and one worked example, and exits non-zero with nothing touched.
 
 ## Who may ratify what
 
@@ -83,10 +119,17 @@ resting on anything more.
 
 ## Attempts are kept
 
-An unauthorized ratification is not an error. It is appended, judged
-ineffective, and listed under **Attempts** in
-[`gs status`](status.md), permanently. Read current state before
-retrying; do not retry blindly.
+An unauthorized ratification that reaches the log is not an error. It is
+appended, judged ineffective, and listed under **Attempts** in
+[`gs status`](status.md), permanently. Read current state before retrying; do
+not retry blindly.
+
+This command now refuses most of those attempts before they are signed, so
+fewer of them reach the log at all — see
+[Refused before signing](#refused-before-signing). The ones that still land are
+the ones it could not judge: an act filed with `--no-preflight`, one whose world
+moved between the check and the sequencer, and one filed by a surface that makes
+no such check. The record of an attempt is permanent either way.
 
 ## See also
 

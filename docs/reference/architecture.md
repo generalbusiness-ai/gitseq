@@ -896,6 +896,15 @@ not establish power-loss durability or current shared-core crash recovery.
 **Schemas and fold.** Workroom owns the `workroom/*` schemas and governed kind
 vocabulary, its deterministic fold, and its fold-profile version.
 
+**One prospective record may be judged without being appended.** `Preview`
+folds a record the log does not hold against a folded state and returns the
+decision that record would have been given, applying none of its consequences
+and leaving the projection exactly as it was. It is the same decision path an
+append takes — there is no second, friendlier copy of the rules for a write
+boundary to consult — and it is a read: no record, no decision, and no
+staleness enters the fold. A caller holds the answer, and the fold at
+sequencing remains the authority over the world the act actually joins.
+
 **Actors.** It owns the actor roster, names, membership, roles, and authority.
 
 **Commitments: who is waiting on whom.** An explicit report closes when its
@@ -1730,6 +1739,22 @@ to checkouts, so a lifecycle word this client has never heard of protects
 rather than settles.
 
 ### 7. CLI, MCP, skills, connectors, and UI
+
+A signing CLI command asks the fold what it would decide before it signs. The
+act is built as submission would build it, judged by layer 5's preview against
+the projection this process last verified, and refused with the fold's own
+reason and one line of advice when the answer is not effective — before a
+private key is read and before anything reaches the log. The judgement is
+advisory: it reads the local verified log, so an act bound for a resident is
+judged only while that resident stands exactly where this checkout does, and
+`--no-preflight` files the act as written. Nothing about an admitted act
+changes, and no rule lives here that the fold does not already hold.
+
+A malformed invocation is answered the same way everywhere: the command's own
+flags and one worked example on standard error, and a non-zero exit with
+nothing touched. That covers an undefined flag, a missing required flag, a
+subject offered as a flag where the command takes a positional argument, and an
+event reference that names nothing here.
 
 The reading UI includes a Notes view selected from declared `render: note`
 kinds, independently of request and approval populations. Exact record-number
