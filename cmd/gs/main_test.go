@@ -3911,7 +3911,7 @@ func buildBatchTemplate(root string) error {
 // them.
 func TestMain(m *testing.M) {
 	code := testgit.Run(m)
-	templates := []*fixtureTemplate{&batchTemplate}
+	templates := []*fixtureTemplate{&batchTemplate, &preflightTemplate.fixtureTemplate}
 	for _, workflow := range workflowTemplates {
 		templates = append(templates, &workflow.fixtureTemplate)
 	}
@@ -5355,10 +5355,27 @@ func writeCitingPage(t *testing.T, repo, page, event string) {
 	testGit(t, repo, "add", page)
 }
 
+// retirableRecord files one assert the operator may retire and returns its
+// event. A citation test needs a target the fold would admit a retirement of:
+// the pre-signing check refuses an ineffective retirement before the
+// documentation gate is ever consulted, which is the right order for a caller
+// and the wrong one for a test about the gate.
+func (f batchFixture) retirableRecord(text, key string) string {
+	f.t.Helper()
+	submission, err := f.workspace.Act(f.ctx, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+		RestsOn: []string{f.genesis}, IdempotencyKey: key,
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return submission.Record.ID
+}
+
 func TestSupersedeRefusesWhenDocumentationCitesTheTarget(t *testing.T) {
 	t.Parallel()
 	f := newBatchFixture(t)
-	target := f.genesis
+	target := f.retirableRecord("a claim the documentation cites", "cited-target")
 	writeCitingPage(t, f.repo, "docs/reference/thing.md", target)
 
 	err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "retire it", target})
@@ -5378,7 +5395,7 @@ func TestSupersedeRefusesWhenDocumentationCitesTheTarget(t *testing.T) {
 
 func TestBatchRefusesRetirementWhenDocumentationCitesTheTarget(t *testing.T) {
 	f := newBatchFixture(t)
-	target := f.genesis
+	target := f.retirableRecord("a claim the documentation cites", "cited-target")
 	writeCitingPage(t, f.repo, "docs/concepts/other.md", target)
 
 	acts := `[{"verb":"supersede","target":"` + target + `","text":"retire it"}]`
@@ -5400,7 +5417,7 @@ func TestBatchRefusesRetirementWhenDocumentationCitesTheTarget(t *testing.T) {
 func TestRetirementIgnoresUntrackedPages(t *testing.T) {
 	t.Parallel()
 	f := newBatchFixture(t)
-	target := f.genesis
+	target := f.retirableRecord("a claim only an untracked page names", "untracked-target")
 	full := filepath.Join(f.repo, "scratch.md")
 	if err := os.WriteFile(full, []byte(target), 0o600); err != nil {
 		t.Fatal(err)

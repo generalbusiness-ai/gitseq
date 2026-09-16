@@ -1,0 +1,660 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
+)
+
+// preflightFixture is a small finished world: one request from the operator to
+// the worker, the worker's promise on it, the worker's report closing it, one
+// assert, and one artifact. Between them they reach every refusal the
+// pre-signing fold check is meant to catch, and every act that satisfies it.
+// preflightFixture is a small finished world: one request from the operator to
+// the worker, the worker's promise on it, the worker's report closing it, one
+// assert, one artifact, and one promise the fold already refused. Between them
+// they reach every refusal the pre-signing fold check is meant to catch, and
+// every act that satisfies it.
+//
+// It is built once for the package and copied per test, like every other
+// fixture here: building it per subtest cost more than every command under
+// test put together.
+type preflightFixture struct {
+	batchFixture
+	request  string
+	promise  string
+	report   string
+	assert   string
+	artifact string
+	// refused is an event the fold already ruled ineffective: a promise
+	// standing on nothing.
+	refused string
+}
+
+type preflightTemplateRepo struct {
+	fixtureTemplate
+	request  string
+	promise  string
+	report   string
+	assert   string
+	artifact string
+	refused  string
+}
+
+var preflightTemplate = newPreflightTemplate()
+
+func newPreflightTemplate() *preflightTemplateRepo {
+	template := &preflightTemplateRepo{}
+	template.build = template.buildPreflight
+	return template
+}
+
+func (template *preflightTemplateRepo) buildPreflight(root string) error {
+	ctx := context.Background()
+	repo := filepath.Join(root, "repo")
+	if _, err := gitCommand("", "init", "-b", "main", repo); err != nil {
+		return err
+	}
+	workspace, _, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		return err
+	}
+	if _, _, err := workspace.AddActor(ctx, "operator", "worker", "agent"); err != nil {
+		return err
+	}
+	genesis := workspace.EventID(workspace.View().Genesis)
+	worker := workspace.View().Actors["worker"].Fingerprint
+	file := func(actor string, act app.Act) (string, error) {
+		submission, err := workspace.Act(ctx, actor, act)
+		if err != nil {
+			return "", err
+		}
+		return submission.Record.ID, nil
+	}
+	if template.request, err = file("operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "do the work",
+		Body:    map[string]string{"to": worker, "conditions": "the tests pass", "no_git_artifact": "true"},
+		RestsOn: []string{genesis}, IdempotencyKey: "preflight-request",
+	}); err != nil {
+		return err
+	}
+	if template.promise, err = file("worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "on it",
+		RestsOn: []string{template.request}, IdempotencyKey: "preflight-promise",
+	}); err != nil {
+		return err
+	}
+	if template.report, err = file("worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindReport, Text: "the tests pass",
+		RestsOn: []string{template.promise}, IdempotencyKey: "preflight-report",
+	}); err != nil {
+		return err
+	}
+	if template.assert, err = file("worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "a fact worth recording",
+		RestsOn: []string{genesis}, IdempotencyKey: "preflight-assert",
+	}); err != nil {
+		return err
+	}
+	if template.artifact, err = file("worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindArtifact, Text: "the head",
+		Body:    map[string]string{"path": "notes/one.md", "commit": workspace.View().Genesis},
+		RestsOn: []string{genesis}, IdempotencyKey: "preflight-artifact",
+	}); err != nil {
+		return err
+	}
+	// A record the fold refused, so a later act can name a target that stands
+	// in the log and stands for nothing. The application boundary signs it as
+	// asked; only the fold judges it.
+	template.refused, err = file("worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindPromise, Text: "a promise with no request",
+		RestsOn: []string{genesis}, IdempotencyKey: "preflight-dangling",
+	})
+	return err
+}
+
+func newPreflightFixture(t *testing.T) preflightFixture {
+	t.Helper()
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	preflightTemplate.copyRepo(t, repo)
+	workspace, err := app.Open(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return preflightFixture{
+		batchFixture: batchFixture{
+			t: t, ctx: ctx, repo: repo, workspace: workspace,
+			genesis: workspace.EventID(workspace.View().Genesis),
+		},
+		request: preflightTemplate.request, promise: preflightTemplate.promise,
+		report: preflightTemplate.report, assert: preflightTemplate.assert,
+		artifact: preflightTemplate.artifact, refused: preflightTemplate.refused,
+	}
+}
+
+func (f preflightFixture) act(t *testing.T, actor string, act app.Act) string {
+	t.Helper()
+	submission, err := f.workspace.Act(f.ctx, actor, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return submission.Record.ID
+}
+
+// withoutKey runs one command with the actor's signing key taken off disk. A
+// refusal under these conditions is a refusal that happened before the key was
+// read: any path that reached the key would have failed saying so instead.
+func (f preflightFixture) withoutKey(t *testing.T, actor string, run func() error) error {
+	t.Helper()
+	keyFile := f.workspace.View().Actors[actor].KeyFile
+	contents, err := os.ReadFile(keyFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(keyFile); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.WriteFile(keyFile, contents, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	return run()
+}
+
+// quiet runs a command with both streams captured, because a refusal prints
+// usage and a landed act prints its event id, and neither belongs in the test
+// output.
+func quiet(t *testing.T, run func() error) (string, error) {
+	t.Helper()
+	outReader, outWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	errReader, errWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = outWriter, errWriter
+	runErr := run()
+	os.Stdout, os.Stderr = stdout, stderr
+	outWriter.Close()
+	errWriter.Close()
+	printed, err := io.ReadAll(outReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	warned, err := io.ReadAll(errReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outReader.Close()
+	errReader.Close()
+	return string(printed) + string(warned), runErr
+}
+
+func TestPreflightRefusesStateActsBeforeAnyKeyIsRead(t *testing.T) {
+	for _, probe := range []struct {
+		name string
+		// arguments are appended to --repo/--as/--kind/--text, which every case
+		// shares.
+		refused   []string
+		admitted  []string
+		actor     string
+		kind      string
+		wantWords []string
+	}{
+		{
+			name: "artifact with no path", actor: "worker", kind: "artifact",
+			refused:   []string{"--body", "commit=COMMIT"},
+			admitted:  []string{"--body", "commit=COMMIT", "--body", "path=notes/two.md"},
+			wantWords: []string{"artifact state requires body.path", "--body path="},
+		},
+		{
+			name: "artifact with no commit", actor: "worker", kind: "artifact",
+			refused:   []string{"--body", "path=notes/three.md"},
+			admitted:  []string{"--body", "path=notes/three.md", "--body", "commit=COMMIT"},
+			wantWords: []string{"artifact state requires body.commit", "--body commit="},
+		},
+		{
+			name: "promise standing on nothing", actor: "worker", kind: "promise",
+			refused:   []string{"--rests-on", "GENESIS"},
+			admitted:  []string{"--rests-on", "REQUEST"},
+			wantWords: []string{"dangling promise has no request", "rest the promise on the request"},
+		},
+		{
+			name: "promise by an actor the request does not address", actor: "operator", kind: "promise",
+			refused:   []string{"--rests-on", "REQUEST"},
+			admitted:  nil,
+			wantWords: []string{"promise actor is not the requested performer", "body.to"},
+		},
+		{
+			name: "report standing on nothing", actor: "worker", kind: "report",
+			refused:   []string{"--rests-on", "GENESIS"},
+			admitted:  []string{"--rests-on", "PROMISE"},
+			wantWords: []string{"report has no promise or request", "rest the report on your promise"},
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			fixture := newPreflightFixture(t)
+			before := fixture.snapshot()
+			arguments := func(extra []string, key string) []string {
+				resolved := []string{
+					"--repo", fixture.repo, "--as", probe.actor, "--kind", probe.kind,
+					"--text", probe.name, "--idempotency-key", key,
+				}
+				for _, argument := range extra {
+					switch argument {
+					case "GENESIS":
+						argument = fixture.genesis
+					case "REQUEST":
+						argument = fixture.request
+					case "PROMISE":
+						argument = fixture.promise
+					case "commit=COMMIT":
+						// An artifact commit is checked against the repository
+						// before anything else, so the fixture's own genesis
+						// commit stands in for a reviewed head.
+						argument = "commit=" + fixture.workspace.View().Genesis
+					}
+					resolved = append(resolved, argument)
+				}
+				if !containsFlag(extra, "--rests-on") {
+					resolved = append(resolved, "--rests-on", fixture.genesis)
+				}
+				return resolved
+			}
+			output, err := quiet(t, func() error {
+				return fixture.withoutKey(t, probe.actor, func() error {
+					return stateCommand(fixture.ctx, arguments(probe.refused, "refused"))
+				})
+			})
+			if err == nil {
+				t.Fatal("the act was not refused")
+			}
+			for _, want := range append(probe.wantWords, "--no-preflight") {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal %q does not say %q (output: %s)", err, want, output)
+				}
+			}
+			if after := fixture.snapshot(); after.Head != before.Head || after.Depth != before.Depth {
+				t.Fatalf("a refused act moved the workroom: %s/%d -> %s/%d", before.Head, before.Depth, after.Head, after.Depth)
+			}
+			if probe.admitted == nil {
+				return
+			}
+			landed, err := quiet(t, func() error {
+				return stateCommand(fixture.ctx, arguments(probe.admitted, "admitted"))
+			})
+			if err != nil {
+				t.Fatalf("the satisfied act was refused: %v", err)
+			}
+			after := fixture.snapshot()
+			if after.Depth != before.Depth+1 {
+				t.Fatalf("the satisfied act did not land: depth %d -> %d", before.Depth, after.Depth)
+			}
+			if decision := decisionByEvent(t, after.Projection, printedEvent(landed)); decision.Verdict != workroom.Effective {
+				t.Fatalf("the satisfied act landed %s: %s", decision.Verdict, decision.Reason)
+			}
+		})
+	}
+}
+
+func containsFlag(arguments []string, flag string) bool {
+	for _, argument := range arguments {
+		if argument == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// A report may cite the request its promise answers, as provenance, and no
+// other. The fold refuses the other one; so does this, before signing.
+func TestPreflightRefusesAReportCitingTheWrongRequest(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	worker := fixture.workspace.View().Actors["worker"].Fingerprint
+	other := fixture.act(t, "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindRequest, Text: "a different request",
+		Body:    map[string]string{"to": worker, "conditions": "something else", "no_git_artifact": "true"},
+		RestsOn: []string{fixture.genesis}, IdempotencyKey: "preflight-other-request",
+	})
+	before := fixture.snapshot()
+	_, err := quiet(t, func() error {
+		return fixture.withoutKey(t, "worker", func() error {
+			return stateCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "worker", "--kind", "report", "--text", "done",
+				"--rests-on", fixture.promise, "--rests-on", other, "--idempotency-key", "wrong-request",
+			})
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "report cites a request other than the one its promise answers") {
+		t.Fatalf("error = %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused report moved the workroom: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// The same report, citing the request its promise does answer, lands.
+	if _, err := quiet(t, func() error {
+		return stateCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "worker", "--kind", "report", "--text", "done",
+			"--rests-on", fixture.promise, "--rests-on", fixture.request, "--idempotency-key", "right-request",
+		})
+	}); err != nil {
+		t.Fatalf("the satisfied report was refused: %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth+1 {
+		t.Fatalf("the satisfied report did not land: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+func TestPreflightRefusesRatifications(t *testing.T) {
+	for _, probe := range []struct {
+		name      string
+		actor     string
+		target    func(f preflightFixture) string
+		admitted  string
+		wantWords []string
+	}{
+		{
+			name: "target the fold refused", actor: "operator",
+			target:    func(f preflightFixture) string { return f.refused },
+			wantWords: []string{"ratify target is not effective", "gs inspect"},
+		},
+		{
+			name: "kind with no satisfier", actor: "operator",
+			target:    func(f preflightFixture) string { return f.artifact },
+			wantWords: []string{"statement kind is not ratifiable"},
+		},
+		{
+			name: "statement whose satisfier is a role the actor lacks", actor: "worker",
+			target:    func(f preflightFixture) string { return f.assert },
+			admitted:  "operator",
+			wantWords: []string{"actor lacks ratifier role", "ask an actor holding ratifier"},
+		},
+		{
+			name: "report ratified by someone other than its requester", actor: "worker",
+			target:    func(f preflightFixture) string { return f.report },
+			admitted:  "operator",
+			wantWords: []string{"only the requester may declare satisfaction", "originating requester"},
+		},
+		{
+			name: "target from another workroom", actor: "operator",
+			target:    func(f preflightFixture) string { return foreignEvent() },
+			wantWords: []string{"ratify target is unknown", "full event id"},
+		},
+	} {
+		t.Run(probe.name, func(t *testing.T) {
+			fixture := newPreflightFixture(t)
+			before := fixture.snapshot()
+			target := probe.target(fixture)
+			_, err := quiet(t, func() error {
+				return fixture.withoutKey(t, probe.actor, func() error {
+					return ratifyCommand(fixture.ctx, []string{
+						"--repo", fixture.repo, "--as", probe.actor, "--idempotency-key", "refused", target,
+					})
+				})
+			})
+			if err == nil {
+				t.Fatal("the ratification was not refused")
+			}
+			for _, want := range probe.wantWords {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal %q does not say %q", err, want)
+				}
+			}
+			if after := fixture.snapshot(); after.Depth != before.Depth {
+				t.Fatalf("a refused ratification moved the workroom: depth %d -> %d", before.Depth, after.Depth)
+			}
+			if probe.admitted == "" {
+				return
+			}
+			landed, err := quiet(t, func() error {
+				return ratifyCommand(fixture.ctx, []string{
+					"--repo", fixture.repo, "--as", probe.admitted, "--idempotency-key", "admitted", target,
+				})
+			})
+			if err != nil {
+				t.Fatalf("the authorized ratification was refused: %v", err)
+			}
+			after := fixture.snapshot()
+			if after.Depth != before.Depth+1 {
+				t.Fatalf("the authorized ratification did not land: depth %d -> %d", before.Depth, after.Depth)
+			}
+			if decision := decisionByEvent(t, after.Projection, printedEvent(landed)); decision.Verdict != workroom.Effective {
+				t.Fatalf("the authorized ratification landed %s: %s", decision.Verdict, decision.Reason)
+			}
+		})
+	}
+}
+
+// Retirement is its own authority question, and the answer names who may ask.
+func TestPreflightRefusesASupersessionByAnActorWithNoStanding(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	_, err := quiet(t, func() error {
+		return fixture.withoutKey(t, "worker", func() error {
+			return supersedeCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "worker", "--text", "not mine to retire",
+				"--idempotency-key", "refused", fixture.request,
+			})
+		})
+	})
+	if err == nil {
+		t.Fatal("the supersession was not refused")
+	}
+	for _, want := range []string{"actor may not supersede target", "ratifier", "operator"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
+		}
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused supersession moved the workroom: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// The author of the record retires it without trouble.
+	if _, err := quiet(t, func() error {
+		return supersedeCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--text", "withdrawn",
+			"--idempotency-key", "admitted", fixture.request,
+		})
+	}); err != nil {
+		t.Fatalf("the author's supersession was refused: %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth+1 {
+		t.Fatalf("the author's supersession did not land: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// A target that stands in no log at all reaches the fold as unknown, and this
+// says so before signing rather than after.
+func TestPreflightRefusesASupersessionOfAnUnknownTarget(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	_, err := quiet(t, func() error {
+		return fixture.withoutKey(t, "operator", func() error {
+			return supersedeCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "operator", "--text", "retire it",
+				"--idempotency-key", "refused", foreignEvent(),
+			})
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "supersede target is unknown") {
+		t.Fatalf("error = %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused supersession moved the workroom: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// A ratification of a retired record is refused, and the successor's is not.
+func TestPreflightRefusesRatifyingARetiredStatement(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	if _, err := quiet(t, func() error {
+		return supersedeCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "worker", "--text", "withdrawn",
+			"--idempotency-key", "retire-assert", fixture.assert,
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot()
+	_, err := quiet(t, func() error {
+		return fixture.withoutKey(t, "operator", func() error {
+			return ratifyCommand(fixture.ctx, []string{
+				"--repo", fixture.repo, "--as", "operator", "--idempotency-key", "refused", fixture.assert,
+			})
+		})
+	})
+	if err == nil || !strings.Contains(err.Error(), "retired statement cannot be ratified") {
+		t.Fatalf("error = %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused ratification moved the workroom: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// A fresh assert in its place is ratified exactly as before.
+	replacement := fixture.act(t, "worker", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the fact, restated",
+		RestsOn: []string{fixture.genesis}, IdempotencyKey: "preflight-assert-again",
+	})
+	if _, err := quiet(t, func() error {
+		return ratifyCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "operator", "--idempotency-key", "admitted", replacement,
+		})
+	}); err != nil {
+		t.Fatalf("the live statement's ratification was refused: %v", err)
+	}
+}
+
+// The escape exists for the deliberate replay of a shape the fold refuses, so
+// it has to file exactly the act the check stopped.
+func TestNoPreflightFilesTheRefusedActAnyway(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	landed, err := quiet(t, func() error {
+		return stateCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "worker", "--kind", "promise",
+			"--text", "a promise with no request", "--rests-on", fixture.genesis,
+			"--idempotency-key", "deliberate", "--no-preflight",
+		})
+	})
+	if err != nil {
+		t.Fatalf("--no-preflight refused the act: %v", err)
+	}
+	after := fixture.snapshot()
+	if after.Depth != before.Depth+1 {
+		t.Fatalf("--no-preflight appended nothing: depth %d -> %d", before.Depth, after.Depth)
+	}
+	decision := decisionByEvent(t, after.Projection, printedEvent(landed))
+	if decision.Verdict != workroom.Ineffective || decision.Reason != "dangling promise has no request" {
+		t.Fatalf("the filed act was decided %s: %s", decision.Verdict, decision.Reason)
+	}
+}
+
+// The check must not change what an admitted act contains. The same act filed
+// with the check on and with it off has to be the same record, byte for byte,
+// which the idempotency key proves: a differing act under one key is refused,
+// and a matching one replays the event already in the log.
+func TestPreflightDoesNotChangeAnAdmittedAct(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	arguments := func(extra ...string) []string {
+		return append([]string{
+			"--repo", fixture.repo, "--as", "worker", "--kind", "assert",
+			"--text", "the same act either way", "--rests-on", fixture.genesis,
+			"--idempotency-key", "same-act",
+		}, extra...)
+	}
+	first, err := quiet(t, func() error { return stateCommand(fixture.ctx, arguments()) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := fixture.snapshot()
+	second, err := quiet(t, func() error { return stateCommand(fixture.ctx, arguments("--no-preflight")) })
+	if err != nil {
+		t.Fatalf("the replay under the same key was refused: %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("the replay appended a second act: depth %d -> %d", before.Depth, after.Depth)
+	}
+	if printedEvent(first) != printedEvent(second) {
+		t.Fatalf("the same act filed two ways gave two events: %q and %q", printedEvent(first), printedEvent(second))
+	}
+}
+
+// printedEvent is the record id a signing command prints on standard output.
+func printedEvent(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.HasPrefix(line, "git:") {
+			return line
+		}
+	}
+	return ""
+}
+
+// A chain stops on the first act the fold would refuse, with nothing appended:
+// half a chain in the log is worse than none of it.
+func TestPreflightRefusesABatchBeforeItsFirstAppend(t *testing.T) {
+	fixture := newPreflightFixture(t)
+	before := fixture.snapshot()
+	commit := fixture.workspace.View().Genesis
+	acts := []map[string]any{
+		{"verb": "state", "kind": "assert", "text": "a fine first act", "rests_on": []string{fixture.genesis}},
+		{"verb": "state", "kind": "artifact", "text": "a head with no path", "body": map[string]string{"commit": commit}, "rests_on": []string{fixture.genesis}},
+	}
+	encoded, err := json.Marshal(acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "chain.json")
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = quiet(t, func() error {
+		return fixture.withoutKey(t, "worker", func() error {
+			return batchCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "worker", path})
+		})
+	})
+	if err == nil {
+		t.Fatal("the chain was not refused")
+	}
+	for _, want := range []string{"act 1", "artifact state requires body.path"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
+		}
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth {
+		t.Fatalf("a refused chain appended something: depth %d -> %d", before.Depth, after.Depth)
+	}
+	// With the missing field supplied, the same chain lands whole.
+	acts[1]["body"] = map[string]string{"commit": commit, "path": "notes/four.md"}
+	encoded, err = json.Marshal(acts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := quiet(t, func() error {
+		return batchCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "worker", path})
+	}); err != nil {
+		t.Fatalf("the satisfied chain was refused: %v", err)
+	}
+	if after := fixture.snapshot(); after.Depth != before.Depth+2 {
+		t.Fatalf("the satisfied chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// foreignEvent is a well-formed identifier of another workroom: it parses, it
+// resolves to itself, and it names nothing here. It is what pasting an id from
+// the wrong repository produces.
+func foreignEvent() string {
+	return "git:sha1:" + strings.Repeat("f", 40) + "#git:sha1:" + strings.Repeat("e", 40)
+}
