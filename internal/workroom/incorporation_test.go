@@ -69,8 +69,9 @@ func TestPriorIncorporationReceiptWithAPlantedPlanDeliversNothing(t *testing.T) 
 		"claims left-live testimony": func(body map[string]string) {
 			body["merge_left_live"] = `{"` + lid("artifact") + `":{"class":"carried"}}`
 		},
-		"unreadable successors": func(body map[string]string) { body["merge_successors"] = `not json` },
-		"unknown incorporation": func(body map[string]string) { body["merge_incorporation"] = "later" },
+		"unreadable successors":    func(body map[string]string) { body["merge_successors"] = `not json` },
+		"unknown incorporation":    func(body map[string]string) { body["merge_incorporation"] = "later" },
+		"names another merge head": func(body map[string]string) { body["merge_head"] = "0123456789abcdef0123456789abcdef01234567" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

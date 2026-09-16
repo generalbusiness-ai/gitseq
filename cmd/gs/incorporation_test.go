@@ -194,57 +194,24 @@ func TestMergeRecordsAnIncorporationForAHeadTheTargetAlreadyHas(t *testing.T) {
 // the field, refuse an unknown spelling of it, and refuse a recorded prior
 // incorporation whose plan is not empty, so that neither door admits a receipt
 // claiming prior containment and succession authority at once.
-func TestRecordedSuccessionPlanBoundsAPriorIncorporation(t *testing.T) {
+func TestRecordedSuccessionPlanRefusesAnIncorporation(t *testing.T) {
 	t.Parallel()
 	receipt := mergeReceipt{Approval: "approval", Candidate: "candidate", MergeHead: "head"}
-	recorded := func(mutate func(map[string]string)) workroom.Projection {
-		body := map[string]string{
-			"merge_approval": "approval", "merge_head": "head", "merge_candidate": "candidate",
-			"merge_incorporation": mergeplan.IncorporationPrior,
-			"merge_retirements":   "{}", "merge_successors": "[]",
-			"merge_left_live": "{}", "merge_changed_paths": "[]",
-		}
-		if mutate != nil {
-			mutate(body)
-		}
-		return workroom.Projection{Statements: []workroom.Statement{
-			{Event: "receipt", Kind: workroom.KindAssert, Text: "Record what the target already has", Body: body},
-		}}
-	}
-	plan, found, err := recordedSuccessionPlan(recorded(nil), receipt)
-	if err != nil || !found || !plan.Incorporation || plan.Text != "Record what the target already has" {
-		t.Fatalf("recorded prior incorporation = %+v found=%v err=%v", plan, found, err)
-	}
-	for name, test := range map[string]struct {
-		mutate func(map[string]string)
-		want   string
-	}{
-		"unknown value": {
-			mutate: func(body map[string]string) { body["merge_incorporation"] = "later" },
-			want:   "unknown merge_incorporation",
-		},
-		"retires a predecessor": {
-			mutate: func(body map[string]string) { body["merge_retirements"] = `{"victim":"spike"}` },
-			want:   "must carry an empty succession plan",
-		},
-		"publishes a successor": {
-			mutate: func(body map[string]string) { body["merge_successors"] = `["spike"]` },
-			want:   "must carry an empty succession plan",
-		},
-		"declares a changed path": {
-			mutate: func(body map[string]string) { body["merge_changed_paths"] = `["spike"]` },
-			want:   "must carry an empty succession plan",
-		},
-		"claims left-live testimony": {
-			mutate: func(body map[string]string) { body["merge_left_live"] = `{"wide":{"class":"carried"}}` },
-			want:   "must carry an empty succession plan",
-		},
-	} {
+	for name, value := range map[string]string{"prior": mergeplan.IncorporationPrior, "unknown value": "later"} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			plan, found, err := recordedSuccessionPlan(recorded(test.mutate), receipt)
-			if err == nil || !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("recorded prior incorporation that %s = %+v found=%v err=%v, want %q", name, plan, found, err, test.want)
+			projection := workroom.Projection{Statements: []workroom.Statement{{
+				Event: "receipt", Kind: workroom.KindAssert, Text: "Record what the target already has",
+				Body: map[string]string{
+					"merge_approval": "approval", "merge_head": "head", "merge_candidate": "candidate",
+					"merge_incorporation": value,
+					"merge_retirements":   "{}", "merge_successors": "[]",
+					"merge_left_live": "{}", "merge_changed_paths": "[]",
+				},
+			}}}
+			plan, found, err := recordedSuccessionPlan(projection, receipt)
+			if err == nil || !strings.Contains(err.Error(), "never an incorporation") {
+				t.Fatalf("recorded %s incorporation resumed as %+v found=%v err=%v", name, plan, found, err)
 			}
 		})
 	}

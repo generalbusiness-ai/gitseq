@@ -469,9 +469,19 @@ refuses to read one, and the fold gives one written by hand no authority and no
 delivery. Any other value of `merge_incorporation` is refused the same way.
 
 **Single use.** One approval still buys one receipt. A second run is refused
-naming the receipt the first appended. Two runs that race past that check build
-the identical act under the same deterministic idempotency key, so the second
-replays the first rather than appending beside it.
+naming the receipt the first appended. Two runs that race past that check use
+the same deterministic idempotency key: when they built the identical act the
+second replays the first, and when their observations differ (another `--text`,
+a target head that moved between them) the second is refused as an idempotency
+conflict. Either way exactly one receipt exists.
+
+**What is not re-checked.** Containment is measured once, before the durable
+append, and no Git reference transaction guards the window between them. A
+target that moves forward in that window still contains the candidate. A
+force-push that drops the candidate in that window leaves a receipt whose
+`merge_target_pre_head` was true when it was read; the fold cannot verify
+containment for any receipt, so this is the same exposure a receipt written by
+hand has always had, accepted rather than closed.
 
 **What this does not solve.** Containment is about commits, not content. A
 squashed or rebased landing puts different commits in the target, so the

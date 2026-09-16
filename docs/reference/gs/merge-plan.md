@@ -87,7 +87,10 @@ contains. The plan reports the reason code `candidate_incorporated`, lists the
 candidate artifacts, and proposes no retirement, successor or changed path,
 because [`gs merge`](merge.md#incorporation-the-head-the-target-already-has)
 would record that the head already landed and leave Git untouched. It signs
-nothing and reserves nothing, exactly like every other mode here.
+nothing and reserves nothing, exactly like every other mode here. The plan does
+not check the request's landing target, so a checkout of the candidate's own
+branch trivially contains it and previews as `incorporate`; `gs merge` refuses
+that checkout because it is not the branch the request owes its landing to.
 
 The prospective Git merge is staged only in a disposable clone. The governed
 repository is read with optional locks disabled. `gs merge` consumes this same

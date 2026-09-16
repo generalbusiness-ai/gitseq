@@ -1711,7 +1711,10 @@ func validIncorporation(body map[string]string, plan map[string]string) bool {
 	case "":
 		return true
 	case IncorporationPrior:
-		if len(plan) != 0 {
+		// No merge commit exists, so the landed head is the candidate itself;
+		// a prior receipt naming any other head describes a landing that did
+		// not happen.
+		if body["merge_head"] != body["merge_candidate"] || len(plan) != 0 {
 			return false
 		}
 		var successors []string

@@ -203,18 +203,12 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 			return successionPlan{}, false, errors.New("recorded merge hold warning does not match the sealed Git receipt")
 		}
 		var plan successionPlan
-		// A prior incorporation is recorded, never sealed in Git, so reading
-		// one back here means a receipt claiming both shapes at once. Round-
-		// trip the field so the regenerated acts match the recorded one byte
-		// for byte, and refuse an unknown value outright: merge_incorporation
-		// has exactly one meaning and a second spelling of it would be a claim
-		// nothing checks.
+		// This reader resumes a receipt sealed in Git. An incorporation is
+		// recorded and never sealed, so a recorded receipt that carries the
+		// field while a Git receipt names the same approval and head is
+		// claiming both shapes at once; it is refused rather than resumed.
 		if incorporation := statement.Body["merge_incorporation"]; incorporation != "" {
-			if incorporation != mergeplan.IncorporationPrior {
-				return successionPlan{}, false, fmt.Errorf("recorded merge receipt carries unknown merge_incorporation %q", incorporation)
-			}
-			plan.Incorporation = true
-			plan.Text = statement.Text
+			return successionPlan{}, false, fmt.Errorf("recorded merge receipt claims merge_incorporation %q, but a receipt sealed in Git is never an incorporation", incorporation)
 		}
 		if err := json.Unmarshal([]byte(statement.Body["merge_retirements"]), &plan.Retire); err != nil {
 			return successionPlan{}, false, fmt.Errorf("decode recorded merge retirements: %w", err)
@@ -236,13 +230,6 @@ func recordedSuccessionPlan(projection workroom.Projection, receipt mergeReceipt
 			if err != nil {
 				return successionPlan{}, false, err
 			}
-		}
-		// The empty plan is what a prior incorporation confers its whole
-		// authority on: it delivers its own commitment and nothing else. A
-		// recorded one carrying anything to publish or retire is refused here
-		// as well as by the fold, so neither door admits it.
-		if plan.Incorporation && (len(plan.Retire) != 0 || len(plan.Publish) != 0 || len(plan.LeftLive) != 0 || len(plan.ChangedPaths) != 0) {
-			return successionPlan{}, false, errors.New("recorded prior-incorporation merge receipt must carry an empty succession plan")
 		}
 		return plan, true, nil
 	}

@@ -2110,7 +2110,8 @@ decision.
   object, no receipt ref, no branch advance, no index or working-tree change.
   Having nothing to hold an approval across, it takes no Git reservation
   either; the durable append is the only act, and the deterministic receipt key
-  makes a racing second attempt replay the first. Containment is about commits,
+  makes a racing second attempt replay the first or refuse as an idempotency
+  conflict, so exactly one receipt exists. Containment is about commits,
   so a squashed or rebased landing is not contained and gets no incorporation.
 
   A receipt carrying neither target field predates them: it reads as
