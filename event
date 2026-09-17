@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gitseq-mcp/main.go","body":{"commit":"62905d95459852692914aef2e5e763f89cd54c77","path":"cmd/gitseq-mcp/main.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/eventref.go","body":{"commit":"62905d95459852692914aef2e5e763f89cd54c77","path":"cmd/gs/eventref.go"}}
