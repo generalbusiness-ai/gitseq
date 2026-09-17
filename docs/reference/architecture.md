@@ -1919,7 +1919,14 @@ after the read-only checkout refusals, so a run that refuses over a wrong or
 dirty checkout appends nothing. The merge itself is `gs merge`'s locked
 transaction unchanged, including its authorization and hold rules; a workroom
 frontier that moved between planning and landing is replanned once, because
-that refusal leaves nothing behind.
+that refusal leaves nothing behind. `gs artifact` signs the retirements a
+republish owes rather than making the author type them, and their reach is
+bounded before it signs and never inferred from the head alone: only artifacts
+this same actor authored, only those resting on the named promise, only those
+standing at a head other than the one being published, retired bare only where
+the head no longer changes that path — with the whole plan disclosed on
+standard error and the whole chain judged by the fold before a private key is
+read.
 
 Destructive Git cleanup is leased, never inferred. A worktree and branch are
 removed only after `merge-base --is-ancestor` says the candidate is in the

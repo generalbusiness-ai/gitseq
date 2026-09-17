@@ -2177,16 +2177,9 @@ func batchCommand(ctx context.Context, arguments []string) error {
 
 // noteBatchDeadRestsOn gives every act a batch landed the same advisory the
 // single state path gives, from one projection read for the whole chain. The
-// labels a batch resolves internally never reach this function, so they are
-// rebuilt from the report: an act that landed or replayed names its event, in
-// order, which is exactly what runBatch minted as it went.
+// labels it needs are rebuilt from the report by mintedLabels.
 func noteBatchDeadRestsOn(ctx context.Context, workspace *app.Workspace, acts []batchAct, report batchReport) {
-	minted := make(map[string]string)
-	for _, outcome := range report.Acts {
-		if outcome.Label != "" && outcome.Event != "" {
-			minted[outcome.Label] = outcome.Event
-		}
-	}
+	minted := mintedLabels(report)
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return
@@ -2198,6 +2191,20 @@ func noteBatchDeadRestsOn(ctx context.Context, workspace *app.Workspace, acts []
 		}
 		noteDeadRestsOn(snapshot.Projection, resolved)
 	}
+}
+
+// mintedLabels is what each labelled act of a finished batch became: an act
+// that landed or replayed names its event, in order, which is exactly what
+// runBatch minted as it went. The labels a batch resolves internally never
+// reach a caller, so this is how they are recovered.
+func mintedLabels(report batchReport) map[string]string {
+	minted := make(map[string]string, len(report.Acts))
+	for _, outcome := range report.Acts {
+		if outcome.Label != "" && outcome.Event != "" {
+			minted[outcome.Label] = outcome.Event
+		}
+	}
+	return minted
 }
 
 // readBatch reads the whole input before anything lands, and proves the act

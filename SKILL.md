@@ -97,16 +97,16 @@ began yourself.
 `gs artifact --head <commit> --promise <your promise> --report <path>
 --text <what was met> <path…>`
 
-One artifact per path the head changed, each resting on that one promise, the
-reporting artifact last. Its text states the tests and conditions actually
-met. It is the implementation report: file no separate
-`ready-for-review`. Add `--rests-on` for the artifacts of behaviour the head
-documents; a page resting only on its request can never flare.
+One artifact per path the head changed, each on that one promise, the
+reporting artifact last, its text stating the tests and conditions met. It is
+the implementation report: no `ready-for-review` follows. Add `--rests-on`
+for the behaviour a page documents, or it could never flare. A republish
+retires the earlier head's artifacts at the paths it names, warning about
+the rest.
 
-The command refuses an abbreviated head, a promise that is not yours, is
-retired, or rests on no request, a path the head did not change or given
-twice, and a second promise as an extra basis. A changed path you named
-nothing for is a warning.
+It refuses an abbreviated head, a promise not yours, retired, or resting on
+no request, a path the head did not change or named twice, and a second
+promise as an extra basis. A changed path no artifact names is a warning.
 
 ## 5. Request review
 
@@ -114,7 +114,7 @@ nothing for is a warning.
 
 It rests on every live artifact of yours at that head and names the reporting
 artifact, which is how a verdict binds. It refuses you as the reviewer, a head
-no artifact of yours stands at, artifacts at mixed heads, and a second request
+no artifact of yours stands at, a mixed-head set, and a second request
 for the same promise unless `--replace` retires the first.
 
 ## 6. Review, when you are the reviewer

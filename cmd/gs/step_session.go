@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
@@ -249,4 +250,42 @@ func staleWarning(kind, event, because, author string) string {
 	}
 	return fmt.Sprintf("warning: %s %s is stale%s; ask %s to refile it on current bases once the conditions, your availability and the governing decisions are confirmed unchanged",
 		kind, short(event), cause, author)
+}
+
+// laneArtifactsElsewhere is every live artifact of this actor's that rests on
+// one promise and stands at a head other than the one given, ordered by path
+// then commit so a chain built from it is the same chain on every run.
+//
+// It is the lane's mixed-head set, read once and used twice: gs artifact
+// retires it when it republishes, and gs review-request refuses what is left.
+// Both must mean exactly the same set, or publishing would leave behind
+// something the review request still refuses.
+func (s *stepSession) laneArtifactsElsewhere(promise, head string) []workroom.Artifact {
+	if promise == "" {
+		return nil
+	}
+	var elsewhere []workroom.Artifact
+	for _, artifact := range s.projection().Artifacts {
+		statement, found := s.statement(artifact.Event)
+		if artifact.Retired || artifact.Commit == head || !found || statement.Actor != s.fingerprint {
+			continue
+		}
+		for _, basis := range s.projection().Provenance[artifact.Event] {
+			if basis == promise {
+				elsewhere = append(elsewhere, artifact)
+				break
+			}
+		}
+	}
+	sort.Slice(elsewhere, func(i, j int) bool {
+		left, right := elsewhere[i], elsewhere[j]
+		if left.Path != right.Path {
+			return left.Path < right.Path
+		}
+		if left.Commit != right.Commit {
+			return left.Commit < right.Commit
+		}
+		return left.Event < right.Event
+	})
+	return elsewhere
 }

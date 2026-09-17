@@ -204,29 +204,26 @@ func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise strin
 }
 
 // requireOneHead refuses a set that does not all stand at the reviewed head.
+//
+// gs artifact retires this set when it publishes a new head, so the ordinary
+// recut never reaches here. What does reach here is a pointer publishing left
+// alone: a path this head still changes that the last run did not name, one a
+// documentation page still cites — at any path, recurring or dropped — or one
+// filed before the republish did the retiring. The refusal names each repair
+// in turn, because naming only the one already tried sends the author round
+// the same loop, and because publishing again clears the first case and none
+// of the others.
 func (s *stepSession) requireOneHead(promise, head string) error {
-	if promise == "" {
-		return nil
-	}
-	var elsewhere []string
-	for _, artifact := range s.projection().Artifacts {
-		statement, found := s.statement(artifact.Event)
-		if artifact.Retired || artifact.Commit == head || !found || statement.Actor != s.fingerprint {
-			continue
-		}
-		for _, basis := range s.projection().Provenance[artifact.Event] {
-			if basis == promise {
-				elsewhere = append(elsewhere, fmt.Sprintf("%s at %s", artifact.Path, short(artifact.Commit)))
-				break
-			}
-		}
-	}
+	elsewhere := s.laneArtifactsElsewhere(promise, head)
 	if len(elsewhere) == 0 {
 		return nil
 	}
-	sort.Strings(elsewhere)
-	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set, so republish every path at %s with `gs artifact --head %s --promise %s <path…>`",
-		short(promise), strings.Join(elsewhere, ", "), short(head), head, short(promise))
+	named := make([]string, 0, len(elsewhere))
+	for _, artifact := range elsewhere {
+		named = append(named, fmt.Sprintf("%s at %s", artifact.Path, short(artifact.Commit)))
+	}
+	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set. For every path above that %s still changes, publish it: `gs artifact --head %s --promise %s <path…>` retires that path's earlier-head artifact in the same batch. gs artifact skips, with a warning, any pointer a documentation page still cites, at a recurring path as much as a dropped one, and publishing again will skip it again: repoint the page at the artifact for that path at this head and retire the pointer with `gs supersede <artifact> --rests-on <its successor here> --text <why>`, or `gs supersede <artifact> --cited-ok --text <why>` where this head no longer changes that path and there is no successor to repoint at",
+		short(promise), strings.Join(named, ", "), short(head), head, short(promise))
 }
 
 // liveReviewRequestFor finds the actor's own unclosed review request for this
