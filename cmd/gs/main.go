@@ -238,8 +238,9 @@ func publishCommand(ctx context.Context, arguments []string) error {
 	// fact this command derives, so it is an event reference like any other
 	// and is resolved and described before anything is signed. Everything
 	// else this command names — the remote, the ref, the accepted head — is
-	// ordinary Git and is not an event.
-	resolver := newResolver(ctx, workspace, serverURL)
+	// ordinary Git and is not an event. It is resolved against this checkout's
+	// own verified fold: nothing asked this command to change where it reads.
+	resolver := newResolver(ctx, workspace, "")
 	if err := resolveRefs(resolver, []*string{basis}); err != nil {
 		return err
 	}
@@ -700,7 +701,8 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	// Every event this verdict names is resolved against one verified event
 	// set before the guard reads any of them, so the whole citation set of one
 	// review is judged against one world and signed as canonical identifiers.
-	resolver := newResolver(ctx, workspace, serverURL)
+	// That set is this checkout's own fold, which the guard reads anyway.
+	resolver := newResolver(ctx, workspace, "")
 	if err := resolveRefs(resolver, []*string{promise, decision},
 		(*[]string)(&artifactsFlag), (*[]string)(&headNews), (*[]string)(&implementations)); err != nil {
 		return err
@@ -2549,7 +2551,7 @@ func statusCommand(ctx context.Context, arguments []string) error {
 	}
 	if serverURL != "" {
 		if *jsonOutput || *all {
-			durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
+			durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 			if remoteErr == nil {
 				if *jsonOutput {
 					return printJSON(completeStatus(durable))
@@ -2796,7 +2798,15 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if *next {
 		// The acts a row owes depend on facts the bounded page does not
 		// carry, so --next reads the projection itself; see cmd/gs/work_next.go.
-		lines, err := workNext(ctx, workspace, serverURL, page, fingerprint)
+		// A resident that could not answer the page has already been dialed
+		// and already been named on standard error. Asking it again for the
+		// projection would dial a listener this command knows is not answering
+		// and say so a second time in different words.
+		projectionServer := serverURL
+		if !answered {
+			projectionServer = ""
+		}
+		lines, err := workNext(ctx, workspace, projectionServer, page, fingerprint)
 		if err != nil {
 			return err
 		}
@@ -2861,7 +2871,7 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		// The extra selectors are deliberately CLI-only. Read the resident's
 		// existing full snapshot instead of smuggling them through the bounded
 		// HTTP request type and silently widening that protocol.
-		durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
+		durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 		if remoteErr == nil {
 			snapshot = durable
 			answered = true
@@ -3061,7 +3071,7 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	snapshot := app.Snapshot{}
 	degraded := false
 	if serverURL != "" {
-		durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
+		durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 		if remoteErr == nil {
 			snapshot = durable
 		} else {

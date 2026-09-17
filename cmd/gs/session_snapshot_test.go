@@ -90,6 +90,19 @@ func TestSessionSnapshotTakesTheResidentProjectionWithoutFoldingLocally(t *testi
 	if len(snapshot.Projection.Decisions) != snapshot.Depth {
 		t.Fatalf("the resident answer carried %d decisions at depth %d", len(snapshot.Projection.Decisions), snapshot.Depth)
 	}
+	// One command reads one projection. A chain of acts asks this question
+	// either side of every act, and the answer is tens of megabytes.
+	dialed := hits.Load()
+	again, err := loadSessionSnapshot(ctx, io.Discard, workspace, url, refusedLocalLoad(t))
+	if err != nil {
+		t.Fatalf("second read: %v", err)
+	}
+	if again.Head != snapshot.Head {
+		t.Fatalf("the second read answered head %s, want the first answer %s", again.Head, snapshot.Head)
+	}
+	if hits.Load() != dialed {
+		t.Fatalf("the resident was read again: %d requests, want %d", hits.Load(), dialed)
+	}
 }
 
 // Without --server nothing about this path exists: the local audit answers and
@@ -104,31 +117,50 @@ func TestSessionSnapshotWithoutServerReadsTheLocalLog(t *testing.T) {
 	}
 }
 
-// The four refusals, each with one field changed and every other check passing.
+// moveTheRef appends one act to this workroom, which is how a test makes the
+// sequence ref move while an answer is being read.
+func moveTheRef(t *testing.T, workspace *app.Workspace) {
+	t.Helper()
+	if _, err := workspace.Act(context.Background(), "operator", app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the world moved under the read",
+		IdempotencyKey: "session-snapshot-moving-head",
+	}); err != nil {
+		t.Errorf("moving the ref: %v", err)
+	}
+}
+
+// The refusals, each with one thing changed and every other check passing.
 func TestSessionSnapshotFallsBackToTheLocalAudit(t *testing.T) {
 	cases := []struct {
 		name   string
-		tamper func(*service.Status)
+		tamper func(*testing.T, *app.Workspace, *service.Status)
 		reason string
 	}{
-		{"head is not current", func(status *service.Status) {
+		{"head is not current", func(_ *testing.T, _ *app.Workspace, status *service.Status) {
 			status.Durable.Head = strings.Repeat("0", len(status.Durable.Head))
 		}, "head is not current"},
-		{"genesis is another workroom", func(status *service.Status) {
+		{"genesis is another workroom", func(_ *testing.T, _ *app.Workspace, status *service.Status) {
 			status.Durable.Genesis = strings.Repeat("1", len(status.Durable.Genesis))
 		}, "genesis does not match"},
-		{"profile is another interpreter", func(status *service.Status) {
+		{"profile is another interpreter", func(_ *testing.T, _ *app.Workspace, status *service.Status) {
 			status.Profile = "profile:00000000000000000000000000000000"
 		}, "fold profile"},
-		{"projection is truncated", func(status *service.Status) {
+		{"projection is truncated", func(_ *testing.T, _ *app.Workspace, status *service.Status) {
 			status.Durable.Projection.Decisions = status.Durable.Projection.Decisions[:len(status.Durable.Projection.Decisions)-1]
 		}, "decisions at depth"},
+		// The head the resident named was this checkout's when the request
+		// went out and is not when the answer arrives, because the workroom
+		// moved while it was being read. Only the second ref read catches
+		// this: the answer itself is entirely truthful.
+		{"head moved while the answer was read", func(t *testing.T, workspace *app.Workspace, _ *service.Status) {
+			moveTheRef(t, workspace)
+		}, "moved while resident status was read"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			ctx := context.Background()
 			workspace, _ := statusSummaryFixture(t)
-			url, hits := residentStub(t, workspace, test.tamper)
+			url, hits := residentStub(t, workspace, func(status *service.Status) { test.tamper(t, workspace, status) })
 			var progress strings.Builder
 			called := false
 			snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, url, sentinelLocalLoad(&called))
@@ -309,5 +341,29 @@ func TestUndefinedKindWarningReadsTheResidentVocabulary(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "promise") || !strings.Contains(stderr, "warning") {
 		t.Fatalf("the warning did not read the resident's vocabulary: %q", stderr)
+	}
+}
+
+// A resident that could not answer the page has been dialed and named once.
+// gs work --next needs the projection as well as the page, and asking the same
+// refused listener a second time costs a second dial and tells the reader the
+// same thing twice in different words.
+func TestWorkNextDialsARefusedResidentOnce(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	var hits atomic.Int64
+	listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		http.Error(writer, "no", http.StatusInternalServerError)
+	}))
+	commandErr, _, stderr := runPiped(t, func() error {
+		return workCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "operator", "--next", "--server", listener.URL})
+	})
+	if commandErr != nil {
+		t.Fatalf("a refused resident must degrade to the local read, not fail: %v", commandErr)
+	}
+	if dialed := hits.Load(); dialed != 1 {
+		t.Fatalf("the refused resident was dialed %d times, want 1", dialed)
+	}
+	if said := strings.Count(stderr, "unavailable"); said != 1 {
+		t.Fatalf("the refusal was reported %d times: %q", said, stderr)
 	}
 }

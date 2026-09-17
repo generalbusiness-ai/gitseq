@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
@@ -32,19 +33,75 @@ func sessionSnapshot(ctx context.Context, workspace *app.Workspace, serverURL st
 	return loadSessionSnapshot(ctx, os.Stderr, workspace, serverURL, workspace.Snapshot)
 }
 
+// residentProjections is the accepted resident answer, kept for the life of
+// the process. A command that files a chain of acts asks this question either
+// side of every one of them, and the answer is tens of megabytes at this
+// workroom's depth; fetching it again between two acts costs a fraction of a
+// second each time and answers about the same world the command opened in.
+//
+// What the memory costs is one post-act reading: the vocabulary an
+// undefined-kind warning is measured against is the one this command opened
+// with, so a kind defined by an earlier act of the same chain still reads as
+// undefined there. Nothing rests on that answer — admission refuses an
+// undefined kind from its own local audit, and the fold decides — so this is
+// the cheaper mistake. Only an accepted resident answer is kept; a local audit
+// is not, because the workspace already caches its own fold.
+var residentProjections struct {
+	sync.Mutex
+	held map[string]app.Snapshot
+}
+
+func rememberedProjection(key string) (app.Snapshot, bool) {
+	residentProjections.Lock()
+	defer residentProjections.Unlock()
+	snapshot, held := residentProjections.held[key]
+	return snapshot, held
+}
+
+func rememberProjection(key string, snapshot app.Snapshot) {
+	residentProjections.Lock()
+	defer residentProjections.Unlock()
+	if residentProjections.held == nil {
+		residentProjections.held = make(map[string]app.Snapshot, 1)
+	}
+	residentProjections.held[key] = snapshot
+}
+
 // loadSessionSnapshot is sessionSnapshot with its two sources named, so a test
 // can prove which one answered: the local load is the function that is not
 // called at all when the resident is current.
 func loadSessionSnapshot(ctx context.Context, progress io.Writer, workspace *app.Workspace, serverURL string,
 	load func(context.Context) (app.Snapshot, error)) (app.Snapshot, error) {
 	if serverURL != "" {
+		key := workspace.Repo + "\x00" + serverURL
+		if held, memoized := rememberedProjection(key); memoized {
+			return held, nil
+		}
 		snapshot, err := residentSnapshot(ctx, workspace, serverURL)
 		if err == nil {
+			rememberProjection(key, snapshot)
 			return snapshot, nil
 		}
 		fmt.Fprintf(progress, "gs: resident projection unavailable (%v); verifying the durable log locally\n", err)
 	}
 	return loadSnapshotWithProgress(ctx, progress, load)
+}
+
+// residentStatus is the complete resident projection as the display commands
+// have always read it: one fetch, and the frontier check gs status documents —
+// this workroom's genesis, and a head equal to the local sequence ref and
+// unmoved while the answer was read. It is deliberately not the session check
+// above: a page rendered for a reader states the frontier it was taken at, and
+// what a command signs against is judged by more than that.
+func residentStatus(ctx context.Context, workspace *app.Workspace, serverURL string) (app.Snapshot, error) {
+	status, err := fetchFullStatus(ctx, serverURL)
+	if err != nil {
+		return app.Snapshot{}, err
+	}
+	if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err != nil {
+		return app.Snapshot{}, err
+	}
+	return status.Durable, nil
 }
 
 // residentSnapshot reads the resident's complete projection and accepts it only
