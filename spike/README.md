@@ -17,9 +17,13 @@ thin per-actor adapter.
 Run the fast evidence lane from the repository root:
 
 ```sh
-go test ./...
-go test -race ./...
+go test -timeout 40m ./...
+go test -race -timeout 40m ./...
 ```
+
+The timeout matches the Makefile's `GO_TEST_TIMEOUT`; go test's ten-minute
+default is short enough that a loaded machine kills a slow package and
+reports `panic: test timed out`.
 
 Run the intent mutation fuzzer for a bounded interval:
 

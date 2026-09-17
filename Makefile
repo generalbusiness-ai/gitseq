@@ -3,15 +3,24 @@
 GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 SPIKE_TEST_JSON ?=
 
+# go test kills a package after ten minutes by default and reports
+# "panic: test timed out", which reads like a product failure and can be
+# mistaken for a gate that ran. On a machine running several work lanes at
+# once, cmd/gs has taken between 325 and 854 seconds and internal/app between
+# 177 and 238 seconds, so ten minutes is not enough headroom. Forty minutes
+# leaves room for a loaded machine without letting a genuinely hung test run
+# forever. Hosted CI finishes the same suite under -race in about six minutes.
+GO_TEST_TIMEOUT ?= 40m
+
 test:
-	$(GO) test ./...
+	$(GO) test -timeout $(GO_TEST_TIMEOUT) ./...
 
 # The four documentation gates on their own. `make test` runs them too.
 docs:
-	$(GO) test ./internal/docset/...
+	$(GO) test -timeout $(GO_TEST_TIMEOUT) ./internal/docset/...
 
 race:
-	$(GO) test -race ./...
+	$(GO) test -race -timeout $(GO_TEST_TIMEOUT) ./...
 
 vet:
 	$(GO) vet ./...
