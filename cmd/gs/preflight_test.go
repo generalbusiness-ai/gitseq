@@ -657,23 +657,6 @@ func TestPreflightRefusesABatchBeforeItsFirstAppend(t *testing.T) {
 	if after := fixture.snapshot(); after.Depth != before.Depth {
 		t.Fatalf("a refused chain appended something: depth %d -> %d", before.Depth, after.Depth)
 	}
-	// With the missing field supplied, the same chain lands whole.
-	acts[1]["body"] = map[string]string{"commit": commit, "path": "notes/four.md"}
-	encoded, err = json.Marshal(acts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := quiet(t, func() error {
-		return batchCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "worker", path})
-	}); err != nil {
-		t.Fatalf("the satisfied chain was refused: %v", err)
-	}
-	if after := fixture.snapshot(); after.Depth != before.Depth+2 {
-		t.Fatalf("the satisfied chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
-	}
 }
 
 // An exact retry is the one recovery a filer must always have. The act was
@@ -870,8 +853,12 @@ func TestPreflightJudgesALabeledChainInOrder(t *testing.T) {
 			t.Fatalf("refusal %q does not say %q", err, want)
 		}
 	}
-	if after := fixture.snapshot(); after.Depth != before.Depth {
-		t.Fatalf("a refused labeled chain appended something: depth %d -> %d", before.Depth, after.Depth)
+	refusedAt := fixture.snapshot()
+	if refusedAt.Head != before.Head || refusedAt.Depth != before.Depth ||
+		len(refusedAt.Projection.Statements) != len(before.Projection.Statements) ||
+		len(refusedAt.Projection.Decisions) != len(before.Projection.Decisions) {
+		t.Fatalf("judging a chain changed the projection: %s/%d -> %s/%d",
+			before.Head, before.Depth, refusedAt.Head, refusedAt.Depth)
 	}
 	// The same chain with the field supplied lands whole, and every act of it is
 	// effective: an act resting on a label must be judged against the act that
@@ -909,29 +896,6 @@ func TestPreflightAdmitsAChainThatOnlyItsOwnEarlierActsMakeValid(t *testing.T) {
 	after := fixture.snapshot()
 	if after.Depth != before.Depth+2 {
 		t.Fatalf("the chain did not land whole: depth %d -> %d", before.Depth, after.Depth)
-	}
-}
-
-// The judging fold is this call's own. The projection every reader in the
-// process holds must be exactly what it was, whether the chain was refused or
-// admitted.
-func TestPreflightLeavesTheProjectionUnchangedWhenItRefusesAChain(t *testing.T) {
-	fixture := newPreflightFixture(t)
-	before := fixture.snapshot()
-	acts := []map[string]any{
-		{"label": "first", "verb": "state", "kind": "assert", "text": "fine", "rests_on": []string{fixture.genesis}},
-		{"verb": "state", "kind": "artifact", "text": "no path",
-			"body": map[string]string{"commit": fixture.workspace.View().Genesis}, "rests_on": []string{"$first"}},
-	}
-	if _, err := fixture.runChain(t, "worker", acts); err == nil {
-		t.Fatal("the chain was not refused")
-	}
-	after := fixture.snapshot()
-	if after.Head != before.Head || after.Depth != before.Depth ||
-		len(after.Projection.Statements) != len(before.Projection.Statements) ||
-		len(after.Projection.Decisions) != len(before.Projection.Decisions) {
-		t.Fatalf("judging a chain changed the projection: %s/%d -> %s/%d",
-			before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
 

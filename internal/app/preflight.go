@@ -96,6 +96,25 @@ func (w *Workspace) PreflightChain(ctx context.Context, filer Filer, acts []Chai
 	if err != nil {
 		return 0, workroom.Decision{}, false
 	}
+	// One act cannot depend on itself, so a chain of one needs no fold of its
+	// own: the published fold answers it as a preview, which costs nothing.
+	// Anything longer is judged in a fold this call builds, because act two
+	// stands in the world act one would make.
+	if len(acts) == 1 {
+		if acts[0].Replayed {
+			return 0, workroom.Decision{}, false
+		}
+		record, ok := w.prospectiveRecord(ctx, snapshot, filer.Fingerprint, acts[0].Act)
+		if !ok {
+			return 0, workroom.Decision{}, false
+		}
+		record.ID = acts[0].Event
+		verdict, judged := w.previewDecision(snapshot, record)
+		if !judged || verdict.Verdict == workroom.Effective {
+			return 0, workroom.Decision{}, false
+		}
+		return 0, verdict, true
+	}
 	folder, ok := w.scratchFold(ctx, snapshot.Head)
 	if !ok {
 		return 0, workroom.Decision{}, false
