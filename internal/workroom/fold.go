@@ -546,12 +546,20 @@ func (f *Folder) Vocabulary() Vocabulary {
 	return f.state.vocabulary()
 }
 
-func (f *foldState) append(index int, record Record) {
+// judge decodes one record and computes the decision the fold gives it,
+// without applying any of the consequences an admitted record has on the log.
+// append applies those consequences; preview reads the answer and throws it
+// away. Both ask exactly these rules, which is what lets a write boundary
+// refuse an act before signing it with the reason the log would have given.
+//
+// settled reports that the decision is already final: the record could not be
+// read at all, or the interpreter this log activated is not held here. The
+// returned record is the interned one, with its transport bytes released.
+func (f *foldState) judge(index int, record Record) (Record, *parsedRecord, Decision, bool) {
 	decision := Decision{Event: record.ID, Verdict: Ineffective}
 	if record.ID == "" || record.Actor == "" {
 		decision.Reason = "event id and actor are required"
-		f.addDecision(record, nil, index, decision)
-		return
+		return record, nil, decision, true
 	}
 	record.ID = f.intern(record.ID)
 	record.Actor = f.intern(record.Actor)
@@ -562,8 +570,7 @@ func (f *foldState) append(index int, record Record) {
 	if _, exists := f.byID[record.ID]; exists {
 		decision.Verdict = Disputed
 		decision.Reason = "duplicate event id"
-		f.addDecision(record, nil, index, decision)
-		return
+		return record, nil, decision, true
 	}
 	body, err := decode(record.Schema, record.Payload, f.strings)
 	// The decoded body is the fold input retained below. Payload bytes and
@@ -573,8 +580,7 @@ func (f *foldState) append(index int, record Record) {
 	record.Attachments = nil
 	if err != nil {
 		decision.Reason = err.Error()
-		f.addDecision(record, nil, index, decision)
-		return
+		return record, nil, decision, true
 	}
 	parsed := &parsedRecord{record: record, index: index}
 	switch value := body.(type) {
@@ -611,8 +617,7 @@ func (f *foldState) append(index int, record Record) {
 		f.beyondSeam = true
 		decision.Verdict = Uninterpretable
 		decision.Reason = "uninterpretable: activated interpreter execution is not held"
-		f.addDecision(record, parsed, index, decision)
-		return
+		return record, parsed, decision, true
 	}
 	switch value := body.(type) {
 	case *State:
@@ -630,6 +635,16 @@ func (f *foldState) append(index int, record Record) {
 			decision = f.decideSupersede(parsed, *value)
 		}
 	}
+	return record, parsed, decision, false
+}
+
+func (f *foldState) append(index int, record Record) {
+	record, parsed, decision, settled := f.judge(index, record)
+	if settled {
+		f.addDecision(record, parsed, index, decision)
+		return
+	}
+	body := parsed.body
 	if decision.Verdict == Effective {
 		if supersede, ok := body.(*Supersede); ok {
 			parsed.linkedSuccessorRequest = f.qualifyingRequestSuccessor(parsed, *supersede)

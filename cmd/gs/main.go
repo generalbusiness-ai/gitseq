@@ -187,7 +187,7 @@ func main() {
 
 func usage(output io.Writer) {
 	fmt.Fprintln(output, "usage: gs <command> [flags]")
-	fmt.Fprintln(output, "commands: init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, promise, artifact, review-request, review, land, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach")
+	fmt.Fprintln(output, "commands:", commandNames)
 	fmt.Fprintln(output, "run `gs help <command>` for command flags")
 	fmt.Fprintln(output, "CLI walkthrough: docs/how-to/end-to-end.md")
 	fmt.Fprintln(output, "command reference: docs/reference/gs/")
@@ -216,7 +216,7 @@ func publishCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("publish takes no positional arguments")
+		return usageErrorf(set, "publish takes no positional arguments")
 	}
 	actorName, err := signingActor(*as)
 	if err != nil {
@@ -270,6 +270,7 @@ func flags(name string, arguments []string) (*flag.FlagSet, *string) {
 		}
 		fmt.Fprintf(set.Output(), "usage: gs %s %s\n\nFlags:\n", name, synopsis)
 		set.PrintDefaults()
+		printExample(set)
 	}
 	return set, repo
 }
@@ -336,7 +337,7 @@ func actorRetireCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if *actor == "" {
-		return errors.New("actor-retire requires --actor")
+		return usageErrorf(set, "actor-retire requires --actor")
 	}
 	retirer, err := signingActor(*as)
 	if err != nil {
@@ -454,7 +455,7 @@ func whoamiCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("whoami takes no positional arguments")
+		return usageErrorf(set, "whoami takes no positional arguments")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -511,12 +512,12 @@ func resolveText(set *flag.FlagSet, required bool) (string, error) {
 	given := map[string]bool{}
 	set.Visit(func(f *flag.Flag) { given[f.Name] = true })
 	if given["text"] && given["text-file"] {
-		return "", errors.New("--text and --text-file cannot both be given")
+		return "", usageErrorf(set, "--text and --text-file cannot both be given")
 	}
 	if !given["text-file"] {
 		text := set.Lookup("text").Value.String()
 		if required && text == "" {
-			return "", errors.New("--text or --text-file is required")
+			return "", usageErrorf(set, "--text or --text-file is required")
 		}
 		return text, nil
 	}
@@ -541,6 +542,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	deadOK := set.Bool("allow-dead-basis", false, "rest on a retired basis anyway, signing body.dead_basis_override=true; a merely stale basis is admitted and recorded without it")
+	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	var bodyValues, rests, evidence values
 	set.Var(&bodyValues, "body", "body key=value (repeatable)")
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")
@@ -548,14 +550,19 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
-	// The text is settled before an actor is loaded or a key is touched, so a
-	// mistyped or missing source refuses with nothing signed. The schema would
-	// refuse a textless statement later anyway; refusing here names the flag.
+	// Both required arguments are settled before an actor is resolved, a
+	// repository is opened or a key is touched, so a mistyped or missing one
+	// refuses with nothing signed and names the flag. Without a kind there is
+	// no act to judge at all: the vocabulary check would have refused it later,
+	// after the key was read, saying nothing about the flag that was missing.
+	if *kind == "" {
+		return usageErrorf(set, "state requires --kind, from the vocabulary this workroom defines")
+	}
 	text, err := resolveText(set, true)
 	if err != nil {
 		return err
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -589,14 +596,14 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// than after.
 	resolver := newResolver(ctx, workspace)
 	if err := resolveRefs(resolver, nil, (*[]string)(&rests)); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
 	// A handful of body fields are read by a consumer as one durable event
 	// identifier, and they are resolved with the rest of the act rather than
 	// signed as typed. Every other body value is application prose and is
 	// carried exactly as it was written.
 	if err := resolveBody(resolver, body); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
 	showResolved(resolver)
 	discloseBases(resolver, rests)
@@ -607,8 +614,15 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// being signed, ratified, and then refused by the merge. It rides as the
 	// act's new-submission precondition, so an exact retry of a report already
 	// accepted replays it instead of being measured a second time.
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: text, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK,
-		NewSubmission: mergeplan.AuthorizationTargetPrecondition(workspace.Repo, body)})
+	act := app.Act{Verb: app.VerbState, Kind: workroom.Kind(*kind), Text: text, Body: body, RestsOn: rests, Attachments: attachments, IdempotencyKey: *key, AllowDeadBasis: *deadOK,
+		NewSubmission: mergeplan.AuthorizationTargetPrecondition(workspace.Repo, body)}
+	// The last moment at which nothing has happened: the references are
+	// resolved, the body is settled, and no key has been read. An act the fold
+	// would rule ineffective stops here rather than becoming a permanent row.
+	if err := refuseIneffectiveAct(ctx, workspace, serverURL, actor, *noPreflight, act); err != nil {
+		return err
+	}
+	record, err := submitAct(ctx, workspace, serverURL, actor, act)
 	if err != nil {
 		return err
 	}
@@ -652,10 +666,17 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("review takes no positional arguments")
+		return usageErrorf(set, "review takes no positional arguments")
 	}
 	if *checkout == "" || len(artifactsFlag) == 0 || *promise == "" {
-		return errors.New("review requires --checkout, --artifact, and --promise")
+		return usageErrorf(set, "review requires --checkout, --artifact, and --promise")
+	}
+	// The verdict word is checked here rather than by the guard: the guard runs
+	// after a checkout read and a verified projection, which is a long way to
+	// go to be told a flag is missing.
+	if !*prepare && !reviewguard.IsVerdictWord(*verdict) {
+		return usageErrorf(set, "review requires --verdict %s or --verdict %s",
+			reviewguard.VerdictApproved, reviewguard.VerdictChangesRequested)
 	}
 	// A verdict is the longest text this tool writes, so it is also the one
 	// most often read from a file. Settle it before anything is read or
@@ -664,7 +685,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	if err != nil {
 		return err
 	}
-	reviewer, err := signingActor(*as)
+	reviewer, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -767,10 +788,10 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("merge takes no positional arguments")
+		return usageErrorf(set, "merge takes no positional arguments")
 	}
 	if *checkout == "" || *candidate == "" || *approval == "" {
-		return errors.New("merge requires --checkout, --candidate, and --approval")
+		return usageErrorf(set, "merge requires --checkout, --candidate, and --approval")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -1155,10 +1176,10 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("merge-plan takes no positional arguments")
+		return usageErrorf(set, "merge-plan takes no positional arguments")
 	}
 	if *checkout == "" || *candidate == "" || *approval == "" {
-		return errors.New("merge-plan requires --checkout, --candidate, and --approval")
+		return usageErrorf(set, "merge-plan requires --checkout, --candidate, and --approval")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -1778,13 +1799,14 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "actor name")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
+	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("ratify requires one target event")
+		return usageErrorf(set, "ratify requires one target event")
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -1799,10 +1821,14 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 	target := set.Arg(0)
 	resolver := newResolver(ctx, workspace)
 	if err := resolveRefs(resolver, []*string{&target}); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
 	showResolved(resolver)
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key})
+	act := app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: *key}
+	if err := refuseIneffectiveAct(ctx, workspace, serverURL, actor, *noPreflight, act); err != nil {
+		return err
+	}
+	record, err := submitAct(ctx, workspace, serverURL, actor, act)
 	if err != nil {
 		return err
 	}
@@ -1817,15 +1843,22 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the target")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
+	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	var rests values
 	set.Var(&rests, "rests-on", "additional causal event id")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("supersede requires one target event")
+		return usageErrorf(set, "supersede requires one target event")
 	}
-	actor, err := signingActor(*as)
+	// The reason is what a later reader of the retirement gets, and the
+	// reference page has always called it required. Nothing downstream enforces
+	// it, so a retirement could be filed saying nothing about why.
+	if strings.TrimSpace(*message) == "" {
+		return usageErrorf(set, "supersede requires --text saying why")
+	}
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -1840,11 +1873,15 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	target := set.Arg(0)
 	resolver := newResolver(ctx, workspace)
 	if err := resolveRefs(resolver, []*string{&target}, (*[]string)(&rests)); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
 	showResolved(resolver)
 	discloseBases(resolver, rests)
-	record, err := submitAct(ctx, workspace, serverURL, actor, app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK})
+	act := app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK}
+	if err := refuseIneffectiveAct(ctx, workspace, serverURL, actor, *noPreflight, act); err != nil {
+		return err
+	}
+	record, err := submitAct(ctx, workspace, serverURL, actor, act)
 	if err != nil {
 		return err
 	}
@@ -1875,18 +1912,18 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	set.Var(&rests, "rests-on", "additional current basis for the replacement request (repeatable)")
 	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("reassign-if-unclaimed requires one old request event")
+		return usageErrorf(set, "reassign-if-unclaimed requires one old request event")
 	}
 	if *to == "" || *message == "" || *conditions == "" {
-		return errors.New("reassign-if-unclaimed requires --to, --text, and --conditions")
+		return usageErrorf(set, "reassign-if-unclaimed requires --to, --text, and --conditions")
 	}
 	if *key == "" {
-		return errors.New("reassign-if-unclaimed requires --idempotency-key for two-act retry recovery")
+		return usageErrorf(set, "reassign-if-unclaimed requires --idempotency-key for two-act retry recovery")
 	}
-	actor, err := signingActor(*as)
+	actor, err := signingActorOrUsage(set, *as)
 	if err != nil {
 		return err
 	}
@@ -2048,14 +2085,15 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	as := set.String("as", "", "actor name for every act in the batch")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites a target")
+	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() > 1 {
-		return errors.New("batch takes one file, or - for standard input")
+		return usageErrorf(set, "batch takes one file, or - for standard input")
 	}
 	if *as == "" {
-		return errors.New("batch requires --as")
+		return usageErrorf(set, "batch requires --as")
 	}
 	acts, err := readBatch(set.Arg(0))
 	if err != nil {
@@ -2074,16 +2112,35 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	for position := range acts {
 		entry := &acts[position]
 		if err := resolveRefs(resolver, []*string{&entry.Target, &entry.Retirement}, &entry.RestsOn); err != nil {
-			return fmt.Errorf("act %d: %w", position, err)
+			return usageReferenceError(set, fmt.Errorf("act %d: %w", position, err))
 		}
 		if err := resolveBody(resolver, entry.Body); err != nil {
-			return fmt.Errorf("act %d: %w", position, err)
+			return usageReferenceError(set, fmt.Errorf("act %d: %w", position, err))
 		}
 	}
 	showResolved(resolver)
 	discloseBases(resolver, chainCitations(acts))
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
+		return err
+	}
+	// Act shape is settled before the signing key is read, so a chain that
+	// could never be built does not first ask for a key. runBatch checks it
+	// again, because it is the function that must not append a malformed act,
+	// whoever called it.
+	if position, failure := checkBatch(acts); failure != nil {
+		report := skippedBatchReport(acts)
+		report.Acts[position].Outcome = "failed"
+		report.Error = failure
+		if err := printJSON(report); err != nil {
+			return err
+		}
+		return failure
+	}
+	// Before the signing key is read, and so before anything at all can be
+	// appended: an act the fold would rule ineffective stops the whole chain
+	// where it stands.
+	if err := refuseIneffectiveBatch(ctx, workspace, serverURL, *as, *noPreflight, acts); err != nil {
 		return err
 	}
 	_, private, err := workspace.Actor(*as)
@@ -2174,10 +2231,7 @@ func readBatch(path string) ([]batchAct, error) {
 // runBatch checks the whole chain, then appends it act by act against the one
 // verified frontier the workspace already holds.
 func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, acts []batchAct, citedOK bool) (batchReport, error) {
-	report := batchReport{Acts: make([]batchOutcome, len(acts))}
-	for position, entry := range acts {
-		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
-	}
+	report := skippedBatchReport(acts)
 	if position, failure := checkBatch(acts); failure != nil {
 		report.Acts[position].Outcome = "failed"
 		report.Error = failure
@@ -2215,6 +2269,16 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		}
 	}
 	return report, nil
+}
+
+// skippedBatchReport is what a chain reports before any of it has run: every
+// act named, in order, and none of it done.
+func skippedBatchReport(acts []batchAct) batchReport {
+	report := batchReport{Acts: make([]batchOutcome, len(acts))}
+	for position, entry := range acts {
+		report.Acts[position] = batchOutcome{Position: position, Label: entry.Label, Outcome: "skipped"}
+	}
+	return report
 }
 
 // preflightBatchAdmission constructs every request with the same application
@@ -2672,7 +2736,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("work takes no positional arguments")
+		return usageErrorf(set, "work takes no positional arguments")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -2683,7 +2747,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	// holds, rather than merely telling a novice that an identity is missing.
 	actorName, err := signingActorFrom("--as", *as)
 	if err != nil {
-		return workIdentityRefusal(ctx, workspace, err)
+		return usageReferenceError(set, workIdentityRefusal(ctx, workspace, err))
 	}
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
@@ -2691,7 +2755,8 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	fingerprint := workspace.View().Actors[actorName].Fingerprint
 	if fingerprint == "" {
-		return workIdentityRefusal(ctx, workspace, fmt.Errorf("actor %q is not provisioned in this checkout", actorName))
+		return usageReferenceError(set, workIdentityRefusal(ctx, workspace,
+			fmt.Errorf("actor %q is not provisioned in this checkout", actorName)))
 	}
 	query := statusview.WorkQuery{TargetRef: *targetRef, Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
 	set.Visit(func(f *flag.Flag) {
@@ -2767,7 +2832,7 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("artifacts takes no positional arguments")
+		return usageErrorf(set, "artifacts takes no positional arguments")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -2841,10 +2906,10 @@ func supersessionPlanCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("supersession-plan takes no positional arguments")
+		return usageErrorf(set, "supersession-plan takes no positional arguments")
 	}
 	if *path == "" || *message == "" {
-		return errors.New("supersession-plan requires --path and --text")
+		return usageErrorf(set, "supersession-plan requires --path and --text")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -2879,7 +2944,7 @@ func stalenessWaveCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 || *path == "" {
-		return errors.New("staleness-wave requires --path and takes no positional arguments")
+		return usageErrorf(set, "staleness-wave requires --path and takes no positional arguments")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -2905,10 +2970,10 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	jsonOutput := set.Bool("json", false, "render JSON")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("inspect requires one event")
+		return usageErrorf(set, "inspect requires one event")
 	}
 	event := set.Arg(0)
 	workspace, err := app.Open(ctx, *repo)
@@ -2973,7 +3038,7 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if set.NArg() != 0 {
-		return errors.New("reviews takes no positional arguments")
+		return usageErrorf(set, "reviews takes no positional arguments")
 	}
 	if *checkout == "" {
 		*checkout = *repo
@@ -3046,10 +3111,10 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 func provenanceCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("provenance", arguments)
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("provenance requires one event")
+		return usageErrorf(set, "provenance requires one event")
 	}
 	workspace, err := app.Open(ctx, *repo)
 	if err != nil {
@@ -3331,7 +3396,7 @@ func attachCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	if *genesis == "" {
-		return errors.New("attach requires --genesis")
+		return usageErrorf(set, "attach requires --genesis")
 	}
 	// Reject an unconfigured transport before touching any configuration.
 	if err := validateConfiguredRemote(ctx, *repo, *remote); err != nil {

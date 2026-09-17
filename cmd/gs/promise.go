@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -23,12 +22,12 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	stepUsage(set, "gs promise [flags] <request>")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	if set.NArg() != 1 {
-		return errors.New("promise takes exactly one request event, after the flags: gs promise [flags] <request>")
+		return usageErrorf(set, "promise takes exactly one request event, after the flags: gs promise [flags] <request>")
 	}
-	session, err := openStep(ctx, *repo, *as, *serverFlag)
+	session, err := openStep(ctx, set, *repo, *as, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -38,11 +37,11 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 	}
 	statement, found := session.statement(request)
 	if !found {
-		return fmt.Errorf("%s names no statement in this workroom; gs promise takes the request event, which `gs work --next` prints for every request addressed to you", short(request))
+		return session.usage(fmt.Errorf("%s names no statement in this workroom; gs promise takes the request event, which `gs work --next` prints for every request addressed to you", short(request)))
 	}
 	if statement.Kind != workroom.KindRequest {
-		return fmt.Errorf("%s is a %s, not a request; a promise rests on exactly one request. `gs inspect %s` names what this event is",
-			short(request), statement.Kind, short(request))
+		return session.usage(fmt.Errorf("%s is a %s, not a request; a promise rests on exactly one request. `gs inspect %s` names what this event is",
+			short(request), statement.Kind, short(request)))
 	}
 	if statement.Retired {
 		return fmt.Errorf("request %s is retired, so nothing can be promised on it; ask %s for a fresh request, or run `gs work --next`",

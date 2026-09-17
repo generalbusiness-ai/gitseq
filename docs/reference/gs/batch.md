@@ -22,6 +22,7 @@ the log, and then appends every act against that one frontier.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
 | `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--cited-ok` | `false` | Allow a `supersede` or `retire-if-unclaimed` act whose target tracked documentation still names. Guarded retirement signs this admission observation separately from its fold-enforced commitment guard. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The one positional argument is the file to read. `-`, or no argument at
 all, reads standard input.
@@ -90,6 +91,38 @@ JSON
 
 gs batch --repo "$REPO" --as alice "$REPO/chain.json"
 ```
+
+## Refused before signing
+
+Before the first append, this command asks the fold what it would decide about
+every act of the chain, and refuses the whole chain when the answer for any of
+them is not effective. The refusal names the act by its position:
+
+```text
+gs: act 1: the fold would rule this act ineffective: artifact state requires body.path
+fix: an artifact names one file: --body path=<file>, at the exact string the merge will publish
+file it as written with --no-preflight
+```
+
+The chain is judged in order, in a fold built for the question and thrown away.
+Each act is judged against the world the acts before it would make, so a
+`$label` is resolved to the identifier its act will be judged under and an act
+resting on one is judged against it: a promise on `$request` is as effective
+here as it will be in the log. The projection this process holds is untouched.
+
+[Refused before signing](state.md#refused-before-signing) states the rest of
+the rule: the reason is the fold's own, the fold decides again per act at
+sequencing, and `--no-preflight` files the chain as written.
+
+A retry is judged per act, because a chain is not all one thing. An act whose
+`idempotency_key` this actor already holds is one the log has: it is not judged
+again, it is already in the world the rest of the chain is judged against, and
+the sequencer replays it or refuses its key. Its label names that real event, so
+the acts behind it stand on what actually landed. Everything else in the chain
+is new and is judged as new. So a chain whose prefix landed and whose suffix is
+fresh — the ordinary way a broken chain is resumed — replays the prefix and
+holds the suffix to the same check any first filing gets, and an exact retry of
+the whole chain replays whole and appends nothing.
 
 ## The report
 

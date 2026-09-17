@@ -25,6 +25,7 @@ Prefer supersession to contradiction.
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The target is a **positional argument**, and flag parsing stops at the
 first positional. Put every flag before it.
@@ -55,6 +56,28 @@ gs status --repo "$REPO"
 
 The note resting on the retired claim is now stale. That is a signal to
 re-check it, not a verdict that it is wrong.
+
+## Refused before signing
+
+Before anything is signed, this command asks the fold what it would decide
+about the retirement, and refuses when the answer is not effective: an unknown
+target, or a target this actor has no standing to retire.
+
+```text
+gs: the fold would rule this act ineffective: actor may not supersede target
+fix: only alice or an actor holding ratifier may retire it; ask one of them to file the supersede
+file it as written with --no-preflight
+```
+
+The fix line names who may: the target's author, and any actor holding
+`ratifier`. [Refused before signing](state.md#refused-before-signing) states
+the whole rule: the reason is the fold's own, the fold decides again at
+sequencing, `--no-preflight` files the act as written, and four cases are left
+to the fold with no refusal here — including an exact retry under an
+`--idempotency-key` this actor already holds.
+
+Whether tracked documentation still cites the target is a separate question,
+answered by `--cited-ok` above, and it is asked after this one.
 
 ## What it is for
 

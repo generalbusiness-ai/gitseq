@@ -896,6 +896,18 @@ not establish power-loss durability or current shared-core crash recovery.
 **Schemas and fold.** Workroom owns the `workroom/*` schemas and governed kind
 vocabulary, its deterministic fold, and its fold-profile version.
 
+**A prospective record may be judged without joining the log.** `Preview` folds
+a record the log does not hold against a folded state and returns the decision
+that record would have been given, applying none of its consequences and leaving
+the projection exactly as it was. `Decision` reads back the decision a fold
+already gave one event, so a caller judging a whole chain builds a fold of its
+own, appends the chain's prospective records to that, and reads each answer:
+the published fold, which backs every reader's projection, is never appended to
+by anything but the sequencer. Either way it is the same decision path an append
+takes — there is no second, friendlier copy of the rules for a write boundary to
+consult — and the fold at sequencing remains the authority over the world the act
+actually joins.
+
 **Actors.** It owns the actor roster, names, membership, roles, and authority.
 
 **Commitments: who is waiting on whom.** An explicit report closes when its
@@ -1730,6 +1742,34 @@ to checkouts, so a lifecycle word this client has never heard of protects
 rather than settles.
 
 ### 7. CLI, MCP, skills, connectors, and UI
+
+A signing CLI command asks the fold what it would decide before it signs. The
+act is built as submission would build it, judged by layer 5 against the
+projection this process last verified, and refused with the fold's own reason and
+one line of advice when the answer is not effective — before a private key is
+read and before anything reaches the log. A chain is judged whole, in order, in a
+fold built for the question and thrown away, so an act citing one the chain has
+yet to mint is judged against the act that will exist. The judgement is advisory:
+it reads the local verified log, so an act bound for a resident is judged only
+while that resident stands exactly where this checkout does. It is also skipped
+for a retry — an idempotency key this actor already holds means the sequencer
+replays the accepted event or refuses the key, and judging it against today's
+world would refuse a recovery. In a chain that is decided per act: an accepted
+act is left to the sequencer and taken as part of the world, with its label
+naming the event the log holds, while every new act of the same chain is judged
+against that world. A resumed chain is the ordinary case, and one accepted key
+standing the whole check down let a malformed new act through behind a replayed
+prefix. `--no-preflight` files any act as written. An act the check admits is
+signed exactly as it would have been, and no rule lives here that the fold does
+not already hold.
+
+A malformed invocation is answered the same way everywhere: the command's own
+flags and one worked example on standard error, and a non-zero exit with nothing
+touched. That covers an undefined flag, a missing required flag or argument, a
+subject offered as a flag where the command takes a positional argument, and an
+event reference that names nothing here. Every required argument is settled
+before a repository is opened or a key is read, so a caller is never told about a
+missing key file when what was missing was a flag.
 
 The reading UI includes a Notes view selected from declared `render: note`
 kinds, independently of request and approval populations. Exact record-number
