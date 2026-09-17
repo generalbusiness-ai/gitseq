@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at ui/package.json","body":{"commit":"10ef3949b372e396129a78ad1456aca32efc74fe","path":"ui/package.json"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21423613ce25fa0bc0dd6b1e71c73a784187e2e2","text":"Merge retired a covered predecessor; the successor is at ui/package.json."}
