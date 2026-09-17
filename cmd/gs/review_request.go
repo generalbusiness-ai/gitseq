@@ -205,12 +205,12 @@ func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise strin
 
 // requireOneHead refuses a set that does not all stand at the reviewed head.
 //
-// gs artifact retires exactly this set when it publishes a new head, so the
-// ordinary recut never reaches here. What does reach here is a set that
-// publishing could not clear — a pointer whose retirement was refused because
-// documentation still cites it, or one filed before the republish did the
-// retiring — and the refusal names both repairs, because naming only the one
-// that has already been tried sends the author round the same loop.
+// gs artifact retires this set when it publishes a new head, so the ordinary
+// recut never reaches here. What does reach here is a pointer publishing left
+// alone: a path this head still changes that the last run did not name, one a
+// documentation page still cites, or one filed before the republish did the
+// retiring. The refusal names each repair in turn, because naming only the
+// one already tried sends the author round the same loop.
 func (s *stepSession) requireOneHead(promise, head string) error {
 	elsewhere := s.laneArtifactsElsewhere(promise, head)
 	if len(elsewhere) == 0 {
@@ -220,7 +220,7 @@ func (s *stepSession) requireOneHead(promise, head string) error {
 	for _, artifact := range elsewhere {
 		named = append(named, fmt.Sprintf("%s at %s", artifact.Path, short(artifact.Commit)))
 	}
-	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set. Publishing this head again clears them: `gs artifact --head %s --promise %s <path…>` retires this promise's earlier-head artifacts in the same batch. If it refuses one because documentation still cites it, repoint that page at the successor, or retire the pointer yourself with `gs supersede`",
+	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set. Publishing this head again clears them: `gs artifact --head %s --promise %s <path…>` retires this promise's earlier-head artifacts in the same batch, so name every path above that this head still changes. It skips, with a warning, a pointer whose path this head no longer changes but a documentation page still cites; for that one repoint the page if there is a successor to repoint at, then `gs supersede <artifact> --cited-ok --text <why>`",
 		short(promise), strings.Join(named, ", "), head, short(promise))
 }
 

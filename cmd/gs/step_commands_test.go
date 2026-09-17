@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -1692,5 +1693,215 @@ func TestReviewRequestStillRefusesAMixedSetTheRepublishCouldNotClear(t *testing.
 		if !strings.Contains(refusal.Error(), want) {
 			t.Fatalf("the refusal %q does not name %q", refusal, want)
 		}
+	}
+}
+
+// The partial republish. gs artifact publishes the paths it is given, and a
+// path the new head still changes that this run did not name keeps its
+// earlier-head pointer: retiring it bare would condemn behaviour that is alive
+// at the new head, and no artifact this run publishes covers it. The lane
+// stays mixed, which gs review-request then says.
+//
+// Not parallel: it reads process-wide standard error.
+func TestArtifactLeavesLiveAPathTheHeadStillChangesButThisRunDoesNotName(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "partialrepublish", "reviewer", "operator", "kept.txt", "dropped.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "--report", "kept.txt",
+		"dropped.txt", "kept.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	first := f.snapshot(t).Projection
+	firstKept := liveArtifactAt(t, first, "kept.txt", lane.head)
+	firstOther := liveArtifactAt(t, first, "dropped.txt", lane.head)
+
+	// The recut still changes both paths; only one of them is republished.
+	second := f.recut(t, lane, "kept.txt", "dropped.txt")
+	before := f.snapshot(t).Depth
+	notice, err := captureStderr(t, func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "kept.txt"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	if snapshot.Depth != before+2 {
+		t.Fatalf("depth = %d, want %d: one artifact and one retirement", snapshot.Depth, before+2)
+	}
+	if kept := artifactByEvent(t, snapshot.Projection, firstKept.Event); !kept.Retired || !kept.Succeeded {
+		t.Fatalf("the republished path's predecessor is %+v, want it retired and succeeded", kept)
+	}
+	if other := artifactByEvent(t, snapshot.Projection, firstOther.Event); other.Retired {
+		t.Fatalf("dropped.txt at the earlier head was retired: %+v; this head still changes that path and nothing here succeeds it", other)
+	}
+	if !strings.Contains(notice, "the artifact for dropped.txt at "+short(lane.head)+" stays live") ||
+		!strings.Contains(notice, "publish dropped.txt at this head too") {
+		t.Fatalf("stderr %q does not say which pointer was left live and why", notice)
+	}
+	if !strings.Contains(notice, "gs: will retire kept.txt at "+short(lane.head)+" -> kept.txt") {
+		t.Fatalf("stderr %q does not disclose the one planned retirement", notice)
+	}
+	if strings.Contains(notice, "will retire dropped.txt") {
+		t.Fatalf("stderr %q discloses a retirement that must not be planned", notice)
+	}
+
+	// The lane is still mixed, and the review request says so and names the
+	// repair that works: publish the path that was left out.
+	refusal := f.refuses(t, "also carries live artifacts at another head", func() error {
+		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--to", "reviewer"})
+	})
+	for _, want := range []string{"dropped.txt at " + short(lane.head), "name every path above that this head still changes", "--cited-ok"} {
+		if !strings.Contains(refusal.Error(), want) {
+			t.Fatalf("the refusal %q does not name %q", refusal, want)
+		}
+	}
+}
+
+// An --rests-on naming an artifact this same batch retires cannot work: the
+// new artifact would describe a superseded world from birth and gs merge
+// refuses such a head. It is refused before anything is signed.
+func TestArtifactRefusesABasisItWouldRetireInTheSameBatch(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "selfcite", "reviewer", "operator", "selfcite.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "selfcite.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	standing := liveArtifactAt(t, f.snapshot(t).Projection, "selfcite.txt", lane.head)
+
+	second := f.recut(t, lane, "selfcite.txt")
+	refusal := f.refuses(t, "which this publication retires", func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "--rests-on", standing.Event, "selfcite.txt"})
+	})
+	for _, want := range []string{"selfcite.txt at " + short(lane.head), "describes a superseded world from birth"} {
+		if !strings.Contains(refusal.Error(), want) {
+			t.Fatalf("the refusal %q does not name %q", refusal, want)
+		}
+	}
+
+	// Without the basis the same publication is accepted, so the refusal is
+	// about that citation and nothing else.
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "selfcite.txt"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The plan is disclosed and the whole chain is judged before the first append.
+// The fold judgement is staged, because every act this command composes is one
+// the fold admits from its own signer; what the test measures is that the
+// retirements reach the judgement at all, that a refusal there appends
+// nothing, and that the author has already been told what was about to be
+// withdrawn while it was still avoidable.
+//
+// Not parallel: it reads process-wide standard error and swaps a package seam.
+func TestArtifactDisclosesAndJudgesTheRetirementPlanBeforeSigning(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "preflighted", "reviewer", "operator", "preflighted.txt", "docs/preflighted.md")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "--report", "preflighted.txt",
+		"docs/preflighted.md", "preflighted.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	second := f.recut(t, lane, "preflighted.txt")
+
+	original := refuseIneffectiveChain
+	t.Cleanup(func() { refuseIneffectiveChain = original })
+	var judged []batchAct
+	refuseIneffectiveChain = func(_ context.Context, _ *app.Workspace, _, _ string, _ bool, acts []batchAct) error {
+		judged = acts
+		return errors.New("act 2: the fold would rule this ineffective")
+	}
+
+	before := f.snapshot(t).Depth
+	notice, err := captureStderr(t, func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "preflighted.txt"})
+	})
+	if err == nil || !strings.Contains(err.Error(), "the fold would rule this ineffective") {
+		t.Fatalf("error = %v, want the chain preflight's own refusal", err)
+	}
+	if after := f.snapshot(t).Depth; after != before {
+		t.Fatalf("depth moved from %d to %d; the judgement runs before the first append", before, after)
+	}
+	if len(judged) != 3 {
+		t.Fatalf("the preflight was handed %d acts, want the artifact and both retirements: %+v", len(judged), judged)
+	}
+	for _, act := range judged[1:] {
+		if act.Verb != app.VerbSupersede {
+			t.Fatalf("act %+v reached the preflight as a %s, want the retirements last", act, act.Verb)
+		}
+	}
+	for _, want := range []string{
+		"gs: will retire docs/preflighted.md at " + short(lane.head) + " -> bare",
+		"gs: will retire preflighted.txt at " + short(lane.head) + " -> preflighted.txt",
+	} {
+		if !strings.Contains(notice, want) {
+			t.Fatalf("stderr %q does not disclose %q before the judgement", notice, want)
+		}
+	}
+}
+
+// A request that states no target cannot be measured against, so gs artifact
+// cannot tell a path the head dropped from one it still changes. The
+// unmeasurable answer is the careful one: nothing is retired bare, and the
+// pointers it leaves live are reported.
+//
+// Not parallel: it reads process-wide standard error.
+func TestArtifactRetiresNothingBareWhenTheChangeSetCannotBeMeasured(t *testing.T) {
+	f := newWorkflowFixture(t)
+	// No target_ref, target or no-Git-artifact measurement of any kind: the
+	// shape the command already answers with a note rather than a refusal.
+	request := f.stateV3(t, "reviewer", workroom.KindRequest, "implement unmeasured", map[string]string{
+		"to": f.fingerprint(t, "operator"), "conditions": "publish the head", "no_git_artifact": "true",
+	}, f.ground)
+	checkout := filepath.Join(filepath.Dir(f.repo), "unmeasured")
+	testGit(t, f.repo, "worktree", "add", "-qb", "unmeasured", checkout)
+	for _, path := range []string{"unmeasured-a.txt", "unmeasured-b.txt"} {
+		if err := os.WriteFile(filepath.Join(checkout, path), []byte("one\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testGit(t, checkout, "add", ".")
+	testGit(t, checkout, "commit", "-qm", "unmeasured")
+	first := testGit(t, checkout, "rev-parse", "HEAD")
+	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--branch", "unmeasured", request}); err != nil {
+		t.Fatal(err)
+	}
+	promise := f.latestStatement(t).Event
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", first, "--promise", promise, "unmeasured-a.txt", "unmeasured-b.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	standing := liveArtifactAt(t, f.snapshot(t).Projection, "unmeasured-b.txt", first)
+
+	if err := os.WriteFile(filepath.Join(checkout, "unmeasured-a.txt"), []byte("two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, checkout, "commit", "-qam", "unmeasured again")
+	second := testGit(t, checkout, "rev-parse", "HEAD")
+	before := f.snapshot(t).Depth
+	notice, err := captureStderr(t, func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "unmeasured-a.txt"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after := f.snapshot(t).Depth; after != before+2 {
+		t.Fatalf("depth = %d, want %d: one artifact and one retirement", after, before+2)
+	}
+	if artifact := artifactByEvent(t, f.snapshot(t).Projection, standing.Event); artifact.Retired {
+		t.Fatalf("unmeasured-b.txt was retired on an unmeasurable change set: %+v", artifact)
+	}
+	if !strings.Contains(notice, "the artifact for unmeasured-b.txt at "+short(first)+" stays live") {
+		t.Fatalf("stderr %q does not report the pointer left live", notice)
 	}
 }

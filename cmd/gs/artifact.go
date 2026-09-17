@@ -81,20 +81,35 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	if *branch == "" {
 		*branch = branchAtHead(ctx, *repo, *head)
 	}
-	if err := requireChangedPaths(ctx, *repo, *head, commitment, paths); err != nil {
+	changed, err := requireChangedPaths(ctx, *repo, *head, commitment, paths)
+	if err != nil {
 		return err
 	}
 	if commitment.Stale {
 		fmt.Fprintf(os.Stderr, "note: promise %s is stale; the artifacts are admitted and record their stale bases, and ordinary staleness is not a reason to replace a promise\n", short(*promise))
 	}
-	acts := artifactActs(session.fingerprint, *head, *branch, *promise, commitment.Request, reportPath, *text, paths, bases)
-	retiring := session.keepUncited(retirements(session.laneArtifactsElsewhere(*promise, *head), paths))
+	labels := pathLabels(paths)
+	acts := artifactActs(session.fingerprint, *head, *branch, *promise, commitment.Request, reportPath, *text, paths, labels, bases)
+	retiring, deferred := retirements(session.laneArtifactsElsewhere(*promise, *head), labels, changed)
+	noteDeferredRetirements(*head, deferred)
+	retiring = session.keepUncited(retiring)
+	if err := refuseRetiredBasis(*head, retiring, bases); err != nil {
+		return err
+	}
 	acts = append(acts, retirementActs(session.fingerprint, *head, retiring)...)
+	discloseBases(session.resolver, chainCitations(acts))
+	disclosePlannedRetirements(retiring)
+	// The whole chain, judged by the fold before the signing key is read: a
+	// retirement the fold would rule ineffective — a pointer somebody else
+	// withdrew while this command was reading — stops the publication here
+	// rather than being printed afterwards as though it had happened.
+	if err := refuseIneffectiveChain(ctx, session.workspace, session.serverURL, session.actor, false, acts); err != nil {
+		return err
+	}
 	_, private, err := session.workspace.Actor(session.actor)
 	if err != nil {
 		return err
 	}
-	discloseBases(session.resolver, chainCitations(acts))
 	published, err := runBatch(ctx, session.workspace, session.serverURL, session.actor, private, acts, false)
 	// The artifacts are printed as bare identifiers and the retirements as
 	// the lines below, so the last identifier on its own line is still the
@@ -113,6 +128,13 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	fmt.Fprintf(os.Stderr, "gs: reporting artifact at %s is the newest artifact on promise %s; name it first when you ask for review\n", reportPath, short(*promise))
 	return nil
 }
+
+// refuseIneffectiveChain is the fold preflight this command runs over its own
+// chain. It is a variable for the same reason buildMergePlan is: the property
+// worth pinning — that the whole chain, retirements included, is judged before
+// the first append — cannot be staged through the command itself, because
+// every act it composes is one the fold admits from this signer.
+var refuseIneffectiveChain = refuseIneffectiveBatch
 
 // requireOwnLivePromise is the basis rule, checked before anything is signed:
 // one promise, the signer's own, live. Anything else closes nothing.
@@ -161,28 +183,34 @@ func refuseSecondPromise(session *stepSession, promise string, extra []string) e
 // a changed path no artifact names is a warning: a first artifact elsewhere is
 // legitimate and only the author knows which. A directory path covers the files
 // under it; everything else matches as an exact string, as the fold does.
-func requireChangedPaths(ctx context.Context, repo, head string, commitment workroom.Commitment, paths []string) error {
+//
+// It returns the change set, because the retirement plan needs it too: a path
+// this run did not name may still be one the head changes, and those two
+// answers call for opposite treatment. A nil set means the change set could
+// not be measured at all, which is not the same as an empty one — a measured
+// set always holds at least the paths just checked against it.
+func requireChangedPaths(ctx context.Context, repo, head string, commitment workroom.Commitment, paths []string) ([]string, error) {
 	if commitment.TargetRef == "" {
 		fmt.Fprintf(os.Stderr, "note: request %s states no target ref, so the paths this head changes cannot be measured; check them yourself\n", short(commitment.Request))
-		return nil
+		return nil, nil
 	}
 	if _, err := git(ctx, repo, "rev-parse", "--verify", "--end-of-options", commitment.TargetRef+"^{commit}"); err != nil {
-		return fmt.Errorf("%s, where request %s says this work is owed, is not in %s, so the paths this head changes cannot be measured; fetch it (`git -C %s fetch origin %s`) and run this again",
+		return nil, fmt.Errorf("%s, where request %s says this work is owed, is not in %s, so the paths this head changes cannot be measured; fetch it (`git -C %s fetch origin %s`) and run this again",
 			commitment.TargetRef, short(commitment.Request), repo, repo, strings.TrimPrefix(commitment.TargetRef, "refs/heads/"))
 	}
 	base, err := git(ctx, repo, "merge-base", "--end-of-options", commitment.TargetRef, head)
 	if err != nil {
-		return fmt.Errorf("%s and %s share no common ancestor in %s, so what this head changes against the target cannot be measured; rebase or recut the work onto %s",
+		return nil, fmt.Errorf("%s and %s share no common ancestor in %s, so what this head changes against the target cannot be measured; rebase or recut the work onto %s",
 			commitment.TargetRef, short(head), repo, commitment.TargetRef)
 	}
 	changes, err := mergeChangesBetween(ctx, repo, strings.TrimSpace(base), head)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	changed := mergeChangedPaths(changes)
 	for _, path := range paths {
 		if !coversAny(path, changed) {
-			return fmt.Errorf("path %q is not changed by %s against %s; staleness travels along paths, so an artifact there could never flare. Name a path this head changes (`git diff --name-only %s %s`), or fix --head",
+			return nil, fmt.Errorf("path %q is not changed by %s against %s; staleness travels along paths, so an artifact there could never flare. Name a path this head changes (`git diff --name-only %s %s`), or fix --head",
 				path, short(head), commitment.TargetRef, strings.TrimSpace(base), head)
 		}
 	}
@@ -204,7 +232,7 @@ func requireChangedPaths(ctx context.Context, repo, head string, commitment work
 		fmt.Fprintf(os.Stderr, "warning: %s also changes %s%s, which no artifact here names; publish each changed path, or be able to say why not\n",
 			short(head), strings.Join(shown, ", "), more)
 	}
-	return nil
+	return changed, nil
 }
 
 // coversAny reports whether a named path is one of the changed paths, or the
@@ -232,7 +260,7 @@ func coveredBy(changed string, paths []string) bool {
 // carries the label its path's retirement cites as the successor, so a batch
 // label is enough to say where a withdrawn pointer went and no second run is
 // needed to learn the new artifact's identifier.
-func artifactActs(fingerprint, head, branch, promise, request, reportPath, reportText string, paths, extra []string) []batchAct {
+func artifactActs(fingerprint, head, branch, promise, request, reportPath, reportText string, paths []string, labels map[string]string, extra []string) []batchAct {
 	acts := make([]batchAct, 0, len(paths))
 	add := func(path string) {
 		text := artifactText(path, head, branch, promise, request)
@@ -241,7 +269,7 @@ func artifactActs(fingerprint, head, branch, promise, request, reportPath, repor
 		}
 		bases := append([]string{promise}, extra...)
 		acts = append(acts, batchAct{
-			Label: pathLabel(path, paths), Verb: app.VerbState, Kind: workroom.KindArtifact, Text: text,
+			Label: labels[path], Verb: app.VerbState, Kind: workroom.KindArtifact, Text: text,
 			Body:           map[string]string{"path": path, "commit": head},
 			RestsOn:        bases,
 			IdempotencyKey: artifactKey(fingerprint, head, path),
@@ -256,26 +284,21 @@ func artifactActs(fingerprint, head, branch, promise, request, reportPath, repor
 	return acts
 }
 
-// pathLabel names one published path inside this batch. The paths are already
-// proved unique, and the index is stable whatever order the acts are emitted
-// in, so no label can collide with another.
-func pathLabel(path string, paths []string) string {
-	for index, candidate := range paths {
-		if candidate == path {
-			return fmt.Sprintf("artifact-%d", index)
-		}
+// pathLabels names each published path inside this batch, so a retirement can
+// cite the artifact that succeeds it before that artifact has an identifier.
+// The paths are already proved unique, and the index is stable whatever order
+// the acts are emitted in, so no label can collide with another.
+func pathLabels(paths []string) map[string]string {
+	labels := make(map[string]string, len(paths))
+	for index, path := range paths {
+		labels[path] = fmt.Sprintf("artifact-%d", index)
 	}
-	return ""
+	return labels
 }
 
 // retirement is one earlier-head pointer this publication withdraws, together
-// with where its behaviour went: the batch label of the new artifact covering
-// the same path, or nothing at all when this head no longer changes it.
-//
-// A bare retirement is the honest answer there. It condemns what rested on the
-// pointer, which is what an author wants to hear about a path the head under
-// review does not touch; carrying it to an unrelated artifact would say the
-// behaviour moved when it did not.
+// with where its behaviour went: the batch label of the new artifact at the
+// same path, or nothing at all for a path this head no longer changes.
 type retirement struct {
 	target    string
 	path      string
@@ -283,37 +306,73 @@ type retirement struct {
 	successor string
 }
 
-// retirements pairs each earlier-head artifact of this lane with the new
-// artifact that succeeds it.
-func retirements(elsewhere []workroom.Artifact, paths []string) []retirement {
-	if len(elsewhere) == 0 {
-		return nil
-	}
-	withdrawn := make([]retirement, 0, len(elsewhere))
+// retirements decides what a publication withdraws, one earlier-head artifact
+// of this lane at a time. There are three cases and they are not
+// interchangeable:
+//
+//   - the path is published again here: retire it, succeeded by the artifact
+//     this run publishes at that same path;
+//   - the path is not named here, but the head still changes it: leave it
+//     live and say so. This is the partial republish, and it is ordinary —
+//     gs artifact publishes the paths it is given, which need not be all the
+//     head changes. Retiring bare would condemn a pointer whose behaviour is
+//     alive at the new head, and no artifact this run publishes covers it;
+//   - the path the head no longer changes: retire it bare. Only here is "no
+//     successor" the truth.
+//
+// An unmeasured change set — a request that states no target — collapses into
+// the second case for every unnamed path, because the difference between the
+// second and the third is exactly what could not be measured.
+func retirements(elsewhere []workroom.Artifact, labels map[string]string, changed []string) (withdrawn []retirement, deferred []workroom.Artifact) {
 	for _, artifact := range elsewhere {
-		withdrawn = append(withdrawn, retirement{
-			target: artifact.Event, path: artifact.Path, commit: artifact.Commit,
-			successor: successorLabel(artifact.Path, paths),
-		})
-	}
-	return withdrawn
-}
-
-// successorLabel names the artifact this head publishes that covers an earlier
-// path: the path itself when it is published again, otherwise a published
-// directory holding it, which is the coverage the fold reads. The exact path
-// comes first, because a directory pointer standing over the same file says
-// less about where the behaviour went than the file's own artifact does.
-func successorLabel(path string, paths []string) string {
-	if label := pathLabel(path, paths); label != "" {
-		return label
-	}
-	for _, candidate := range paths {
-		if strings.HasPrefix(path, candidate+"/") {
-			return pathLabel(candidate, paths)
+		label, named := labels[artifact.Path]
+		switch {
+		case named:
+			withdrawn = append(withdrawn, retirement{
+				target: artifact.Event, path: artifact.Path, commit: artifact.Commit, successor: label,
+			})
+		case changed == nil || coversAny(artifact.Path, changed):
+			deferred = append(deferred, artifact)
+		default:
+			withdrawn = append(withdrawn, retirement{
+				target: artifact.Event, path: artifact.Path, commit: artifact.Commit,
+			})
 		}
 	}
-	return ""
+	return withdrawn, deferred
+}
+
+// noteDeferredRetirements names each earlier-head pointer this run left alone
+// because the head still changes its path. The lane stays mixed until that
+// path is published too, which gs review-request will say; the author's repair
+// is to name it.
+func noteDeferredRetirements(head string, deferred []workroom.Artifact) {
+	for _, artifact := range deferred {
+		fmt.Fprintf(os.Stderr, "warning: the artifact for %s at %s stays live: %s still changes that path and no artifact here names it, so nothing published now succeeds it; publish %s at this head too\n",
+			artifact.Path, short(artifact.Commit), short(head), artifact.Path)
+	}
+}
+
+// refuseRetiredBasis stops the one --rests-on that cannot work. An artifact
+// resting on a pointer the same batch retires describes a superseded world
+// from birth: it is stale before it is a second old, and gs merge refuses a
+// head whose artifacts describe a superseded world. The author meant the
+// behaviour, not the pointer, so the refusal names the artifact at this head
+// as the citation to use instead.
+func refuseRetiredBasis(head string, withdrawn []retirement, extra []string) error {
+	targets := make(map[string]retirement, len(withdrawn))
+	for _, entry := range withdrawn {
+		targets[entry.target] = entry
+	}
+	for _, basis := range extra {
+		entry, retired := targets[basis]
+		if !retired {
+			continue
+		}
+		return fmt.Errorf("--rests-on %s is the artifact for %s at %s, which this publication retires; an artifact resting on a pointer withdrawn in the same batch describes a superseded world from birth and gs merge refuses such a head. Cite the artifact for that behaviour at %s, or one that is not in this lane",
+			short(basis), entry.path, short(entry.commit), short(head))
+	}
+	return nil
 }
 
 // keepUncited drops the retirements the citation guard refuses, and says which
@@ -337,6 +396,20 @@ func (s *stepSession) keepUncited(withdrawn []retirement) []retirement {
 		kept = append(kept, entry)
 	}
 	return kept
+}
+
+// disclosePlannedRetirements says what the publication is about to withdraw,
+// before anything is signed. It is the one moment at which a wrong --promise
+// is still avoidable: the lane is read from the promise, so a mistyped one
+// shows up here as a list of paths the author does not recognise.
+func disclosePlannedRetirements(withdrawn []retirement) {
+	for _, entry := range withdrawn {
+		successor := "bare"
+		if entry.successor != "" {
+			successor = entry.path
+		}
+		fmt.Fprintf(os.Stderr, "gs: will retire %s at %s -> %s\n", entry.path, short(entry.commit), successor)
+	}
 }
 
 // retirementActs is the suffix that makes one head the only live one on this
@@ -366,8 +439,8 @@ func retirementActs(fingerprint, head string, withdrawn []retirement) []batchAct
 
 // printRetirements says what the publication withdrew, reading the successor's
 // identifier out of what the batch actually minted rather than out of the plan:
-// an act that did not land is not reported as one that did. outcomes are the
-// report rows of the retirement acts alone, in the order they were built.
+// an act that did not land is not reported as one that did. The outcomes are
+// the report rows of the retirement acts alone, in the order they were built.
 func printRetirements(withdrawn []retirement, minted map[string]string, outcomes []batchOutcome) {
 	for index, entry := range withdrawn {
 		if index >= len(outcomes) || outcomes[index].Event == "" {
@@ -379,17 +452,6 @@ func printRetirements(withdrawn []retirement, minted map[string]string, outcomes
 		}
 		fmt.Printf("retired %s at %s -> %s\n", entry.path, short(entry.commit), successor)
 	}
-}
-
-// mintedLabels is what each labelled act of a finished batch became.
-func mintedLabels(published batchReport) map[string]string {
-	minted := make(map[string]string, len(published.Acts))
-	for _, act := range published.Acts {
-		if act.Label != "" && act.Event != "" {
-			minted[act.Label] = act.Event
-		}
-	}
-	return minted
 }
 
 func artifactText(path, head, branch, promise, request string) string {

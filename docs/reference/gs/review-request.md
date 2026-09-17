@@ -66,7 +66,7 @@ gs review-request --repo "$REPO" --as bot --head "$HEAD_COMMIT" --to @carol
 |---|---|
 | no live artifact of yours stands at the head | `gs artifact`, to publish the head first |
 | the artifacts rest on two of your promises | both promises, and that one request answers one commitment |
-| the promise also carries live artifacts at another head | those artifacts and their heads, `gs artifact` to republish at this one, and `gs supersede` for a pointer publishing cannot clear |
+| the promise also carries live artifacts at another head | those artifacts and their heads, `gs artifact` to republish at this one, and `gs supersede --cited-ok` for a cited pointer at a path this head no longer changes |
 | you already have a live review request for this promise | that request, and `--replace` |
 | `--to` names you | that a review is by a different actor |
 | `--to` names nobody on the roster | the live roster actors |
@@ -77,12 +77,18 @@ at *signing*, after the reviewer has read everything.
 An ordinary recut no longer reaches it.
 [`gs artifact`](artifact.md#republishing-a-recut) retires the promise's
 earlier-head artifacts when it publishes the new head, so publish and then
-ask, with no supersession of your own in between. What still reaches this
-refusal is a pointer the republish could not clear — one a documentation
-page still cites, or one filed before the republish did the retiring — and
-the refusal names both repairs: publish the head again, and if that skips
-the pointer again, repoint the page at the successor and retire the
-pointer with [`gs supersede`](supersede.md).
+ask, with no supersession of your own in between.
+
+What still reaches this refusal is a pointer that publication left alone,
+and the refusal names each repair in turn. A path this head still changes
+that the last run did not name is left live deliberately: publish it,
+naming every path listed in the refusal that the head still changes. A
+pointer a documentation page still cites is skipped with a warning —
+publication is never refused over one — so repoint the page at the
+successor and retire the pointer with
+[`gs supersede`](supersede.md); where the head no longer changes that path
+there is no successor to repoint at, and that one takes
+`gs supersede <artifact> --cited-ok --text <why>`.
 
 ## Refiling cancels work in flight
 

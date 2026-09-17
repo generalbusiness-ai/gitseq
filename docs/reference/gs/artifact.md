@@ -85,6 +85,7 @@ you ask for review.
 | a path the head did not change | the `git diff` that lists what it did change |
 | a path given twice, or a `--report` outside the set | the path |
 | `--rests-on` names a promise | that an artifact resting on two promises closes neither |
+| `--rests-on` names an artifact this run retires | the path and head of that pointer, and that a citation withdrawn in the same batch describes a superseded world from birth |
 | the request's target ref is not in this repository | the ref, and the `git fetch` that brings it |
 | the head and the target share no ancestor | the ref to recut the work onto |
 
@@ -108,28 +109,52 @@ to say why not, is a decision rather than an oversight.
 ## Republishing a recut
 
 A repair round and a recut onto a moved target both leave the promise
-carrying artifacts at two heads. Publishing the new head retires the
-earlier ones in the same signed batch: every live artifact of yours that
-rests on this promise and stands at another commit.
+carrying artifacts at two heads. Publishing the new head retires what the
+promise carried at the earlier one, in the same signed batch. The reach is
+every live artifact of yours that rests on this promise and stands at
+another commit, and each of them falls into one of three cases.
 
-A path the new head publishes again succeeds its predecessor. A path the
-new head no longer changes is retired **bare**, with no successor, which
-condemns whatever rested on it. That is the honest answer: naming an
-unrelated artifact as the successor would say the behaviour moved
+| the earlier artifact's path | what happens |
+|---|---|
+| named in this run | retired, succeeded by the artifact this run publishes at that same path |
+| not named, but this head still changes it | **left live**, with a warning: publish that path here too |
+| this head no longer changes it | retired **bare**, with no successor |
+
+The middle case is why a partial republish is safe. `gs artifact` publishes
+the paths it is given, and those need not be everything the head changes;
+retiring such a pointer bare would condemn behaviour that is alive at the
+new head, and nothing this run publishes covers it. A request that states
+no target ref cannot be measured against, so every unnamed path falls into
+that case as well.
+
+A bare retirement condemns whatever rested on the pointer. That is the
+honest answer for a path the head under review no longer touches: naming
+an unrelated artifact as the successor would say the behaviour moved
 somewhere it did not.
 
-Each retirement is printed on a line of its own, after the identifiers:
+The plan is disclosed on standard error before anything is signed, which
+is where a mistyped `--promise` shows itself as a list of paths you do not
+recognise:
+
+```text
+gs: will retire docs/changelog.md at 1f0c9ab1…3d4e5f6 -> bare
+gs: will retire CHANGELOG.md at 1f0c9ab1…3d4e5f6 -> CHANGELOG.md
+```
+
+and each retirement that landed is printed on a line of its own, after the
+identifiers:
 
 ```text
 retired docs/changelog.md at 1f0c9ab1…3d4e5f6 -> bare
 retired CHANGELOG.md at 1f0c9ab1…3d4e5f6 -> git:sha1…9c1d2e3
 ```
 
-The reach is one lane. Another actor's artifact, an artifact standing at
-the head being published, and an artifact resting on a different promise
-are all left where they are. Every retirement here is of the signer's own
-artifact, which the fold admits on its own standing, so nothing in this is
-a new authority.
+Another actor's artifact, an artifact standing at the head being
+published, and an artifact resting on a different promise are all left
+where they are. Every retirement here is of the signer's own artifact,
+which the fold admits on its own standing, so nothing in this is a new
+authority, and the whole chain is judged by the fold before the signing
+key is read.
 
 One live head per promise is what [`gs review-request`](review-request.md)
 needs, and it leaves [`gs merge`](merge.md) nothing from an earlier round
@@ -137,12 +162,15 @@ to seal as a sibling or abandoned — a cleanup obligation the merge cannot
 discharge for you.
 
 A retirement that documentation still cites is **skipped**, with a warning
-naming the page and the pointer left live. The citation guard asks you to
-repoint the page at the successor first, and the successor is the artifact
-this very run publishes, so refusing the whole publication would be a
-trap. Repoint the page once the successor exists, then retire the pointer
-with [`gs supersede`](supersede.md). Until then the promise still carries
-two heads and `gs review-request` says so.
+naming the page and the pointer left live; the publication itself is never
+refused over one. The citation guard asks you to repoint the page at the
+successor first, and the successor is the artifact this very run
+publishes, so refusing would be a trap. For a path that is published
+again, repoint the page once the successor exists and then retire the
+pointer with [`gs supersede`](supersede.md). For a path the head no longer
+changes there is no successor to repoint at, so that one takes
+`gs supersede <artifact> --cited-ok --text <why>`. Until either is done
+the promise still carries two heads and `gs review-request` says so.
 
 ## What it produces
 
@@ -150,8 +178,8 @@ One `artifact` statement per path, in one batch, each carrying
 `body.path` and `body.commit`, resting on the promise and on every
 `--rests-on` given. The reporting artifact is last. Its text carries
 `--text` as a second paragraph; the others do not. One supersession
-follows per earlier-head artifact retired, resting on the new artifact
-that succeeds it where one does.
+follows per earlier-head artifact retired, resting on the artifact at the
+same path where this run publishes one.
 
 The identifiers printed on their own lines are the artifacts alone, so the
 last of them is the reporting artifact whether or not this run retired
