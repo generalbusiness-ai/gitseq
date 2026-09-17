@@ -105,12 +105,57 @@ artifact elsewhere in the tree is legitimate and only the author knows
 which. The warning lists the paths, so publishing each one, or being able
 to say why not, is a decision rather than an oversight.
 
+## Republishing a recut
+
+A repair round and a recut onto a moved target both leave the promise
+carrying artifacts at two heads. Publishing the new head retires the
+earlier ones in the same signed batch: every live artifact of yours that
+rests on this promise and stands at another commit.
+
+A path the new head publishes again succeeds its predecessor. A path the
+new head no longer changes is retired **bare**, with no successor, which
+condemns whatever rested on it. That is the honest answer: naming an
+unrelated artifact as the successor would say the behaviour moved
+somewhere it did not.
+
+Each retirement is printed on a line of its own, after the identifiers:
+
+```text
+retired docs/changelog.md at 1f0c9ab1…3d4e5f6 -> bare
+retired CHANGELOG.md at 1f0c9ab1…3d4e5f6 -> git:sha1…9c1d2e3
+```
+
+The reach is one lane. Another actor's artifact, an artifact standing at
+the head being published, and an artifact resting on a different promise
+are all left where they are. Every retirement here is of the signer's own
+artifact, which the fold admits on its own standing, so nothing in this is
+a new authority.
+
+One live head per promise is what [`gs review-request`](review-request.md)
+needs, and it leaves [`gs merge`](merge.md) nothing from an earlier round
+to seal as a sibling or abandoned — a cleanup obligation the merge cannot
+discharge for you.
+
+A retirement that documentation still cites is **skipped**, with a warning
+naming the page and the pointer left live. The citation guard asks you to
+repoint the page at the successor first, and the successor is the artifact
+this very run publishes, so refusing the whole publication would be a
+trap. Repoint the page once the successor exists, then retire the pointer
+with [`gs supersede`](supersede.md). Until then the promise still carries
+two heads and `gs review-request` says so.
+
 ## What it produces
 
 One `artifact` statement per path, in one batch, each carrying
 `body.path` and `body.commit`, resting on the promise and on every
 `--rests-on` given. The reporting artifact is last. Its text carries
-`--text` as a second paragraph; the others do not.
+`--text` as a second paragraph; the others do not. One supersession
+follows per earlier-head artifact retired, resting on the new artifact
+that succeeds it where one does.
+
+The identifiers printed on their own lines are the artifacts alone, so the
+last of them is the reporting artifact whether or not this run retired
+anything.
 
 An artifact is the implementation report for assigned work, so no separate
 report follows it and the commitment moves to `awaiting-review`.

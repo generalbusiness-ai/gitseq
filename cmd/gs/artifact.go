@@ -15,7 +15,14 @@ import (
 // artifact last, because the lane reads its report off the newest artifact on
 // the promise. Publish order is therefore load-bearing, and the keys are
 // derived from actor, head and path so an interrupted run resumes rather than
-// publishing twice. See docs/reference/gs/artifact.md.
+// publishing twice.
+//
+// Publishing a new head also retires the ones this promise carried at an
+// earlier head, in the same signed batch. Every repair round and every recut
+// onto a moved target produces that mixed set, and leaving it live meant the
+// review request refused and named a repair that did not clear it, while the
+// merge later sealed the remainder as a sibling or abandoned and owed the
+// author a cleanup it could not do itself. See docs/reference/gs/artifact.md.
 func artifactCommand(ctx context.Context, arguments []string) error {
 	set, repo := flags("artifact", arguments)
 	as := set.String("as", "", "actor publishing the artifacts")
@@ -81,17 +88,23 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 		fmt.Fprintf(os.Stderr, "note: promise %s is stale; the artifacts are admitted and record their stale bases, and ordinary staleness is not a reason to replace a promise\n", short(*promise))
 	}
 	acts := artifactActs(session.fingerprint, *head, *branch, *promise, commitment.Request, reportPath, *text, paths, bases)
+	retiring := session.keepUncited(retirements(session.laneArtifactsElsewhere(*promise, *head), paths))
+	acts = append(acts, retirementActs(session.fingerprint, *head, retiring)...)
 	_, private, err := session.workspace.Actor(session.actor)
 	if err != nil {
 		return err
 	}
 	discloseBases(session.resolver, chainCitations(acts))
 	published, err := runBatch(ctx, session.workspace, session.serverURL, session.actor, private, acts, false)
-	for _, act := range published.Acts {
+	// The artifacts are printed as bare identifiers, the retirements as the
+	// lines below, so the last identifier on its own line is still the
+	// reporting artifact whether or not this run withdrew anything.
+	for _, act := range published.Acts[:len(acts)-len(retiring)] {
 		if act.Event != "" {
 			fmt.Println(act.Event)
 		}
 	}
+	printRetirements(retiring, published, len(acts)-len(retiring))
 	noteBatchDeadRestsOn(ctx, session.workspace, acts, published)
 	if err != nil {
 		return err
@@ -214,7 +227,10 @@ func coveredBy(changed string, paths []string) bool {
 }
 
 // artifactActs orders the chain: every other path first, the reporting
-// artifact last, because that one is what a review request names.
+// artifact last, because that one is what a review request names. Each act
+// carries the label its path's retirement cites as the successor, so a batch
+// label is enough to say where a withdrawn pointer went and no second run is
+// needed to learn the new artifact's identifier.
 func artifactActs(fingerprint, head, branch, promise, request, reportPath, reportText string, paths, extra []string) []batchAct {
 	acts := make([]batchAct, 0, len(paths))
 	add := func(path string) {
@@ -224,7 +240,7 @@ func artifactActs(fingerprint, head, branch, promise, request, reportPath, repor
 		}
 		bases := append([]string{promise}, extra...)
 		acts = append(acts, batchAct{
-			Verb: app.VerbState, Kind: workroom.KindArtifact, Text: text,
+			Label: pathLabel(path, paths), Verb: app.VerbState, Kind: workroom.KindArtifact, Text: text,
 			Body:           map[string]string{"path": path, "commit": head},
 			RestsOn:        bases,
 			IdempotencyKey: artifactKey(fingerprint, head, path),
@@ -239,6 +255,126 @@ func artifactActs(fingerprint, head, branch, promise, request, reportPath, repor
 	return acts
 }
 
+// pathLabel names one published path inside this batch. The paths are already
+// proved unique, and the index is stable whatever order the acts are emitted
+// in, so no label can collide with another.
+func pathLabel(path string, paths []string) string {
+	for index, candidate := range paths {
+		if candidate == path {
+			return fmt.Sprintf("artifact-%d", index)
+		}
+	}
+	return ""
+}
+
+// retirement is one earlier-head pointer this publication withdraws, together
+// with where its behaviour went: the batch label of the new artifact covering
+// the same path, or nothing at all when this head no longer changes it.
+//
+// A bare retirement is the honest answer there. It condemns what rested on the
+// pointer, which is what an author wants to hear about a path the head under
+// review does not touch; carrying it to an unrelated artifact would say the
+// behaviour moved when it did not.
+type retirement struct {
+	target    string
+	path      string
+	commit    string
+	successor string
+}
+
+// retirements pairs each earlier-head artifact of this lane with the new
+// artifact that succeeds it. A path published again succeeds itself; a path
+// now covered by a published directory succeeds through that directory,
+// exactly as the fold reads succession.
+func retirements(elsewhere []workroom.Artifact, paths []string) []retirement {
+	if len(elsewhere) == 0 {
+		return nil
+	}
+	withdrawn := make([]retirement, 0, len(elsewhere))
+	for _, artifact := range elsewhere {
+		entry := retirement{target: artifact.Event, path: artifact.Path, commit: artifact.Commit}
+		for _, path := range paths {
+			if path == artifact.Path || strings.HasPrefix(artifact.Path, path+"/") {
+				entry.successor = pathLabel(path, paths)
+				break
+			}
+		}
+		withdrawn = append(withdrawn, entry)
+	}
+	return withdrawn
+}
+
+// keepUncited drops the retirements the citation guard refuses, and says which
+// and why. Letting one of them refuse the whole publication would be a trap:
+// the guard asks the author to repoint the page at the successor, and the
+// successor is the artifact this very run would publish, so there is nothing
+// yet to repoint at. Skipping leaves the lane mixed, which gs review-request
+// refuses and names the repair for once the successor exists.
+//
+// Skipping is also the safe direction when the lookup itself did not run: the
+// old pointer simply stays live, and nothing is retired on an unanswered
+// question.
+func (s *stepSession) keepUncited(withdrawn []retirement) []retirement {
+	kept := make([]retirement, 0, len(withdrawn))
+	for _, entry := range withdrawn {
+		if err := s.workspace.RefuseCitedRetirement(s.ctx, entry.target, false); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: the artifact for %s at %s stays live, so this promise still carries two heads: %v\n",
+				entry.path, short(entry.commit), err)
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
+}
+
+// retirementActs is the suffix that makes one head the only live one on this
+// promise. Every act here retires this actor's own artifact, which the fold
+// admits on its own standing, so this adds no rule and claims no authority
+// over anybody else's pointer.
+//
+// The key names the head being published, so a run interrupted after the
+// artifacts landed retires on the next attempt rather than leaving the lane
+// mixed, and a rerun of a completed publication finds nothing left to retire.
+func retirementActs(fingerprint, head string, withdrawn []retirement) []batchAct {
+	acts := make([]batchAct, 0, len(withdrawn))
+	for _, entry := range withdrawn {
+		var rests []string
+		text := fmt.Sprintf("Republished at %s, which no longer changes %s: the pointer is withdrawn with no successor.", head, entry.path)
+		if entry.successor != "" {
+			rests = []string{"$" + entry.successor}
+			text = fmt.Sprintf("Republished at %s; the successor stands at %s.", head, entry.path)
+		}
+		acts = append(acts, batchAct{
+			Verb: app.VerbSupersede, Target: entry.target, Text: text, RestsOn: rests,
+			IdempotencyKey: retirementKey(fingerprint, head, entry.target),
+		})
+	}
+	return acts
+}
+
+// printRetirements says what the publication withdrew, reading the successor's
+// identifier out of what the batch actually minted rather than out of the plan:
+// an act that did not land is not reported as one that did.
+func printRetirements(withdrawn []retirement, published batchReport, offset int) {
+	minted := make(map[string]string, len(published.Acts))
+	for _, act := range published.Acts {
+		if act.Label != "" && act.Event != "" {
+			minted[act.Label] = act.Event
+		}
+	}
+	for index, entry := range withdrawn {
+		position := offset + index
+		if position >= len(published.Acts) || published.Acts[position].Event == "" {
+			continue
+		}
+		successor := "bare"
+		if event := minted[entry.successor]; event != "" {
+			successor = short(event)
+		}
+		fmt.Printf("retired %s at %s -> %s\n", entry.path, short(entry.commit), successor)
+	}
+}
+
 func artifactText(path, head, branch, promise, request string) string {
 	where := "at exact " + head
 	if branch != "" {
@@ -249,6 +385,10 @@ func artifactText(path, head, branch, promise, request string) string {
 
 func artifactKey(fingerprint, head, path string) string {
 	return "gs-artifact/" + fingerprint + "/" + head + "/" + path
+}
+
+func retirementKey(fingerprint, head, target string) string {
+	return "gs-artifact-retire/" + fingerprint + "/" + head + "/" + target
 }
 
 // branchAtHead names the branch a head sits on when exactly one does. Nothing

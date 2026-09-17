@@ -66,13 +66,23 @@ gs review-request --repo "$REPO" --as bot --head "$HEAD_COMMIT" --to @carol
 |---|---|
 | no live artifact of yours stands at the head | `gs artifact`, to publish the head first |
 | the artifacts rest on two of your promises | both promises, and that one request answers one commitment |
-| the promise also carries live artifacts at another head | those artifacts and their heads, and `gs artifact` to republish every path at this one |
+| the promise also carries live artifacts at another head | those artifacts and their heads, `gs artifact` to republish at this one, and `gs supersede` for a pointer publishing cannot clear |
 | you already have a live review request for this promise | that request, and `--replace` |
 | `--to` names you | that a review is by a different actor |
 | `--to` names nobody on the roster | the live roster actors |
 
 The mixed-head refusal saves the most work: `gs review` refuses such a set
 at *signing*, after the reviewer has read everything.
+
+An ordinary recut no longer reaches it.
+[`gs artifact`](artifact.md#republishing-a-recut) retires the promise's
+earlier-head artifacts when it publishes the new head, so publish and then
+ask, with no supersession of your own in between. What still reaches this
+refusal is a pointer the republish could not clear — one a documentation
+page still cites, or one filed before the republish did the retiring — and
+the refusal names both repairs: publish the head again, and if that skips
+the pointer again, repoint the page at the successor and retire the
+pointer with [`gs supersede`](supersede.md).
 
 ## Refiling cancels work in flight
 

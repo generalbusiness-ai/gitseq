@@ -204,29 +204,24 @@ func (s *stepSession) reportingArtifact(standing []reviewArtifact, promise strin
 }
 
 // requireOneHead refuses a set that does not all stand at the reviewed head.
+//
+// gs artifact retires exactly this set when it publishes a new head, so the
+// ordinary recut never reaches here. What does reach here is a set that
+// publishing could not clear — a pointer whose retirement was refused because
+// documentation still cites it, or one filed before the republish did the
+// retiring — and the refusal names both repairs, because naming only the one
+// that has already been tried sends the author round the same loop.
 func (s *stepSession) requireOneHead(promise, head string) error {
-	if promise == "" {
-		return nil
-	}
-	var elsewhere []string
-	for _, artifact := range s.projection().Artifacts {
-		statement, found := s.statement(artifact.Event)
-		if artifact.Retired || artifact.Commit == head || !found || statement.Actor != s.fingerprint {
-			continue
-		}
-		for _, basis := range s.projection().Provenance[artifact.Event] {
-			if basis == promise {
-				elsewhere = append(elsewhere, fmt.Sprintf("%s at %s", artifact.Path, short(artifact.Commit)))
-				break
-			}
-		}
-	}
+	elsewhere := s.laneArtifactsElsewhere(promise, head)
 	if len(elsewhere) == 0 {
 		return nil
 	}
-	sort.Strings(elsewhere)
-	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set, so republish every path at %s with `gs artifact --head %s --promise %s <path…>`",
-		short(promise), strings.Join(elsewhere, ", "), short(head), head, short(promise))
+	named := make([]string, 0, len(elsewhere))
+	for _, artifact := range elsewhere {
+		named = append(named, fmt.Sprintf("%s at %s", artifact.Path, short(artifact.Commit)))
+	}
+	return fmt.Errorf("promise %s also carries live artifacts at another head (%s); gs review refuses a mixed-head set. Publishing this head again clears them: `gs artifact --head %s --promise %s <path…>` retires this promise's earlier-head artifacts in the same batch. If it refuses one because documentation still cites it, repoint that page at the successor, or retire the pointer yourself with `gs supersede`",
+		short(promise), strings.Join(named, ", "), head, short(promise))
 }
 
 // liveReviewRequestFor finds the actor's own unclosed review request for this

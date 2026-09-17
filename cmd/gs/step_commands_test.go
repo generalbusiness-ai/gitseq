@@ -568,21 +568,26 @@ func TestReviewRequestRefusesWhatAVerdictCouldNotAnswer(t *testing.T) {
 	f.refuses(t, "names no live actor in the durable roster", func() error {
 		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--head", lane.head, "--to", "nobody"})
 	})
+}
 
-	// A second head on the same promise is the set gs review refuses at
-	// signing, after the reviewer has done the reading.
-	if err := os.WriteFile(filepath.Join(lane.checkout, "asking.txt"), []byte("again\n"), 0o644); err != nil {
-		t.Fatal(err)
+// recut resets the lane's branch onto its target and rewrites only the paths
+// given, which is what a repair round and a recut onto a moved target both
+// produce: a second head whose changed set may be smaller than the first's.
+func (f workflowFixture) recut(t *testing.T, lane stepLane, paths ...string) string {
+	t.Helper()
+	testGit(t, lane.checkout, "reset", "-q", "--hard", "main")
+	for _, path := range paths {
+		full := filepath.Join(lane.checkout, filepath.FromSlash(path))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("recut "+path+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
-	testGit(t, lane.checkout, "commit", "-qam", "asking again")
-	second := testGit(t, lane.checkout, "rev-parse", "HEAD")
-	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
-		"--head", second, "--promise", promise, "asking.txt"}); err != nil {
-		t.Fatal(err)
-	}
-	f.refuses(t, "also carries live artifacts at another head", func() error {
-		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--head", second, "--to", "reviewer"})
-	})
+	testGit(t, lane.checkout, "add", ".")
+	testGit(t, lane.checkout, "commit", "-qm", "recut "+lane.branch)
+	return testGit(t, lane.checkout, "rev-parse", "HEAD")
 }
 
 func TestReviewRequestRefusesASecondRequestUnlessItReplacesTheFirst(t *testing.T) {
@@ -1417,5 +1422,265 @@ func TestWorkNextNotesAStaleRowAndItsRepair(t *testing.T) {
 	}
 	if !strings.Contains(printed, "gs promise --as operator "+lane.request) {
 		t.Fatalf("gs work --next printed\n%s\nwant the act the stale row still owes", printed)
+	}
+}
+
+// liveArtifactAt is the one live artifact this projection holds for a path at
+// a commit, which is what a lane owes per path at its head.
+func liveArtifactAt(t *testing.T, projection workroom.Projection, path, commit string) workroom.Artifact {
+	t.Helper()
+	var found []workroom.Artifact
+	for _, artifact := range projection.Artifacts {
+		if artifact.Path == path && artifact.Commit == commit && !artifact.Retired {
+			found = append(found, artifact)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("%s at %s has %d live artifacts, want one: %+v", path, commit, len(found), found)
+	}
+	return found[0]
+}
+
+// Publishing a recut retires what the promise carried at the earlier head, in
+// the same signed batch: a path this head changes again is succeeded by its
+// new artifact, and a path it no longer changes is retired bare. Leaving them
+// live was what made every repair round hand gs review-request a mixed set and
+// the merge a cleanup obligation it could not discharge.
+//
+// Not parallel: it reads process-wide standard output.
+func TestArtifactRetiresTheEarlierHeadOnTheSamePromise(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "recut", "reviewer", "operator", "recut.txt", "docs/recut.md")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "--report", "recut.txt",
+		"docs/recut.md", "recut.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	first := f.snapshot(t).Projection
+	firstPage := liveArtifactAt(t, first, "docs/recut.md", lane.head)
+	firstCode := liveArtifactAt(t, first, "recut.txt", lane.head)
+
+	// The recut drops the documentation page and keeps the code path, which
+	// is the pair of cases: one path recurs at the new head, one does not.
+	second := f.recut(t, lane, "recut.txt")
+	before := f.snapshot(t).Depth
+	printed, err := captureStdout(t, func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "recut.txt"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	if snapshot.Depth != before+3 {
+		t.Fatalf("depth = %d, want %d: one artifact and two retirements in one batch", snapshot.Depth, before+3)
+	}
+	successor := liveArtifactAt(t, snapshot.Projection, "recut.txt", second)
+	if page := artifactByEvent(t, snapshot.Projection, firstPage.Event); !page.Retired || page.Succeeded {
+		t.Fatalf("the earlier page artifact is %+v; a path this head no longer changes is retired bare", page)
+	}
+	if code := artifactByEvent(t, snapshot.Projection, firstCode.Event); !code.Retired || !code.Succeeded {
+		t.Fatalf("the earlier code artifact is %+v; a path this head changes again is succeeded", code)
+	}
+
+	// The identifiers printed on their own lines are still the artifacts
+	// alone, so the last of them is still the reporting artifact.
+	lines := strings.Split(strings.TrimSpace(printed), "\n")
+	if len(lines) != 3 || lines[0] != successor.Event {
+		t.Fatalf("stdout %q does not print the new artifact and then the two retirements", printed)
+	}
+	for _, want := range []string{
+		"retired docs/recut.md at " + short(lane.head) + " -> bare",
+		"retired recut.txt at " + short(lane.head) + " -> " + short(successor.Event),
+	} {
+		if !strings.Contains(printed, want) {
+			t.Fatalf("stdout %q does not say %q", printed, want)
+		}
+	}
+
+	// A rerun says the same thing and appends nothing: the artifact replays
+	// under its key, and there is no longer an earlier head to retire.
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "recut.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.snapshot(t).Depth; after != before+3 {
+		t.Fatalf("depth = %d after a rerun, want %d", after, before+3)
+	}
+}
+
+// The retirement reaches exactly one lane: this actor's own artifacts, on this
+// promise, at another head. Every neighbour of that set stays live, because
+// each of them belongs to a commitment this publication does not report.
+func TestArtifactRetiresNothingOutsideItsOwnLane(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "bounded", "reviewer", "operator", "bounded.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "bounded.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	sameHead := liveArtifactAt(t, f.snapshot(t).Projection, "bounded.txt", lane.head)
+
+	// Another promise of the same actor, at a head of its own.
+	other := f.buildStepLane(t, "bounded-other", "reviewer", "operator", "bounded-other.txt")
+	otherPromise := f.promiseLane(t, other, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", other.head, "--promise", otherPromise, "bounded-other.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	otherLane := liveArtifactAt(t, f.snapshot(t).Projection, "bounded-other.txt", other.head)
+
+	// Another actor's lane, at a head of its own.
+	foreign := f.buildStepLane(t, "bounded-foreign", "operator", "reviewer", "bounded-foreign.txt")
+	foreignPromise := f.promiseLane(t, foreign, "reviewer")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "reviewer",
+		"--head", foreign.head, "--promise", foreignPromise, "bounded-foreign.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	foreignArtifact := liveArtifactAt(t, f.snapshot(t).Projection, "bounded-foreign.txt", foreign.head)
+
+	second := f.recut(t, lane, "bounded.txt")
+	before := f.snapshot(t).Depth
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "bounded.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := f.snapshot(t)
+	if snapshot.Depth != before+2 {
+		t.Fatalf("depth = %d, want %d: one artifact and one retirement", snapshot.Depth, before+2)
+	}
+	for name, event := range map[string]string{
+		"an artifact of another actor":     foreignArtifact.Event,
+		"an artifact on another promise":   otherLane.Event,
+		"an artifact this run republished": sameHead.Event,
+	} {
+		if artifact := artifactByEvent(t, snapshot.Projection, event); artifact.Retired != (event == sameHead.Event) {
+			t.Fatalf("%s is %+v", name, artifact)
+		}
+	}
+
+	// The one at the same head is the earlier head's own artifact, retired
+	// because the republish moved its lane, not because it stood anywhere
+	// near the others. Publishing twice at one head retires nothing.
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "bounded.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.snapshot(t).Depth; after != before+2 {
+		t.Fatalf("depth = %d after republishing the same head, want %d: an artifact at the same head is never retired", after, before+2)
+	}
+}
+
+// The whole recut, end to end: publish, recut, publish again, and ask for the
+// review without a single hand-written supersession. The merge that follows
+// seals nothing from the abandoned head, because nothing from it is still
+// live to seal.
+func TestArtifactRecutGoesStraightIntoReviewWithNothingAbandoned(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "endtoend", "reviewer", "operator", "endtoend.txt", "docs/endtoend.md")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "--report", "endtoend.txt",
+		"docs/endtoend.md", "endtoend.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	first := lane.head
+	second := f.recut(t, lane, "endtoend.txt")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "endtoend.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--to", "reviewer"}); err != nil {
+		t.Fatalf("review-request after a recut: %v", err)
+	}
+	reviewRequest := f.latestStatement(t).Event
+	reporting := liveArtifactAt(t, f.snapshot(t).Projection, "endtoend.txt", second)
+	if request, _ := statementFor(f.snapshot(t).Projection, reviewRequest); request.Body["artifact"] != reporting.Event {
+		t.Fatalf("body.artifact = %s, want the artifact at the recut head %s", request.Body["artifact"], reporting.Event)
+	}
+	if bases := basesOf(t, f.snapshot(t), reviewRequest); len(bases) != 1 || bases[0] != reporting.Event {
+		t.Fatalf("the review request rests on %v, want only the artifact at the recut head", bases)
+	}
+
+	if err := promiseCommand(f.ctx, []string{"--repo", f.repo, "--as", "reviewer", reviewRequest}); err != nil {
+		t.Fatal(err)
+	}
+	reviewPromise := f.latestStatement(t).Event
+	if err := reviewCommand(f.ctx, []string{"--repo", f.repo, "--as", "reviewer", "--checkout", lane.checkout,
+		"--artifact", reporting.Event, "--promise", reviewPromise, "--verdict", "approved",
+		"--text", "APPROVED at the exact recut head"}); err != nil {
+		t.Fatal(err)
+	}
+	approval := f.latestStatement(t).Event
+	f.ratify(t, approval)
+
+	_, private, err := f.workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := mergeplan.Build(f.ctx, f.workspace, f.repo, second, approval, f.fingerprint(t, "operator"),
+		mergeplan.Signer{Name: "operator", Private: private})
+	if !plan.Allowed {
+		t.Fatalf("the merge plan for the recut head is refused: %+v", plan.Reasons)
+	}
+	for _, covering := range plan.CoveringArtifacts {
+		if covering.Commit == first {
+			t.Fatalf("the merge plan still seals %+v from the abandoned head %s", covering, short(first))
+		}
+		if covering.Class == mergeplan.ClassAbandoned {
+			t.Fatalf("the merge plan seals %+v as abandoned; the recut left nothing to abandon", covering)
+		}
+	}
+}
+
+// The refusal stays for the set a republish could not clear. A documentation
+// page still resting on an earlier-head pointer is the case: the retirement is
+// skipped rather than refusing the whole publication, because the successor it
+// would ask the author to repoint at is the artifact this run publishes. The
+// review request then names both repairs, in the order they are now possible.
+//
+// Not parallel: it reads process-wide standard error.
+func TestReviewRequestStillRefusesAMixedSetTheRepublishCouldNotClear(t *testing.T) {
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "cited", "reviewer", "operator", "cited.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", lane.head, "--promise", promise, "cited.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	standing := liveArtifactAt(t, f.snapshot(t).Projection, "cited.txt", lane.head)
+	page := filepath.Join(f.repo, "cites.md")
+	if err := os.WriteFile(page, []byte("This page rests on "+standing.Event+".\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testGit(t, f.repo, "add", "cites.md")
+
+	second := f.recut(t, lane, "cited.txt")
+	notice, err := captureStderr(t, func() error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--promise", promise, "cited.txt"})
+	})
+	if err != nil {
+		t.Fatalf("the publication was refused over a cited earlier pointer: %v", err)
+	}
+	if !strings.Contains(notice, "stays live") || !strings.Contains(notice, "cites.md") {
+		t.Fatalf("stderr %q does not name the pointer left live and the page citing it", notice)
+	}
+	if artifact := artifactByEvent(t, f.snapshot(t).Projection, standing.Event); artifact.Retired {
+		t.Fatal("a cited earlier pointer was retired anyway")
+	}
+	refusal := f.refuses(t, "also carries live artifacts at another head", func() error {
+		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", second, "--to", "reviewer"})
+	})
+	for _, want := range []string{"gs artifact --head " + second, "gs supersede", "cited.txt at " + short(lane.head)} {
+		if !strings.Contains(refusal.Error(), want) {
+			t.Fatalf("the refusal %q does not name %q", refusal, want)
+		}
 	}
 }

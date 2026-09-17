@@ -97,16 +97,16 @@ began yourself.
 `gs artifact --head <commit> --promise <your promise> --report <path>
 --text <what was met> <path…>`
 
-One artifact per path the head changed, each resting on that one promise, the
-reporting artifact last. Its text states the tests and conditions actually
-met. It is the implementation report: file no separate
-`ready-for-review`. Add `--rests-on` for the artifacts of behaviour the head
-documents; a page resting only on its request can never flare.
+One artifact per path the head changed, each on that one promise, the
+reporting artifact last. Its text states the tests and conditions met. It is
+the implementation report: file no separate `ready-for-review`. Add
+`--rests-on` for the behaviour a page documents; on its request alone it
+could never flare. A republish retires the promise's earlier-head artifacts
+in the same batch.
 
-The command refuses an abbreviated head, a promise that is not yours, is
-retired, or rests on no request, a path the head did not change or given
-twice, and a second promise as an extra basis. A changed path you named
-nothing for is a warning.
+It refuses an abbreviated head, a promise not yours, retired, or resting on
+no request, a path the head did not change or named twice, and a second
+promise as an extra basis. A changed path no artifact names is a warning.
 
 ## 5. Request review
 
