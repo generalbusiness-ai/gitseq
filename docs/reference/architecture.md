@@ -743,10 +743,16 @@ ordinary advance, which is no weaker than the witness itself, since the
 configuration file recording it sits beside the ref under the same local
 authority.
 
-Attachment keeps the strict rule with no such admission. Its candidate is an
-immutable head fetched before the transaction opened, so no read of its own
-can have been overtaken inside it, and the compare-and-swap against the
-observed authoritative ref remains what keeps that ref from moving backwards.
+Attachment keeps the strict rule with no such admission. What separates the
+two paths is not the age of the read — a fetched candidate can be overtaken
+while it is verified, exactly as a long local read can — but what the
+transaction then does with it. Attachment imports a ref: it ends in a
+compare-and-swap against the head the caller observed before fetching. A
+candidate shorter than a witness the sequence ref still continues could reach
+that swap only where the ref had been rolled back to exactly that observed
+head inside the window, which is the rollback the strict rule refuses before
+the ref moves. A read updates no ref, so admitting its stale verification
+changes nothing beyond which verified world its own caller is handed.
 
 #### Host identity
 

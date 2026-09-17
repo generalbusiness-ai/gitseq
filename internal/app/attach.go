@@ -115,10 +115,14 @@ const (
 
 // checkVerifiedFrontier is the strict rule: a verification may only stand
 // where it continues the witness the stored configuration holds. Attachment
-// judges by this rule alone. Its candidate is an immutable head fetched
-// before the transaction opened, so no long read can have been overtaken
-// inside it, and admitting a shorter candidate would only carry it into a
-// compare-and-swap this rule refuses it before.
+// judges by this rule alone, and not because its candidate was fetched
+// before the transaction opened — that read can be overtaken like any other.
+// It is because attachment ends in a compare-and-swap that moves the
+// sequence ref to that candidate. A candidate shorter than a witness the ref
+// still continues could reach the swap only where the ref had been rolled
+// back to exactly the head the caller observed before fetching, which is the
+// rollback this rule refuses before the ref moves. A read moves no ref and
+// carries no such exposure; judgeReadFrontier is its judgement.
 func checkVerifiedFrontier(ctx context.Context, store gitstore.Store, previous *apphost.VerifiedFrontier, verified kernel.Verification) error {
 	if previous == nil {
 		return nil
