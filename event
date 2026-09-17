@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/eventref/eventref.go","body":{"commit":"62905d95459852692914aef2e5e763f89cd54c77","path":"internal/eventref/eventref.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/residentclient/client.go","body":{"commit":"62905d95459852692914aef2e5e763f89cd54c77","path":"internal/residentclient/client.go"}}
