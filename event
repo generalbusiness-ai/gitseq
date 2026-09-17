@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review exact head afdb06a67795f9f1b0dd821e3540b42a5f8bfe41, including rollback protection, the concurrent-read tests and the stated attach-path condition."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8408d05cc88b54ee1d889cb37e5f285698c5d9a5"}
