@@ -86,6 +86,7 @@ you ask for review.
 | a path given twice, or a `--report` outside the set | the path |
 | `--rests-on` names a promise | that an artifact resting on two promises closes neither |
 | `--rests-on` names an artifact this run retires | the path and head of that pointer, and that a citation withdrawn in the same batch describes a superseded world from birth |
+| this head's artifact for a path was published before and retired since | the retired event, the head the live artifact stands at, and that a replay cannot revive a withdrawn pointer |
 | the request's target ref is not in this repository | the ref, and the `git fetch` that brings it |
 | the head and the target share no ancestor | the ref to recut the work onto |
 
@@ -165,12 +166,31 @@ A retirement that documentation still cites is **skipped**, with a warning
 naming the page and the pointer left live; the publication itself is never
 refused over one. The citation guard asks you to repoint the page at the
 successor first, and the successor is the artifact this very run
-publishes, so refusing would be a trap. For a path that is published
-again, repoint the page once the successor exists and then retire the
-pointer with [`gs supersede`](supersede.md). For a path the head no longer
-changes there is no successor to repoint at, so that one takes
-`gs supersede <artifact> --cited-ok --text <why>`. Until either is done
-the promise still carries two heads and `gs review-request` says so.
+publishes, so refusing would be a trap. Running the publication again does
+not clear it either — the page still cites the pointer — so the repair is
+yours: repoint the page at the artifact for that path at this head, then
+`gs supersede <artifact> --rests-on <its successor here> --text <why>`.
+Where this head no longer changes the path there is no successor to
+repoint at, and that one takes
+[`gs supersede <artifact> --cited-ok`](supersede.md). Until either is
+done the promise still carries two heads and `gs review-request` says so.
+
+## Republishing a head whose artifact was retired
+
+The key is the actor, the head and the path, so a rerun replays what the
+first run filed. That is what makes an interrupted publication resumable,
+and it is also the one case where a replay is wrong: once the earlier
+event has been **retired**, publishing that head again would hand back a
+withdrawn pointer, report it as the artifact standing there, and rest the
+retirement it carries on it — withdrawing the live artifact at the current
+head in favour of a dead one.
+
+That publication is refused, before anything is built. The refusal names
+the retired event and the head this promise's live artifact stands at.
+Publish the head the work is at now, or run that head's publication again;
+a retired event cannot be brought back, and nothing here tries. A key that
+names nothing, or one that names a live event, is unaffected: a first
+publication and an ordinary retry both go on as before.
 
 ## What it produces
 

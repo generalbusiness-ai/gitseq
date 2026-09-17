@@ -88,9 +88,13 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	if commitment.Stale {
 		fmt.Fprintf(os.Stderr, "note: promise %s is stale; the artifacts are admitted and record their stale bases, and ordinary staleness is not a reason to replace a promise\n", short(*promise))
 	}
+	elsewhere := session.laneArtifactsElsewhere(*promise, *head)
+	if err := refuseRetiredReplay(session, *head, paths, elsewhere); err != nil {
+		return err
+	}
 	labels := pathLabels(paths)
 	acts := artifactActs(session.fingerprint, *head, *branch, *promise, commitment.Request, reportPath, *text, paths, labels, bases)
-	retiring, deferred := retirements(session.laneArtifactsElsewhere(*promise, *head), labels, changed)
+	retiring, deferred := retirements(elsewhere, labels, changed)
 	noteDeferredRetirements(*head, deferred)
 	retiring = session.keepUncited(retiring)
 	if err := refuseRetiredBasis(*head, retiring, bases); err != nil {
@@ -351,6 +355,46 @@ func noteDeferredRetirements(head string, deferred []workroom.Artifact) {
 		fmt.Fprintf(os.Stderr, "warning: the artifact for %s at %s stays live: %s still changes that path and no artifact here names it, so nothing published now succeeds it; publish %s at this head too\n",
 			artifact.Path, short(artifact.Commit), short(head), artifact.Path)
 	}
+}
+
+// refuseRetiredReplay stops the publication that would leave no live pointer
+// at all. An artifact's key is the actor, the head and the path, so running a
+// head's publication again replays the event it filed the first time — which
+// is exactly what makes an interrupted run resumable. Once that event has been
+// retired, though, the replay hands back a withdrawn pointer: the run reports
+// a retired artifact as if it stood, and the retirement chain it composes
+// rests its successor on that dead event, so the live artifact at the current
+// head is withdrawn in favour of one that was already gone. Zero live pointers
+// at the path, from a command that exits zero.
+//
+// The rule is narrow on purpose, because the two neighbouring cases are
+// ordinary and must not move. A key naming nothing is a first publication; a
+// key naming a live event is the retry a lost answer or an interrupted batch
+// calls for, and publishing one head twice is the same act twice. Only a
+// replay of a retired event is refused, and it is refused before the chain is
+// built, let alone signed. Reviving the old event is never the alternative: it
+// is retired, and the log does not take it back.
+func refuseRetiredReplay(session *stepSession, head string, paths []string, elsewhere []workroom.Artifact) error {
+	filer := app.Filer{Name: session.actor, Fingerprint: session.fingerprint}
+	for _, path := range paths {
+		accepted, held := session.workspace.AcceptedUnderKey(session.ctx, filer, artifactKey(session.fingerprint, head, path))
+		if !held {
+			continue
+		}
+		if statement, found := session.statement(accepted); !found || !statement.Retired {
+			continue
+		}
+		repair := ""
+		for _, artifact := range elsewhere {
+			if artifact.Path == path {
+				repair = fmt.Sprintf(", where this promise's live artifact for it stands at %s", short(artifact.Commit))
+				break
+			}
+		}
+		return fmt.Errorf("this head already published %s, as artifact %s, and that pointer has since been retired; an artifact's key is the actor, the head and the path, so publishing %s again replays the withdrawn pointer instead of filing a live one, and the retirement it would carry would withdraw the live artifact in its favour%s. Publish the head the work stands at now, or run that head's publication again",
+			path, short(accepted), short(head), repair)
+	}
+	return nil
 }
 
 // refuseRetiredBasis stops the one --rests-on that cannot work. An artifact

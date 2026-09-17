@@ -1649,11 +1649,14 @@ func TestArtifactRecutGoesStraightIntoReviewWithNothingAbandoned(t *testing.T) {
 	}
 }
 
-// The refusal stays for the set a republish could not clear. A documentation
-// page still resting on an earlier-head pointer is the case: the retirement is
-// skipped rather than refusing the whole publication, because the successor it
-// would ask the author to repoint at is the artifact this run publishes. The
-// review request then names both repairs, in the order they are now possible.
+// The refusal stays for the set a republish could not clear, and names the
+// repair that does clear it. A documentation page still resting on an
+// earlier-head pointer is the case: the retirement is skipped rather than
+// refusing the whole publication, because the successor it would ask the
+// author to repoint at is the artifact this run publishes. Publishing again
+// skips it again, at a recurring path as much as a dropped one, so the repair
+// is the author's: repoint the page, retire the pointer on its successor, and
+// the review request goes through.
 //
 // Not parallel: it reads process-wide standard error.
 func TestReviewRequestStillRefusesAMixedSetTheRepublishCouldNotClear(t *testing.T) {
@@ -1666,10 +1669,14 @@ func TestReviewRequestStillRefusesAMixedSetTheRepublishCouldNotClear(t *testing.
 	}
 	standing := liveArtifactAt(t, f.snapshot(t).Projection, "cited.txt", lane.head)
 	page := filepath.Join(f.repo, "cites.md")
-	if err := os.WriteFile(page, []byte("This page rests on "+standing.Event+".\n"), 0o644); err != nil {
-		t.Fatal(err)
+	cite := func(event string) {
+		t.Helper()
+		if err := os.WriteFile(page, []byte("This page rests on "+event+".\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		testGit(t, f.repo, "add", "cites.md")
 	}
-	testGit(t, f.repo, "add", "cites.md")
+	cite(standing.Event)
 
 	second := f.recut(t, lane, "cited.txt")
 	notice, err := captureStderr(t, func() error {
@@ -1685,14 +1692,53 @@ func TestReviewRequestStillRefusesAMixedSetTheRepublishCouldNotClear(t *testing.
 	if artifact := artifactByEvent(t, f.snapshot(t).Projection, standing.Event); artifact.Retired {
 		t.Fatal("a cited earlier pointer was retired anyway")
 	}
+	successor := liveArtifactAt(t, f.snapshot(t).Projection, "cited.txt", second)
+
+	// Publishing again does not clear it: the page still cites the pointer,
+	// so the skip repeats and the set stays mixed. This is the loop the
+	// refusal must not send the author round.
+	before := f.snapshot(t).Depth
+	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--promise", promise, "cited.txt"}); err != nil {
+		t.Fatal(err)
+	}
+	if after := f.snapshot(t).Depth; after != before {
+		t.Fatalf("depth = %d after republishing the same head, want %d", after, before)
+	}
 	refusal := f.refuses(t, "also carries live artifacts at another head", func() error {
 		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
 			"--head", second, "--to", "reviewer"})
 	})
-	for _, want := range []string{"gs artifact --head " + second, "gs supersede", "cited.txt at " + short(lane.head)} {
+	for _, want := range []string{
+		"cited.txt at " + short(lane.head),
+		"publishing again will skip it again",
+		"gs supersede <artifact> --rests-on <its successor here>",
+		"--cited-ok",
+	} {
 		if !strings.Contains(refusal.Error(), want) {
 			t.Fatalf("the refusal %q does not name %q", refusal, want)
 		}
+	}
+
+	// The repair the refusal names, performed: repoint the page at the
+	// artifact for that path at this head, then retire the pointer on its
+	// successor. Only then does the review request go through.
+	cite(successor.Event)
+	if err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--rests-on", successor.Event, "--text", "The page now rests on the artifact at the reviewed head.",
+		standing.Event}); err != nil {
+		t.Fatalf("the repair the refusal names was itself refused: %v", err)
+	}
+	if artifact := artifactByEvent(t, f.snapshot(t).Projection, standing.Event); !artifact.Retired || !artifact.Succeeded {
+		t.Fatalf("the repaired pointer is %+v, want it retired and succeeded", artifact)
+	}
+	if err := reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+		"--head", second, "--to", "reviewer"}); err != nil {
+		t.Fatalf("review-request after the named repair: %v", err)
+	}
+	request := f.latestStatement(t)
+	if request.Body["artifact"] != successor.Event {
+		t.Fatalf("body.artifact = %s, want the artifact at the reviewed head %s", request.Body["artifact"], successor.Event)
 	}
 }
 
@@ -1753,7 +1799,11 @@ func TestArtifactLeavesLiveAPathTheHeadStillChangesButThisRunDoesNotName(t *test
 		return reviewRequestCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
 			"--head", second, "--to", "reviewer"})
 	})
-	for _, want := range []string{"dropped.txt at " + short(lane.head), "name every path above that this head still changes", "--cited-ok"} {
+	for _, want := range []string{
+		"dropped.txt at " + short(lane.head),
+		"For every path above that " + short(second) + " still changes, publish it",
+		"--cited-ok",
+	} {
 		if !strings.Contains(refusal.Error(), want) {
 			t.Fatalf("the refusal %q does not name %q", refusal, want)
 		}
@@ -1903,5 +1953,59 @@ func TestArtifactRetiresNothingBareWhenTheChangeSetCannotBeMeasured(t *testing.T
 	}
 	if !strings.Contains(notice, "the artifact for unmeasured-b.txt at "+short(first)+" stays live") {
 		t.Fatalf("stderr %q does not report the pointer left live", notice)
+	}
+}
+
+// Publishing a head whose artifact this promise has since retired. The key is
+// the actor, the head and the path, so the rerun replays the retired event:
+// the run would report a withdrawn pointer as the artifact standing there and
+// rest its retirement of the live head on it, leaving the path with no live
+// artifact at all. It is refused, and nothing is appended.
+func TestArtifactRefusesAHeadWhoseArtifactWasAlreadyRetired(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	lane := f.buildStepLane(t, "returning", "reviewer", "operator", "returning.txt")
+	promise := f.promiseLane(t, lane, "operator")
+	publish := func(head string) error {
+		return artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
+			"--head", head, "--branch", lane.branch, "--promise", promise, "returning.txt"})
+	}
+	if err := publish(lane.head); err != nil {
+		t.Fatal(err)
+	}
+	first := liveArtifactAt(t, f.snapshot(t).Projection, "returning.txt", lane.head)
+	second := f.recut(t, lane, "returning.txt")
+	if err := publish(second); err != nil {
+		t.Fatal(err)
+	}
+	current := liveArtifactAt(t, f.snapshot(t).Projection, "returning.txt", second)
+
+	refusal := f.refuses(t, "has since been retired", func() error { return publish(lane.head) })
+	for _, want := range []string{
+		"this head already published returning.txt",
+		short(first.Event),
+		"live artifact for it stands at " + short(second),
+		"Publish the head the work stands at now",
+	} {
+		if !strings.Contains(refusal.Error(), want) {
+			t.Fatalf("the refusal %q does not name %q", refusal, want)
+		}
+	}
+	if artifact := artifactByEvent(t, f.snapshot(t).Projection, current.Event); artifact.Retired {
+		t.Fatalf("the live artifact at the current head was retired anyway: %+v", artifact)
+	}
+	if live := liveArtifactAt(t, f.snapshot(t).Projection, "returning.txt", second); live.Event != current.Event {
+		t.Fatalf("the live artifact for returning.txt is %s, want the one at the current head %s", live.Event, current.Event)
+	}
+
+	// The two neighbouring replays are untouched: a key naming a live event
+	// is the ordinary retry, whether it finishes an interrupted run or
+	// publishes one head twice.
+	before := f.snapshot(t).Depth
+	if err := publish(second); err != nil {
+		t.Fatalf("republishing the current head: %v", err)
+	}
+	if after := f.snapshot(t).Depth; after != before {
+		t.Fatalf("depth = %d after an ordinary retry, want %d", after, before)
 	}
 }
