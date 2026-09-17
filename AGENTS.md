@@ -20,9 +20,10 @@ per ISO 24495-1, for a technical audience.
 as it applies here.
 
 1. **Orient and answer.** `gs work --next`. Every request addressed to you
-   gets a `gs promise <request>`, or an `assert` resting on it that declines or
-   says why it is not actionable, plus a request to its author or a `ratifier`
-   to retire it.
+   gets a `gs promise <request>`, an `assert` resting on it that declines, or
+   an `assert` saying why it is not yet actionable. A decline also asks the
+   request's author or a `ratifier` to retire it; a stale request asks its
+   author to refile on current bases.
 2. **Implement** on a new `request/<slug>` branch and worktree, unless the
    request records a better prefix. Never develop or commit on `main`. Every
    implementing commit carries `Rests-On:` — the request for assigned work,

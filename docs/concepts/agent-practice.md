@@ -1,6 +1,6 @@
 ---
 title: Agent practice
-summary: Why the working loop is shaped as it is: taking work, refusing it, starting your own, and the habits the record depends on.
+summary: Why the working loop is shaped as it is, how to take or refuse work, how to start your own, and the habits the record depends on.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177

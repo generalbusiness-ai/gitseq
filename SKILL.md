@@ -1,6 +1,6 @@
 ---
 name: workroom
-description: How to work in the gitseq workroom: the loop, and the command
+description: How to work in the gitseq workroom. The loop, and the command
   each step takes. Normative for agent actors; the implementation must match
   this contract.
 rests_on:
@@ -25,12 +25,12 @@ fold judges ineffective. Talk in the ephemeral channel (`say`); commit
 deliberately.
 
 Each step below takes one `gs` command. Each checks its shape and refuses
-before signing, naming the repair: read the refusal instead of working around
-it. `gs state`, `gs batch`, `gs ratify` and `gs supersede` remain for the acts
-no step command covers. They refuse an act the fold would rule ineffective,
-before signing, and answer a malformed invocation with usage; `--no-preflight`
-files an act as written. Pass `--as <you>`, or set `GITSEQ_ACTOR`, on every
-signing call.
+before signing, naming the repair: read it instead of working around it. `gs
+state`, `gs batch`, `gs ratify` and `gs supersede` remain for the acts no step
+command covers. They refuse an act the fold would rule ineffective, before
+signing, and answer a malformed invocation with usage; `--no-preflight` files
+an act as written. Pass `--as <you>`, or set `GITSEQ_ACTOR`, on every signing
+call.
 
 Reasoning and history: [the work loop](docs/concepts/work-loop.md),
 [agent practice](docs/concepts/agent-practice.md),
@@ -63,12 +63,13 @@ Every cycle, every request addressed to you gets one of three answers.
 
 `gs promise` refuses a request addressed to somebody else, a request that is
 not open, and a second claim while you hold a live promise on that request,
-unless it is the same idempotent retry, which replays the promise you already
-made. A promise is optional: when the work is already done, report straight
+unless it is the same idempotent retry, which replays it. A promise is optional: when the work is already done, report straight
 against the request, which only its addressee may do, with no live promise of
-their own on it. That report is
-`gs state --kind artifact --rests-on <request> --body path=<path>
---body commit=<full commit> --text <what was met>`.
+their own on it. For implementation work that report is the artifact, `gs
+state --kind artifact --rests-on <request> --body path=<path> --body
+commit=<full commit> --text <what was met>`; where the request owes no Git
+artifact it is `gs state --kind report --rests-on <request> --text <what was
+met>`.
 
 An unclaimed request that should move to another actor goes through
 [`gs reassign-if-unclaimed`](docs/reference/gs/reassign-if-unclaimed.md), flags
@@ -78,12 +79,12 @@ claim in between refuses the pair.
 Work you begin yourself, as both requester and performer, files no
 self-request and no self-promise: rest the implementing commit on the
 motivating adopted decision, publish the artifact, and go straight to review.
-No row then shows the work in flight, which is what the shortcut costs.
+No row then shows the work in flight.
 
 ## 3. Implement on a worktree
 
-Work on a new `request/<slug>` branch in its own worktree, unless the request
-records a better prefix. Never commit on the target branch: the request's
+Work on a new `request/<slug>` branch and worktree, unless the request records
+a better prefix. Never commit on the target branch: the request's
 `target_ref`, `main` unless a request or governing decision names another.
 Base and recut the work on it.
 
@@ -97,14 +98,13 @@ began yourself.
 --text <what was met> <path…>`
 
 One artifact per path the head changed, each resting on that one promise, the
-reporting artifact published last. Its text states the tests and conditions
-actually met. It is the implementation report: file no separate
+reporting artifact last. Its text states the tests and conditions actually
+met. It is the implementation report: file no separate
 `ready-for-review`. Add `--rests-on` for the artifacts of behaviour the head
-documents: a page resting only on the request that asked for it can never
-flare.
+documents; a page resting only on its request can never flare.
 
 The command refuses an abbreviated head, a promise that is not yours, is
-retired, or rests on no request, a path the head did not change, a path given
+retired, or rests on no request, a path the head did not change or given
 twice, and a second promise as an extra basis. A changed path you named
 nothing for is a warning.
 
@@ -119,16 +119,17 @@ for the same promise unless `--replace` retires the first.
 
 ## 6. Review, when you are the reviewer
 
-Promise the review, then `gs review --artifact <reporting artifact first,
-then the others you read> --promise <your promise> --checkout <clean checkout
-at that head> --verdict approved|changes-requested --text-file <file>`.
+Promise the review, then `gs review --artifact <reporting artifact>
+[--artifact <other>…] --promise <your promise> --checkout <clean checkout at
+that head> --verdict approved|changes-requested --text-file <file>`, the
+reporting artifact first.
 
 It refuses a retired artifact or promise, another actor's promise, a head you
 implemented, a dirty checkout or one not at the exact commit, and
 unacknowledged head news. Staleness does not stop a review; the verdict
 records what had moved.
 
-Before approval, every implementation review records three conclusions.
+Every implementation review records three conclusions before approval.
 
 - **Architecture:** name the affected layers from
   `docs/reference/architecture.md` and whether the head preserves or changes
@@ -143,7 +144,8 @@ Before approval, every implementation review records three conclusions.
 - **Simplification:** say what could be simpler without weakening the
   conditions of satisfaction, and request changes to cut the fluff.
 
-A `changes-requested` verdict closes nothing and authorizes no merge. Repair
+A `changes-requested` verdict closes no commitment and authorizes no merge.
+Repair
 the head on the same request and promise while the outcome, conditions,
 performer, destination and authority are unchanged: cite the finding in the
 new artifact, republish every changed path, and request review again. Work
@@ -161,19 +163,19 @@ worktree and branch, but only once `git merge-base --is-ancestor` proves the
 head is in the target. `--checkout` is the target checkout, not the
 candidate's worktree. It refuses an unratified approval you may not ratify, a
 retired or `changes-requested` verdict, a checkout that is not on the
-request's target ref, and a dirty one. Write `--text` for a reader who will
-never see an event id: who proposed, ratified and reviewed, what was raised,
-how it was resolved.
+request's target ref, and a dirty one. Write `--text` for a reader with no
+event ids: who proposed, ratified and reviewed, what was raised, how it was
+resolved.
 
-The merge publishes a successor at each changed path and retires the
-predecessors it may;
+The merge publishes a successor at each changed path, retires the
+predecessors it may, and seals every other covering pointer as carried,
+sibling or abandoned;
 [`gs merge`](docs/reference/gs/merge.md#artifact-succession) states those
-rules and seals every other covering pointer as carried, sibling or
-abandoned. Only an abandoned one owes cleanup, by its author or a
-`ratifier`. A [held landing](docs/reference/gs/merge.md#held-landings-and-the-compatibility-window)
+rules. Only an abandoned one owes cleanup, by its author or a `ratifier`. A
+[held landing](docs/reference/gs/merge.md#held-landings-and-the-compatibility-window)
 needs its owner's release first. If the target already has the approved head,
-run the command anyway: it records one incorporation receipt and touches
-nothing in Git.
+run it anyway: `gs merge` records one incorporation receipt and creates no
+merge commit, while `gs land` still pushes and cleans up.
 
 The sealed receipt closes the commitment, so no report and no ratification
 follow it. Work that resolves without landing closes through an explicit
@@ -188,22 +190,22 @@ finishing includes the review and the landing.
 ## Whatever you write down
 
 Cite the canonical full event identifier, copied from the result that returned
-it; say `#N` in prose, where a reader can check it by eye. `#N` and an
+it; say `#N` in prose, which a reader can check by eye. `#N` and an
 unambiguous hash fragment resolve at every signing boundary except a commit
 trailer. Cite files as `path@commit` at the revision you read, never copying a
 document into an event. Before choosing a kind for `gs state`, read
-`status.durable.vocabulary.definitions`: that governed catalog decides
-required fields, admissible bases and who may ratify. A request states
-`body.to`, `body.conditions`, and what it owes:
-`target_ref=refs/heads/<branch>`, `target=inherit`, or `no_git_artifact=true`;
-one stating no result is refused, and the boundary measures the target itself.
+`status.durable.vocabulary.definitions`: it decides required fields,
+admissible bases and who may ratify. A request states `body.to`,
+`body.conditions`, and what it owes: `target_ref=refs/heads/<branch>`,
+`target=inherit`, or `no_git_artifact=true`; one stating no result is refused,
+and the boundary measures the target itself.
 
-Treat GitHub issues and reviews like ephemeral chat: participate freely, and
-promote what crystallizes, with the quoted frames as evidence and the URL as
-a hint. Cite a pull request by its head commit, never rest a durable act on a
-bare URL, and put no secret in either channel. Keep routine progress and dead
-ends ephemeral. Promote a breakdown that changes scope or a condition of
+Treat GitHub issues and reviews like ephemeral chat: promote what
+crystallizes, with the quoted frames as evidence and the URL as a hint. Cite a
+pull request by its head commit, never rest a durable act on a bare URL, and
+put no secret in either channel. Keep routine progress and dead ends
+ephemeral. Promote a breakdown that changes scope or a condition of
 satisfaction, or creates follow-up work, and record a material blockage as an
-`assert` on the promise.
-Superseding your own promise is reneging, and early reneging is honourable.
-Never sign as another actor. Leave a log a stranger could audit.
+`assert` on the promise. Superseding your own promise is reneging, and early
+reneging is honourable. Never sign as another actor. Leave a log a stranger
+could audit.
