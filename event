@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/review_request.go","body":{"commit":"cf149328e748339519bf097e6c0d460938ec5e56","path":"cmd/gs/review_request.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/step_commands_test.go","body":{"commit":"cf149328e748339519bf097e6c0d460938ec5e56","path":"cmd/gs/step_commands_test.go"}}
