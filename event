@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c7f8fd627785ce7a6ceceb4b883b7d0ff550d770"}
+{"kind":"promise","text":"I will review exact head 97817c0758db58637d7b744e93cb5c42fafbe901 for the timeout behavior, documentation provenance and retained full-suite and slow-test evidence."}
