@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc74e676c77a9e23d65975b5cd6772de27773c66","text":"Merge retired a covered predecessor; the successor is at internal/workroom/fold.go."}
+{"kind":"promise","text":"Claude promises the Dependabot PR #22 resolution on request/dependabot-sqlite-0.35.4: re-derive the module and lock files with the declared toolchain, run the conditions' gates, publish exact-head artifacts, obtain codex review, land on main, push, record how PR #22 was resolved.","body":{"branch":"request/dependabot-sqlite-0.35.4"}}
