@@ -239,7 +239,7 @@ func publishCommand(ctx context.Context, arguments []string) error {
 	// and is resolved and described before anything is signed. Everything
 	// else this command names — the remote, the ref, the accepted head — is
 	// ordinary Git and is not an event.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{basis}); err != nil {
 		return err
 	}
@@ -594,7 +594,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// correctable, and the citations are described there too, so an author
 	// learns what their bases mean here before the act becomes durable rather
 	// than after.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, nil, (*[]string)(&rests)); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -700,7 +700,7 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	// Every event this verdict names is resolved against one verified event
 	// set before the guard reads any of them, so the whole citation set of one
 	// review is judged against one world and signed as canonical identifiers.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{promise, decision},
 		(*[]string)(&artifactsFlag), (*[]string)(&headNews), (*[]string)(&implementations)); err != nil {
 		return err
@@ -797,18 +797,21 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	// The approval and the authorization name durable events; --candidate
-	// names an ordinary Git commit, which is not an event reference and is
-	// never resolved here.
-	resolver := newResolver(ctx, workspace)
-	if err := resolveRefs(resolver, []*string{approval, authorization}); err != nil {
-		return err
-	}
-	showResolved(resolver)
+	// Where this command acts is settled before its references are resolved,
+	// because that is also where the projection they are resolved against
+	// comes from.
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
+	// The approval and the authorization name durable events; --candidate
+	// names an ordinary Git commit, which is not an event reference and is
+	// never resolved here.
+	resolver := newResolver(ctx, workspace, serverURL)
+	if err := resolveRefs(resolver, []*string{approval, authorization}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	_, err = apphost.WithMetaLock(workspace.MetaDir, mergeLockFile, func() (struct{}, error) {
 		return struct{}{}, mergeLocked(ctx, workspace, as, checkout, candidate, approval, authorization, mergeText, serverURL)
 	})
@@ -1185,16 +1188,16 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	resolver := newResolver(ctx, workspace)
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{approval}); err != nil {
 		return err
 	}
 	showResolved(resolver)
 	actor, err := signingActor(*as)
-	if err != nil {
-		return err
-	}
-	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -1819,7 +1822,7 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&target}); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -1871,7 +1874,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&target}, (*[]string)(&rests)); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -1947,7 +1950,7 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	}
 	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&oldRequest}, (*[]string)(&rests)); err != nil {
 		return err
 	}
@@ -2103,12 +2106,18 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// Where this chain will be sequenced is settled first, because that is
+	// also where the projection it is resolved and judged against comes from.
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	// The whole chain is resolved against one verified event set before the
 	// first append, for the same reason readBatch reads the whole file first:
 	// a chain that cannot resolve should land nothing. A "$label" names an act
 	// this batch has yet to mint, so it is not an event reference this
 	// boundary reads and passes through to the label resolver untouched.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	for position := range acts {
 		entry := &acts[position]
 		if err := resolveRefs(resolver, []*string{&entry.Target, &entry.Retirement}, &entry.RestsOn); err != nil {
@@ -2120,10 +2129,6 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	}
 	showResolved(resolver)
 	discloseBases(resolver, chainCitations(acts))
-	serverURL, err := resolveServerURL(workspace, *serverFlag)
-	if err != nil {
-		return err
-	}
 	// Act shape is settled before the signing key is read, so a chain that
 	// could never be built does not first ask for a key. runBatch checks it
 	// again, because it is the function that must not append a malformed act,
@@ -2538,17 +2543,13 @@ func statusCommand(ctx context.Context, arguments []string) error {
 	}
 	if serverURL != "" {
 		if *jsonOutput || *all {
-			status, remoteErr := fetchFullStatus(ctx, serverURL)
+			durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
 			if remoteErr == nil {
-				if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err == nil {
-					if *jsonOutput {
-						return printJSON(completeStatus(status.Durable))
-					}
-					_, err = os.Stdout.Write(workroom.RenderStatus(status.Durable.Projection))
-					return err
-				} else {
-					remoteErr = err
+				if *jsonOutput {
+					return printJSON(completeStatus(durable))
 				}
+				_, err = os.Stdout.Write(workroom.RenderStatus(durable.Projection))
+				return err
 			}
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
 		} else {
@@ -2789,7 +2790,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if *next {
 		// The acts a row owes depend on facts the bounded page does not
 		// carry, so --next reads the projection itself; see cmd/gs/work_next.go.
-		lines, err := workNext(ctx, workspace, page, fingerprint)
+		lines, err := workNext(ctx, workspace, serverURL, page, fingerprint)
 		if err != nil {
 			return err
 		}
@@ -2854,12 +2855,9 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		// The extra selectors are deliberately CLI-only. Read the resident's
 		// existing full snapshot instead of smuggling them through the bounded
 		// HTTP request type and silently widening that protocol.
-		status, remoteErr := fetchFullStatus(ctx, serverURL)
+		durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
 		if remoteErr == nil {
-			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
-		}
-		if remoteErr == nil {
-			snapshot = status.Durable
+			snapshot = durable
 			answered = true
 		} else {
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
@@ -2980,19 +2978,19 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	// A canonical identifier reaches the resident untouched, so this command
-	// stays exactly as cheap as it was for the form it always accepted. A
-	// record number or a hash fragment is resolved here first, against this
-	// checkout's own verified event set.
-	resolver := newResolver(ctx, workspace)
-	if err := resolveRefs(resolver, []*string{&event}); err != nil {
-		return err
-	}
-	showResolved(resolver)
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
+	// A canonical identifier reaches the resident untouched, so this command
+	// stays exactly as cheap as it was for the form it always accepted. A
+	// record number or a hash fragment is resolved here first, against the
+	// verified event set sessionSnapshot answers with.
+	resolver := newResolver(ctx, workspace, serverURL)
+	if err := resolveRefs(resolver, []*string{&event}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	var inspection statusview.ItemInspection
 	answered := false
 	if serverURL != "" {
@@ -3057,12 +3055,9 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	snapshot := app.Snapshot{}
 	degraded := false
 	if serverURL != "" {
-		status, remoteErr := fetchFullStatus(ctx, serverURL)
+		durable, remoteErr := residentSnapshot(ctx, workspace, serverURL)
 		if remoteErr == nil {
-			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
-		}
-		if remoteErr == nil {
-			snapshot = status.Durable
+			snapshot = durable
 		} else {
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
 			degraded = true

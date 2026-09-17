@@ -1763,6 +1763,33 @@ prefix. `--no-preflight` files any act as written. An act the check admits is
 signed exactly as it would have been, and no rule lives here that the fold does
 not already hold.
 
+A command given `--server` takes the projection it judges against from that
+resident instead of folding the whole log again, through one opener shared by
+`gs promise`, `gs artifact`, `gs review-request`, `gs land`, `gs work --next`
+and the reference resolution of `gs state`, `gs batch`, `gs ratify` and
+`gs supersede`; `gs status --json` already read it that way. What the CLI
+accepts from the resident is the projection itself: the fold's rows for the
+records at one frontier. What it still checks locally, before any of it is
+used, is everything that says the answer is about this world — the workroom's
+own genesis; the sequence ref, read before the request and again after it, so
+the head the resident names is this checkout's head and did not move under the
+read; the fold profile, so a projection produced by another interpreter is
+refused however current its frontier is; and the decision count against the
+frontier depth, so a truncated answer is not read as a world in which the
+missing records never happened. Whatever fails is named on standard error and
+answered by the local audit. Without `--server` the verified local log remains
+the only source.
+
+Two things do not move with it. The fold preview above reads the local
+verified log, and so does the admission that builds the act and the custody
+that signs it: nothing a resident sends becomes testimony a local key signs,
+and a command that reaches either pays for the audit whatever its projection
+came from. And the resident gains no authority it did not have — it holds the
+sequencer key and folds the act a moment later, so a projection it serves for
+a command to judge against is within the boundary it already stood on. The
+frontier check is what keeps a stale, foreign, truncated or unreachable one
+out of that boundary.
+
 A malformed invocation is answered the same way everywhere: the command's own
 flags and one worked example on standard error, and a non-zero exit with nothing
 touched. That covers an undefined flag, a missing required flag or argument, a

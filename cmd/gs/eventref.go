@@ -13,11 +13,13 @@ import (
 // newResolver returns the one resolver every event reference of one command is
 // answered from. The verified event set behind it is read at most once, and
 // only if something typed actually needs resolving, so a caller who pasted
-// canonical identifiers pays nothing for this.
-func newResolver(ctx context.Context, workspace *app.Workspace) *eventref.Resolver {
+// canonical identifiers pays nothing for this. When it does read, it reads
+// through sessionSnapshot: the projection a resident standing exactly here
+// already holds, or the local audit.
+func newResolver(ctx context.Context, workspace *app.Workspace, serverURL string) *eventref.Resolver {
 	room := roomOf(workspace)
 	return eventref.New(room, func() (eventref.Set, error) {
-		snapshot, err := snapshotWithProgress(ctx, workspace)
+		snapshot, err := sessionSnapshot(ctx, workspace, serverURL)
 		if err != nil {
 			return eventref.Set{}, err
 		}
