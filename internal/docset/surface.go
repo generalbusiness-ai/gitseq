@@ -6,9 +6,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 // Subcommand is one `gs` subcommand and the flags it accepts.
@@ -30,32 +32,35 @@ type Tool struct {
 // same person who forgot to update the documentation, so it would not catch
 // the mistake the gate exists to catch.
 const (
-	gsMain  = "cmd/gs/main.go"
-	mcpMain = "cmd/gitseq-mcp/main.go"
+	gsPackage = "cmd/gs"
+	mcpMain   = "cmd/gitseq-mcp/main.go"
 )
 
 // CLISurface returns every `gs` subcommand, with its flags, in name order.
 func CLISurface(root string) ([]Subcommand, error) {
-	file, err := parseFile(filepath.Join(root, gsMain))
+	// The whole package, not only main.go: a subcommand may be implemented in
+	// its own file, and a gate that looked in one file would report such a
+	// command as having no flags at all and fail every page for it.
+	file, err := parsePackage(filepath.Join(root, gsPackage))
 	if err != nil {
 		return nil, err
 	}
 	shared, err := collectFlags(file, "flags", map[string]bool{})
 	if err != nil {
-		return nil, fmt.Errorf("%s: shared flags: %w", gsMain, err)
+		return nil, fmt.Errorf("%s: shared flags: %w", gsPackage, err)
 	}
 	if len(shared) == 0 {
-		return nil, fmt.Errorf("%s: no shared flags found; the extractor no longer matches the source", gsMain)
+		return nil, fmt.Errorf("%s: no shared flags found; the extractor no longer matches the source", gsPackage)
 	}
 	dispatch, err := dispatchTable(file)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", gsMain, err)
+		return nil, fmt.Errorf("%s: %w", gsPackage, err)
 	}
 	commands := make([]Subcommand, 0, len(dispatch))
 	for name, function := range dispatch {
 		own, err := flagsIn(file, function)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %s: %w", gsMain, name, err)
+			return nil, fmt.Errorf("%s: %s: %w", gsPackage, name, err)
 		}
 		flags := append(append([]string(nil), shared...), own...)
 		sort.Strings(flags)
@@ -63,7 +68,7 @@ func CLISurface(root string) ([]Subcommand, error) {
 	}
 	sort.Slice(commands, func(i, j int) bool { return commands[i].Name < commands[j].Name })
 	if len(commands) == 0 {
-		return nil, fmt.Errorf("%s: no subcommands found; the extractor no longer matches the source", gsMain)
+		return nil, fmt.Errorf("%s: no subcommands found; the extractor no longer matches the source", gsPackage)
 	}
 	return commands, nil
 }
@@ -128,6 +133,37 @@ func MCPSurface(root string) ([]Tool, error) {
 		return nil, fmt.Errorf("%s: no tools found; the extractor no longer matches the source", mcpMain)
 	}
 	return tools, nil
+}
+
+// parsePackage reads every non-test file of one package into a single
+// synthetic file. The gates only walk declarations, so merging them is enough
+// to resolve a call to a function written in a sibling file.
+func parsePackage(dir string) (*ast.File, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	merged := &ast.File{Name: ast.NewIdent(filepath.Base(dir))}
+	for _, name := range names {
+		file, err := parseFile(filepath.Join(dir, name))
+		if err != nil {
+			return nil, err
+		}
+		merged.Decls = append(merged.Decls, file.Decls...)
+	}
+	if len(merged.Decls) == 0 {
+		return nil, fmt.Errorf("%s: no package files found", dir)
+	}
+	return merged, nil
 }
 
 func parseFile(path string) (*ast.File, error) {

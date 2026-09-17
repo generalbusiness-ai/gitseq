@@ -2,6 +2,7 @@
 title: gs work
 summary: Select the work one actor still owes or is owed, bounded and paged.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d135abad0f792f493ac3124c7025d4ff0076d5c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f85c910b62d17846463092a668e7af6d19b20fb
@@ -39,6 +40,7 @@ Rows expose [landing evidence and current Git observations](../landing-observati
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
 | `--json` | `false` | Emit the page as JSON instead of the human view. |
+| `--next` | `false` | Print one exact command line for the act each selected row owes, instead of the human view. |
 | `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 
 There is no default actor, for the same reason there is none on a write:
@@ -68,7 +70,66 @@ gs work --repo "$REPO" --as bot
 gs work --repo "$REPO" --as alice --lane you_are_waiting_on
 gs work --repo "$REPO" --as bot --status promised --stale exclude --limit 5
 gs work --repo "$REPO" --as bot --json | head -8
+gs work --repo "$REPO" --as bot --next
 ```
+
+## `--next`: what to type
+
+The page says what each row is. `--next` says what to do about it: for
+every row it returns, one `#` comment naming the row and one command line
+you can copy.
+
+```text
+# open available_to_you git:sha1:…#git:sha1:…
+#   Add a changelog
+gs promise --as bot git:sha1:…#git:sha1:…
+#   or decline: gs state --as bot --kind assert --rests-on git:sha1:…#git:sha1:… --text '<why you decline>', and ask alice to retire it
+```
+
+It is a formatter over the same rows, not a second rule set, and it prints
+the same selection: `--lane`, `--status`, `--stale`, `--limit` and
+`--cursor` all still apply. The mapping is one line per lane:
+
+Whose row it is decides what it prints. A commitment has a performer and a
+requester, and their acts are not interchangeable: the performer's acts
+appear only on the performer's page, and telling a requester to publish
+somebody else's artifacts would print a command the preflight refuses.
+
+| the row | the act it owes |
+|---|---|
+| an unclaimed request addressed to you | [`gs promise`](promise.md), with the decline written out beside it |
+| a proposal awaiting your ratification | [`gs ratify`](ratify.md) |
+| your promise with nothing published yet | [`gs artifact`](artifact.md) — or, when the request owes no Git artifact, an explicit `gs state --kind report` |
+| your promised review request | [`gs review`](review.md), as a skeleton, with the verdict left as a placeholder to choose |
+| your artifact awaiting review with no request out | [`gs review-request`](review-request.md) |
+| an approved head you asked the review for | [`gs ratify`](ratify.md), then [`gs land`](land.md) |
+| your row awaiting landing | [`gs land`](land.md) |
+| a report you must ratify as its requester | [`gs ratify`](ratify.md) |
+| an assert resting on one of your promises | [`gs inspect`](inspect.md), with its first line |
+| somebody else's move | nothing, and the name of who it waits on |
+
+A claimed row whose bases moved wears the lifecycle word `stale` in place
+of `promised`, and it still owes exactly what a promised row owes, so it
+prints that act with the stale note above it.
+
+A row that owes you nothing says so and says why — "waiting on carol", "a
+review request is live and no verdict has been filed yet" — because a row
+that prints nothing and a row that owes nothing must not look the same.
+
+Facts the bounded page does not carry appear as angle-bracketed
+placeholders: `<head>`, `<path…>`, `<reviewer>`, `<checkout on
+refs/heads/main>`. A command line with a hole in it is still the shape of
+the act, and it is honest about the part only you know. A row that is
+stale carries a note naming its successor, or the requester to ask for a
+refile, above the act it still owes.
+
+Asserts are not commitments and never appear as rows, so `--next` scans
+for asserts resting on your live promises and prints the ten newest. A
+breakdown somebody filed against your work is otherwise found only by
+whoever thought to look.
+
+Because those acts depend on facts the page does not carry, `--next` reads
+the projection locally even when the page itself came from a resident.
 
 ## Reading it
 
@@ -141,5 +202,6 @@ socket. Without it, the local read folds the log the way
 
 ## See also
 
+- [`gs promise`](promise.md), [`gs artifact`](artifact.md), [`gs review-request`](review-request.md), [`gs land`](land.md)
 - [`gs status`](status.md), [`gs inspect`](inspect.md), [`gs artifacts`](artifacts.md)
 - [MCP `work`](../mcp/work.md)
