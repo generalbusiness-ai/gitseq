@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:add06e1b08ec10cb57e250bda06bae8f764e8e56","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/state.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b6f6caf1698f9aa77208848c9d4d5e0feb614bf1","text":"Merge retired a covered predecessor; the successor is at internal/eventref/eventref.go."}
