@@ -27,7 +27,12 @@ make build
 `make test` runs the full gates, including documentation gates that
 build scratch workrooms and execute every example in these pages. Expect
 about ten minutes with little visible progress, even on a fast machine —
-it is working, not hung.
+it is working, not hung. On a busy machine one package can take a good
+deal longer, so the Makefile passes `-timeout 40m` in place of go test's
+ten-minute default; without it a slow run is killed and reported as
+`panic: test timed out`, which looks like a failure of the product rather
+than of the clock. Override the figure with `GO_TEST_TIMEOUT` if you need
+to.
 
 `make build` puts `gs` and `gitseq-mcp` in `bin/`. Still in the gitseq
 checkout, put them on your path and keep the checkout's location — later

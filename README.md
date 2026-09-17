@@ -285,6 +285,16 @@ make vet test race build ui spike
 git diff --exit-code
 ```
 
+The `test`, `race` and `docs` targets pass `-timeout 40m` rather than go
+test's ten-minute per-package default. Hosted CI finishes the whole suite
+under the race detector in about six minutes, but on a developer machine
+running several things at once `cmd/gs` has taken up to fourteen minutes on
+its own. At the default a run like that is killed mid-test and reported as
+`panic: test timed out`, which reads as a product failure and can be
+mistaken for a gate that passed. Forty minutes covers the observed range
+with margin and still stops a genuinely hung test. Set `GO_TEST_TIMEOUT` to
+change it.
+
 The shipping Go module lives at the repository root. `cmd/gs` and
 `cmd/gitseq-mcp` build the two user-facing binaries, while `internal/` holds
 the kernel, workroom profile, and services. `spike/` is deliberately narrower:
