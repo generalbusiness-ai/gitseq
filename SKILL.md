@@ -190,7 +190,7 @@ finishing includes the review and the landing.
 ## Whatever you write down
 
 Cite the canonical full event identifier, copied from the result that returned
-it; say `#N` in prose, which a reader can check by eye. `#N` and an
+it; say `#N` in prose, checkable by eye. `#N` and an
 unambiguous hash fragment resolve at every signing boundary except a commit
 trailer. Cite files as `path@commit` at the revision you read, never copying a
 document into an event. Before choosing a kind for `gs state`, read
