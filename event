@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review OpenTelemetry runtime head df1d0d01bc0902fc84fd29c558e281f6a374a0e9, checking module alignment, telemetry boundaries and exact-head test evidence."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:518d4e6c3c7ecd0620c8dfc3e566570d113902b4"}
