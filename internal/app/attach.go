@@ -53,7 +53,8 @@ func AttachSequence(ctx context.Context, repo, genesis, objectFormat, head, expe
 	}
 	refAccepted := false
 	_, err = apphost.UpdateConfig(metaDir, opened, func(current *apphost.Config) (bool, error) {
-		if err := checkVerifiedFrontier(ctx, store, current.VerifiedFrontier, verified); err != nil {
+		decision, err := checkVerifiedFrontier(ctx, store, genesis, current.VerifiedFrontier, verified)
+		if err != nil {
 			return false, err
 		}
 		attachImportGate()
@@ -67,7 +68,10 @@ func AttachSequence(ctx context.Context, repo, genesis, objectFormat, head, expe
 			return false, fmt.Errorf("refuse sequence import after the authoritative ref changed: %w", err)
 		}
 		refAccepted = true
-		if current.VerifiedFrontier != nil && current.VerifiedFrontier.Head == head {
+		// The candidate the ref now carries is the witness only when the
+		// judgement said so: a position the witness already covers leaves it
+		// alone rather than writing a shorter or repeated frontier.
+		if decision == frontierKeep {
 			return false, nil
 		}
 		attachCheckpointGate()
@@ -101,25 +105,79 @@ func sequenceContinuation(ctx context.Context, store gitstore.Store, previous, h
 	return len(commits), nil
 }
 
-func checkVerifiedFrontier(ctx context.Context, store gitstore.Store, previous *apphost.VerifiedFrontier, verified kernel.Verification) error {
+// frontierDecision says what the caller's transaction may do with the stored
+// rollback witness once a verification has been judged against it.
+type frontierDecision int
+
+const (
+	// frontierStore records the judged verification as the new witness.
+	frontierStore frontierDecision = iota
+	// frontierKeep leaves the stored witness exactly where it is, because the
+	// verification describes a position that witness already covers.
+	frontierKeep
+)
+
+// checkVerifiedFrontier judges one verification against the witness the
+// stored configuration holds, inside that configuration's transaction, and
+// says whether the witness may move.
+//
+// The witness exists to refuse a sequence ref that moved backwards. A
+// verification shorter than the witness is not by itself that. Verifying a
+// deep sequence takes minutes, and another process on the same checkout may
+// append and advance the witness while that read runs; the finished read is
+// then merely stale, and refusing it costs the caller a whole further
+// verification for nothing. Such a read is admitted and the witness stays
+// where the appender left it, so the marker never moves backwards.
+//
+// A stale read is admitted only on both of these, read here and not from
+// memory: the sequence ref as it now stands is the witnessed head or
+// continues it, and the shorter verification is an ancestor of the witnessed
+// head at exactly the depth separating them. A ref that itself moved back
+// fails the first test, and a sibling history fails the second, so both are
+// still refused as rollbacks.
+func checkVerifiedFrontier(ctx context.Context, store gitstore.Store, genesis string, previous *apphost.VerifiedFrontier, verified kernel.Verification) (frontierDecision, error) {
 	if previous == nil {
-		return nil
+		return frontierStore, nil
 	}
 	if verified.Depth < previous.Depth {
-		return fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verified.Depth, previous.Depth)
+		if staleVerification(ctx, store, genesis, previous, verified) {
+			return frontierKeep, nil
+		}
+		return frontierKeep, fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d", verified.Depth, previous.Depth)
 	}
 	if verified.Head == previous.Head {
 		if verified.Depth != previous.Depth {
-			return errors.New("refuse inconsistent verified frontier depth")
+			return frontierKeep, errors.New("refuse inconsistent verified frontier depth")
 		}
-		return nil
+		return frontierKeep, nil
 	}
 	count, err := sequenceContinuation(ctx, store, previous.Head, verified.Head)
 	if err != nil {
-		return fmt.Errorf("refuse non-descendant verified frontier: %w", err)
+		return frontierKeep, fmt.Errorf("refuse non-descendant verified frontier: %w", err)
 	}
 	if verified.Depth != previous.Depth+count {
-		return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s at depth %d", verified.Head, previous.Head, previous.Depth)
+		return frontierKeep, fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s at depth %d", verified.Head, previous.Head, previous.Depth)
 	}
-	return nil
+	return frontierStore, nil
+}
+
+// staleVerification reports whether a verification shorter than the witness is
+// a read that finished after the world moved on rather than a rollback. Any
+// error answers no, so an unreadable ref or an unreachable history is refused
+// as a rollback exactly as before.
+func staleVerification(ctx context.Context, store gitstore.Store, genesis string, previous *apphost.VerifiedFrontier, verified kernel.Verification) bool {
+	head, err := store.Head(ctx, kernel.Ref(genesis))
+	if err != nil {
+		return false
+	}
+	if head != previous.Head {
+		if _, err := sequenceContinuation(ctx, store, previous.Head, head); err != nil {
+			return false
+		}
+	}
+	count, err := sequenceContinuation(ctx, store, verified.Head, previous.Head)
+	if err != nil {
+		return false
+	}
+	return count == previous.Depth-verified.Depth
 }

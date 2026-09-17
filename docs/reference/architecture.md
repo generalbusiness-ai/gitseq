@@ -721,6 +721,26 @@ fields are adopted back into memory under the in-memory lock. The in-memory
 lock is distinct from the on-disk advisory lock that serializes separate
 processes.
 
+**The verified frontier is a rollback witness, and refuses only a rollback.**
+Every verification is judged against the witness the stored file holds at that
+moment, inside the same update transaction, never against the verifying
+workspace's own memory. A verification that continues the witnessed head
+advances it. A verification shorter than the witness is judged on the sequence
+ref as it stands at that moment: where the ref is the witnessed head or
+continues it, and the shorter verification is an ancestor of that head at
+exactly the depth separating them, the read merely finished after another
+process appended, so it is admitted and the witness is left where that process
+put it. Where either test fails — the ref itself moved back, or the shorter
+verification stands on a history the witnessed head never carried — it is
+refused as a rollback, as is a verification whose head does not descend from
+the witnessed one. The caller of an admitted stale read receives the world it
+actually verified, which the fold and the resident re-judge on the next
+append; the marker itself never moves backwards.
+
+Attachment applies the same judgement before its compare-and-swap, and the
+swap against the observed authoritative ref remains what keeps that ref from
+moving backwards.
+
 #### Host identity
 
 Identity sits in this layer for the same reason the binding does. An
