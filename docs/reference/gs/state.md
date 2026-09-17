@@ -30,6 +30,7 @@ the only two acts it cannot make.
 | `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession, or a record the fold refused, stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 ## Example
 
@@ -54,6 +55,47 @@ printf '# Starting\n\nThe first entry will describe the request itself.\n' > not
 gs state --repo "$REPO" --as bot --kind assert \
   --text-file note.md --rests-on "$PROMISE"
 ```
+
+## Refused before signing
+
+Before anything is signed, this command asks the fold what it would decide about
+the act as written, and refuses when the answer is not effective:
+
+```text
+gs: the fold would rule this act ineffective: dangling promise has no request
+fix: rest the promise on the request it claims: --rests-on <request-event>
+file it as written with --no-preflight
+```
+
+The reason is the fold's own, word for word; the line beneath it is all this
+boundary adds, and a reason nobody has written a line for prints alone. Nothing
+has happened when it prints: no signing key has been read, no act has been
+built, and the log stands where it stood.
+
+It is advice, not authority. No rule lives here — the check folds the
+prospective record with the same fold the sequencer runs, over the projection
+this checkout last verified — and the fold judges the act again at sequencing,
+against the world it actually joins. That second judgement is the one that
+counts. `--no-preflight` skips the check and files the act exactly as written,
+for the deliberate filing of a shape the fold refuses.
+
+Four cases are left to the fold, with no refusal here:
+
+| case | why |
+|---|---|
+| this process cannot fold the workroom | there is no world to judge against |
+| `--server` names a resident standing anywhere but where this checkout stands | the act joins that resident's frontier, not this one |
+| the act carries an `--idempotency-key` this actor already holds | it is a retry: the sequencer replays the accepted event, or refuses the key as reused, and a judgement against today's world would refuse a recovery. This is decided per act, so in a chain it stands down for that act alone — see [`gs batch`](batch.md#refused-before-signing) |
+| the act's body cannot be built at all — an undefined kind, a request stating no result, a reserved field | the builder refuses it at signing, in its own words |
+
+Not everything the builder refuses is judged here. A retirement documentation
+still cites, a report's basis and an unratifiable target are judged after a key
+is read, as they always were.
+
+A malformed invocation is a different answer, and an earlier one: an undefined
+flag, a missing required flag, a subject given as a flag where a positional
+argument belongs, or an event reference that names nothing here prints this
+command's flags and one worked example, and exits non-zero with nothing touched.
 
 ## Writing the statement to a file
 

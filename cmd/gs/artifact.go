@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -30,14 +29,14 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	stepUsage(set, "gs artifact [flags] <path…>")
 	if err := set.Parse(arguments); err != nil {
-		return err
+		return parseRefusal(set, err)
 	}
 	paths := set.Args()
 	if *head == "" || *promise == "" || len(paths) == 0 {
-		return errors.New("artifact requires --head, --promise and at least one path, with the paths after the flags: gs artifact --head <sha> --promise <promise> <path…>")
+		return usageErrorf(set, "artifact requires --head, --promise and at least one path, with the paths after the flags: gs artifact --head <sha> --promise <promise> <path…>")
 	}
 	if err := requireFullCommit("--head", *head); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
 	seen := make(map[string]bool, len(paths))
 	for _, path := range paths {
@@ -49,17 +48,17 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	reportPath := paths[0]
 	if *report != "" {
 		if !seen[*report] {
-			return fmt.Errorf("--report %s is not one of the paths given; the reporting artifact is one of the artifacts this head publishes", *report)
+			return usageErrorf(set, "--report %s is not one of the paths given; the reporting artifact is one of the artifacts this head publishes", *report)
 		}
 		reportPath = *report
 	}
-	session, err := openStep(ctx, *repo, *as, *serverFlag)
+	session, err := openStep(ctx, set, *repo, *as, *serverFlag)
 	if err != nil {
 		return err
 	}
 	bases := []string(extra)
 	if err := resolveRefs(session.resolver, []*string{promise}, &bases); err != nil {
-		return err
+		return session.usage(err)
 	}
 	showResolved(session.resolver)
 	if err := validateArtifactCommit(ctx, *repo, *head); err != nil {
@@ -106,11 +105,11 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 func requireOwnLivePromise(session *stepSession, promise string) (workroom.Commitment, error) {
 	statement, found := session.statement(promise)
 	if !found {
-		return workroom.Commitment{}, fmt.Errorf("--promise %s names no statement in this workroom; claim the request with `gs promise <request>` first", short(promise))
+		return workroom.Commitment{}, session.usage(fmt.Errorf("--promise %s names no statement in this workroom; claim the request with `gs promise <request>` first", short(promise)))
 	}
 	if statement.Kind != workroom.KindPromise {
-		return workroom.Commitment{}, fmt.Errorf("--promise %s is a %s, not a promise; an artifact reports exactly one promise. `gs work --next` prints the promise for each row you owe",
-			short(promise), statement.Kind)
+		return workroom.Commitment{}, session.usage(fmt.Errorf("--promise %s is a %s, not a promise; an artifact reports exactly one promise. `gs work --next` prints the promise for each row you owe",
+			short(promise), statement.Kind))
 	}
 	if statement.Actor != session.fingerprint {
 		return workroom.Commitment{}, fmt.Errorf("--promise %s was signed by %s, not by you (%s); an artifact must rest on your own promise, so file one with `gs promise <request>`",

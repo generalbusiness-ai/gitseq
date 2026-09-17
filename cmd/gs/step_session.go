@@ -23,7 +23,12 @@ import (
 // from that same projection. Reading the projection once is what lets a whole
 // act be judged against one world.
 type stepSession struct {
-	ctx         context.Context
+	ctx context.Context
+	// set is this command's own flags, kept so that a refusal about the
+	// invocation — an identity nobody holds, a reference naming nothing here —
+	// can answer with the usage and worked example every other gs command
+	// answers with.
+	set         *flag.FlagSet
 	workspace   *app.Workspace
 	repo        string
 	actor       string
@@ -46,11 +51,12 @@ func stepUsage(set *flag.FlagSet, form string) {
 	set.Usage = func() {
 		fmt.Fprintf(set.Output(), "usage: %s\n\nFlags:\n", form)
 		set.PrintDefaults()
+		printExample(set)
 	}
 }
 
-func openStep(ctx context.Context, repo, as, server string) (*stepSession, error) {
-	actor, err := signingActor(as)
+func openStep(ctx context.Context, set *flag.FlagSet, repo, as, server string) (*stepSession, error) {
+	actor, err := signingActorOrUsage(set, as)
 	if err != nil {
 		return nil, err
 	}
@@ -64,14 +70,15 @@ func openStep(ctx context.Context, repo, as, server string) (*stepSession, error
 	}
 	fingerprint := workspace.View().Actors[actor].Fingerprint
 	if fingerprint == "" {
-		return nil, workIdentityRefusal(ctx, workspace, fmt.Errorf("actor %q is not provisioned in this checkout", actor))
+		return nil, usageReferenceError(set, workIdentityRefusal(ctx, workspace,
+			fmt.Errorf("actor %q is not provisioned in this checkout", actor)))
 	}
 	snapshot, err := snapshotWithProgress(ctx, workspace)
 	if err != nil {
 		return nil, err
 	}
 	session := &stepSession{
-		ctx: ctx, workspace: workspace, repo: repo, actor: actor, fingerprint: fingerprint,
+		ctx: ctx, set: set, workspace: workspace, repo: repo, actor: actor, fingerprint: fingerprint,
 		serverURL: serverURL, snapshot: snapshot, resolver: newResolverFrom(workspace, snapshot),
 		statements: make(map[string]workroom.Statement, len(snapshot.Projection.Statements)),
 		byRequest:  make(map[string]workroom.Commitment),
@@ -98,10 +105,18 @@ func openStep(ctx context.Context, repo, as, server string) (*stepSession, error
 // before anything is signed.
 func (s *stepSession) resolve(references ...*string) error {
 	if err := resolveRefs(s.resolver, references); err != nil {
-		return err
+		return s.usage(err)
 	}
 	showResolved(s.resolver)
 	return nil
+}
+
+// usage answers a malformed invocation: this command's flags and one worked
+// example, then the reason. A reference that names nothing here is a mistyped
+// command, not a state of the workroom, so it is answered the way every other
+// malformed invocation is.
+func (s *stepSession) usage(err error) error {
+	return usageReferenceError(s.set, err)
 }
 
 func (s *stepSession) projection() workroom.Projection { return s.snapshot.Projection }

@@ -19,6 +19,7 @@ is decided by the fold, from who signed it and what the target is.
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The ratifying actor. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
+| `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The target event is a **positional argument**, and flag parsing stops at
 the first positional. Put every flag before it, or the flags after it are
@@ -48,6 +49,26 @@ REPORT=$(gs state --repo "$REPO" --as bot --kind report \
 
 gs ratify --repo "$REPO" --as alice "$REPORT"
 ```
+
+## Refused before signing
+
+Before anything is signed, this command asks the fold what it would decide
+about the ratification, and refuses when the answer is not effective: an
+unknown target, a record the fold refused, a retired one, a kind nobody may
+ratify, a role this actor does not hold.
+
+```text
+gs: the fold would rule this act ineffective: statement kind is not ratifiable
+fix: that kind has no satisfier: an artifact is closed by an approved merge, a request by a promise, report or supersession
+file it as written with --no-preflight
+```
+
+[Refused before signing](state.md#refused-before-signing) states the whole
+rule: the reason is the fold's own, the fold decides again at sequencing,
+`--no-preflight` files the act as written, and four cases are left to the fold
+with no refusal here — including an exact retry under an `--idempotency-key`
+this actor already holds, which replays the accepted event however far the
+world has moved since.
 
 ## Who may ratify what
 
@@ -83,10 +104,18 @@ resting on anything more.
 
 ## Attempts are kept
 
-An unauthorized ratification is not an error. It is appended, judged
-ineffective, and listed under **Attempts** in
-[`gs status`](status.md), permanently. Read current state before
-retrying; do not retry blindly.
+An unauthorized ratification that reaches the log is not an error. It is
+appended, judged ineffective, and listed under **Attempts** in
+[`gs status`](status.md), permanently. Read current state before retrying; do
+not retry blindly.
+
+This command refuses most of those attempts before they are signed, so fewer
+of them reach the log at all — see
+[Refused before signing](#refused-before-signing). The ones that still land are
+the ones it did not judge: an act filed with `--no-preflight`, a retry under a
+key this actor already holds, an act whose world moved between the check and
+the sequencer, and an act filed by a surface that makes no such check. The
+record of an attempt is permanent either way.
 
 ## See also
 
