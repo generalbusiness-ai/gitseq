@@ -2747,7 +2747,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	// holds, rather than merely telling a novice that an identity is missing.
 	actorName, err := signingActorFrom("--as", *as)
 	if err != nil {
-		return workIdentityRefusal(ctx, workspace, err)
+		return usageReferenceError(set, workIdentityRefusal(ctx, workspace, err))
 	}
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
@@ -2755,7 +2755,8 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	fingerprint := workspace.View().Actors[actorName].Fingerprint
 	if fingerprint == "" {
-		return workIdentityRefusal(ctx, workspace, fmt.Errorf("actor %q is not provisioned in this checkout", actorName))
+		return usageReferenceError(set, workIdentityRefusal(ctx, workspace,
+			fmt.Errorf("actor %q is not provisioned in this checkout", actorName)))
 	}
 	query := statusview.WorkQuery{TargetRef: *targetRef, Actor: fingerprint, Statuses: statuses, Stale: statusview.StaleFilter(*stale), Limit: *limit, Cursor: *cursor}
 	set.Visit(func(f *flag.Flag) {

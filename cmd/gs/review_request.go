@@ -44,9 +44,9 @@ func reviewRequestCommand(ctx context.Context, arguments []string) error {
 		return usageErrorf(set, "review-request requires --head and --to: gs review-request --head <sha> --to <actor>")
 	}
 	if err := requireFullCommit("--head", *head); err != nil {
-		return err
+		return usageReferenceError(set, err)
 	}
-	session, err := openStep(ctx, *repo, *as, *serverFlag)
+	session, err := openStep(ctx, set, *repo, *as, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func rosterFingerprint(session *stepSession, reference string) (string, error) {
 		}
 	}
 	sort.Strings(names)
-	return "", fmt.Errorf("--to %s names no live actor in the durable roster; the roster holds %s", reference, strings.Join(names, ", "))
+	return "", session.usage(fmt.Errorf("--to %s names no live actor in the durable roster; the roster holds %s", reference, strings.Join(names, ", ")))
 }
 
 func defaultConditions(given, head string, reporting reviewArtifact, count int) string {

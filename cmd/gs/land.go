@@ -37,7 +37,7 @@ func landCommand(ctx context.Context, arguments []string) error {
 	if *approval == "" || *checkout == "" || strings.TrimSpace(*text) == "" {
 		return usageErrorf(set, "land requires --approval, --checkout and --text: gs land --approval <event> --checkout <target checkout> --text '<what landed and why it matters>'")
 	}
-	session, err := openStep(ctx, *repo, *as, *serverFlag)
+	session, err := openStep(ctx, set, *repo, *as, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func approvedCandidate(session *stepSession, approval string) (string, error) {
 		}
 		return review.Head, nil
 	}
-	return "", fmt.Errorf("%s is not a review verdict in this workroom; gs land takes the approval report gs review filed (`gs reviews` lists them)", short(approval))
+	return "", session.usage(fmt.Errorf("%s is not a review verdict in this workroom; gs land takes the approval report gs review filed (`gs reviews` lists them)", short(approval)))
 }
 
 // ratifyApprovalIfOurs closes the one gap the merger can close themselves. The
@@ -114,7 +114,7 @@ func approvedCandidate(session *stepSession, approval string) (string, error) {
 func ratifyApprovalIfOurs(session *stepSession, approval string) error {
 	statement, found := session.statement(approval)
 	if !found {
-		return fmt.Errorf("approval %s is not a statement in this workroom", short(approval))
+		return session.usage(fmt.Errorf("approval %s is not a statement in this workroom", short(approval)))
 	}
 	if statement.Ratified {
 		return nil

@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/generalbusiness-ai/gitseq/internal/app"
 )
 
 // A malformed invocation is answered with the command's own usage and one
@@ -252,5 +254,125 @@ func TestEveryCommandHasAnExample(t *testing.T) {
 		if !strings.HasPrefix(example, "gs "+name+" ") && example != "gs "+name {
 			t.Errorf("the example for gs %s is %q", name, example)
 		}
+	}
+}
+
+// The step commands sign acts like any other, so a caller who did not say who
+// they are, or who named an event this workroom does not hold, gets the same
+// answer: the command's flags, one worked example, a non-zero exit, and a log
+// that has not moved. Each of the four is checked, because each opens its
+// session and resolves its own references.
+func TestStepCommandsAnswerAMalformedInvocationWithUsage(t *testing.T) {
+	const nowhere = "git:sha1:bad#git:sha1:bad"
+	for _, probe := range []struct {
+		name      string
+		run       func(fixture preflightFixture, actor []string) error
+		wantError []string
+		wantUsage []string
+	}{
+		{
+			name: "promise",
+			run: func(fixture preflightFixture, actor []string) error {
+				arguments := append([]string{"--repo", fixture.repo, "--server", "-"}, actor...)
+				return promiseCommand(fixture.ctx, append(arguments, nowhere))
+			},
+			wantError: []string{"names no statement in this workroom"},
+			wantUsage: []string{"usage: gs promise [flags] <request>", "Example:", "gs promise --as bot"},
+		},
+		{
+			name: "artifact",
+			run: func(fixture preflightFixture, actor []string) error {
+				arguments := append([]string{
+					"--repo", fixture.repo, "--server", "-",
+					"--head", fixture.workspace.View().Genesis, "--promise", nowhere,
+				}, actor...)
+				return artifactCommand(fixture.ctx, append(arguments, "notes/one.md"))
+			},
+			wantError: []string{"--promise", "names no statement in this workroom"},
+			wantUsage: []string{"usage: gs artifact [flags] <path…>", "Example:", "gs artifact --as bot"},
+		},
+		{
+			name: "review-request",
+			run: func(fixture preflightFixture, actor []string) error {
+				return reviewRequestCommand(fixture.ctx, append([]string{
+					"--repo", fixture.repo, "--server", "-",
+					"--head", fixture.workspace.View().Genesis, "--to", "nobody",
+				}, actor...))
+			},
+			wantError: []string{"--to nobody names no live actor"},
+			wantUsage: []string{"usage: gs review-request", "Example:", "gs review-request --as bot"},
+		},
+		{
+			name: "land",
+			run: func(fixture preflightFixture, actor []string) error {
+				return landCommand(fixture.ctx, append([]string{
+					"--repo", fixture.repo, "--server", "-", "--approval", nowhere,
+					"--checkout", fixture.repo, "--text", "what landed and why",
+				}, actor...))
+			},
+			wantError: []string{"is not a review verdict in this workroom"},
+			wantUsage: []string{"usage: gs land", "Example:", "gs land --as bot"},
+		},
+		{
+			// gs work --next reads rather than signs, but it asks who you are
+			// the same way, so it answers the same way.
+			name: "work --next",
+			run: func(fixture preflightFixture, actor []string) error {
+				return workCommand(fixture.ctx, append([]string{
+					"--repo", fixture.repo, "--server", "-", "--next",
+				}, actor...))
+			},
+			wantError: []string{"actor"},
+			wantUsage: []string{"usage: gs work", "Example:", "gs work"},
+		},
+	} {
+		t.Run(probe.name+" with no signing identity", func(t *testing.T) {
+			t.Setenv(actorEnvironment, "")
+			fixture := newPreflightFixture(t)
+			before := fixture.snapshot()
+			printed, err := quiet(t, func() error { return probe.run(fixture, nil) })
+			requireUsageRefusal(t, printed, err, []string{"--as"}, probe.wantUsage)
+			requireUnmovedWorkroom(t, fixture, before)
+		})
+		if probe.name == "work --next" {
+			// It names no event, so it has no second case.
+			continue
+		}
+		t.Run(probe.name+" naming an event this workroom does not hold", func(t *testing.T) {
+			fixture := newPreflightFixture(t)
+			before := fixture.snapshot()
+			printed, err := quiet(t, func() error {
+				return fixture.withoutKey(t, "worker", func() error {
+					return probe.run(fixture, []string{"--as", "worker"})
+				})
+			})
+			requireUsageRefusal(t, printed, err, probe.wantError, probe.wantUsage)
+			requireUnmovedWorkroom(t, fixture, before)
+		})
+	}
+}
+
+func requireUsageRefusal(t *testing.T, printed string, err error, wantError, wantUsage []string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("the malformed invocation was accepted; output: %s", printed)
+	}
+	for _, want := range wantError {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("refusal %q does not say %q", err, want)
+		}
+	}
+	for _, want := range wantUsage {
+		if !strings.Contains(printed, want) {
+			t.Fatalf("usage output does not contain %q:\n%s", want, printed)
+		}
+	}
+}
+
+func requireUnmovedWorkroom(t *testing.T, fixture preflightFixture, before app.Snapshot) {
+	t.Helper()
+	if after := fixture.snapshot(); after.Head != before.Head || after.Depth != before.Depth {
+		t.Fatalf("a refused invocation moved the workroom: %s/%d -> %s/%d",
+			before.Head, before.Depth, after.Head, after.Depth)
 	}
 }
