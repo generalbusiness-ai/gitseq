@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at spike/README.md","body":{"commit":"7009a956c2f56da85d4b467dab9efeba8c4fa788","path":"spike/README.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d029b4856202b5644dd7451c2598f749277fcec","text":"Merge retired a covered predecessor; the successor is at Makefile."}
