@@ -71,8 +71,9 @@ their own on it. That report is
 --body commit=<full commit> --text <what was met>`.
 
 An unclaimed request that should move to another actor goes through
-`gs reassign-if-unclaimed <request> --to <actor>`: it retires and replaces the
-request under one guard, and a claim in between refuses the pair.
+[`gs reassign-if-unclaimed`](docs/reference/gs/reassign-if-unclaimed.md), flags
+before the request: it retires and replaces the request under one guard, and a
+claim in between refuses the pair.
 
 Work you begin yourself, as both requester and performer, files no
 self-request and no self-promise: rest the implementing commit on the
