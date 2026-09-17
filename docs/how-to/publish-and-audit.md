@@ -112,9 +112,11 @@ gs attach --repo "$AUDIT" --remote origin --genesis "$GENESIS"
 ```
 
 Each successful verification also persists the signed head and depth in
-`.git/gitseq/config.json`. Later verification refuses a shorter or sibling
-sequence even if the authoritative ref was lost. Keep that config with the clone;
-deleting it discards the clone's rollback memory.
+`.git/gitseq/config.json`. Later verification refuses a sibling sequence, and a
+shorter one unless the authoritative ref still continues the recorded head — a
+read another appender overtook is admitted and leaves the marker alone. Where
+that ref was lost or rewound, any shorter sequence is refused. Keep that config
+with the clone; deleting it discards the clone's rollback memory.
 
 ## Troubleshooting
 

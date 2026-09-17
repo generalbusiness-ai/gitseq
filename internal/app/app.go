@@ -2893,7 +2893,13 @@ func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.Verif
 // success for a position the file has moved past. The frontier it judges
 // against is therefore the newest stored one, so a stale workspace can
 // neither roll the marker back nor store a position that does not continue
-// what the file records.
+// what the file records. A shorter verification whose read merely finished
+// after the world moved on is admitted without moving the marker, so a long
+// audit is not made to repeat itself because an appender was faster; see
+// judgeReadFrontier for the two tests that separate it from a rollback. The
+// caller is told only whether its read stood: an admitted stale read and an
+// advance both return no error, because either way the data it verified is
+// sound and the marker is where the deepest verifier left it.
 //
 // Callers hold snapshotMu, which serializes frontier writers in this process;
 // configMu is taken inside updateConfig, around the base read and the
@@ -2907,11 +2913,15 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 	var refused error
 	err := w.updateConfig(func(c *apphost.Config) (bool, error) {
 		refused = nil
-		if err := checkVerifiedFrontier(ctx, w.Store, c.VerifiedFrontier, verification); err != nil {
+		decision, err := judgeReadFrontier(ctx, w.Store, c.Genesis, c.VerifiedFrontier, verification)
+		if err != nil {
 			refused = err
 			return false, err
 		}
-		if c.VerifiedFrontier != nil && c.VerifiedFrontier.Head == verification.Head {
+		// A verification the witness already covers — the same head, or a
+		// stale read the ref has since moved past — is admitted and stores
+		// nothing, so the marker keeps the deepest position anyone verified.
+		if decision == frontierKeep {
 			return false, nil
 		}
 		c.VerifiedFrontier = &apphost.VerifiedFrontier{Head: verification.Head, Depth: verification.Depth}

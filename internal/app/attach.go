@@ -101,6 +101,28 @@ func sequenceContinuation(ctx context.Context, store gitstore.Store, previous, h
 	return len(commits), nil
 }
 
+// frontierDecision says what a completed read's transaction may do with the
+// stored rollback witness once its verification has been judged.
+type frontierDecision int
+
+const (
+	// frontierStore records the judged verification as the new witness.
+	frontierStore frontierDecision = iota
+	// frontierKeep leaves the stored witness exactly where it is, because the
+	// verification describes a position that witness already covers.
+	frontierKeep
+)
+
+// checkVerifiedFrontier is the strict rule: a verification may only stand
+// where it continues the witness the stored configuration holds. Attachment
+// judges by this rule alone, and not because its candidate was fetched
+// before the transaction opened — that read can be overtaken like any other.
+// It is because attachment ends in a compare-and-swap that moves the
+// sequence ref to that candidate. A candidate shorter than a witness the ref
+// still continues could reach the swap only where the ref had been rolled
+// back to exactly the head the caller observed before fetching, which is the
+// rollback this rule refuses before the ref moves. A read moves no ref and
+// carries no such exposure; judgeReadFrontier is its judgement.
 func checkVerifiedFrontier(ctx context.Context, store gitstore.Store, previous *apphost.VerifiedFrontier, verified kernel.Verification) error {
 	if previous == nil {
 		return nil
@@ -120,6 +142,67 @@ func checkVerifiedFrontier(ctx context.Context, store gitstore.Store, previous *
 	}
 	if verified.Depth != previous.Depth+count {
 		return fmt.Errorf("refuse non-descendant verified frontier: %s does not continue previously verified head %s at depth %d", verified.Head, previous.Head, previous.Depth)
+	}
+	return nil
+}
+
+// judgeReadFrontier is the strict rule plus the one admission a completed
+// read needs, and says whether the witness may move.
+//
+// The witness exists to refuse a sequence ref that moved backwards. A read
+// that returns a verification shorter than the witness is not by itself that.
+// Verifying a deep sequence takes minutes, and another process on the same
+// checkout may append and advance the witness while that read runs; the
+// finished read is then merely stale, and refusing it costs the caller a
+// whole further verification for nothing. Such a read is admitted and the
+// witness stays where the appender left it, so the marker never moves
+// backwards.
+//
+// A stale read is admitted only on the two tests staleVerification makes,
+// read from the repository at judgement time and not from any caller's
+// memory. Everything else is the strict rule, refused with the same messages
+// as before.
+func judgeReadFrontier(ctx context.Context, store gitstore.Store, genesis string, previous *apphost.VerifiedFrontier, verified kernel.Verification) (frontierDecision, error) {
+	if previous != nil && verified.Depth < previous.Depth {
+		if err := staleVerification(ctx, store, genesis, previous, verified); err != nil {
+			return frontierKeep, fmt.Errorf("refuse verified frontier rollback: depth %d is shorter than previously verified depth %d: %w", verified.Depth, previous.Depth, err)
+		}
+		return frontierKeep, nil
+	}
+	if err := checkVerifiedFrontier(ctx, store, previous, verified); err != nil {
+		return frontierKeep, err
+	}
+	if previous != nil && verified.Head == previous.Head {
+		return frontierKeep, nil
+	}
+	return frontierStore, nil
+}
+
+// staleVerification reports whether a verification shorter than the witness is
+// a read that finished after the world moved on rather than a rollback: the
+// sequence ref as it now stands is the witnessed head or continues it, and
+// the shorter verification is an ancestor of the witnessed head at exactly
+// the depth separating them. A ref that itself moved back fails the first
+// test and a sibling history fails the second, so both stay refused.
+//
+// It fails closed, and every refusal carries its cause, so an unreadable or
+// missing ref is reported as what it was rather than as a rewind.
+func staleVerification(ctx context.Context, store gitstore.Store, genesis string, previous *apphost.VerifiedFrontier, verified kernel.Verification) error {
+	head, err := store.Head(ctx, kernel.Ref(genesis))
+	if err != nil {
+		return fmt.Errorf("the sequence ref could not be read: %w", err)
+	}
+	if head != previous.Head {
+		if _, err := sequenceContinuation(ctx, store, previous.Head, head); err != nil {
+			return fmt.Errorf("the sequence ref %s no longer continues the witnessed head %s: %w", head, previous.Head, err)
+		}
+	}
+	count, err := sequenceContinuation(ctx, store, verified.Head, previous.Head)
+	if err != nil {
+		return fmt.Errorf("%s is not an ancestor of the witnessed head %s: %w", verified.Head, previous.Head, err)
+	}
+	if want := previous.Depth - verified.Depth; count != want {
+		return fmt.Errorf("%s stands %d commits before the witnessed head %s, not the %d its depth claims", verified.Head, count, previous.Head, want)
 	}
 	return nil
 }
