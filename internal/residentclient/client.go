@@ -20,7 +20,6 @@ import (
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
-	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 const (
@@ -406,14 +405,4 @@ func (c *Client) Submit(ctx context.Context, workspace *app.Workspace, serverURL
 		return app.Submission{}, err
 	}
 	return submission, nil
-}
-
-// UndefinedKindWarning answers the one vocabulary question all authoring
-// surfaces ask after a state act lands. Presentation stays with each binary.
-func UndefinedKindWarning(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) string {
-	snapshot, err := workspace.Snapshot(ctx)
-	if err != nil {
-		return fmt.Sprintf("cannot tell whether kind %q is defined here: %v", kind, err)
-	}
-	return snapshot.Vocabulary.UndefinedKindWarning(kind)
 }

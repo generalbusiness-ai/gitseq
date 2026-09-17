@@ -2469,7 +2469,7 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 		return app.Submission{}, explainLifecycleRefusal(err)
 	}
 	if act.Verb == app.VerbState {
-		warnUndefinedKind(ctx, workspace, act.Kind)
+		warnUndefinedKind(ctx, workspace, serverURL, act.Kind)
 	}
 	return submission, nil
 }
@@ -2497,11 +2497,17 @@ func explainLifecycleRefusal(err error) error {
 // warnUndefinedKind tells an author, on the stream they are already reading,
 // that the act which just landed carries a kind no rule in this workroom
 // reads. The act stays: warning is the whole of the change, and refusing it
-// would hide the attempt. Reading the vocabulary costs one projection of the
-// log, which a deliberate durable write can afford, and a chain of writes in
-// one process pays for once.
-func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
-	if warning := residentclient.UndefinedKindWarning(ctx, workspace, kind); warning != "" {
+// would hide the attempt. The vocabulary comes from the projection this
+// session reads, which after a resident submission is the resident's own
+// answer at the head the act just made, so the warning costs a read rather
+// than a second fold of the log.
+func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, serverURL string, kind workroom.Kind) {
+	snapshot, err := sessionSnapshot(ctx, workspace, serverURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gs: warning: cannot tell whether kind %q is defined here: %v\n", kind, err)
+		return
+	}
+	if warning := snapshot.Vocabulary.UndefinedKindWarning(kind); warning != "" {
 		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
 	}
 }

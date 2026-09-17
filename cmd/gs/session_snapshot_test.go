@@ -284,3 +284,30 @@ func TestStateResolvesReferencesInTheResidentProjection(t *testing.T) {
 		t.Fatalf("depth moved from %d to %d on a refusal", before, after)
 	}
 }
+
+// The vocabulary an act is warned against comes from the same opener too. The
+// resident's answer is the only place this workroom does not define `promise`,
+// and the warning follows it: nothing here folds the log a second time after
+// the act has landed.
+func TestUndefinedKindWarningReadsTheResidentVocabulary(t *testing.T) {
+	workspace, _ := statusSummaryFixture(t)
+	url, hits := residentStub(t, workspace, func(status *service.Status) {
+		kept := status.Durable.Vocabulary.Definitions[:0]
+		for _, definition := range status.Durable.Vocabulary.Definitions {
+			if definition.Name != workroom.KindPromise {
+				kept = append(kept, definition)
+			}
+		}
+		status.Durable.Vocabulary.Definitions = kept
+	})
+	_, _, stderr := runPiped(t, func() error {
+		warnUndefinedKind(context.Background(), workspace, url, workroom.KindPromise)
+		return nil
+	})
+	if hits.Load() == 0 {
+		t.Fatal("the resident was never dialed")
+	}
+	if !strings.Contains(stderr, "promise") || !strings.Contains(stderr, "warning") {
+		t.Fatalf("the warning did not read the resident's vocabulary: %q", stderr)
+	}
+}
