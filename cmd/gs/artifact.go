@@ -284,30 +284,36 @@ type retirement struct {
 }
 
 // retirements pairs each earlier-head artifact of this lane with the new
-// artifact that succeeds it. A path published again succeeds itself; failing
-// that, a path now covered by a published directory succeeds through that
-// directory, which is how the fold reads succession. The exact path is tried
-// first, because a directory pointer standing over the same file says less
-// about where the behaviour went than the file's own artifact does.
+// artifact that succeeds it.
 func retirements(elsewhere []workroom.Artifact, paths []string) []retirement {
 	if len(elsewhere) == 0 {
 		return nil
 	}
 	withdrawn := make([]retirement, 0, len(elsewhere))
 	for _, artifact := range elsewhere {
-		entry := retirement{target: artifact.Event, path: artifact.Path, commit: artifact.Commit}
-		entry.successor = pathLabel(artifact.Path, paths)
-		for _, path := range paths {
-			if entry.successor != "" {
-				break
-			}
-			if strings.HasPrefix(artifact.Path, path+"/") {
-				entry.successor = pathLabel(path, paths)
-			}
-		}
-		withdrawn = append(withdrawn, entry)
+		withdrawn = append(withdrawn, retirement{
+			target: artifact.Event, path: artifact.Path, commit: artifact.Commit,
+			successor: successorLabel(artifact.Path, paths),
+		})
 	}
 	return withdrawn
+}
+
+// successorLabel names the artifact this head publishes that covers an earlier
+// path: the path itself when it is published again, otherwise a published
+// directory holding it, which is the coverage the fold reads. The exact path
+// comes first, because a directory pointer standing over the same file says
+// less about where the behaviour went than the file's own artifact does.
+func successorLabel(path string, paths []string) string {
+	if label := pathLabel(path, paths); label != "" {
+		return label
+	}
+	for _, candidate := range paths {
+		if strings.HasPrefix(path, candidate+"/") {
+			return pathLabel(candidate, paths)
+		}
+	}
+	return ""
 }
 
 // keepUncited drops the retirements the citation guard refuses, and says which
