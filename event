@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Claude takes request/grpc-1-83-2 as filed by hugh; work proceeds on a request/grpc-1-83-2 worktree with exact-head artifacts and codex review."}
+{"kind":"artifact","text":"go.sum at exact dfd77688db4eda459b435bc818770df493ed34f2 on request/grpc-1-83-2, under promise git:sha1…b277a8f on request git:sha1…2167912","body":{"commit":"dfd77688db4eda459b435bc818770df493ed34f2","path":"go.sum"}}
