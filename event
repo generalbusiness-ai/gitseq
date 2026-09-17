@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7d35111c503899e05b9b0c61a003041d1f0143fb","text":"Replaced by the review request on the corrected artifact set (codex verdict c94b3453)."}
+{"kind":"promise","text":"I will review the corrected artifact set at unchanged head 97817c0758db58637d7b744e93cb5c42fafbe901, confirming the documentation-to-Makefile provenance and carrying the unchanged-source validation from c94b3453."}
