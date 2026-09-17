@@ -1522,7 +1522,7 @@ func TestArtifactRetiresNothingOutsideItsOwnLane(t *testing.T) {
 		"--head", lane.head, "--promise", promise, "bounded.txt"}); err != nil {
 		t.Fatal(err)
 	}
-	sameHead := liveArtifactAt(t, f.snapshot(t).Projection, "bounded.txt", lane.head)
+	earlier := liveArtifactAt(t, f.snapshot(t).Projection, "bounded.txt", lane.head)
 
 	// Another promise of the same actor, at a head of its own.
 	other := f.buildStepLane(t, "bounded-other", "reviewer", "operator", "bounded-other.txt")
@@ -1542,6 +1542,13 @@ func TestArtifactRetiresNothingOutsideItsOwnLane(t *testing.T) {
 	}
 	foreignArtifact := liveArtifactAt(t, f.snapshot(t).Projection, "bounded-foreign.txt", foreign.head)
 
+	// An artifact another actor filed on this actor's own promise, at the
+	// head about to be republished. The lane is read by promise, so the
+	// author check is the only thing between it and a retirement nobody
+	// signing this batch has the standing to make.
+	planted := f.stateV3(t, "reviewer", workroom.KindArtifact, "planted on another actor's promise",
+		map[string]string{"path": "bounded.txt", "commit": lane.head}, promise)
+
 	second := f.recut(t, lane, "bounded.txt")
 	before := f.snapshot(t).Depth
 	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
@@ -1553,18 +1560,21 @@ func TestArtifactRetiresNothingOutsideItsOwnLane(t *testing.T) {
 		t.Fatalf("depth = %d, want %d: one artifact and one retirement", snapshot.Depth, before+2)
 	}
 	for name, event := range map[string]string{
-		"an artifact of another actor":     foreignArtifact.Event,
-		"an artifact on another promise":   otherLane.Event,
-		"an artifact this run republished": sameHead.Event,
+		"an artifact of another actor":             foreignArtifact.Event,
+		"an artifact on another promise":           otherLane.Event,
+		"another actor's artifact on this promise": planted,
 	} {
-		if artifact := artifactByEvent(t, snapshot.Projection, event); artifact.Retired != (event == sameHead.Event) {
-			t.Fatalf("%s is %+v", name, artifact)
+		if artifact := artifactByEvent(t, snapshot.Projection, event); artifact.Retired {
+			t.Fatalf("%s was retired: %+v", name, artifact)
 		}
 	}
+	if artifact := artifactByEvent(t, snapshot.Projection, earlier.Event); !artifact.Retired {
+		t.Fatalf("this lane's own earlier-head artifact is %+v, want it retired", artifact)
+	}
 
-	// The one at the same head is the earlier head's own artifact, retired
-	// because the republish moved its lane, not because it stood anywhere
-	// near the others. Publishing twice at one head retires nothing.
+	// An artifact at the head being published is never retired: a rerun that
+	// republishes the same head finds nothing to withdraw, least of all what
+	// it just published.
 	if err := artifactCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator",
 		"--head", second, "--promise", promise, "bounded.txt"}); err != nil {
 		t.Fatal(err)

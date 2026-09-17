@@ -96,15 +96,16 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	}
 	discloseBases(session.resolver, chainCitations(acts))
 	published, err := runBatch(ctx, session.workspace, session.serverURL, session.actor, private, acts, false)
-	// The artifacts are printed as bare identifiers, the retirements as the
-	// lines below, so the last identifier on its own line is still the
+	// The artifacts are printed as bare identifiers and the retirements as
+	// the lines below, so the last identifier on its own line is still the
 	// reporting artifact whether or not this run withdrew anything.
-	for _, act := range published.Acts[:len(acts)-len(retiring)] {
+	artifacts, retired := published.Acts[:len(acts)-len(retiring)], published.Acts[len(acts)-len(retiring):]
+	for _, act := range artifacts {
 		if act.Event != "" {
 			fmt.Println(act.Event)
 		}
 	}
-	printRetirements(retiring, published, len(acts)-len(retiring))
+	printRetirements(retiring, mintedLabels(published), retired)
 	noteBatchDeadRestsOn(ctx, session.workspace, acts, published)
 	if err != nil {
 		return err
@@ -283,9 +284,11 @@ type retirement struct {
 }
 
 // retirements pairs each earlier-head artifact of this lane with the new
-// artifact that succeeds it. A path published again succeeds itself; a path
-// now covered by a published directory succeeds through that directory,
-// exactly as the fold reads succession.
+// artifact that succeeds it. A path published again succeeds itself; failing
+// that, a path now covered by a published directory succeeds through that
+// directory, which is how the fold reads succession. The exact path is tried
+// first, because a directory pointer standing over the same file says less
+// about where the behaviour went than the file's own artifact does.
 func retirements(elsewhere []workroom.Artifact, paths []string) []retirement {
 	if len(elsewhere) == 0 {
 		return nil
@@ -293,10 +296,13 @@ func retirements(elsewhere []workroom.Artifact, paths []string) []retirement {
 	withdrawn := make([]retirement, 0, len(elsewhere))
 	for _, artifact := range elsewhere {
 		entry := retirement{target: artifact.Event, path: artifact.Path, commit: artifact.Commit}
+		entry.successor = pathLabel(artifact.Path, paths)
 		for _, path := range paths {
-			if path == artifact.Path || strings.HasPrefix(artifact.Path, path+"/") {
-				entry.successor = pathLabel(path, paths)
+			if entry.successor != "" {
 				break
+			}
+			if strings.HasPrefix(artifact.Path, path+"/") {
+				entry.successor = pathLabel(path, paths)
 			}
 		}
 		withdrawn = append(withdrawn, entry)
@@ -354,17 +360,11 @@ func retirementActs(fingerprint, head string, withdrawn []retirement) []batchAct
 
 // printRetirements says what the publication withdrew, reading the successor's
 // identifier out of what the batch actually minted rather than out of the plan:
-// an act that did not land is not reported as one that did.
-func printRetirements(withdrawn []retirement, published batchReport, offset int) {
-	minted := make(map[string]string, len(published.Acts))
-	for _, act := range published.Acts {
-		if act.Label != "" && act.Event != "" {
-			minted[act.Label] = act.Event
-		}
-	}
+// an act that did not land is not reported as one that did. outcomes are the
+// report rows of the retirement acts alone, in the order they were built.
+func printRetirements(withdrawn []retirement, minted map[string]string, outcomes []batchOutcome) {
 	for index, entry := range withdrawn {
-		position := offset + index
-		if position >= len(published.Acts) || published.Acts[position].Event == "" {
+		if index >= len(outcomes) || outcomes[index].Event == "" {
 			continue
 		}
 		successor := "bare"
@@ -373,6 +373,17 @@ func printRetirements(withdrawn []retirement, published batchReport, offset int)
 		}
 		fmt.Printf("retired %s at %s -> %s\n", entry.path, short(entry.commit), successor)
 	}
+}
+
+// mintedLabels is what each labelled act of a finished batch became.
+func mintedLabels(published batchReport) map[string]string {
+	minted := make(map[string]string, len(published.Acts))
+	for _, act := range published.Acts {
+		if act.Label != "" && act.Event != "" {
+			minted[act.Label] = act.Event
+		}
+	}
+	return minted
 }
 
 func artifactText(path, head, branch, promise, request string) string {
