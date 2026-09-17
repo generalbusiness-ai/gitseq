@@ -21,7 +21,9 @@ import (
 // stepSession is their shared opening: the actor, the destination sequencer,
 // one verified projection, and the resolver that answers every short reference
 // from that same projection. Reading the projection once is what lets a whole
-// act be judged against one world.
+// act be judged against one world, and sessionSnapshot is where that one world
+// comes from: the resident's, when --server names one standing exactly here,
+// and the local audit otherwise.
 type stepSession struct {
 	ctx context.Context
 	// set is this command's own flags, kept so that a refusal about the
@@ -73,7 +75,7 @@ func openStep(ctx context.Context, set *flag.FlagSet, repo, as, server string) (
 		return nil, usageReferenceError(set, workIdentityRefusal(ctx, workspace,
 			fmt.Errorf("actor %q is not provisioned in this checkout", actor)))
 	}
-	snapshot, err := snapshotWithProgress(ctx, workspace)
+	snapshot, err := sessionSnapshot(ctx, workspace, serverURL)
 	if err != nil {
 		return nil, err
 	}

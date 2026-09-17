@@ -1702,12 +1702,11 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 	if !ok {
 		return value
 	}
-	// One snapshot serves both answers. main moved the undefined-kind warning
-	// into residentclient.UndefinedKindWarning, which takes its own snapshot;
-	// this call site needs one anyway for the projection notes, and a snapshot
-	// can be a cold fold, so calling the helper here would pay for that twice
-	// on every act. The warning is derived from the snapshot already in hand,
-	// which is exactly what that helper does with its own.
+	// One snapshot serves both answers. This call site needs one anyway for the
+	// projection notes, and a snapshot can be a cold fold, so reading a second
+	// one for the undefined-kind warning would pay for that twice on every
+	// act. Every authoring surface derives the warning from the projection it
+	// already holds, which is what cmd/gs does too.
 	snapshot, err := current.workspace.Snapshot(ctx)
 	if err != nil {
 		if act.Verb == app.VerbState {

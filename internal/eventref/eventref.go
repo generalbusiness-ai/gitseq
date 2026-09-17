@@ -10,10 +10,16 @@
 // order is the safety: a mis-resolution is visible while it is still
 // correctable, and what lands is always the full identifier.
 //
-// The searched population is the workroom's own verified durable events, taken
-// from the projection the caller already holds. Git's object database is never
-// searched: a hex fragment can name a blob, a tree or an ordinary commit, and
-// none of those is an event.
+// The searched population is the events of the projection the caller already
+// holds. Under a local fold those are this checkout's own verified durable
+// events. Under `--server` they are the events a resident standing at this
+// checkout's head says it holds: the frontier check binds the head, not the
+// rows, so what a short reference resolves to there is the resident's word.
+// The disclosure is the mitigation and it runs before anything is signed —
+// every resolution is named on standard error, and every citation described,
+// while a mis-resolution can still be corrected. Git's object database is
+// never searched: a hex fragment can name a blob, a tree or an ordinary
+// commit, and none of those is an event.
 package eventref
 
 import (

@@ -404,6 +404,16 @@ and `--server -` always writes locally. Submitting to a resident sequencer
 is what makes concurrent appends from several actors safe. Both land in the
 same sequence.
 
+Where the act is sequenced is also where the projection comes from. With a
+resident, the projection a command resolves its references against — and, for
+the step commands, judges its act against — is read from that resident when it
+stands at this checkout's head, under the same workroom and fold profile;
+anything else is named on standard error and answered by verifying the durable
+log locally. What that accepts and what it still checks is in
+[the architecture](../architecture.md). The fold preflight below, and the
+admission that builds and signs the act, read the local verified log either
+way.
+
 ## See also
 
 - [`gs ratify`](ratify.md), [`gs supersede`](supersede.md)

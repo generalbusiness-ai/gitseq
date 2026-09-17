@@ -15,7 +15,8 @@ import (
 // given this row, what is the next act, exactly as it would be typed?
 //
 // It is a formatter, not a second rule set: the rows are the same bounded query
-// gs work already runs, and the act is chosen from the row's own performer and
+// gs work already runs, the projection behind them is the one sessionSnapshot
+// answers with, and the act is chosen from the row's own performer and
 // requester. A row that owes nothing says why, because "nothing printed" and
 // "nothing owed" must not look the same. See docs/reference/gs/work.md.
 type nextWorld struct {
@@ -25,8 +26,8 @@ type nextWorld struct {
 	statements  map[string]workroom.Statement
 }
 
-func workNext(ctx context.Context, workspace *app.Workspace, page statusview.WorkPage, fingerprint string) (string, error) {
-	snapshot, err := snapshotWithProgress(ctx, workspace)
+func workNext(ctx context.Context, workspace *app.Workspace, serverURL string, page statusview.WorkPage, fingerprint string) (string, error) {
+	snapshot, err := sessionSnapshot(ctx, workspace, serverURL)
 	if err != nil {
 		return "", err
 	}

@@ -129,7 +129,11 @@ breakdown somebody filed against your work is otherwise found only by
 whoever thought to look.
 
 Because those acts depend on facts the page does not carry, `--next` reads
-the projection locally even when the page itself came from a resident.
+the whole projection as well as the page. Under `--server` it takes that
+projection from the same resident, accepted only while the resident names
+this checkout's own genesis and head — read before and after the answer —
+and the fold profile this command runs under; anything else is named on
+standard error and answered by verifying the durable log locally.
 
 ## Reading it
 

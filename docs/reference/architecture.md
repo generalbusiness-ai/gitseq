@@ -1796,6 +1796,62 @@ prefix. `--no-preflight` files any act as written. An act the check admits is
 signed exactly as it would have been, and no rule lives here that the fold does
 not already hold.
 
+A command given `--server` takes the projection it judges against from that
+resident instead of folding the whole log again, through one opener shared by
+`gs promise`, `gs artifact`, `gs review-request`, `gs land`, `gs work --next`
+and the reference resolution of `gs state`, `gs batch`, `gs ratify` and
+`gs supersede`. What the CLI accepts from the resident is the projection
+itself: the fold's rows for the records at one frontier. What it still checks
+locally, before any of it is used, is everything that says the answer is about
+this world — the workroom's own genesis; the sequence ref, read before the
+request and again after it, so the head the resident names is this checkout's
+head and did not move under the read; the fold profile, so a projection
+produced by another interpreter is refused however current its frontier is;
+and the decision count against the frontier depth, so a truncated answer is
+not read as a world in which the missing records never happened. Whatever
+fails is named on standard error and answered by the local audit. Without
+`--server` the verified local log remains the only source. The reading
+commands — `gs status --all` and `--json`, `gs artifacts` with its CLI-only
+selectors, `gs reviews` — read the same endpoint under the frontier check
+[`gs status`](gs/status.md) documents, and are unchanged by this.
+
+Those checks bind the frontier, and only the frontier. The head is proved
+against this checkout's own ref; the rows folded at that head are the
+resident's word for what the log says, and nothing local re-derives them. Two
+limits are worth naming with them. The complete answer is bounded at 64 MiB,
+which at depth 23,600 it fills to about 52 MiB: past that ceiling every one of
+these commands falls back to the local audit, with one line on standard error
+and no other sign. And the profile is a hash of the application name
+and the `workroom.ProfileVersion` constant, which is advanced by hand when the
+fold changes, so two builds that share the constant compare equal however
+their folds behave; it catches a declared change of interpreter, not an
+undeclared one.
+
+Two things do not move with it. The fold preview reads the local verified log,
+and so do the admission that builds the act and the custody that signs it: the
+fields admission writes onto a body are recomputed from the local audit and
+never taken from a resident, and a command that reaches either pays for the
+audit whatever its projection came from. What a resident does reach is the
+act's composition: the text a default is written from, the citations a short
+reference resolves to, and the body fields a step command derives from
+commitment rows. Every citation among them is named on standard error before
+anything is signed, and every basis described there; the words a default text
+is composed from are not echoed, so a resident's account of a request reaches
+the promise that quotes it without a second reader.
+
+The resident gains no authority it did not have, and the reason is the one
+layer 3 already states: it opens several actor keys, and every process running
+as the trusted operator account may ask it to act as any of them. A projection
+it serves for a command to compose and judge against is therefore inside the
+boundary it already stood in, and the frontier check is what keeps a stale,
+foreign, truncated or unreachable resident out of it. The one place a durable
+signature is taken from resident-derived inputs before anything local
+re-derives them is `gs land`: the approved head it lands and the ratification
+it files for the approval both come from the session projection, and the
+ratification is signed before any of it is re-derived. What follows is re-read
+locally — `mergeplan.Build` and its approval validation fold this checkout's
+own verified log — so the head Git merges is never the resident's word alone.
+
 A malformed invocation is answered the same way everywhere: the command's own
 flags and one worked example on standard error, and a non-zero exit with nothing
 touched. That covers an undefined flag, a missing required flag or argument, a

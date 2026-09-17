@@ -238,8 +238,9 @@ func publishCommand(ctx context.Context, arguments []string) error {
 	// fact this command derives, so it is an event reference like any other
 	// and is resolved and described before anything is signed. Everything
 	// else this command names — the remote, the ref, the accepted head — is
-	// ordinary Git and is not an event.
-	resolver := newResolver(ctx, workspace)
+	// ordinary Git and is not an event. It is resolved against this checkout's
+	// own verified fold: nothing asked this command to change where it reads.
+	resolver := newResolver(ctx, workspace, "")
 	if err := resolveRefs(resolver, []*string{basis}); err != nil {
 		return err
 	}
@@ -594,7 +595,7 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	// correctable, and the citations are described there too, so an author
 	// learns what their bases mean here before the act becomes durable rather
 	// than after.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, nil, (*[]string)(&rests)); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -700,7 +701,8 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	// Every event this verdict names is resolved against one verified event
 	// set before the guard reads any of them, so the whole citation set of one
 	// review is judged against one world and signed as canonical identifiers.
-	resolver := newResolver(ctx, workspace)
+	// That set is this checkout's own fold, which the guard reads anyway.
+	resolver := newResolver(ctx, workspace, "")
 	if err := resolveRefs(resolver, []*string{promise, decision},
 		(*[]string)(&artifactsFlag), (*[]string)(&headNews), (*[]string)(&implementations)); err != nil {
 		return err
@@ -797,18 +799,21 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	// The approval and the authorization name durable events; --candidate
-	// names an ordinary Git commit, which is not an event reference and is
-	// never resolved here.
-	resolver := newResolver(ctx, workspace)
-	if err := resolveRefs(resolver, []*string{approval, authorization}); err != nil {
-		return err
-	}
-	showResolved(resolver)
+	// Where this command acts is settled before its references are resolved,
+	// because that is also where the projection they are resolved against
+	// comes from.
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
+	// The approval and the authorization name durable events; --candidate
+	// names an ordinary Git commit, which is not an event reference and is
+	// never resolved here.
+	resolver := newResolver(ctx, workspace, serverURL)
+	if err := resolveRefs(resolver, []*string{approval, authorization}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	_, err = apphost.WithMetaLock(workspace.MetaDir, mergeLockFile, func() (struct{}, error) {
 		return struct{}{}, mergeLocked(ctx, workspace, as, checkout, candidate, approval, authorization, mergeText, serverURL)
 	})
@@ -1185,16 +1190,16 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	resolver := newResolver(ctx, workspace)
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{approval}); err != nil {
 		return err
 	}
 	showResolved(resolver)
 	actor, err := signingActor(*as)
-	if err != nil {
-		return err
-	}
-	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
@@ -1819,7 +1824,7 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&target}); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -1871,7 +1876,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 		return err
 	}
 	target := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&target}, (*[]string)(&rests)); err != nil {
 		return usageReferenceError(set, err)
 	}
@@ -1947,7 +1952,7 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	}
 	body["to"], body["conditions"] = *to, *conditions
 	oldRequest := set.Arg(0)
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	if err := resolveRefs(resolver, []*string{&oldRequest}, (*[]string)(&rests)); err != nil {
 		return err
 	}
@@ -2103,12 +2108,18 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
+	// Where this chain will be sequenced is settled first, because that is
+	// also where the projection it is resolved and judged against comes from.
+	serverURL, err := resolveServerURL(workspace, *serverFlag)
+	if err != nil {
+		return err
+	}
 	// The whole chain is resolved against one verified event set before the
 	// first append, for the same reason readBatch reads the whole file first:
 	// a chain that cannot resolve should land nothing. A "$label" names an act
 	// this batch has yet to mint, so it is not an event reference this
 	// boundary reads and passes through to the label resolver untouched.
-	resolver := newResolver(ctx, workspace)
+	resolver := newResolver(ctx, workspace, serverURL)
 	for position := range acts {
 		entry := &acts[position]
 		if err := resolveRefs(resolver, []*string{&entry.Target, &entry.Retirement}, &entry.RestsOn); err != nil {
@@ -2120,10 +2131,6 @@ func batchCommand(ctx context.Context, arguments []string) error {
 	}
 	showResolved(resolver)
 	discloseBases(resolver, chainCitations(acts))
-	serverURL, err := resolveServerURL(workspace, *serverFlag)
-	if err != nil {
-		return err
-	}
 	// Act shape is settled before the signing key is read, so a chain that
 	// could never be built does not first ask for a key. runBatch checks it
 	// again, because it is the function that must not append a malformed act,
@@ -2464,7 +2471,7 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 		return app.Submission{}, explainLifecycleRefusal(err)
 	}
 	if act.Verb == app.VerbState {
-		warnUndefinedKind(ctx, workspace, act.Kind)
+		warnUndefinedKind(ctx, workspace, serverURL, act.Kind)
 	}
 	return submission, nil
 }
@@ -2492,11 +2499,17 @@ func explainLifecycleRefusal(err error) error {
 // warnUndefinedKind tells an author, on the stream they are already reading,
 // that the act which just landed carries a kind no rule in this workroom
 // reads. The act stays: warning is the whole of the change, and refusing it
-// would hide the attempt. Reading the vocabulary costs one projection of the
-// log, which a deliberate durable write can afford, and a chain of writes in
-// one process pays for once.
-func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, kind workroom.Kind) {
-	if warning := residentclient.UndefinedKindWarning(ctx, workspace, kind); warning != "" {
+// would hide the attempt. The vocabulary comes from the projection this
+// session reads, which after a resident submission is the resident's own
+// answer at the head the act just made, so the warning costs a read rather
+// than a second fold of the log.
+func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, serverURL string, kind workroom.Kind) {
+	snapshot, err := sessionSnapshot(ctx, workspace, serverURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gs: warning: cannot tell whether kind %q is defined here: %v\n", kind, err)
+		return
+	}
+	if warning := snapshot.Vocabulary.UndefinedKindWarning(kind); warning != "" {
 		fmt.Fprintln(os.Stderr, "gs: warning:", warning)
 	}
 }
@@ -2538,17 +2551,13 @@ func statusCommand(ctx context.Context, arguments []string) error {
 	}
 	if serverURL != "" {
 		if *jsonOutput || *all {
-			status, remoteErr := fetchFullStatus(ctx, serverURL)
+			durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 			if remoteErr == nil {
-				if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err == nil {
-					if *jsonOutput {
-						return printJSON(completeStatus(status.Durable))
-					}
-					_, err = os.Stdout.Write(workroom.RenderStatus(status.Durable.Projection))
-					return err
-				} else {
-					remoteErr = err
+				if *jsonOutput {
+					return printJSON(completeStatus(durable))
 				}
+				_, err = os.Stdout.Write(workroom.RenderStatus(durable.Projection))
+				return err
 			}
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
 		} else {
@@ -2789,7 +2798,15 @@ func workCommand(ctx context.Context, arguments []string) error {
 	if *next {
 		// The acts a row owes depend on facts the bounded page does not
 		// carry, so --next reads the projection itself; see cmd/gs/work_next.go.
-		lines, err := workNext(ctx, workspace, page, fingerprint)
+		// A resident that could not answer the page has already been dialed
+		// and already been named on standard error. Asking it again for the
+		// projection would dial a listener this command knows is not answering
+		// and say so a second time in different words.
+		projectionServer := serverURL
+		if !answered {
+			projectionServer = ""
+		}
+		lines, err := workNext(ctx, workspace, projectionServer, page, fingerprint)
 		if err != nil {
 			return err
 		}
@@ -2854,12 +2871,9 @@ func artifactsCommand(ctx context.Context, arguments []string) error {
 		// The extra selectors are deliberately CLI-only. Read the resident's
 		// existing full snapshot instead of smuggling them through the bounded
 		// HTTP request type and silently widening that protocol.
-		status, remoteErr := fetchFullStatus(ctx, serverURL)
+		durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 		if remoteErr == nil {
-			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
-		}
-		if remoteErr == nil {
-			snapshot = status.Durable
+			snapshot = durable
 			answered = true
 		} else {
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
@@ -2980,19 +2994,19 @@ func inspectCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	// A canonical identifier reaches the resident untouched, so this command
-	// stays exactly as cheap as it was for the form it always accepted. A
-	// record number or a hash fragment is resolved here first, against this
-	// checkout's own verified event set.
-	resolver := newResolver(ctx, workspace)
-	if err := resolveRefs(resolver, []*string{&event}); err != nil {
-		return err
-	}
-	showResolved(resolver)
 	serverURL, err := resolveServerURL(workspace, *serverFlag)
 	if err != nil {
 		return err
 	}
+	// A canonical identifier reaches the resident untouched, so this command
+	// stays exactly as cheap as it was for the form it always accepted. A
+	// record number or a hash fragment is resolved here first, against the
+	// verified event set sessionSnapshot answers with.
+	resolver := newResolver(ctx, workspace, serverURL)
+	if err := resolveRefs(resolver, []*string{&event}); err != nil {
+		return err
+	}
+	showResolved(resolver)
 	var inspection statusview.ItemInspection
 	answered := false
 	if serverURL != "" {
@@ -3057,12 +3071,9 @@ func reviewsCommand(ctx context.Context, arguments []string) error {
 	snapshot := app.Snapshot{}
 	degraded := false
 	if serverURL != "" {
-		status, remoteErr := fetchFullStatus(ctx, serverURL)
+		durable, remoteErr := residentStatus(ctx, workspace, serverURL)
 		if remoteErr == nil {
-			remoteErr = validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head)
-		}
-		if remoteErr == nil {
-			snapshot = status.Durable
+			snapshot = durable
 		} else {
 			fmt.Fprintf(os.Stderr, "gs: resident status unavailable (%v); performing verified local fallback\n", remoteErr)
 			degraded = true
