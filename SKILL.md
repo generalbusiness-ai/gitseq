@@ -144,8 +144,8 @@ Every implementation review records three conclusions before approval.
 - **Simplification:** say what could be simpler without weakening the
   conditions of satisfaction, and request changes to cut the fluff.
 
-A `changes-requested` verdict closes no commitment and authorizes no merge.
-Repair
+A `changes-requested` verdict leaves the implementation open and authorizes
+no merge; ratification closes the review. Repair
 the head on the same request and promise while the outcome, conditions,
 performer, destination and authority are unchanged: cite the finding in the
 new artifact, republish every changed path, and request review again. Work
