@@ -15,125 +15,57 @@ Use gitseq requests to track all tasks in this project.
 User-facing notes, documentation and other communications prefer plain English,
 per ISO 24495-1, for a technical audience.
 
-1. Read `SKILL.md` and current `status`. Work assigned between actors begins
-   with a durable request. Claim it with a promise to show the work is in
-   flight, or, when it is already done, report straight against the request:
-   the promise is how the board sees work underway, not a toll on finishing.
-   Only the addressee may report directly, and not while their own promise on
-   that request is live — one commitment takes one closure. Each working cycle,
-   every request addressed to you gets an answer: a promise, an explicit
-   decline, or an `assert` resting on the request saying why it is not yet
-   actionable. Only the request's author or a `ratifier` may retire a request,
-   so a decline is an `assert` stating the refusal and its reason, plus asking
-   the author to retire the request; the row stays open until they do. Answer a
-   stale request addressed to you the same way — name the staleness and ask the
-   author to refile on current bases, confirming its conditions, the addressee's
-   availability, and the governing decisions are unchanged. Corrections needed
-   to satisfy an existing request remain on its live commitment when the
-   outcome, conditions, performer, destination and governing authority are
-   unchanged. Cite the review finding in the corrected artifact, publish the
-   new exact head and request fresh independent review. File a child request
-   before work that adds a separate outcome, changes those conditions or
-   authority, or needs a different performer. Transfer the original commitment
-   only when responsibility for its remaining outcome actually moves. An
-   `assert` may preserve the evidence for a breakdown, but it is not a
-   substitute for the request that assigns follow-up work. Self-initiated work
-   — requester and performer the same actor — carries no self-request,
-   self-promise, or self-report: the implementing commit rests
-   directly on the motivating adopted decision, through either its ratified
-   proposal or the satisfied authority-bearing request chain defined in
-   `SKILL.md`, and the durable filing is the artifact plus the review request
-   only. A commitment loop between one actor and itself keeps no promise the log
-   needs. The tradeoff is that this path shows no in-flight commitment row, so
-   nobody can see from the board that work is underway.
-2. Implement in a new `request/<slug>` branch and worktree unless the request
-   records a better prefix. Never develop or commit on `main`. Every
-   implementing commit carries `Rests-On:` — the request event for assigned
-   work, the motivating adopted decision for self-initiated work.
-3. Point to the exact implementation head with an artifact statement. For
-   assigned work, that artifact rests on the promise — or on the request itself
-   when you made no promise — and states the tests and conditions actually met:
-   it is the implementation report, so do not file a duplicate
-   `ready-for-review` report. Self-initiated work proceeds straight
-   to review.
-4. Request review from a different agent, citing the exact head and its
-   reporting artifact plus what governs it — the request for assigned work, or
-   the motivating adopted decision and its authority basis for self-initiated
-   work. The reviewer promises the review and reports `approved` or
-   `changes-requested`; the review requester
-   ratifies that report. Any change to the head invalidates the approval and
-   returns the implementation to step 3. File the verdict with `gs review`; a
-   verdict filed by hand must rest on the artifact it names. Before approval,
-   every implementation review records three conclusions:
+`SKILL.md` is the working loop and the command each step takes; read it, and
+`gs work --next`, at the start of every cycle. The steps below are that loop
+as it applies here.
+
+1. **Orient and answer.** `gs work --next`. Every request addressed to you
+   gets a `gs promise <request>`, or an `assert` resting on it that declines or
+   says why it is not actionable, plus a request to its author or a `ratifier`
+   to retire it.
+2. **Implement** on a new `request/<slug>` branch and worktree, unless the
+   request records a better prefix. Never develop or commit on `main`. Every
+   implementing commit carries `Rests-On:` — the request for assigned work,
+   the motivating adopted decision for work you began yourself.
+3. **Publish the artifact set** with `gs artifact`: one artifact per changed
+   path at the exact head, the reporting artifact last, stating the tests and
+   conditions actually met. It is the implementation report, so file no
+   duplicate `ready-for-review`. Documentation also rests on the artifacts for
+   the behaviour it describes, not only on the request that produced it.
+4. **Ask a different agent for review** with `gs review-request`. The reviewer
+   promises it and files `gs review`. Before approval, every implementation
+   review records three conclusions:
 
    - **Architecture:** name the affected layers from
      `docs/reference/architecture.md` and say whether the exact head preserves
      or changes their contract. A contract change must update that page in the
-     same head and publish its candidate artifact there; otherwise request
-     changes.
+     same head and publish its artifact there; otherwise request changes.
    - **Security:** examine the affected trust and authority boundaries,
-     untrusted inputs, signatures, secrets, bounds, and failure modes. State
-     the result and request changes for any unresolved security defect. Before
-     approving work that rests on an authority-bearing request chain, confirm
-     all four authority facts in `SKILL.md` from the durable record.
-   - **Simplification:** identify any opportunity to simplify, without
+     untrusted inputs, signatures, secrets, bounds and failure modes. Request
+     changes for any unresolved security defect.
+   - **Simplification:** identify any opportunity to simplify without
      weakening the conditions of satisfaction. Request changes to cut the
      fluff.
-5. Merge only an approved exact head. In the same step, publish each added,
-   modified, or renamed destination at its exact changed path and retire the
-   live in-target predecessors at that exact string. A pointer wider than a
-   landed destination is a separate wire: keep an in-target pointer live and
-   seal it as carried, with no cleanup obligation. Seal an outside-target
-   candidate as a sibling when an unsettled commitment protects it, or as
-   abandoned otherwise. Removing a rename source or deleted file also changes
-   its covering directories, so the plan may retire in-target directory
-   pointers and publish the widest directory successor. Other live candidates
-   stay sealed and unretired. Only an abandoned classification prompts cleanup,
-   and the candidate's author or a `ratifier`, not the merge, retires it.
-   `SKILL.md` states those succession rules in full
-   and [`docs/reference/gs/merge.md`](docs/reference/gs/merge.md) tabulates
-   what `gs merge` enforces. Three of them bite hardest. Paths match as exact
-   strings, with no normalising, prefixes or globs, so the paths are not free
-   to choose. Never record an artifact at `.`, a path every merge rewrites, so
-   that everything anchored to it flares over changes it has nothing to do
-   with; and never at a comma-joined pseudo-path such as `AGENTS.md,SKILL.md`,
-   one string no real predecessor or successor can ever equal, so it flares
-   nothing and nothing flares it. Live means not retired — stale is a different
-   fact, and a stale artifact still occupies its path and is still a
-   predecessor to retire. A bare `gs supersede` retires a path with no
-   successor, and the fold admits it only from the artifact's own author or an
-   actor holding `ratifier`, so ask that actor when the artifact is not yours.
-   The sealed merge receipt is the original requester's pre-authorized
-   acceptance and closes an assigned implementation commitment, so no
-   implementation ratification follows it; self-initiated work has no
-   commitment to close. The review approval is separate and must be explicitly
-   ratified before merge. Work that resolves without a merge still closes
-   through an explicit report and requester ratification, or through
-   supersession. Merge commits must include a concise plain-language
-   description of the change and its impact. If the approved head is already in
-   the target — a forge merge, a push by hand — run the same `gs merge` anyway:
-   it records one incorporation receipt, closes the commitment, and leaves Git
-   untouched.
-6. After a worktree is merged, delete it.
-7. After a change to main, ensure that it is pushed to origin.
 
-Documentation that describes behaviour rests on the artifacts for that
-behaviour, not only on the request that produced it. Superseding the live
-predecessors at step 5 is what makes those pages flare when the world moves
-under them. Ordinary staleness says the reasoning moved, not that the immutable
-reviewed head changed, and `gs merge` records it in the receipt. The narrower
-`describes_superseded_world` fact crosses a direct retired-artifact edge and
-then follows artifact-to-artifact provenance only. A merge judges it as of the
-verdict: one the reviewer had already been shown refuses, and one the world
-moved under after they signed is recorded, because their head has not changed
-and they had no chance to see the move. A flagged artifact the fold cannot date
-refuses. When it refuses, publish an artifact on current implementation bases
-rather than repeat review on the old chain.
+   Any change to the head invalidates the approval and returns the work to
+   step 3.
+5. **Land** the approved head with `gs land --approval <approval> --checkout
+   <main checkout> --text <description> --cleanup`. It ratifies the approval
+   as review requester, merges with succession, pushes `main` to origin, and
+   deletes the worktree and branch once Git proves the head landed. Write the
+   description in plain language: the change and its impact. Work that
+   resolves without landing closes through an explicit report and requester
+   ratification, or through supersession.
 
-Artifacts recorded at `.` or at a comma-joined path before those rules existed
-are still live, and a document resting on one can never flare. Retiring them is
-a one-time migration with its own durable request; the procedure, its
-preconditions and the gate that proves it finished are in
+A merge records ordinary staleness in its receipt and lands the exact approved
+head; it refuses a head that already described a superseded world when the
+verdict was signed. When it refuses, publish an artifact on current
+implementation bases rather than repeat review on the old chain.
+
+Artifacts recorded at `.` or at a comma-joined path before those paths were
+refused are still live, and a document resting on one can never flare.
+Retiring them is a one-time migration with its own durable request; the
+procedure and its gate are in
 [notes/retire-dot-artifacts.md](notes/retire-dot-artifacts.md).
 
 Talk and routine progress stay ephemeral. Promote a breakdown only when it
@@ -144,7 +76,9 @@ sign as another actor.
 
 All feature work must be done on its own worktree.
 
-When work is completed and merged, its original worktree and branch must be deleted.
+When work is completed and merged, its original worktree and branch must be
+deleted. `gs land --cleanup` does it; anything it reports instead of deleting
+is yours to finish.
 
 NEVER leave stale worktrees lying around.  You are responsible for finishing
 work that you undertake, including all necessary reviews, until completion.
@@ -157,9 +91,9 @@ the durable events you are actively handling; publish `waiting` or `blocked`
 immediately when either becomes true; clear focus and return to `available`
 when leaving the work. Lease expiry clears both automatically.
 
-Keep routine failed tests and exploratory dead ends ephemeral. If a blockage is
-material or must survive the session, record an `assert` resting on the
-promise. A correction that meets an existing condition stays on the live
-commitment (step 1); create a child request before work that adds a separate
-outcome or changes the conditions, authority or performer. Supersede your
-promise only when you are withdrawing it.
+Keep routine failed tests and exploratory dead ends ephemeral. Record a
+material or session-surviving blockage as an `assert` resting on the promise.
+A correction that meets an existing condition stays on the live commitment;
+file a child request before work that adds a separate outcome or changes the
+conditions, authority or performer. Supersede your promise only when you are
+withdrawing it.

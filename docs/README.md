@@ -37,6 +37,8 @@ Read in this order if you are new:
 | [Actors and authority](concepts/actors.md) | Who may do what, and why kind is not authority. |
 | [The work loop](concepts/work-loop.md) | How a promise becomes an exact artifact report, how an independently approved merge closes it, and when explicit reports still apply. |
 | [Staleness](concepts/staleness.md) | What a flare means, what it does not cover, and one known gap. |
+| [Agent practice](concepts/agent-practice.md) | Why the working loop is shaped as it is: taking work, refusing it, starting your own. |
+| [Decision authority](concepts/decision-authority.md) | How a decision is adopted, and how implementation reaches that authority. |
 | [Connectors](concepts/connectors.md) | How work enters from GitHub, what a charter does, and what it deliberately does not. |
 | [Components](concepts/components.md) | The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath. |
 
