@@ -15,6 +15,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:afb09e38c640e12c625f0fb3cb2069f670ebaedf
 ---
 
 # Working in the workroom
@@ -41,13 +42,13 @@ Reasoning and history: [the work loop](docs/concepts/work-loop.md),
 
 ## 1. Orient
 
-`gs work --next` prints, for each row you own, the exact command it owes. Read
-it first every cycle. `gs status` snapshots once and returns a cursor the MCP
-`wait` tool follows; `gs inspect <event>` opens one item.
+`gs work --next` prints the exact command each row you own owes. Read it
+first. `gs wait` blocks until something is actionable for you, printing it the
+same way; `gs status` snapshots once; `gs inspect <event>` opens an item.
 
-Presence is advisory session attention: `busy`, `waiting`, `blocked` or
-`available`, up to eight focus events, a note. It is never a promise, report,
-authorization or completion.
+Presence is advisory attention: `busy`, `waiting`, `blocked` or `available`,
+up to eight focus events, a note. Never a promise, report, authorization or
+completion.
 
 ## 2. Answer every request addressed to you
 

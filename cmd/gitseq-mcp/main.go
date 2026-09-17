@@ -706,7 +706,7 @@ func tools() []map[string]any {
 			"note":   map[string]any{"type": "string", "maxLength": nexus.MaxActivityNoteBytes},
 		}))},
 		{"name": "status", "description": "Project durable work and this session's priority ephemeral chat; awaiting_ratification contains standing proposals this actor's roles may ratify, and available_to_you contains open unclaimed requests addressed to this actor.", "inputSchema": object(withSelection(nil))},
-		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called.", "inputSchema": object(withSelection(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}}), "cursor")},
+		{"name": "wait", "description": "Long-poll after a composite cursor; repeats unacknowledged priority ephemeral chat until ack is called. until=actionable returns only on a change this actor can act on.", "inputSchema": object(withSelection(map[string]any{"cursor": map[string]string{"type": "object"}, "timeout_ms": map[string]string{"type": "integer"}, "until": enum("actionable", "any")}), "cursor")},
 		{"name": "work", "description": "Query the current actor's durable work through a bounded resident-side projection. Defaults return work still owed, including standing proposals this actor may ratify and addressed unclaimed requests; closed commitments carrying only ordinary staleness are counted in closed_stale_omitted instead of listed. Pass stale=include or name statuses to list them.", "inputSchema": object(withSelection(map[string]any{
 			"lanes":               arrayOf(enum("available_to_you", "awaiting_ratification", "waiting_on_you", "you_are_waiting_on", "not_actionable", "approved_not_landed")),
 			"statuses":            arrayOf(enum("open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "awaiting-ratification", "superseded", "satisfied", "abandoned", "stale", "cancelled", "reneged", "withdrawn")),
@@ -1236,11 +1236,13 @@ func (s *mcpServer) dispatchResolved(ctx context.Context, call toolCall, current
 		var delta waitDelta
 		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &delta)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
-			local, localErr := s.waitDurable(ctx, current, arguments)
+			local, changed, localErr := s.waitDurable(ctx, current, arguments, identity.actor.Fingerprint, current.actor)
 			if localErr != nil {
 				return nil, localErr
 			}
-			return digestWait(local, requested, identity.actor.Fingerprint, current.actor, true), nil
+			degraded := digestWait(local, requested, identity.actor.Fingerprint, current.actor, true)
+			degraded.Changed = changed
+			return degraded, nil
 		}
 		if err != nil {
 			return nil, err
@@ -2221,16 +2223,29 @@ func statusFromDurable(durable app.Snapshot) service.Status {
 	}
 }
 
-func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments map[string]any) (service.WaitResponse, error) {
+// waitDurable is the wait this adapter keeps when no resident answers: the
+// same poll clock over the locally verified log. It applies the same `until`
+// filter the resident applies, through the same shared function, so a caller
+// that asked for actionable news is not woken by an unrelated act merely
+// because the resident went away.
+func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments map[string]any, fingerprint, actorName string) (service.WaitResponse, bool, error) {
 	encoded, err := json.Marshal(arguments)
 	if err != nil {
-		return service.WaitResponse{}, err
+		return service.WaitResponse{}, false, err
 	}
 	var input service.WaitRequest
 	if err := json.Unmarshal(encoded, &input); err != nil {
-		return service.WaitResponse{}, err
+		return service.WaitResponse{}, false, err
+	}
+	until, err := statusview.ParseUntil(input.Until)
+	if err != nil {
+		return service.WaitResponse{}, false, err
 	}
 	var response service.WaitResponse
+	// Once the frontier has moved past the caller's cursor every later tick
+	// finds the same change, so the filter is evaluated once per head rather
+	// than once per tick.
+	filteredHead, filteredAnswer := "", false
 	changed, err := service.Poll(ctx, input.TimeoutMS, func() (bool, error) {
 		durable, err := current.workspace.Snapshot(ctx)
 		if err != nil {
@@ -2239,15 +2254,24 @@ func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments ma
 		status := statusFromDurable(durable)
 		reset := input.Cursor.Live.Generation != "" && input.Cursor.Live.Generation != "degraded"
 		response = service.WaitResponse{Status: status, Reset: reset}
-		return service.DurableChanged(input.Cursor.Frontier, durable) || reset, nil
+		moved := service.DurableChanged(input.Cursor.Frontier, durable) || reset
+		if !moved || until != statusview.UntilActionable {
+			return moved, nil
+		}
+		if filteredHead != durable.Head {
+			filteredHead = durable.Head
+			filteredAnswer = statusview.ActionableWait(durable.Projection,
+				digestWait(response, input.Cursor, fingerprint, actorName, true), fingerprint)
+		}
+		return filteredAnswer, nil
 	})
 	if err != nil {
-		return service.WaitResponse{}, err
+		return service.WaitResponse{}, false, err
 	}
 	if !changed {
 		response.Reset = false
 	}
-	return response, nil
+	return response, changed, nil
 }
 
 func clone(input map[string]any) map[string]any {

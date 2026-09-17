@@ -150,6 +150,8 @@ func main() {
 		err = statusCommand(ctx, os.Args[2:])
 	case "work":
 		err = workCommand(ctx, os.Args[2:])
+	case "wait":
+		err = waitCommand(ctx, os.Args[2:])
 	case "artifacts":
 		err = artifactsCommand(ctx, os.Args[2:])
 	case "supersession-plan":
@@ -181,6 +183,12 @@ func main() {
 			return
 		}
 		fmt.Fprintln(os.Stderr, "gs:", err)
+		// A wait that ran out of time did not fail: it answered. Its own exit
+		// status says so, so a shell loop can branch on the answer without
+		// reading the message, and an ordinary failure still exits 1.
+		if errors.Is(err, errWaitTimeout) {
+			os.Exit(waitTimeoutExit)
+		}
 		os.Exit(1)
 	}
 }

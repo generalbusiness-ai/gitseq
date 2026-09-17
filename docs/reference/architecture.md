@@ -1617,6 +1617,20 @@ pages, exact-path artifact pages, exact-item inspection, the whole-log review
 gate, the bounded staleness-wave summary, and the bounded join of a caller's
 live priority inbox.
 
+It also owns the `until` filter both wait paths share: one pure function over
+a wait delta, the projection that delta was built from, and the actor's
+fingerprint, deciding whether an answer holds something that actor can act on
+— unacknowledged priority chat, a new event inside one of their own actionable
+lanes, or a new event resting directly on a live event they signed. The
+resident applies it inside its own poll for `/v0/actor-wait`, so a change that
+is not the caller's leaves the poll ticking rather than crossing the socket;
+the MCP adapter applies it to its degraded local wait; and `gs wait` applies it
+to the sequence ref it watches when no resident answers. `actionable` therefore
+means one thing on every surface and no surface re-derives it. The wait request
+gains one optional `until` field, and a wait answer one optional `changed`
+field saying whether the filter accepted or the deadline passed; a caller
+sending neither gets exactly the behaviour it had before.
+
 The named commitment populations a reader counts work in — open, completed,
 closed-not-completed, stale, with the open lifecycle breakdown and the
 commitment total — have exactly one owner, `workroom.WorkOf`. It sits beside
@@ -1814,6 +1828,17 @@ fails is named on standard error and answered by the local audit. Without
 commands — `gs status --all` and `--json`, `gs artifacts` with its CLI-only
 selectors, `gs reviews` — read the same endpoint under the frontier check
 [`gs status`](gs/status.md) documents, and are unchanged by this.
+
+[`gs wait`](gs/wait.md) is the one reading command that blocks. The
+actor-scoped wait route answers only a session, so it opens a presence session
+of its own — the same announce the MCP adapter sends, renewed between polls and
+departed on every exit path including an interrupt. It loops the resident's
+capped poll under its own deadline, so one invocation is one wake rather than
+one call every half minute, and keeps its cursor in a per-actor file under
+`.git/gitseq` so the next call resumes rather than replaying. Its exit status,
+not its output, separates a change from a deadline. With no resident it watches
+the sequence ref and buys one verified local audit per move, which is the path
+that survives a resident restart.
 
 Those checks bind the frontier, and only the frontier. The head is proved
 against this checkout's own ref; the rows folded at that head are the

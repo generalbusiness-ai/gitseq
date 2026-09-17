@@ -11,6 +11,7 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c2c9d0ef010bb7227472c4b8ada52a33f4723e5
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6f5ca1c3b34c09a4a1a5f26ac366b94c748e3ca9
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3c6d28f602ea92883a8c4aa586c5b71f341b5db
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:afb09e38c640e12c625f0fb3cb2069f670ebaedf
 ---
 
 # `gs status`
@@ -362,6 +363,19 @@ unparseable or addressless `resident.json`, or one naming another
 workroom, refuses here as it does everywhere, before any request is made
 — see [`gs serve`](serve.md). Durable writes never fall back at all.
 
+## The cursor, and following it
+
+Every status answer carries a **cursor**: the frontier it was taken at, and
+the position of the live room around it. It is what turns a snapshot into a
+starting point. Pass it back to the MCP [`wait`](../mcp/wait.md) tool, or let
+[`gs wait`](wait.md) keep it for you — it writes one cursor file per actor
+under `.git/gitseq` and resumes from it on the next call, so a shell loop
+follows the workroom without re-reading the log it has already seen.
+
+`gs status` itself keeps no cursor: it is a snapshot, and every call answers
+about now. Reading it in a loop to find out whether anything happened is what
+`gs wait` exists to replace.
+
 ## Cost
 
 The local read tries the application-owned checkpoint selector under
@@ -383,6 +397,6 @@ for one command or process without changing the persistent selectors.
 
 ## See also
 
-- [`gs work`](work.md), [`gs artifacts`](artifacts.md), [`gs inspect`](inspect.md), [`gs reviews`](reviews.md)
+- [`gs work`](work.md), [`gs wait`](wait.md), [`gs artifacts`](artifacts.md), [`gs inspect`](inspect.md), [`gs reviews`](reviews.md)
 - [`gs provenance`](provenance.md), [`gs verify`](verify.md)
 - [Staleness](../../concepts/staleness.md)

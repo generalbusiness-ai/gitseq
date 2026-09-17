@@ -81,6 +81,7 @@ Read in this order if you are new:
   [reassign-if-unclaimed](reference/gs/reassign-if-unclaimed.md),
   [status](reference/gs/status.md),
   [work](reference/gs/work.md),
+  [wait](reference/gs/wait.md),
   [artifacts](reference/gs/artifacts.md),
   [inspect](reference/gs/inspect.md),
   [reviews](reference/gs/reviews.md),

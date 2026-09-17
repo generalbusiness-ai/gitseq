@@ -78,6 +78,13 @@ type WaitRequest struct {
 	Cursor    Cursor `json:"cursor"`
 	TimeoutMS int    `json:"timeout_ms,omitempty"`
 	Session   string `json:"credential,omitempty"`
+	// Until names the filter the poll applies before it answers: `any`, the
+	// default and what every caller written before this field sends, or
+	// `actionable`, which keeps the poll ticking until something this actor
+	// can act on arrives. Filtering here rather than at the client is the
+	// point: a quiet wake costs a round trip, and in a busy room almost every
+	// wake used to be one.
+	Until string `json:"until,omitempty"`
 }
 
 type WaitResponse struct {
@@ -385,7 +392,19 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 		write(writer, nil, errors.New("credential is required"))
 		return
 	}
-	response, observation, changed, err := s.wait(request.Context(), input)
+	until, err := statusview.ParseUntil(input.Until)
+	if err != nil {
+		write(writer, nil, err)
+		return
+	}
+	// The filter is about one actor's lanes and one actor's signed events, and
+	// the whole-workroom route has no actor to read them for. Refusing here is
+	// better than accepting a filter this route could only ignore.
+	if !actorView && until == statusview.UntilActionable {
+		write(writer, nil, errors.New("until=actionable needs an actor; call /v0/actor-wait with a credential"))
+		return
+	}
+	response, observation, changed, err := s.wait(request.Context(), input, until)
 	if err != nil {
 		if s.observer != nil {
 			s.observer.Record(request.Context(), observe.Measurement{Operation: observe.OperationWait, Path: observe.PathLongPoll, Outcome: observe.Classify(request.Context(), err), Duration: time.Since(started), Items: 1})
@@ -409,6 +428,7 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 	}
 	delta := statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset,
 		input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
+	delta.Changed = changed
 	write(writer, delta, nil)
 }
 
@@ -425,7 +445,7 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 // The generation is read before the snapshot it guards. A head that moves
 // between the two is seen by the next tick rather than lost, and a snapshot
 // that already saw the newer head simply gets asked once more.
-func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nexus.Observation, bool, error) {
+func (s *Server) wait(ctx context.Context, input WaitRequest, until statusview.Until) (WaitResponse, nexus.Observation, bool, error) {
 	release := s.heads.acquire()
 	defer release()
 	includeInbox := input.Session != ""
@@ -434,6 +454,13 @@ func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nex
 	primed := false
 	var seen uint64
 	var advance <-chan struct{}
+	// The actionable filter's answer depends only on the durable head this
+	// waiter last read and on whether its inbox has anything pending. Once the
+	// frontier has moved past the caller's cursor, every remaining tick of this
+	// poll finds a change, so without this the filter would be recomputed four
+	// times a second for the rest of the poll over a projection that had not
+	// moved. These three fields make it once per change instead.
+	filteredHead, filteredPending, filteredAnswer := "", false, false
 	changed, err := pollUntil(ctx, input.TimeoutMS, func() <-chan struct{} { return advance }, func() (bool, error) {
 		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
 		if err != nil {
@@ -465,7 +492,22 @@ func (s *Server) wait(ctx context.Context, input WaitRequest) (WaitResponse, nex
 			}
 		}
 		observed = observation
-		return observation.Reset || DurableChanged(input.Cursor.Frontier, response.Status.Durable) || len(observation.Changes) > 0 || pending, nil
+		moved := observation.Reset || DurableChanged(input.Cursor.Frontier, response.Status.Durable) || len(observation.Changes) > 0 || pending
+		if !moved || until != statusview.UntilActionable {
+			return moved, nil
+		}
+		// Only a tick that already found a change pays for the filter, and the
+		// filter's answer is the check's answer: false leaves the poll
+		// ticking, so a caller asking for actionable news is not woken to be
+		// told there is none.
+		if filteredHead != response.Status.Durable.Head || filteredPending != pending {
+			filteredHead, filteredPending = response.Status.Durable.Head, pending
+			filteredAnswer = statusview.ActionableWait(response.Status.Durable.Projection,
+				statusview.BuildWait(response.Status.Durable, response.Status.Cursor, observation.Changes, observation.Reset,
+					input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false),
+				observation.Fingerprint)
+		}
+		return filteredAnswer, nil
 	})
 	return response, observed, changed, err
 }

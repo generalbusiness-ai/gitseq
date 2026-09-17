@@ -161,7 +161,13 @@ type ActorStatus struct {
 }
 
 type WaitDelta struct {
-	Cursor                             Cursor             `json:"cursor"`
+	Cursor Cursor `json:"cursor"`
+	// Changed says why this answer came back: true because the poll's filter
+	// accepted something, false because the poll ran out of time. Without it a
+	// reader cannot tell the two apart under `until=actionable`, where the
+	// durable list holds every event after the cursor whether or not any of
+	// them was the actor's to act on.
+	Changed                            bool               `json:"changed,omitempty"`
 	Reset                              bool               `json:"reset,omitempty"`
 	Durable                            []EventView        `json:"durable,omitempty"`
 	Skipped                            int                `json:"durable_skipped,omitempty"`
@@ -562,6 +568,110 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
 	}
 	return delta
+}
+
+// Until is the filter a wait applies before it wakes its caller. It is shared
+// by the resident's /v0/actor-wait route, the MCP `wait` tool and `gs wait`,
+// so "actionable" means one thing on every surface.
+type Until string
+
+const (
+	// UntilAny wakes on any durable or live change after the cursor.
+	UntilAny Until = "any"
+	// UntilActionable wakes only on a change this actor can act on.
+	UntilActionable Until = "actionable"
+)
+
+// ParseUntil reads the filter off the wire. An empty value is `any`, which is
+// what every caller written before this filter existed sends.
+func ParseUntil(value string) (Until, error) {
+	switch Until(value) {
+	case "", UntilAny:
+		return UntilAny, nil
+	case UntilActionable:
+		return UntilActionable, nil
+	default:
+		return "", fmt.Errorf("until %q is not one of: actionable, any", value)
+	}
+}
+
+// ActionableWait decides whether one wait answer holds something its actor can
+// act on. It is pure over the projection the answer was built from, the answer
+// itself and the actor's fingerprint, so the resident can apply it inside its
+// poll and a client watching a bare sequence ref can apply the same rule to the
+// delta it builds locally.
+//
+// Three things count, and nothing else does:
+//
+//  1. Unacknowledged priority chat. It repeats until `ack`, and it is
+//     addressed to this session by name.
+//  2. A new durable event that is the request, promise or report of a
+//     commitment now standing in this actor's own actionable lanes — what is
+//     addressed to them and what waits on them — or that is a proposal now
+//     standing in their ratification lane. This is how "a lane changed"
+//     is decided without holding the previous answer: a lane row is this
+//     actor's to move, and a new event inside that row is what moved it.
+//  3. A new durable event resting directly on an event this actor signed that
+//     is not retired: a verdict on their artifact, an assert on their promise.
+//     Such an event need not create a lane row at all, and it is exactly the
+//     news a poll that watched only lanes used to lose.
+//
+// Presence and conversation churn are not actionable. Neither is a durable
+// event that touches none of the three, which is the whole point: an unrelated
+// act in a busy room no longer wakes every waiter in it.
+func ActionableWait(projection workroom.Projection, delta WaitDelta, fingerprint string) bool {
+	if len(delta.PriorityChat.Frames) > 0 {
+		return true
+	}
+	if len(delta.Durable) == 0 {
+		return false
+	}
+	fresh := make(map[string]bool, len(delta.Durable))
+	for _, view := range delta.Durable {
+		fresh[view.Event] = true
+	}
+	for _, lane := range [][]CommitmentView{delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou} {
+		for _, row := range lane {
+			if fresh[row.Request] || fresh[row.Promise] || fresh[row.Report] {
+				return true
+			}
+		}
+	}
+	for _, row := range delta.CurrentAwaitingRatification {
+		if fresh[row.Event] {
+			return true
+		}
+	}
+	return restsOnYours(projection, fresh, fingerprint)
+}
+
+// restsOnYours reports whether any fresh event names, as a direct basis, an
+// event this actor signed and has not had retired. A retired basis is left out
+// because the record resting on it is answering something that no longer
+// stands, which is news about the retirement rather than work for its author.
+func restsOnYours(projection workroom.Projection, fresh map[string]bool, fingerprint string) bool {
+	mine := make(map[string]bool)
+	for _, statement := range projection.Statements {
+		if statement.Actor == fingerprint && !statement.Retired {
+			mine[statement.Event] = true
+		}
+	}
+	for _, act := range projection.Acts {
+		if act.Actor == fingerprint {
+			mine[act.Event] = true
+		}
+	}
+	if len(mine) == 0 {
+		return false
+	}
+	for event := range fresh {
+		for _, basis := range projection.Provenance[event] {
+			if mine[basis] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func Summarize(tool string, value any) string {
