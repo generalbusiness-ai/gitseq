@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at docs/reference/gs/review-request.md","body":{"commit":"e2e00899bced46fc85ff44734b8d10503d6473cf","path":"docs/reference/gs/review-request.md"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0f7235235a63a5e8a903befe4ca22408c5ab4da1","text":"Merge retired a covered predecessor; the successor is at cmd/gs/step_session.go."}
