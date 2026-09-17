@@ -100,11 +100,15 @@ priority frame.
 
 - unacknowledged priority chat addressed to this session by name;
 - a new durable event inside one of this actor's own actionable lanes — the
-  request, promise or report of a commitment now in `current_available_to_you`
-  or `current_waiting_on_you`, or a proposal now in
-  `current_awaiting_ratification`;
-- a new durable event resting directly on an event this actor signed that is
-  not retired: a verdict on their artifact, an assert on their promise.
+  request, promise or report of a commitment addressed to them or waiting on
+  them, or a proposal their roles may ratify;
+- a new durable event resting directly on a live event this actor signed: a
+  verdict on their artifact, an assert on their promise.
+
+An event this actor signed themself is none of the three, whichever one it
+would otherwise match: their own promise on their own request sits inside their
+own lane row, and waking on it makes every act they file return their own next
+wait.
 
 The filter runs **inside** the resident's poll, on the same shared function
 [`gs wait`](../gs/wait.md) applies to its local fallback. A change that is not
@@ -114,11 +118,13 @@ one filter with one meaning on every surface; `gs wait` defaults to
 `actionable`, and this tool keeps `any`.
 
 It decides over **every** durable event after your cursor, not over the
-`durable` list in the answer. That list is capped at fifty; a decision about
-whether to wake somebody is not, or fifty unrelated acts arriving behind the
-one record that was yours would bury it and the cursor would then move past it.
-What the filter let through comes back in `accepted`, so a caller can say why
-it woke without asking a second question.
+`durable` list in the answer, and reads the lanes from the projection, not from
+the twenty rows in `current_available_to_you` and its siblings. Both lists are
+capped because a response must be; a decision about whether to wake somebody is
+not, or enough unrelated records arriving behind the one that was yours would
+bury it and the cursor would then move past it. What the filter let through
+comes back in `accepted`, so a caller can say why it woke without asking a
+second question.
 
 The resident's whole-workroom wait route, `/v0/wait`, refuses
 `until=actionable`: it serves no particular actor, so it has no lanes or signed
@@ -126,9 +132,11 @@ events for the filter to be about. This tool never calls it. (The degraded path
 for this tool is the adapter's own fold of the local log, described under
 *Resets are not losses* below, and `until` applies there too.)
 
-A call that omits `until` sends no such field at all, so it is answered by a
-resident built before the filter existed. A call that names one is refused by
-that resident until it is restarted on a build that knows it.
+`any` travels as an *absent* field, not as the word: a call that omits `until`,
+and a call that asks for `any` by name, both reach the resident without one, so
+both are answered by a resident built before the filter existed — whose default
+is already `any`. Only `until=actionable` is put on the wire, and only that is
+refused by such a resident, until it is restarted on a build that knows it.
 
 ## How the resident waits
 

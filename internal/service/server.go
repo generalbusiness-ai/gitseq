@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -111,6 +112,10 @@ type Server struct {
 	previewSlots chan struct{}
 	// heads is the one head clock every open wait on this log shares.
 	heads *headWatch
+	// filtered counts actionable-filter evaluations across every poll this
+	// server has served. Nothing reads it in production; it is how the cost of
+	// a declining poll is measured, which has no other outward sign.
+	filtered atomic.Int64
 }
 
 func New(workspace *app.Workspace) (*Server, error) {
@@ -404,6 +409,9 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 		write(writer, nil, errors.New("until=actionable needs an actor; call /v0/actor-wait with a credential"))
 		return
 	}
+	// The poll is given its own copy of the cursor and moves it on as it
+	// declines; the delta is built from the one the caller actually sent.
+	requested := input.Cursor
 	response, observation, changed, err := s.wait(request.Context(), input, until)
 	if err != nil {
 		if s.observer != nil {
@@ -427,14 +435,17 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 		return
 	}
 	delta := statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset,
-		input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
+		requested, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
 	delta.Changed = changed
 	if until == statusview.UntilActionable {
 		// The filter's working travels with its verdict, so the caller can say
 		// why it woke without asking a second question. It is capped for the
-		// wire; the decision behind it was not.
+		// wire; the decision behind it was not. It is recomputed here from the
+		// cursor the caller sent, which the poll may have moved on past as it
+		// declined things, so the answer covers everything since the caller
+		// last heard from us.
 		delta.Accepted, delta.AcceptedSkipped = statusview.AcceptedWaitEvents(
-			response.Status.Durable, input.Cursor, delta, observation.Fingerprint)
+			response.Status.Durable, requested, observation.Fingerprint)
 	}
 	write(writer, delta, nil)
 }
@@ -461,13 +472,6 @@ func (s *Server) wait(ctx context.Context, input WaitRequest, until statusview.U
 	primed := false
 	var seen uint64
 	var advance <-chan struct{}
-	// The actionable filter's answer depends only on the durable head this
-	// waiter last read and on whether its inbox has anything pending. Once the
-	// frontier has moved past the caller's cursor, every remaining tick of this
-	// poll finds a change, so without this the filter would be recomputed four
-	// times a second for the rest of the poll over a projection that had not
-	// moved. These three fields make it once per change instead.
-	filteredHead, filteredPending, filteredAnswer := "", false, false
 	changed, err := pollUntil(ctx, input.TimeoutMS, func() <-chan struct{} { return advance }, func() (bool, error) {
 		observation, err := s.hub.Observe(input.Session, &input.Cursor.Live)
 		if err != nil {
@@ -507,16 +511,35 @@ func (s *Server) wait(ctx context.Context, input WaitRequest, until statusview.U
 		// filter's answer is the check's answer: false leaves the poll
 		// ticking, so a caller asking for actionable news is not woken to be
 		// told there is none.
-		if filteredHead != response.Status.Durable.Head || filteredPending != pending {
-			filteredHead, filteredPending = response.Status.Durable.Head, pending
-			filteredAnswer = statusview.ActionableWait(response.Status.Durable, input.Cursor,
-				statusview.BuildWait(response.Status.Durable, response.Status.Cursor, observation.Changes, observation.Reset,
-					input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false),
-				observation.Fingerprint)
+		if _, _, actionable := s.filter(response, observation, input.Cursor); actionable {
+			return true, nil
 		}
-		return filteredAnswer, nil
+		// Declined, so this much has been judged: move the baseline past it.
+		// A change left behind the baseline is found again on every one of the
+		// four ticks a second for the rest of the poll — the filter is
+		// recomputed each time, and a live change left there made the durable
+		// snapshot be read again each time too, which is a Git process per
+		// tick for a poll that is not going to answer.
+		input.Cursor.Frontier = []Frontier{{Genesis: response.Status.Durable.Genesis,
+			Head: response.Status.Durable.Head, Depth: response.Status.Durable.Depth}}
+		input.Cursor.Live = observation.Snapshot.Cursor
+		return false, nil
 	})
 	return response, observed, changed, err
+}
+
+// filter applies the actionable rule to one answer in flight. It exists so the
+// poll and the response build the same verdict from the same function.
+//
+// Every evaluation is counted. A poll that keeps its baseline where it was
+// re-runs this on every one of the four ticks a second for the rest of its
+// life, over a projection that has not moved — a cost with no other outward
+// sign, which is why the count is the only way a test can see it.
+func (s *Server) filter(response WaitResponse, observation nexus.Observation, requested Cursor) ([]statusview.EventView, int, bool) {
+	s.filtered.Add(1)
+	delta := statusview.BuildWait(response.Status.Durable, response.Status.Cursor, observation.Changes, observation.Reset,
+		requested, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
+	return statusview.FilterWait(response.Status.Durable, requested, delta, observation.Fingerprint)
 }
 
 func DurableChanged(frontier []Frontier, durable app.Snapshot) bool {

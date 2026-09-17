@@ -623,65 +623,54 @@ func ParseUntil(value string) (Until, error) {
 	}
 }
 
-// ActionableWait decides whether one wait answer holds something its actor can
-// act on. It is pure over the projection the answer was built from, the answer
-// itself and the actor's fingerprint, so the resident can apply it inside its
-// poll and a client watching a bare sequence ref can apply the same rule to the
-// delta it builds locally.
+// FilterWait applies `until=actionable` to one wait answer: the events after
+// the requested cursor this actor can act on, the count of any not rendered,
+// and whether the answer holds anything at all for them.
 //
 // Three things count, and nothing else does:
 //
 //  1. Unacknowledged priority chat. It repeats until `ack`, and it is
 //     addressed to this session by name.
 //  2. A new durable event that is the request, promise or report of a
-//     commitment now standing in this actor's own actionable lanes — what is
-//     addressed to them and what waits on them — or that is a proposal now
-//     standing in their ratification lane. This is how "a lane changed"
-//     is decided without holding the previous answer: a lane row is this
-//     actor's to move, and a new event inside that row is what moved it.
-//  3. A new durable event resting directly on an event this actor signed that
-//     is not retired: a verdict on their artifact, an assert on their promise.
-//     Such an event need not create a lane row at all, and it is exactly the
-//     news a poll that watched only lanes used to lose.
+//     commitment standing in this actor's own actionable lanes — what is
+//     addressed to them and what waits on them — or a proposal standing in
+//     their ratification lane. This is how "a lane changed" is decided without
+//     holding the previous answer: a lane row is this actor's to move, and a
+//     new event inside that row is what moved it.
+//  3. A new durable event resting directly on a live event this actor signed:
+//     a verdict on their artifact, an assert on their promise. Such an event
+//     need not create a lane row at all, and it is exactly the news a poll
+//     that watched only lanes used to lose.
 //
-// Presence and conversation churn are not actionable. Neither is a durable
-// event that touches none of the three, which is the whole point: an unrelated
-// act in a busy room no longer wakes every waiter in it.
-func ActionableWait(durable app.Snapshot, requested Cursor, delta WaitDelta, fingerprint string) bool {
-	if len(delta.PriorityChat.Frames) > 0 {
-		return true
-	}
-	fresh := FreshDecisions(durable, requested)
-	if len(fresh) == 0 {
-		return false
-	}
-	// A poll asking only whether to wake somebody stops at the first event
-	// that says yes, and renders nothing: rendering is what costs, and this
-	// question is asked on every change a resident sees.
-	accepts := acceptsFor(durable.Projection, delta, fingerprint)
-	for _, decision := range fresh {
-		if accepts(decision.Event) {
-			return true
-		}
-	}
-	return false
+// An event this actor signed themself is none of the three, whichever rule it
+// would otherwise match. Their own promise on their own request is not news to
+// them, and waking on it makes every act they file return their own next wait.
+//
+// Presence and conversation churn are not actionable. Neither is an event that
+// touches none of the three, which is the whole point: an unrelated act in a
+// busy room no longer wakes every waiter in it.
+func FilterWait(durable app.Snapshot, requested Cursor, delta WaitDelta, fingerprint string) ([]EventView, int, bool) {
+	accepted, skipped := AcceptedWaitEvents(durable, requested, fingerprint)
+	return accepted, skipped, len(accepted) > 0 || len(delta.PriorityChat.Frames) > 0
 }
 
 // AcceptedWaitEvents is the filter's working: the events after the requested
 // cursor that this actor can act on, under rules 2 and 3 above, in log order,
 // with the count of any it did not render.
 //
-// It reads FreshDecisions, not delta.Durable. The delta prints at most
-// DeltaCap events, and a wait that decided from that list lost the one event
-// that was this actor's whenever fifty unrelated ones arrived behind it — and
-// then persisted a cursor past it, so no later wait could report it either.
-func AcceptedWaitEvents(durable app.Snapshot, requested Cursor, delta WaitDelta, fingerprint string) ([]EventView, int) {
+// It reads FreshDecisions, not delta.Durable, and it reads the lanes from the
+// projection, not from the delta's capped lists. Both caps exist because a
+// response must be bounded; a decision about whom to wake must not be, or the
+// one event that was this actor's is lost whenever enough unrelated ones
+// arrive behind it — and the cursor then moves past it, so no later wait can
+// report it either.
+func AcceptedWaitEvents(durable app.Snapshot, requested Cursor, fingerprint string) ([]EventView, int) {
 	fresh := FreshDecisions(durable, requested)
 	if len(fresh) == 0 {
 		return nil, 0
 	}
 	projection := durable.Projection
-	accepts := acceptsFor(projection, delta, fingerprint)
+	accepts := acceptsFor(projection, fingerprint)
 	accepted := make([]workroom.Decision, 0, 4)
 	for _, decision := range fresh {
 		if accepts(decision.Event) {
@@ -700,54 +689,78 @@ func AcceptedWaitEvents(durable app.Snapshot, requested Cursor, delta WaitDelta,
 	return viewDecisions(projection, accepted), skipped
 }
 
-// acceptsFor builds the two indexes rules 2 and 3 need — the events of the
-// rows this actor can move, and the events this actor signed — and returns the
-// test over them. Both are built once per call rather than once per event,
-// because each is a pass over the projection.
-func acceptsFor(projection workroom.Projection, delta WaitDelta, fingerprint string) func(event string) bool {
-	rows := make(map[string]bool, 3*len(delta.CurrentAvailableToYou)+3*len(delta.CurrentWaitingOnYou)+len(delta.CurrentAwaitingRatification))
-	for _, lane := range [][]CommitmentView{delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou} {
-		for _, row := range lane {
-			rows[row.Request], rows[row.Promise], rows[row.Report] = true, true, true
-		}
-	}
-	for _, row := range delta.CurrentAwaitingRatification {
-		rows[row.Event] = true
-	}
-	delete(rows, "")
-	mine := signedBy(projection, fingerprint)
+// acceptsFor builds the three indexes the rules need — the events of the rows
+// this actor can move, the events they signed, and which of those are still
+// live — and returns the test over them. Each is a pass over the projection,
+// so all three are built once per call rather than once per event.
+func acceptsFor(projection workroom.Projection, fingerprint string) func(event string) bool {
+	rows := actionableRowEvents(projection, fingerprint)
+	signed, live := signedBy(projection, fingerprint)
 	return func(event string) bool {
-		return rows[event] || restsOnYours(projection, event, mine)
+		if signed[event] {
+			return false
+		}
+		return rows[event] || restsOnLive(projection, event, live)
 	}
 }
 
-// signedBy collects the events this actor signed and has not had retired. A
-// retired one is left out because a record resting on it is answering
-// something that no longer stands, which is news about the retirement rather
-// than work for its author.
-func signedBy(projection workroom.Projection, fingerprint string) map[string]bool {
-	mine := make(map[string]bool)
+// actionableRowEvents names every event belonging to a row this actor can
+// move: the request, promise and report of each commitment in their
+// available-to-you or waiting-on-you lane, and each proposal their roles may
+// ratify. The lane test is BuildWait's, read from the whole projection rather
+// than from the twenty rows a response carries.
+func actionableRowEvents(projection workroom.Projection, fingerprint string) map[string]bool {
+	rows := make(map[string]bool)
+	for _, commitment := range projection.Commitments {
+		if !involves(commitment, fingerprint) || terminal[commitment.Status] {
+			continue
+		}
+		mine := addressedTo(commitment, fingerprint) ||
+			(actionable[commitment.Status] && commitment.WaitingOn == fingerprint)
+		if !mine {
+			continue
+		}
+		rows[commitment.Request], rows[commitment.Promise], rows[commitment.Report] = true, true, true
+	}
+	for _, proposal := range awaitingRatifications(projection, fingerprint) {
+		rows[proposal.Event] = true
+	}
+	delete(rows, "")
+	return rows
+}
+
+// signedBy collects what this actor signed: every event, for the rule that
+// their own acts are not news to them, and separately those not retired, for
+// the rule about what rests on them. A retired one is left out of the second
+// because a record resting on it is answering something that no longer stands,
+// which is news about the retirement rather than work for its author.
+func signedBy(projection workroom.Projection, fingerprint string) (signed, live map[string]bool) {
+	signed, live = make(map[string]bool), make(map[string]bool)
 	for _, statement := range projection.Statements {
-		if statement.Actor == fingerprint && !statement.Retired {
-			mine[statement.Event] = true
+		if statement.Actor != fingerprint {
+			continue
+		}
+		signed[statement.Event] = true
+		if !statement.Retired {
+			live[statement.Event] = true
 		}
 	}
 	for _, act := range projection.Acts {
 		if act.Actor == fingerprint {
-			mine[act.Event] = true
+			signed[act.Event], live[act.Event] = true, true
 		}
 	}
-	return mine
+	return signed, live
 }
 
-// restsOnYours reports whether one event names, as a direct basis, an event
+// restsOnLive reports whether one event names, as a direct basis, a live event
 // this actor signed.
-func restsOnYours(projection workroom.Projection, event string, mine map[string]bool) bool {
-	if len(mine) == 0 {
+func restsOnLive(projection workroom.Projection, event string, live map[string]bool) bool {
+	if len(live) == 0 {
 		return false
 	}
 	for _, basis := range projection.Provenance[event] {
-		if mine[basis] {
+		if live[basis] {
 			return true
 		}
 	}

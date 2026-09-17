@@ -109,7 +109,7 @@ func (f *waitFixture) frontier(t *testing.T) service.Cursor {
 func (f *waitFixture) seedCursor(t *testing.T, name string, cursor service.Cursor) string {
 	t.Helper()
 	path := filepath.Join(f.scratch, name)
-	if err := writeWaitCursor(path, f.workspace.View().Genesis, "bot", cursor); err != nil {
+	if err := writeWaitCursor(path, f.workspace.View().Genesis, "bot", cursor, ""); err != nil {
 		t.Fatal(err)
 	}
 	return path
@@ -255,7 +255,7 @@ func TestWaitPersistsItsCursorAndResumesFromIt(t *testing.T) {
 	if !strings.Contains(first.String(), "first task") {
 		t.Fatalf("first wait did not report the request:\n%s", first.String())
 	}
-	held := readWaitCursor(cursor, fixture.workspace.View().Genesis)
+	held := readWaitCursor(cursor, fixture.workspace.View().Genesis).Cursor
 	if len(held.Frontier) != 1 || held.Frontier[0].Head != fixture.frontier(t).Frontier[0].Head {
 		t.Fatalf("the persisted cursor is %+v; want this workroom's current frontier", held)
 	}
@@ -439,7 +439,28 @@ type refusal func(path string, attempt int) (int, string, bool)
 // which is what a resident that has gone away looks like from here.
 var lost = 499
 
+// proxyBodies is proxy with the request body handed to the interception, for
+// the cases that turn on what the command asked rather than on which route.
+func (f *waitFixture) proxyBodies(t *testing.T, intercept func(path string, body map[string]any) (int, string, bool)) *proxyResident {
+	t.Helper()
+	return f.proxyWith(t, func(path string, body []byte, _ int) (int, string, bool) {
+		var decoded map[string]any
+		_ = json.Unmarshal(body, &decoded)
+		return intercept(path, decoded)
+	})
+}
+
 func (f *waitFixture) proxy(t *testing.T, intercept refusal) *proxyResident {
+	t.Helper()
+	if intercept == nil {
+		return f.proxyWith(t, nil)
+	}
+	return f.proxyWith(t, func(path string, _ []byte, attempt int) (int, string, bool) {
+		return intercept(path, attempt)
+	})
+}
+
+func (f *waitFixture) proxyWith(t *testing.T, intercept func(path string, body []byte, attempt int) (int, string, bool)) *proxyResident {
 	t.Helper()
 	proxy := &proxyResident{}
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -458,7 +479,7 @@ func (f *waitFixture) proxy(t *testing.T, intercept refusal) *proxyResident {
 		}
 		proxy.mu.Unlock()
 		if intercept != nil {
-			if status, message, handled := intercept(request.URL.Path, attempt); handled {
+			if status, message, handled := intercept(request.URL.Path, body, attempt); handled {
 				if status == lost {
 					hijacked, _, err := writer.(http.Hijacker).Hijack()
 					if err == nil {
@@ -540,7 +561,7 @@ func TestWaitKeepsItsCursorAfterAPollThatWokeNobody(t *testing.T) {
 			if err := runWait(fixture.ctx, fixture.workspace, options); err != errWaitTimeout {
 				t.Fatalf("%s wait on somebody else's request = %v; want the deadline to pass", lane.name, err)
 			}
-			kept := readWaitCursor(path, fixture.workspace.View().Genesis)
+			kept := readWaitCursor(path, fixture.workspace.View().Genesis).Cursor
 			current := fixture.frontier(t)
 			if len(kept.Frontier) != 1 || kept.Frontier[0] != current.Frontier[0] {
 				t.Fatalf("%s wait kept cursor %+v; want the frontier it was answered at, %+v", lane.name, kept, current.Frontier[0])
@@ -682,6 +703,172 @@ func TestWaitIsNotWokenByARetirementOfARequestAddressedToYou(t *testing.T) {
 	}
 }
 
+// A quiet room stays quiet. Every invocation announces itself and departs, so
+// under `--until any` the room is never quiet from the resident's point of
+// view: the first call woke on its own arrival, and each later one on its
+// predecessor's departure, which made the documented loop spin instead of
+// wait.
+func TestWaitUnderAnyIsNotWokenByItsOwnSessions(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	for call := 1; call <= 3; call++ {
+		var out strings.Builder
+		began := time.Now()
+		err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilAny, 900*time.Millisecond, cursor, &out))
+		if err != errWaitTimeout {
+			t.Fatalf("call %d in a quiet room = %v after %s, %q; want the deadline to pass",
+				call, err, time.Since(began), out.String())
+		}
+	}
+	// Somebody else's arrival is still a change: what is excluded is this
+	// command's own sessions, not everyone's.
+	other := openTestSession(t, fixture.url, "carol")
+	if other == "" {
+		t.Fatal("no second session")
+	}
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilAny, 5*time.Second, cursor, &out)); err != nil {
+		t.Fatalf("an unfiltered wait did not report another actor arriving: %v", err)
+	}
+}
+
+// A renewal meets the same resident as a poll, so it meets the same refusals.
+// A lease renewal that found a restarted resident used to be fatal, which made
+// a restart end the wait it was least able to afford to end.
+func TestWaitReopensASessionRefusedAtRenewal(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	refusals := 0
+	proxy := fixture.proxyBodies(t, func(path string, body map[string]any) (int, string, bool) {
+		if path != "/v0/presence" {
+			return 0, "", false
+		}
+		if _, renewal := body["credential"]; !renewal {
+			return 0, "", false
+		}
+		refusals++
+		return http.StatusBadRequest, "credential is not valid", refusals == 1
+	})
+	options := fixture.options(t, statusview.UntilActionable, 2*time.Second, cursor, io.Discard)
+	options.serverURL = proxy.url
+	options.renewEvery = 100 * time.Millisecond
+	options.pollCap = 150 * time.Millisecond
+	var progress strings.Builder
+	options.progress = &progress
+	if err := runWait(fixture.ctx, fixture.workspace, options); err != errWaitTimeout {
+		t.Fatalf("a renewal refused by a restarted resident = %v; want the wait to carry on to its deadline", err)
+	}
+	if !strings.Contains(progress.String(), "lapsed") {
+		t.Errorf("the lapse at renewal was not reported: %q", progress.String())
+	}
+	announces, _ := proxy.recorded()
+	opened := 0
+	for _, announced := range announces {
+		if _, renewal := announced["credential"]; !renewal {
+			opened++
+		}
+	}
+	if opened != 2 {
+		t.Errorf("sessions opened = %d, want 2: the refused renewal did not reopen one", opened)
+	}
+}
+
+// An actor's own act is not news to them. Their promise on a request addressed
+// to them is inside their own lane row, so a filter reading lanes alone woke
+// them on it — and then every act they filed returned their own next wait.
+func TestWaitIsNotWokenByTheActorsOwnAct(t *testing.T) {
+	fixture := newWaitFixture(t)
+	request := fixture.request(t, "alice", "bot", "do a thing")
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	fixture.act(t, "bot", workroom.KindPromise, "I will", nil, request)
+
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilActionable, 1200*time.Millisecond, cursor, &out)); err != errWaitTimeout {
+		t.Fatalf("wait on bot's own promise = %v, %q; want the deadline to pass", err, out.String())
+	}
+}
+
+// Rule three is about a live event of this actor's. A record answering
+// something of theirs that has since been retired is news about the
+// retirement, not work for them.
+func TestWaitIsNotWokenByARecordRestingOnARetiredEventOfYours(t *testing.T) {
+	fixture := newWaitFixture(t)
+	request := fixture.request(t, "alice", "bot", "publish it")
+	promise := fixture.act(t, "bot", workroom.KindPromise, "I will publish", nil, request)
+	mine := fixture.act(t, "bot", workroom.KindReport, "published", nil, promise)
+	if _, err := fixture.workspace.Act(fixture.ctx, "bot", app.Act{
+		Verb: app.VerbSupersede, Target: mine, Text: "withdrawn", IdempotencyKey: "retire-mine",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	// Admission refuses a state on a dead basis unless the author says they saw
+	// it, which is exactly the record this rule is about: somebody answering
+	// something of bot's that has since been withdrawn.
+	if _, err := fixture.workspace.Act(fixture.ctx, "alice", app.Act{Verb: app.VerbState,
+		Kind: workroom.KindAssert, Text: "answering the withdrawn report", RestsOn: []string{mine},
+		AllowDeadBasis: true, IdempotencyKey: "answer-the-withdrawn"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilActionable, 1200*time.Millisecond, cursor, &out)); err != errWaitTimeout {
+		t.Fatalf("wait on a record resting on bot's retired report = %v, %q; want the deadline to pass", err, out.String())
+	}
+}
+
+// The lane rule reads the projection, not the twenty rows a response carries,
+// so a request arriving behind a full lane is still this actor's to claim.
+func TestWaitSeesANewRequestBehindAFullLane(t *testing.T) {
+	fixture := newWaitFixture(t)
+	for index := 0; index < statusview.ListCap+3; index++ {
+		fixture.request(t, "alice", "bot", fmt.Sprintf("older task %d", index))
+	}
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	request := fixture.request(t, "alice", "bot", "the newest task")
+
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilActionable, 10*time.Second, cursor, &out)); err != nil {
+		t.Fatalf("wait behind a full available-to-you lane: %v", err)
+	}
+	if !strings.Contains(out.String(), request) {
+		t.Errorf("the wake does not name the newest request %s:\n%s", request, out.String())
+	}
+}
+
+// An interrupt is when a session most needs removing, and it is the one exit
+// the deferred departure has to survive.
+func TestWaitDepartsItsSessionWhenInterrupted(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	ctx, interrupt := context.WithCancel(fixture.ctx)
+	options := fixture.options(t, statusview.UntilActionable, time.Minute, cursor, io.Discard)
+	var progress strings.Builder
+	options.progress = &progress
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		interrupt()
+	}()
+	err := runWait(ctx, fixture.workspace, options)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("an interrupted wait = %v; want the cancellation", err)
+	}
+	// An interrupt is not a resident that stopped answering, and saying so
+	// would send the reader after the wrong thing. The loop notices the
+	// cancellation itself rather than discovering it as a failed request.
+	if strings.Contains(progress.String(), "not answering") || strings.Contains(progress.String(), "watching the local sequence ref") {
+		t.Errorf("an interrupt was reported as a resident failure: %q", progress.String())
+	}
+	// The departure does not inherit the cancelled context, so it still runs.
+	after, countErr := livePresenceCount(fixture.url, "bot")
+	if countErr != nil {
+		t.Fatal(countErr)
+	}
+	if after != 0 {
+		t.Errorf("live sessions for bot after an interrupt = %d, want 0", after)
+	}
+}
+
 func TestWaitRefusesAMalformedInvocationWithUsageAndAnExample(t *testing.T) {
 	fixture := newWaitFixture(t)
 	// The usage and the example go to the flag set's own output, which is the
@@ -729,7 +916,7 @@ func TestWaitCursorFileIgnoresAnotherWorkroomsCursor(t *testing.T) {
 	if err := os.WriteFile(path, mustJSON(t, held), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if resumed := readWaitCursor(path, fixture.workspace.View().Genesis); len(resumed.Frontier) != 0 {
+	if resumed := readWaitCursor(path, fixture.workspace.View().Genesis).Cursor; len(resumed.Frontier) != 0 {
 		t.Errorf("a cursor from another workroom was resumed: %+v", resumed)
 	}
 }

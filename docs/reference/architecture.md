@@ -1630,11 +1630,22 @@ applies it to the sequence ref it watches when no resident answers.
 re-derives it.
 
 The filter reads the whole range of decisions after the cursor, not the
-delta's capped list. A response is bounded at fifty events because a response
-must be; a decision about whom to wake is not, and deciding from the capped
-list lost the one event that was the caller's whenever fifty unrelated ones
+delta's capped list, and reads the actor's lanes from the projection, not from
+the twenty rows a response carries. A response is bounded because a response
+must be; a decision about whom to wake is not, and deciding from either capped
+list lost the one event that was the caller's whenever enough unrelated ones
 arrived behind it — and then advanced the caller's cursor past it. The range
 and the view builder are one function each, shared by the delta and the filter.
+An event the actor signed themself is excluded by all of the rules: their own
+promise on their own request is inside their own lane row, and waking on it
+made every act they filed return their own next wait.
+
+A poll that declines under the filter moves its own baseline past what it
+judged, because a change it has judged is a change it has seen. That is what
+keeps the cost of a declining poll flat: without it the same change was found
+on every one of the four ticks a second — refiltered each time, and, when it
+was a live change, re-reading the verified durable snapshot each time as well,
+which is one Git process per tick for a poll that was never going to answer.
 
 The wait request gains one optional `until` field, and a wait answer two
 optional fields: `changed`, saying whether the filter accepted or the deadline

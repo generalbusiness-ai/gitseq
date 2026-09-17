@@ -218,12 +218,12 @@ gs state --repo "$REPO" --as alice --kind request --text 'Add a changelog' \
 gs wait --repo "$REPO" --as bot --server - --timeout 30s
 ```
 
-The wake prints the reason it woke and then what to do about it: one line per
-event the filter accepted, one line per unacknowledged priority frame, and
-then this actor's work in the exact shape `gs work --next` prints it. Under
-`--until any` no filter ran, so the reason is the durable delta itself, and
-that list — unlike the decision — really is capped, so a count of what was
-left out follows it.
+The wake prints the reason it woke and then what to do about it: under
+`--until actionable`, one line per event the filter accepted; under
+`--until any`, one line per durable event after the cursor, up to the
+fifty-event cap with a count of the rest. Then one line per unacknowledged
+priority frame, and then this actor's work in the exact shape
+`gs work --next` prints it.
 
 ```text
 # effective request by alice git:sha1:…#git:sha1:… — Add a changelog
@@ -238,10 +238,19 @@ gs promise --as bot git:sha1:…#git:sha1:…
 
 ## Cost
 
-A quiet workroom costs one open connection and nothing else: the resident
-holds one head clock for every waiter on a log, reads that ref four times a
-second, and reads the verified snapshot again only when it moves. The
-resident caps one poll at 30 seconds, so the loop here is client-side: one
+A quiet workroom costs one open connection and nothing else. The resident
+holds **one** head clock per log, not one per waiter: it reads the head ref
+four times a second while any poll is open, and each waiter reads the verified
+snapshot again only when that clock moves.
+
+A poll under `--until actionable` keeps ticking through changes it declines,
+and a change it has judged is a change it has seen: the poll moves its own
+baseline past it, so the same one is neither re-judged nor re-read on the next
+tick. Without that, one presence announcement — which every `gs wait` makes on
+its own arrival — left a Git process being spawned every 250 ms for the rest of
+the poll.
+
+The resident caps one poll at 30 seconds, so the loop here is client-side: one
 `gs wait` is one wake however long it waits, rather than one call every half
 minute. A wake then costs one bounded work query and one projection read, the
 same as one `gs work --next`.

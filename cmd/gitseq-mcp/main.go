@@ -1232,19 +1232,29 @@ func (s *mcpServer) dispatchResolved(ctx context.Context, call toolCall, current
 	case "wait":
 		arguments := residentArguments(call.Arguments)
 		arguments["credential"] = current.credentialValue()
+		until, err := statusview.ParseUntil(stringValue(arguments["until"]))
+		if err != nil {
+			return nil, err
+		}
+		if until != statusview.UntilActionable {
+			// `any` is the absent field, not the word: the resident decodes
+			// this request strictly, and one built before the filter existed
+			// refuses any spelling of it while already implementing `any`.
+			delete(arguments, "until")
+		}
 		requested := requestedCursor(arguments)
 		var delta waitDelta
-		err := s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &delta)
+		err = s.postForSessionBoundedJSON(ctx, current, "/v0/actor-wait", arguments, laneResponseLimit(current, actorStatusResponseLimit, statusview.ListCap), &delta)
 		if isTransportError(err) || inboxProtocolUnavailable(err) {
-			local, changed, localErr := s.waitDurable(ctx, current, arguments, identity.actor.Fingerprint, current.actor)
+			local, changed, localErr := s.waitDurable(ctx, current, arguments, until, identity.actor.Fingerprint, current.actor)
 			if localErr != nil {
 				return nil, localErr
 			}
 			degraded := digestWait(local, requested, identity.actor.Fingerprint, current.actor, true)
 			degraded.Changed = changed
-			if statusview.Until(stringValue(arguments["until"])) == statusview.UntilActionable {
+			if until == statusview.UntilActionable {
 				degraded.Accepted, degraded.AcceptedSkipped = statusview.AcceptedWaitEvents(
-					local.Status.Durable, requested, degraded, identity.actor.Fingerprint)
+					local.Status.Durable, requested, identity.actor.Fingerprint)
 			}
 			return degraded, nil
 		}
@@ -2232,17 +2242,13 @@ func statusFromDurable(durable app.Snapshot) service.Status {
 // filter the resident applies, through the same shared function, so a caller
 // that asked for actionable news is not woken by an unrelated act merely
 // because the resident went away.
-func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments map[string]any, fingerprint, actorName string) (service.WaitResponse, bool, error) {
+func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments map[string]any, until statusview.Until, fingerprint, actorName string) (service.WaitResponse, bool, error) {
 	encoded, err := json.Marshal(arguments)
 	if err != nil {
 		return service.WaitResponse{}, false, err
 	}
 	var input service.WaitRequest
 	if err := json.Unmarshal(encoded, &input); err != nil {
-		return service.WaitResponse{}, false, err
-	}
-	until, err := statusview.ParseUntil(input.Until)
-	if err != nil {
 		return service.WaitResponse{}, false, err
 	}
 	var response service.WaitResponse
@@ -2264,7 +2270,7 @@ func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments ma
 		}
 		if filteredHead != durable.Head {
 			filteredHead = durable.Head
-			filteredAnswer = statusview.ActionableWait(durable, input.Cursor,
+			_, _, filteredAnswer = statusview.FilterWait(durable, input.Cursor,
 				digestWait(response, input.Cursor, fingerprint, actorName, true), fingerprint)
 		}
 		return filteredAnswer, nil
