@@ -727,19 +727,26 @@ moment, inside the same update transaction, never against the verifying
 workspace's own memory. A verification that continues the witnessed head
 advances it. A verification shorter than the witness is judged on the sequence
 ref as it stands at that moment: where the ref is the witnessed head or
-continues it, and the shorter verification is an ancestor of that head at
-exactly the depth separating them, the read merely finished after another
-process appended, so it is admitted and the witness is left where that process
-put it. Where either test fails — the ref itself moved back, or the shorter
-verification stands on a history the witnessed head never carried — it is
-refused as a rollback, as is a verification whose head does not descend from
-the witnessed one. The caller of an admitted stale read receives the world it
-actually verified, which the fold and the resident re-judge on the next
-append; the marker itself never moves backwards.
+continues it, and the shorter verification is an ancestor of the witnessed
+head at exactly the depth separating them, the read merely finished after
+another process appended, so it is admitted and the witness is left where that
+process put it. Where either test fails — the ref itself moved back, or the
+shorter verification stands on a history the witnessed head never carried, or
+at a distance its claimed depth does not bear out — it is refused as a
+rollback, as is a verification whose head does not descend from the witnessed
+one, and the refusal names the test that failed. The caller of an admitted
+stale read receives the world it actually verified, which the fold and the
+resident re-judge on the next append; the marker itself never moves backwards.
+The accepted limit is that the ref is read once, when the read finishes: a
+rollback that was restored before that moment is indistinguishable from an
+ordinary advance, which is no weaker than the witness itself, since the
+configuration file recording it sits beside the ref under the same local
+authority.
 
-Attachment applies the same judgement before its compare-and-swap, and the
-swap against the observed authoritative ref remains what keeps that ref from
-moving backwards.
+Attachment keeps the strict rule with no such admission. Its candidate is an
+immutable head fetched before the transaction opened, so no read of its own
+can have been overtaken inside it, and the compare-and-swap against the
+observed authoritative ref remains what keeps that ref from moving backwards.
 
 #### Host identity
 

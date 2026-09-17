@@ -71,6 +71,57 @@ func TestStaleVerificationIsAdmittedWhileTheRefStillContinuesTheWitness(t *testi
 	}
 }
 
+// The ref does not have to stand exactly on the witnessed head. An appender
+// that advanced the ref further without auditing leaves the witness behind
+// the ref, and a read shorter than that witness is still only stale: the ref
+// continues the witnessed head. This is the second half of the ref test, and
+// the common shape in practice, where appends are frequent and audits are not.
+func TestStaleVerificationIsAdmittedWhileTheRefRunsAheadOfTheWitness(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	founder, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := Open(ctx, founder.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stale.Verify(ctx); err != nil {
+		t.Fatal(err)
+	}
+	remembered := storedFrontier(t, founder.MetaDir)
+	newest := advancePastMemory(t, ctx, founder, seed, remembered, "ref-ahead-advance")
+
+	// One further append, audited by nobody, so the ref is a strict
+	// descendant of the witness rather than the witness itself.
+	ahead, err := Open(ctx, founder.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, ahead, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "advance the ref past the witness",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "ref-ahead-unaudited",
+	})
+	refHead, err := founder.Store.Head(ctx, kernel.Ref(founder.View().Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refHead == newest.Head {
+		t.Fatal("the unaudited append did not move the ref past the witness")
+	}
+	if witness := storedFrontier(t, founder.MetaDir); witness != newest {
+		t.Fatalf("the unaudited append moved the witness to %+v, want %+v", witness, newest)
+	}
+
+	if err := stale.rememberVerifiedFrontier(ctx, kernel.Verification{Head: remembered.Head, Depth: remembered.Depth}); err != nil {
+		t.Fatalf("stale read refused while the ref ran ahead of the witness: %v", err)
+	}
+	if after := storedFrontier(t, founder.MetaDir); after != newest {
+		t.Fatalf("admitted stale read moved the stored witness to %+v, want %+v", after, newest)
+	}
+}
+
 // A workspace whose own memory already records the verification's head must
 // still judge that verification against the stored file: memory answering
 // ahead of the transaction is the bypass this record exists to close. Here
@@ -258,6 +309,96 @@ func TestSnapshotInFlightSurvivesAConcurrentAppendAndWitnessAdvance(t *testing.T
 	}
 	if after := storedFrontier(t, founder.MetaDir); after != newest {
 		t.Fatalf("the stale read moved the witness to %+v, want %+v", after, newest)
+	}
+}
+
+// The admission measures the distance between the two heads; it does not
+// merely observe that one precedes the other. A verification that names a
+// true ancestor but lies about its depth would otherwise be admitted, and the
+// witness would come to stand over a depth nobody verified. Both rows use the
+// same ancestor head against the same witness, so only the claimed depth
+// separates them.
+func TestAdmittedStaleReadMustStandAtTheDepthItClaims(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	founder, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	genesis := founder.View().Genesis
+	middle := actRecord(t, ctx, founder, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "middle",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "claimed-depth-middle",
+	})
+	actRecord(t, ctx, founder, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "tip",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "claimed-depth-tip",
+	})
+	witnessed, err := founder.Verify(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witness := apphost.VerifiedFrontier{Head: witnessed.Head, Depth: witnessed.Depth}
+	ancestor := eventCommit(t, founder.View().ObjectFormat, middle.ID)
+	const trueDepth = 2
+
+	for _, row := range []struct {
+		name    string
+		depth   int
+		admit   bool
+		refusal string
+	}{
+		{name: "the depth it truly stands at", depth: trueDepth, admit: true},
+		{name: "a depth one short of the truth", depth: trueDepth - 1, refusal: "not the 2 its depth claims"},
+		{name: "genesis depth", depth: 1, refusal: "not the 2 its depth claims"},
+	} {
+		t.Run(row.name, func(t *testing.T) {
+			decision, err := judgeReadFrontier(ctx, founder.Store, genesis, &witness,
+				kernel.Verification{Genesis: genesis, Head: ancestor, Depth: row.depth})
+			if row.admit {
+				if err != nil {
+					t.Fatalf("a truthful stale read was refused: %v", err)
+				}
+				if decision != frontierKeep {
+					t.Fatalf("decision = %v, want the witness kept", decision)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), "shorter than previously verified") {
+				t.Fatalf("a read claiming depth %d was admitted: err = %v", row.depth, err)
+			}
+			if !strings.Contains(err.Error(), row.refusal) {
+				t.Fatalf("refusal did not name the distance: %v", err)
+			}
+			if decision != frontierKeep {
+				t.Fatalf("refused decision = %v, want the witness kept", decision)
+			}
+		})
+	}
+}
+
+// A shorter verification is refused with the cause that refused it, so an
+// operator whose ref is missing is not told the sequence rewound.
+func TestARefThatCannotBeReadRefusesWithItsCause(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	founder, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, founder, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "only event",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "missing-ref-event",
+	})
+	witnessed, err := founder.Verify(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	witness := apphost.VerifiedFrontier{Head: witnessed.Head, Depth: witnessed.Depth}
+	_, err = judgeReadFrontier(ctx, founder.Store, strings.Repeat("b", len(witnessed.Genesis)), &witness,
+		kernel.Verification{Head: witnessed.Genesis, Depth: 1})
+	if err == nil || !strings.Contains(err.Error(), "the sequence ref could not be read") {
+		t.Fatalf("an unreadable ref was not named as the cause: %v", err)
 	}
 }
 

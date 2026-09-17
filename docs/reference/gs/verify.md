@@ -70,13 +70,20 @@ an event, so each one raises `Depth` above `Events` by one.
 - The signed envelope, the inline payload and every attachment together
   are within the workroom's ceiling. The ceiling covers all three as one
   total, not each of them separately.
-- The verified head and depth do not move behind or away from the last
-  frontier recorded in this repository's Gitseq config. Any verified read,
-  including an explicit full audit, advances that local marker before it
-  returns data from a newer head. A read at the unchanged head reuses the
-  marker without rewriting the config. If the sequence advances but
-  `.git/gitseq` cannot be written, the read fails closed and leaves the old
-  marker in place.
+- The verified head and depth do not move away from the last frontier
+  recorded in this repository's Gitseq config, and never move behind it. Any
+  verified read, including an explicit full audit, advances that local marker
+  before it returns data from a newer head. A read at the unchanged head
+  reuses the marker without rewriting the config. A read that finishes at a
+  head shorter than the marker is admitted only where the authoritative ref
+  still stands on the recorded head or continues it, and the read's own head
+  is that recorded head's ancestor at exactly the depth between them: that is
+  a read another appender overtook, so it returns the world it verified and
+  leaves the marker where the appender put it. Anything else — a ref that
+  moved back, a sibling line, a depth the distance does not bear out — is
+  refused as a rollback, and the refusal names which test failed. If the
+  sequence advances but `.git/gitseq` cannot be written, the read fails closed
+  and leaves the old marker in place.
 
 It is an **explicit full audit**. It never consults a resident's
 checkpoint cache, no matter how recent that cache is, because the point
@@ -89,8 +96,11 @@ you.
 does it continue the frontier this repository already verified?* It does not
 answer *is this the same record everyone else has?*
 
-A repository that has already verified one branch refuses a shorter or
-non-descendant branch. A first-time auditor has no such local memory: two fresh
+A repository that has already verified one branch refuses a non-descendant
+branch, and a shorter one unless its authoritative ref still continues the
+head that repository recorded — the case where a long read was overtaken by an
+appender rather than pointed at a rewound sequence.
+A first-time auditor has no such local memory: two fresh
 copies that share a genesis but receive different internally valid branches
 can each verify their first branch. Publication constrains this in practice —
 a sequence only advances, so a push that Git refuses means the remote holds

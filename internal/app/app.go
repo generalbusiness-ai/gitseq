@@ -2896,7 +2896,10 @@ func mergeVerifiedFrontier(base, next *apphost.VerifiedFrontier) (*apphost.Verif
 // what the file records. A shorter verification whose read merely finished
 // after the world moved on is admitted without moving the marker, so a long
 // audit is not made to repeat itself because an appender was faster; see
-// checkVerifiedFrontier for the two tests that separate it from a rollback.
+// judgeReadFrontier for the two tests that separate it from a rollback. The
+// caller is told only whether its read stood: an admitted stale read and an
+// advance both return no error, because either way the data it verified is
+// sound and the marker is where the deepest verifier left it.
 //
 // Callers hold snapshotMu, which serializes frontier writers in this process;
 // configMu is taken inside updateConfig, around the base read and the
@@ -2910,7 +2913,7 @@ func (w *Workspace) rememberVerifiedFrontier(ctx context.Context, verification k
 	var refused error
 	err := w.updateConfig(func(c *apphost.Config) (bool, error) {
 		refused = nil
-		decision, err := checkVerifiedFrontier(ctx, w.Store, c.Genesis, c.VerifiedFrontier, verification)
+		decision, err := judgeReadFrontier(ctx, w.Store, c.Genesis, c.VerifiedFrontier, verification)
 		if err != nil {
 			refused = err
 			return false, err
