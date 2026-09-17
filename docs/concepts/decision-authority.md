@@ -8,8 +8,8 @@ rests_on:
 
 # Decision authority
 
-Notes — feature discussions, position papers, decisions — are ordinary
-Markdown files in git, and the workroom records only the relationships around
+Notes, whether feature discussions, position papers or decisions, are
+ordinary Markdown files in git, and the workroom records only the relationships around
 them. A published revision is an artifact statement at `path@commit`, like any
 other. [Keep decision records](../how-to/keep-decision-records.md) runs the
 ordinary path end to end.
@@ -19,9 +19,9 @@ A decision has two adoption paths, and implementation may rest on either.
 ## The ordinary path: propose and ratify
 
 The ordinary path ratifies a proposal, never the artifact: nothing satisfies an
-artifact. File a `propose` — one or two sentences, "adopt the decision recorded
-at `notes/…` at commit `…`" — resting on the artifact, and have an actor
-holding `ratifier` ratify it.
+artifact. File a `propose` of one or two sentences, "adopt the decision
+recorded at `notes/…` at commit `…`", resting on the artifact, and have an
+actor holding `ratifier` ratify it.
 
 ## The authority-bearing request chain
 
@@ -43,10 +43,10 @@ follow-on work begins is recorded at merge under the existing rules; it does
 not reopen adoption.
 
 That chain is already the authority act. Do not restate it in a proposal and
-ask the same authority holder to ratify it again. If any fact is missing —
-a different required ratifier, an ordinary participant as requester, a request
-that commissioned only advice, or a stale or retired basis — use the ordinary
-path instead. A later change to the decision is a new decision and needs
+ask the same authority holder to ratify it again. If any fact is missing, use
+the ordinary path instead: a different required ratifier, an ordinary
+participant as requester, a request that commissioned only advice, or a stale
+or retired basis. A later change to the decision is a new decision and needs
 authority again; a successor artifact does not inherit adoption merely by
 occupying the same path.
 
@@ -58,7 +58,7 @@ the authority-bearing path, rest the decision's review request on the
 governing request chain and the artifact. Either way the verdict rests on the
 review request, the merge consumes the verdict, and the receipt and successor
 artifact continue the chain. The verdict itself is ratified by the review
-requester, and only by them, before the merge — as in any review.
+requester, and only by them, before the merge, as in any review.
 
 The merge message is the one place the action log reaches readers without keys.
 Write it in plain English from the log: who proposed, who ratified, who
@@ -72,7 +72,7 @@ Implementation reaches a decision by ordinary provenance, and the merged
 artifact alone confers no authority.
 
 Assigned work uses a request resting on the merged decision artifact and on
-whichever adoption basis governs it — the ratified proposal, or the satisfied
+whichever adoption basis governs it: the ratified proposal, or the satisfied
 authority-bearing request chain. The implementing commit rests on that
 assigned request. Where the same actor would otherwise be both requester and
 performer, no self-request is created: the commit rests directly on the merged
@@ -100,8 +100,8 @@ amend in place while it is the same decision; when the decision changes, write
 a new file and stamp the old one.
 
 A revision edits the file at the same path, and the artifact chain at that
-path is the published-revision history — keep the revision narrative out of the
-front matter, because the chain already tells it. A replacement is a new file
+path is the published-revision history, so keep the revision narrative out of
+the front matter: the chain already tells it. A replacement is a new file
 whose front matter names its predecessor by path, plus a one-line stamp in the
 old file saying what superseded it, in one commit, so a git reader with no keys
 sees both directions. The old artifact's retirement stays merge-sealed like any
