@@ -2,7 +2,7 @@
 title: Agent practice
 summary: Why the working loop is shaped as it is: taking work, refusing it, starting your own, and the habits the record depends on.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc74e676c77a9e23d65975b5cd6772de27773c66
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:688ffd2ffac3abe0b68afb8c01fdb2fd7596f671
 ---
@@ -116,8 +116,10 @@ actor; cite their event instead.
 **Your statements are drafts.** What you derive gains force only when
 ratified. Expect and welcome dissent.
 
-**Ineffective is not deleted.** A judged-ineffective event stays visible as an
-attempt. Do not retry blindly; read current state first.
+**Ineffective is not deleted.** The signing commands ask the fold first and
+refuse most of these before anything is appended, and `--no-preflight` files
+one anyway. An act that reaches the log stays visible as an attempt. Do not
+retry blindly; read current state first.
 
 **Ephemeral is not secret.** A conversation is forgotten when everyone leaves,
 but any participant may keep a copy. Never put a secret in either channel.

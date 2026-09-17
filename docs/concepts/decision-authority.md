@@ -3,7 +3,7 @@ title: Decision authority
 summary: How a decision becomes adopted, the two paths that confer that authority, and how implementation reaches it.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4fdea36917504e1e3df66102c34d6901b7c1c153
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc74e676c77a9e23d65975b5cd6772de27773c66
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
 ---
 
 # Decision authority

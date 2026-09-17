@@ -1,16 +1,18 @@
 ---
 name: workroom
-description: How to work in the gitseq workroom: the loop, and the one command
+description: How to work in the gitseq workroom: the loop, and the command
   each step takes. Normative for agent actors; the implementation must match
   this contract.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3addbc47ccc245903a2fa424f1812df033bb081
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f5f87da91587e6702baf7f94c266d67a1e872047
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:11e8d1637ee2234cd85c7541c67df26a5fac005b
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:457979e61b36a99dcc6beced07f6dca2bdddd0bd
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:495faace9dc3cfe588a7a6b2d16fae9b8b681f18
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4f698ddb0ac8e86009f4685889cd1de59c95de34
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c0406962ba513c23b145282eaaabbb8f37e2f017
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9d0f7310f9ee48e696917adebe874c1e3113816b
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:688ffd2ffac3abe0b68afb8c01fdb2fd7596f671
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:7afa1830c258297c82196b2fecff70ea47ae954b
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:fc74e676c77a9e23d65975b5cd6772de27773c66
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1ca715ff674785605df61cde345dbda206f4b885
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:abbcaca3d7e3698c18d7320fd5777e20aef7fa94
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:74b0cb9a15ed8f7e81b8609ed5c71bb5af4d8265
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
 ---
@@ -24,10 +26,11 @@ deliberately.
 
 Each step below takes one `gs` command. Each checks its shape and refuses
 before signing, naming the repair: read the refusal instead of working around
-it. `gs state`, `gs ratify` and `gs supersede` remain for the acts no step
-command covers. They refuse an act the fold would rule ineffective, before
-signing, and answer a malformed invocation with usage. Pass `--as <you>`, or
-set `GITSEQ_ACTOR`, on every signing call.
+it. `gs state`, `gs batch`, `gs ratify` and `gs supersede` remain for the acts
+no step command covers. They refuse an act the fold would rule ineffective,
+before signing, and answer a malformed invocation with usage; `--no-preflight`
+files an act as written. Pass `--as <you>`, or set `GITSEQ_ACTOR`, on every
+signing call.
 
 Reasoning and history: [the work loop](docs/concepts/work-loop.md),
 [agent practice](docs/concepts/agent-practice.md),
@@ -62,14 +65,14 @@ Every cycle, every request addressed to you gets one of three answers.
 not open, and a second claim while you hold a live promise on that request,
 unless it is the same idempotent retry, which replays the promise you already
 made. A promise is optional: when the work is already done, report straight
-against the request, which only its addressee may do, and only with no live
-promise of their own on it. That report is
+against the request, which only its addressee may do, with no live promise of
+their own on it. That report is
 `gs state --kind artifact --rests-on <request> --body path=<path>
 --body commit=<full commit> --text <what was met>`.
 
 An unclaimed request that should move to another actor goes through
 `gs reassign-if-unclaimed <request> --to <actor>`: it retires and replaces the
-request under one guard, and a claim arriving in between refuses the pair.
+request under one guard, and a claim in between refuses the pair.
 
 Work you begin yourself, as both requester and performer, files no
 self-request and no self-promise: rest the implementing commit on the
@@ -111,7 +114,7 @@ nothing for is a warning.
 It rests on every live artifact of yours at that head and names the reporting
 artifact, which is how a verdict binds. It refuses you as the reviewer, a head
 no artifact of yours stands at, artifacts at mixed heads, and a second request
-for the same promise unless `--replace` retires the first in the same run.
+for the same promise unless `--replace` retires the first.
 
 ## 6. Review, when you are the reviewer
 
@@ -151,15 +154,15 @@ the performer, needs a child request first.
 `gs land --approval <approval> --checkout <target checkout> --text
 <plain-language description> --cleanup`
 
-It ratifies the approval when you are the review requester, previews the
-merge, runs `gs merge`'s locked transaction, pushes the target ref, and with
-`--cleanup` removes the worktree and branch, but only once `git merge-base
---is-ancestor` proves the head is in the target. `--checkout` is the target
-checkout, not the candidate's worktree. It refuses an unratified approval you
-may not ratify, a retired or `changes-requested` verdict, a checkout that is
-not on the request's target ref, and a dirty one. Write `--text` for a reader
-who will never see an event id: who proposed, ratified and reviewed, what was
-raised, how it was resolved.
+It ratifies the approval when you are the review requester, runs `gs merge`'s
+locked transaction, pushes the target ref, and with `--cleanup` removes the
+worktree and branch, but only once `git merge-base --is-ancestor` proves the
+head is in the target. `--checkout` is the target checkout, not the
+candidate's worktree. It refuses an unratified approval you may not ratify, a
+retired or `changes-requested` verdict, a checkout that is not on the
+request's target ref, and a dirty one. Write `--text` for a reader who will
+never see an event id: who proposed, ratified and reviewed, what was raised,
+how it was resolved.
 
 The merge publishes a successor at each changed path and retires the
 predecessors it may;
@@ -177,17 +180,17 @@ follow it. Work that resolves without landing closes through an explicit
 
 ## 8. Clean up
 
-Whatever `--cleanup` reports instead of deleting, a branch that moved or a
-remote tip carrying other work, is yours to finish. Never leave a stale
-worktree: finishing includes the review and the landing.
+Whatever `--cleanup` reports instead of deleting, a moved branch or a remote
+tip carrying other work, is yours to finish. Never leave a stale worktree:
+finishing includes the review and the landing.
 
 ## Whatever you write down
 
 Cite the canonical full event identifier, copied from the result that returned
 it; say `#N` in prose, where a reader can check it by eye. `#N` and an
 unambiguous hash fragment resolve at every signing boundary except a commit
-trailer. Cite files as `path@commit` at the exact revision you read, and never
-copy a document into an event. Before choosing a kind for `gs state`, read
+trailer. Cite files as `path@commit` at the revision you read, never copying a
+document into an event. Before choosing a kind for `gs state`, read
 `status.durable.vocabulary.definitions`: that governed catalog decides
 required fields, admissible bases and who may ratify. A request states
 `body.to`, `body.conditions`, and what it owes:
