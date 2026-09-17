@@ -37,6 +37,26 @@ func TestMalformedInvocationPrintsUsageWithAnExample(t *testing.T) {
 			wantUsage: []string{"usage: gs merge", "Example:", "gs merge --as bot"},
 		},
 		{
+			// The step commands take their subject as a positional argument too,
+			// and share the same answer.
+			name: "step command with no positional",
+			run: func(fixture preflightFixture) error {
+				return promiseCommand(context.Background(), []string{"--repo", fixture.repo, "--as", "worker"})
+			},
+			wantError: []string{"promise takes exactly one request event"},
+			wantUsage: []string{"usage: gs promise [flags] <request>", "Example:", "gs promise --as bot"},
+		},
+		{
+			name: "step command's positional given as a flag",
+			run: func(fixture preflightFixture) error {
+				return promiseCommand(context.Background(), []string{
+					"--repo", fixture.repo, "--as", "worker", "--request", fixture.request,
+				})
+			},
+			wantError: []string{"gs promise takes its <request> as a positional argument, not --request"},
+			wantUsage: []string{"usage: gs promise", "Example:"},
+		},
+		{
 			// Without a kind there is no act at all, and the vocabulary check
 			// that would have said so runs after the key is read.
 			name: "missing required kind",

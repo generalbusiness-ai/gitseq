@@ -2,6 +2,7 @@
 title: Anchoring
 summary: How each page names the acts that govern it, and the four gates that keep the set honest.
 rests_on:
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e5868e1567e847bee1170b661ac8673f01ecb7a2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3e11a0d9e8061998f3e1b95f41242d7da5be20d2
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
 ---
@@ -59,10 +60,13 @@ and on their own by `make docs`.
 The surface gate reads the flags and tool schemas out of the
 implementation source rather than from a list kept beside it, because a
 hand-kept list is forgotten by the same person who forgets the page. It
-reads `cmd/gs/main.go` and `cmd/gitseq-mcp/main.go` — the shipping
-commands — and fails loudly when it can no longer follow the source,
-rather than reporting an empty surface that every page would trivially
-match.
+reads the whole `cmd/gs` package and `cmd/gitseq-mcp/main.go` — the
+shipping commands — and fails loudly when it can no longer follow the
+source, rather than reporting an empty surface that every page would
+trivially match. The package rather than one file, because a subcommand
+may be written in a file of its own: a gate that looked only in `main.go`
+would report such a command as taking no flags at all, and every page for
+it would fail for a reason that was not true.
 
 The examples gate runs every block tagged `sh`. A block tagged `text` is
 a form, a file, or sample output, and is not run. So that the distinction

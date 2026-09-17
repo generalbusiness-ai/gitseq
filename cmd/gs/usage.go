@@ -9,7 +9,7 @@ import (
 // commandNames is the list `gs` prints with no subcommand. It is also what
 // every worked example below is checked against, so a command added here
 // without an example is a test failure rather than a silent gap.
-const commandNames = "init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, review, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach"
+const commandNames = "init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, promise, artifact, review-request, review, land, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach"
 
 // commandExamples is one worked invocation per command: the shortest line that
 // works, in the shape of that command's reference page under docs/reference/gs/.
@@ -25,6 +25,10 @@ var commandExamples = map[string]string{
 	"actors":                `gs actors`,
 	"whoami":                `gs whoami --as alice`,
 	"state":                 `gs state --as bot --kind promise --text 'I will do it' --rests-on '#42'`,
+	"promise":               `gs promise --as bot '#42'`,
+	"artifact":              `gs artifact --as bot --head 1f0c9ab... --promise '#49' docs/reference/gs/state.md`,
+	"review-request":        `gs review-request --as bot --head 1f0c9ab... --to reviewer`,
+	"land":                  `gs land --as bot --approval '#57' --checkout . --text 'what landed and why it matters'`,
 	"review":                `gs review --as reviewer --checkout ../feature --artifact '#51' --promise '#49' --verdict approved --text 'approved at that head'`,
 	"merge":                 `gs merge --as bot --checkout . --candidate 1f0c9ab... --approval '#57'`,
 	"merge-plan":            `gs merge-plan --checkout . --candidate 1f0c9ab... --approval '#57'`,
@@ -52,6 +56,8 @@ var commandExamples = map[string]string{
 // where `<target-event>` belongs is the commonest malformed invocation here, and
 // "flag provided but not defined" never says where the value should have gone.
 var positionalSubjects = map[string][]string{
+	"promise":               {"request", "target", "event"},
+	"artifact":              {"path", "paths"},
 	"ratify":                {"target", "event", "statement", "report"},
 	"supersede":             {"target", "event", "statement"},
 	"inspect":               {"event", "target"},
@@ -62,6 +68,8 @@ var positionalSubjects = map[string][]string{
 
 // positionalNames says what that subject is called in the command's synopsis.
 var positionalNames = map[string]string{
+	"promise":               "<request>",
+	"artifact":              "<path…>",
 	"ratify":                "<target-event>",
 	"supersede":             "<target-event>",
 	"inspect":               "<event>",

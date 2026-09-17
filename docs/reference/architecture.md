@@ -1816,6 +1816,41 @@ all deletion advice and clears partial results to unknown.
 [Landing observations](landing-observations.md) states the
 wire fields, limits, remote-selection policy and cleanup preconditions.
 
+**Step commands.** `gs promise`, `gs artifact`, `gs review-request` and
+`gs land` each compose one step of the working cycle out of the layer-6 act
+paths and layer-1 Git reads already described. They add no fold rule, kind or
+field, and every refusal they make is a refusal the fold, the review guard or
+the merge would make later; making it earlier moves it to where nothing has
+been appended. Three properties are layer-7 contract.
+
+An act signed on the actor's behalf stays inside an explicit guard.
+`gs land` ratifies an approval only when the review commitment it answers names
+the signing actor as its requester — the same rule the fold applies — and only
+after the read-only checkout refusals, so a run that refuses over a wrong or
+dirty checkout appends nothing. The merge itself is `gs merge`'s locked
+transaction unchanged, including its authorization and hold rules; a workroom
+frontier that moved between planning and landing is replanned once, because
+that refusal leaves nothing behind.
+
+Destructive Git cleanup is leased, never inferred. A worktree and branch are
+removed only after `merge-base --is-ancestor` says the candidate is in the
+target, only for the single local branch pointing at the candidate, as a
+compare-and-swap against the tip just measured locally and under
+`--force-with-lease` on the remote; a remote tip that is not the landed head is
+kept and reported, because it carries commits this repository may not have. No
+deletion follows from a durable act having succeeded.
+
+Executable next-action output is a formatter over a bounded query, with no
+authority of its own. `gs work --next` prints one runnable line per row of the
+same `work` selection, chooses the act from the row's own performer and
+requester, quotes data, leaves the holes a reader must fill visibly unquoted,
+and never writes a flag the named subcommand does not define.
+
+Git observation stays separate from durable completion throughout. What these
+commands measure in Git — containment, ref tips, checkout cleanliness — gates
+their own next step and never stands in for the fold's satisfied state, which
+only the sealed receipt establishes.
+
 The worktree endpoint also reports a bounded read-only reverse association:
 which durable record the implementing commits on each branch tip and each
 unbranched checkout head claim, and whether authenticated durable evidence
@@ -2558,7 +2593,7 @@ It introduces no replacement Gitseq command or automatic binding migration.
 | `internal/eventref` | Surface | Reads what a person can type where an event reference is expected — the canonical identifier, a `#N` record number, or a prefix or suffix of one event hash — against the verified durable event set of one workroom, and answers with a canonical identifier or a bounded refusal. It reads no Git objects, holds no cache and signs nothing, so no surface can resolve a reference that the projection it was handed does not already contain. |
 | `internal/statusview` | Projection and query | Reads Workroom application state, and optionally nexus state, into bounded public views. It does not establish durable meaning. |
 | `internal/service` | Composition and transport | Hosts `app`, nexus, projections, queries, and UI over HTTP. It must preserve the distinctions between kernel refusal, application interpretation, durable state, live state, and ordinary Git history. A browser may ask whether named commits are on the mainline; it names commits, never the ref, which this layer resolves. Every status and every rebuild report names the fold profile the process interprets with, an opaque identifier fixed for the life of the binary, so a reader that kept a status across a rebuild can tell a same-profile re-audit, where the retained status stays and is qualified, from a profile change, where it is dropped because the projection was produced under a contract this process does not implement; a profile missing on either side is unverifiable and drops it too. |
-| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. The read-only merge-plan surface stages the prospective merge only in a disposable clone and exposes the same typed approval, classification, succession, and reviewed-scope evaluator that `merge` consumes. Command grouping must not move Workroom concepts into the kernel packages. |
+| `cmd/gs` | Surface and composition | Contains both kernel-level administration and Workroom-level commands today. Its step commands compose one working-cycle step each out of the act paths below them, adding no fold rule, kind or field: an act signed on the actor's behalf stays inside an explicit guard, destructive Git cleanup is leased against a just-measured tip, and executable next-action output is a formatter over a bounded query, as "Step commands" in layer 7 states. It reads Git's first-parent merge diff, validates optional structured merge authorization and target-path remeasurement, composes the Workroom receipt, successor artifacts, and retirements, and asks Git whether an approved head is already an ancestor of a branch; Git remains outside the Workroom interpreter. Its publication adapter reads the head an ordinary remote accepted and the watch globs tracked at that head, and records app-validated publication asserts — never artifacts, which merge succession alone mints at source paths. The read-only merge-plan surface stages the prospective merge only in a disposable clone and exposes the same typed approval, classification, succession, and reviewed-scope evaluator that `merge` consumes. Command grouping must not move Workroom concepts into the kernel packages. |
 | `cmd/gitseq-mcp` | Surface | Adapts MCP calls, including read-only merge planning, to Workroom and nexus operations. Per-call `repo` and `agent` values select an existing accessible key and effective roster actor, fail closed without changing either startup default, and keep resident leases scoped to that validated pair. Protocol compatibility and fold compatibility are separate. |
 | `internal/connector/github`, `cmd/gitseq-github` | Application connector | Applies Workroom charters and emits Workroom observations. It is replaceable and outside the kernel. |
 | `AGENTS.md` | Repository policy | Governs implementation and review in this repository, including architecture, security, and simplification checks. It does not define Workroom behavior. |

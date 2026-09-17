@@ -122,8 +122,16 @@ func main() {
 		err = whoamiCommand(ctx, os.Args[2:])
 	case "state":
 		err = stateCommand(ctx, os.Args[2:])
+	case "promise":
+		err = promiseCommand(ctx, os.Args[2:])
+	case "artifact":
+		err = artifactCommand(ctx, os.Args[2:])
+	case "review-request":
+		err = reviewRequestCommand(ctx, os.Args[2:])
 	case "review":
 		err = reviewCommand(ctx, os.Args[2:])
+	case "land":
+		err = landCommand(ctx, os.Args[2:])
 	case "merge":
 		err = mergeCommand(ctx, os.Args[2:])
 	case "merge-plan":
@@ -2722,6 +2730,7 @@ func workCommand(ctx context.Context, arguments []string) error {
 	limit := set.Int("limit", 0, "page size")
 	cursor := set.String("cursor", "", "opaque continuation from a previous page")
 	jsonOutput := set.Bool("json", false, "render JSON")
+	next := set.Bool("next", false, "print one exact command line for the act each selected row owes")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
 		return err
@@ -2775,6 +2784,16 @@ func workCommand(ctx context.Context, arguments []string) error {
 	}
 	if *jsonOutput {
 		return printJSON(page)
+	}
+	if *next {
+		// The acts a row owes depend on facts the bounded page does not
+		// carry, so --next reads the projection itself; see cmd/gs/work_next.go.
+		lines, err := workNext(ctx, workspace, page, fingerprint)
+		if err != nil {
+			return err
+		}
+		_, err = os.Stdout.WriteString(lines)
+		return err
 	}
 	_, err = os.Stdout.WriteString(renderWorkPage(page, querySource(serverURL != "", answered)))
 	return err
