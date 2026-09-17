@@ -167,10 +167,16 @@ type WaitDelta struct {
 	// reader cannot tell the two apart under `until=actionable`, where the
 	// durable list holds every event after the cursor whether or not any of
 	// them was the actor's to act on.
-	Changed                            bool               `json:"changed,omitempty"`
-	Reset                              bool               `json:"reset,omitempty"`
-	Durable                            []EventView        `json:"durable,omitempty"`
-	Skipped                            int                `json:"durable_skipped,omitempty"`
+	Changed bool        `json:"changed,omitempty"`
+	Reset   bool        `json:"reset,omitempty"`
+	Durable []EventView `json:"durable,omitempty"`
+	Skipped int         `json:"durable_skipped,omitempty"`
+	// Accepted is what the actionable filter let through: the events after the
+	// cursor this actor can act on, decided over the whole range and not over
+	// the capped list above. It is empty under `until=any`, where no filter
+	// ran, and it is what `gs wait` prints as the reason it woke.
+	Accepted                           []EventView        `json:"accepted,omitempty"`
+	AcceptedSkipped                    int                `json:"accepted_skipped,omitempty"`
 	CurrentAvailableToYou              []CommitmentView   `json:"current_available_to_you,omitempty"`
 	CurrentAvailableToSkipped          int                `json:"current_available_to_you_skipped,omitempty"`
 	CurrentWaitingOnYou                []CommitmentView   `json:"current_waiting_on_you,omitempty"`
@@ -506,45 +512,12 @@ func BuildOrientation(durable app.Snapshot, fingerprint, actorName string) (Orie
 func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset bool, requested Cursor, inbox *nexus.Inbox, fingerprint, actorName string, degraded bool) WaitDelta {
 	projection := durable.Projection
 	delta := WaitDelta{Cursor: cursor, Reset: reset, Live: live, PriorityChat: inboxView(projection, inbox, degraded), Totals: actorTotals(projection, durable.Depth)}
-	from := 0
-	for _, frontier := range requested.Frontier {
-		if frontier.Genesis == "" || frontier.Genesis == durable.Genesis {
-			from = frontier.Depth
-		}
-	}
-	if from < 0 || from > len(projection.Decisions) {
-		from = len(projection.Decisions)
-	}
-	fresh := projection.Decisions[from:]
+	fresh := FreshDecisions(durable, requested)
 	if len(fresh) > DeltaCap {
 		delta.Skipped = len(fresh) - DeltaCap
 		fresh = fresh[len(fresh)-DeltaCap:]
 	}
-	wanted := make(map[string]bool, len(fresh))
-	for _, decision := range fresh {
-		wanted[decision.Event] = true
-	}
-	statements := make(map[string]workroom.Statement, len(fresh))
-	for _, statement := range projection.Statements {
-		if wanted[statement.Event] {
-			statements[statement.Event] = statement
-		}
-	}
-	acts := make(map[string]workroom.Act, len(fresh))
-	for _, act := range projection.Acts {
-		if wanted[act.Event] {
-			acts[act.Event] = act
-		}
-	}
-	for _, decision := range fresh {
-		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)}
-		if statement, ok := statements[decision.Event]; ok {
-			view.Actor, view.Kind, view.Text = Text(ActorName(projection, statement.Actor)), string(statement.Kind), Text(statement.Text)
-		} else if act, ok := acts[decision.Event]; ok {
-			view.Actor, view.Kind, view.Target, view.Text = Text(ActorName(projection, act.Actor)), act.Type, act.Target, Text(act.Text)
-		}
-		delta.Durable = append(delta.Durable, view)
-	}
+	delta.Durable = viewDecisions(projection, fresh)
 	for _, commitment := range projection.Commitments {
 		if !involves(commitment, fingerprint) || terminal[commitment.Status] {
 			continue
@@ -568,6 +541,61 @@ func BuildWait(durable app.Snapshot, cursor Cursor, live []nexus.Change, reset b
 		delta.Cursor.Live = nexus.Cursor{Generation: "degraded"}
 	}
 	return delta
+}
+
+// FreshDecisions is every decision after the requested cursor — the whole
+// range, not the window BuildWait prints. The printed list is capped at
+// DeltaCap because a response is bounded; a decision about whether to wake
+// somebody must not be, or a busy room hides the one event that was theirs
+// behind fifty that were not.
+func FreshDecisions(durable app.Snapshot, requested Cursor) []workroom.Decision {
+	from := 0
+	for _, frontier := range requested.Frontier {
+		if frontier.Genesis == "" || frontier.Genesis == durable.Genesis {
+			from = frontier.Depth
+		}
+	}
+	if from < 0 || from > len(durable.Projection.Decisions) {
+		from = len(durable.Projection.Decisions)
+	}
+	return durable.Projection.Decisions[from:]
+}
+
+// viewDecisions renders a set of decisions as the event views a delta carries.
+// It indexes only the statements and acts those decisions name, so rendering a
+// handful of events out of a deep log costs two passes rather than a copy of
+// the projection.
+func viewDecisions(projection workroom.Projection, decisions []workroom.Decision) []EventView {
+	if len(decisions) == 0 {
+		return nil
+	}
+	wanted := make(map[string]bool, len(decisions))
+	for _, decision := range decisions {
+		wanted[decision.Event] = true
+	}
+	statements := make(map[string]workroom.Statement, len(decisions))
+	for _, statement := range projection.Statements {
+		if wanted[statement.Event] {
+			statements[statement.Event] = statement
+		}
+	}
+	acts := make(map[string]workroom.Act, len(decisions))
+	for _, act := range projection.Acts {
+		if wanted[act.Event] {
+			acts[act.Event] = act
+		}
+	}
+	views := make([]EventView, 0, len(decisions))
+	for _, decision := range decisions {
+		view := EventView{Event: decision.Event, Verdict: string(decision.Verdict), Reason: Text(decision.Reason)}
+		if statement, ok := statements[decision.Event]; ok {
+			view.Actor, view.Kind, view.Text = Text(ActorName(projection, statement.Actor)), string(statement.Kind), Text(statement.Text)
+		} else if act, ok := acts[decision.Event]; ok {
+			view.Actor, view.Kind, view.Target, view.Text = Text(ActorName(projection, act.Actor)), act.Type, act.Target, Text(act.Text)
+		}
+		views = append(views, view)
+	}
+	return views
 }
 
 // Until is the filter a wait applies before it wakes its caller. It is shared
@@ -619,37 +647,85 @@ func ParseUntil(value string) (Until, error) {
 // Presence and conversation churn are not actionable. Neither is a durable
 // event that touches none of the three, which is the whole point: an unrelated
 // act in a busy room no longer wakes every waiter in it.
-func ActionableWait(projection workroom.Projection, delta WaitDelta, fingerprint string) bool {
+func ActionableWait(durable app.Snapshot, requested Cursor, delta WaitDelta, fingerprint string) bool {
 	if len(delta.PriorityChat.Frames) > 0 {
 		return true
 	}
-	if len(delta.Durable) == 0 {
+	fresh := FreshDecisions(durable, requested)
+	if len(fresh) == 0 {
 		return false
 	}
-	fresh := make(map[string]bool, len(delta.Durable))
-	for _, view := range delta.Durable {
-		fresh[view.Event] = true
-	}
-	for _, lane := range [][]CommitmentView{delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou} {
-		for _, row := range lane {
-			if fresh[row.Request] || fresh[row.Promise] || fresh[row.Report] {
-				return true
-			}
-		}
-	}
-	for _, row := range delta.CurrentAwaitingRatification {
-		if fresh[row.Event] {
+	// A poll asking only whether to wake somebody stops at the first event
+	// that says yes, and renders nothing: rendering is what costs, and this
+	// question is asked on every change a resident sees.
+	accepts := acceptsFor(durable.Projection, delta, fingerprint)
+	for _, decision := range fresh {
+		if accepts(decision.Event) {
 			return true
 		}
 	}
-	return restsOnYours(projection, fresh, fingerprint)
+	return false
 }
 
-// restsOnYours reports whether any fresh event names, as a direct basis, an
-// event this actor signed and has not had retired. A retired basis is left out
-// because the record resting on it is answering something that no longer
-// stands, which is news about the retirement rather than work for its author.
-func restsOnYours(projection workroom.Projection, fresh map[string]bool, fingerprint string) bool {
+// AcceptedWaitEvents is the filter's working: the events after the requested
+// cursor that this actor can act on, under rules 2 and 3 above, in log order,
+// with the count of any it did not render.
+//
+// It reads FreshDecisions, not delta.Durable. The delta prints at most
+// DeltaCap events, and a wait that decided from that list lost the one event
+// that was this actor's whenever fifty unrelated ones arrived behind it — and
+// then persisted a cursor past it, so no later wait could report it either.
+func AcceptedWaitEvents(durable app.Snapshot, requested Cursor, delta WaitDelta, fingerprint string) ([]EventView, int) {
+	fresh := FreshDecisions(durable, requested)
+	if len(fresh) == 0 {
+		return nil, 0
+	}
+	projection := durable.Projection
+	accepts := acceptsFor(projection, delta, fingerprint)
+	accepted := make([]workroom.Decision, 0, 4)
+	for _, decision := range fresh {
+		if accepts(decision.Event) {
+			accepted = append(accepted, decision)
+		}
+	}
+	// The decision was made over every one of them; only the rendering is
+	// capped, and the count of what is left out is returned with it. A first
+	// call with no cursor accepts everything this actor ever signed under, so
+	// building a view for each would be a copy of the log.
+	skipped := 0
+	if len(accepted) > DeltaCap {
+		skipped = len(accepted) - DeltaCap
+		accepted = accepted[len(accepted)-DeltaCap:]
+	}
+	return viewDecisions(projection, accepted), skipped
+}
+
+// acceptsFor builds the two indexes rules 2 and 3 need — the events of the
+// rows this actor can move, and the events this actor signed — and returns the
+// test over them. Both are built once per call rather than once per event,
+// because each is a pass over the projection.
+func acceptsFor(projection workroom.Projection, delta WaitDelta, fingerprint string) func(event string) bool {
+	rows := make(map[string]bool, 3*len(delta.CurrentAvailableToYou)+3*len(delta.CurrentWaitingOnYou)+len(delta.CurrentAwaitingRatification))
+	for _, lane := range [][]CommitmentView{delta.CurrentAvailableToYou, delta.CurrentWaitingOnYou} {
+		for _, row := range lane {
+			rows[row.Request], rows[row.Promise], rows[row.Report] = true, true, true
+		}
+	}
+	for _, row := range delta.CurrentAwaitingRatification {
+		rows[row.Event] = true
+	}
+	delete(rows, "")
+	mine := signedBy(projection, fingerprint)
+	return func(event string) bool {
+		return rows[event] || restsOnYours(projection, event, mine)
+	}
+}
+
+// signedBy collects the events this actor signed and has not had retired. A
+// retired one is left out because a record resting on it is answering
+// something that no longer stands, which is news about the retirement rather
+// than work for its author.
+func signedBy(projection workroom.Projection, fingerprint string) map[string]bool {
 	mine := make(map[string]bool)
 	for _, statement := range projection.Statements {
 		if statement.Actor == fingerprint && !statement.Retired {
@@ -661,14 +737,18 @@ func restsOnYours(projection workroom.Projection, fresh map[string]bool, fingerp
 			mine[act.Event] = true
 		}
 	}
+	return mine
+}
+
+// restsOnYours reports whether one event names, as a direct basis, an event
+// this actor signed.
+func restsOnYours(projection workroom.Projection, event string, mine map[string]bool) bool {
 	if len(mine) == 0 {
 		return false
 	}
-	for event := range fresh {
-		for _, basis := range projection.Provenance[event] {
-			if mine[basis] {
-				return true
-			}
+	for _, basis := range projection.Provenance[event] {
+		if mine[basis] {
+			return true
 		}
 	}
 	return false

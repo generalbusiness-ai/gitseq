@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -269,26 +271,59 @@ func TestWaitPersistsItsCursorAndResumesFromIt(t *testing.T) {
 func TestWaitRenewsItsLeaseAcrossTheTTLAndDepartsOnExit(t *testing.T) {
 	fixture := newWaitFixture(t)
 	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	proxy := fixture.proxy(t, nil)
 	options := fixture.options(t, statusview.UntilActionable, 1500*time.Millisecond, cursor, io.Discard)
+	options.serverURL = proxy.url
 	// A lease shorter than the wait, renewed more often than it expires. If
 	// the renewal stopped, the session would lapse before the wait ended.
 	options.leaseTTL = 400 * time.Millisecond
 	options.renewEvery = 100 * time.Millisecond
 	options.pollCap = 150 * time.Millisecond
 
-	present := make(chan int, 1)
+	type presence struct {
+		count int
+		err   error
+	}
+	held := make(chan presence, 1)
 	go func() {
 		time.Sleep(time.Second)
-		present <- livePresenceCount(t, fixture.url, "bot")
+		count, err := livePresenceCount(fixture.url, "bot")
+		held <- presence{count: count, err: err}
 	}()
 	if err := runWait(fixture.ctx, fixture.workspace, options); err != errWaitTimeout {
 		t.Fatalf("leased wait = %v; want the deadline to pass", err)
 	}
-	if held := <-present; held != 1 {
-		t.Errorf("live sessions for bot a second into the wait = %d, want 1: the lease was not renewed across its TTL", held)
+	during := <-held
+	if during.err != nil {
+		t.Fatalf("read presence during the wait: %v", during.err)
 	}
-	if after := livePresenceCount(t, fixture.url, "bot"); after != 0 {
+	if during.count != 1 {
+		t.Errorf("live sessions for bot a second into the wait = %d, want 1: the lease did not survive its TTL", during.count)
+	}
+	after, err := livePresenceCount(fixture.url, "bot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != 0 {
 		t.Errorf("live sessions for bot after the wait returned = %d, want 0: the session did not depart", after)
+	}
+	// Surviving is not the same as being renewed. A lapsed session is now
+	// reopened, so counting live sessions alone would pass with the renewal
+	// gone; what pins it is that one session was opened and kept alive.
+	announces, _ := proxy.recorded()
+	opened, renewals := 0, 0
+	for _, announced := range announces {
+		if _, renewal := announced["credential"]; renewal {
+			renewals++
+		} else {
+			opened++
+		}
+	}
+	if opened != 1 {
+		t.Errorf("sessions opened = %d, want 1: the lease lapsed and was reopened rather than renewed", opened)
+	}
+	if renewals < 3 {
+		t.Errorf("renewals = %d across more than three of the lease's own TTLs, want at least 3", renewals)
 	}
 }
 
@@ -373,6 +408,277 @@ func TestWaitNeverAsksForAZeroLengthPoll(t *testing.T) {
 			t.Errorf("pollWindow(%s, %s) = %s, %v; want %s, %v",
 				sample.remaining, sample.capped, window, askable, sample.window, sample.askable)
 		}
+	}
+}
+
+// proxyResident stands between the command and the real in-process resident, so
+// a test can make the resident behave the way it really does under load, across
+// a restart, or when it goes away — and can read back what the command sent it.
+// Everything it does not intercept is answered by the real resident, so what
+// each test changes is one behaviour and not the whole server.
+type proxyResident struct {
+	url string
+	mu  sync.Mutex
+	// announces holds every body POSTed to /v0/presence, in order.
+	announces []map[string]any
+	waits     int
+}
+
+func (p *proxyResident) recorded() ([]map[string]any, int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]map[string]any(nil), p.announces...), p.waits
+}
+
+// refusal is what an interception answers with: an HTTP status and the message
+// the resident would have put in its error body. A false third result means
+// "let the real resident answer this one".
+type refusal func(path string, attempt int) (int, string, bool)
+
+// lost is the interception that drops the connection instead of answering,
+// which is what a resident that has gone away looks like from here.
+var lost = 499
+
+func (f *waitFixture) proxy(t *testing.T, intercept refusal) *proxyResident {
+	t.Helper()
+	proxy := &proxyResident{}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		request.Body = io.NopCloser(bytes.NewReader(body))
+		proxy.mu.Lock()
+		if request.URL.Path == "/v0/presence" {
+			var announced map[string]any
+			_ = json.Unmarshal(body, &announced)
+			proxy.announces = append(proxy.announces, announced)
+		}
+		attempt := 0
+		if request.URL.Path == "/v0/actor-wait" {
+			proxy.waits++
+			attempt = proxy.waits
+		}
+		proxy.mu.Unlock()
+		if intercept != nil {
+			if status, message, handled := intercept(request.URL.Path, attempt); handled {
+				if status == lost {
+					hijacked, _, err := writer.(http.Hijacker).Hijack()
+					if err == nil {
+						hijacked.Close()
+					}
+					return
+				}
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(status)
+				_ = json.NewEncoder(writer).Encode(map[string]string{"error": message})
+				return
+			}
+		}
+		f.handler.ServeHTTP(writer, request)
+	}))
+	t.Cleanup(server.Close)
+	proxy.url = server.URL
+	return proxy
+}
+
+// The filter decides over every event after the cursor, and the delta prints at
+// most fifty. Before this, a wait decided from the printed list: fifty
+// unrelated events arriving behind the one request that was yours pushed it out
+// of the window, the wait timed out, and it then persisted a cursor past the
+// request — so no later wait could report it either. The event this test looks
+// for is deliberately outside the window the delta carries.
+func TestWaitSeesTheEventThatIsYoursBehindAFullDeltaCapOfOthers(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	request := fixture.request(t, "alice", "bot", "buried under a busy room")
+	crowd := statusview.DeltaCap + 5
+	for i := 0; i < crowd; i++ {
+		fixture.act(t, "alice", workroom.KindAssert, fmt.Sprintf("unrelated chatter %d", i), nil, fixture.seed)
+	}
+
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilActionable, 10*time.Second, cursor, &out)); err != nil {
+		t.Fatalf("wait behind %d unrelated events: %v", crowd, err)
+	}
+	printed := out.String()
+	if !strings.Contains(printed, request) {
+		t.Fatalf("the wake does not name the request %s, which is outside the %d-event delta window:\n%s",
+			request, statusview.DeltaCap, printed)
+	}
+	if !strings.Contains(printed, "gs promise --as bot "+request) {
+		t.Errorf("the wake does not print the act the buried row owes:\n%s", printed)
+	}
+	// The reason it woke is the accepted event, not the crowd it arrived
+	// behind: an actionable wake prints what the filter let through.
+	if strings.Contains(printed, "unrelated chatter") {
+		t.Errorf("the wake printed events the filter did not accept:\n%s", printed)
+	}
+}
+
+// A poll that woke nobody still keeps its cursor. Without that the filter
+// reconsiders the same declined events on every call, and a busy room makes
+// every wait pay for the whole backlog again.
+func TestWaitKeepsItsCursorAfterAPollThatWokeNobody(t *testing.T) {
+	for _, lane := range []struct {
+		name      string
+		resident  bool
+		interval  time.Duration
+		timeout   time.Duration
+		cursorSet string
+	}{
+		{name: "resident", resident: true, timeout: 1200 * time.Millisecond, cursorSet: "resident.json"},
+		{name: "local", timeout: 1200 * time.Millisecond, cursorSet: "local.json"},
+	} {
+		t.Run(lane.name, func(t *testing.T) {
+			fixture := newWaitFixture(t)
+			before := fixture.frontier(t)
+			path := fixture.seedCursor(t, lane.cursorSet, before)
+			// Somebody else's work. It moves the frontier and wakes nobody.
+			fixture.request(t, "alice", "carol", "not yours")
+			options := fixture.options(t, statusview.UntilActionable, lane.timeout, path, io.Discard)
+			if !lane.resident {
+				options.serverURL = ""
+			}
+			if err := runWait(fixture.ctx, fixture.workspace, options); err != errWaitTimeout {
+				t.Fatalf("%s wait on somebody else's request = %v; want the deadline to pass", lane.name, err)
+			}
+			kept := readWaitCursor(path, fixture.workspace.View().Genesis)
+			current := fixture.frontier(t)
+			if len(kept.Frontier) != 1 || kept.Frontier[0] != current.Frontier[0] {
+				t.Fatalf("%s wait kept cursor %+v; want the frontier it was answered at, %+v", lane.name, kept, current.Frontier[0])
+			}
+			if kept.Frontier[0].Depth == before.Frontier[0].Depth {
+				t.Fatalf("%s wait kept the cursor it started from; the declined events will be reconsidered forever", lane.name)
+			}
+		})
+	}
+}
+
+// A full wait budget is the resident asking to be tried again shortly, not a
+// failure. Giving up on it would make a busy resident look like a broken one.
+func TestWaitRetriesAFullWaitBudget(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	request := fixture.request(t, "alice", "bot", "behind a full budget")
+	proxy := fixture.proxy(t, func(path string, attempt int) (int, string, bool) {
+		return http.StatusTooManyRequests, "too many concurrent waits; retry shortly", path == "/v0/actor-wait" && attempt <= 2
+	})
+	options := fixture.options(t, statusview.UntilActionable, 10*time.Second, cursor, &strings.Builder{})
+	options.serverURL = proxy.url
+	var out strings.Builder
+	options.out = &out
+	if err := runWait(fixture.ctx, fixture.workspace, options); err != nil {
+		t.Fatalf("wait through two full-budget refusals: %v", err)
+	}
+	if !strings.Contains(out.String(), request) {
+		t.Errorf("the wake after the retries does not name the request:\n%s", out.String())
+	}
+	if _, waits := proxy.recorded(); waits < 3 {
+		t.Errorf("the resident saw %d waits; the two refusals were not retried", waits)
+	}
+}
+
+// A resident restart throws away every session it minted. The repair is the
+// request that opened the first one, and it belongs here rather than in the
+// caller's shell loop.
+func TestWaitReopensASessionTheResidentNoLongerHolds(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	request := fixture.request(t, "alice", "bot", "after a restart")
+	proxy := fixture.proxy(t, func(path string, attempt int) (int, string, bool) {
+		return http.StatusBadRequest, "credential is not valid", path == "/v0/actor-wait" && attempt == 1
+	})
+	options := fixture.options(t, statusview.UntilActionable, 10*time.Second, cursor, io.Discard)
+	options.serverURL = proxy.url
+	var out strings.Builder
+	options.out = &out
+	var progress strings.Builder
+	options.progress = &progress
+	if err := runWait(fixture.ctx, fixture.workspace, options); err != nil {
+		t.Fatalf("wait across a lapsed session: %v", err)
+	}
+	if !strings.Contains(out.String(), request) {
+		t.Errorf("the wake after reopening does not name the request:\n%s", out.String())
+	}
+	if !strings.Contains(progress.String(), "lapsed") {
+		t.Errorf("the lapse was not reported on standard error: %q", progress.String())
+	}
+	announces, _ := proxy.recorded()
+	opened := 0
+	for _, announced := range announces {
+		if _, renewal := announced["credential"]; !renewal {
+			opened++
+		}
+	}
+	if opened != 2 {
+		t.Errorf("sessions opened = %d, want 2: the lapsed one and its replacement", opened)
+	}
+}
+
+// A resident that stops answering is the ordinary cost of a restart, and it is
+// exactly when an agent most needs the wait to keep working. The local watch
+// takes over for what is left of the deadline.
+func TestWaitFallsBackToTheLocalWatchWhenTheResidentStopsAnswering(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	request := fixture.request(t, "alice", "bot", "answered by the local watch")
+	proxy := fixture.proxy(t, func(path string, attempt int) (int, string, bool) {
+		return lost, "", path == "/v0/actor-wait"
+	})
+	options := fixture.options(t, statusview.UntilActionable, 10*time.Second, cursor, io.Discard)
+	options.serverURL = proxy.url
+	options.transportRetries = 1
+	options.backoff = 10 * time.Millisecond
+	var out strings.Builder
+	options.out = &out
+	var progress strings.Builder
+	options.progress = &progress
+	if err := runWait(fixture.ctx, fixture.workspace, options); err != nil {
+		t.Fatalf("wait against a resident that stopped answering: %v", err)
+	}
+	if !strings.Contains(progress.String(), "watching the local sequence ref") {
+		t.Errorf("the fallback was not reported on standard error: %q", progress.String())
+	}
+	if !strings.Contains(out.String(), request) {
+		t.Errorf("the local wake does not name the request:\n%s", out.String())
+	}
+}
+
+// Presence is where the workroom says what a session is doing, and what this
+// one is doing is waiting.
+func TestWaitAnnouncesItselfAsWaiting(t *testing.T) {
+	fixture := newWaitFixture(t)
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	proxy := fixture.proxy(t, nil)
+	options := fixture.options(t, statusview.UntilActionable, 700*time.Millisecond, cursor, io.Discard)
+	options.serverURL = proxy.url
+	if err := runWait(fixture.ctx, fixture.workspace, options); err != errWaitTimeout {
+		t.Fatalf("quiet wait = %v", err)
+	}
+	announces, _ := proxy.recorded()
+	if len(announces) == 0 {
+		t.Fatal("no presence announcement was made")
+	}
+	for index, announced := range announces {
+		if announced["status"] != "waiting" {
+			t.Errorf("announcement %d carried status %v, want \"waiting\"", index, announced["status"])
+		}
+	}
+}
+
+// A row leaving this actor's lanes is not news they can act on. Retiring a
+// request addressed to them takes the row away; nothing about that is theirs to
+// move, and waking for it would train a reader to ignore wakes.
+func TestWaitIsNotWokenByARetirementOfARequestAddressedToYou(t *testing.T) {
+	fixture := newWaitFixture(t)
+	request := fixture.request(t, "alice", "bot", "withdrawn before bot got to it")
+	cursor := fixture.seedCursor(t, "cursor.json", fixture.frontier(t))
+	if _, err := fixture.workspace.Act(fixture.ctx, "alice", app.Act{
+		Verb: app.VerbSupersede, Target: request, Text: "no longer needed", IdempotencyKey: "retire-request",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	if err := runWait(fixture.ctx, fixture.workspace, fixture.options(t, statusview.UntilActionable, 1200*time.Millisecond, cursor, &out)); err != errWaitTimeout {
+		t.Fatalf("wait on a retirement of bot's own request = %v, %q; want the deadline to pass", err, out.String())
 	}
 }
 
@@ -464,16 +770,16 @@ func say(url, credential, about, text string) error {
 	return err
 }
 
-func livePresenceCount(t *testing.T, url, actor string) int {
-	t.Helper()
+// livePresenceCount reports rather than fails, because a test reads it from a
+// goroutine while the wait it measures is still running, and t.Fatal off the
+// test's own goroutine is not a failure the harness can act on.
+func livePresenceCount(url, actor string) (int, error) {
 	var counted struct {
 		Count int `json:"count"`
 	}
-	if err := residentclient.New(5*time.Second).GetJSON(context.Background(), url,
-		"/v0/presence-count?actor="+actor, waitResponseLimit, &counted); err != nil {
-		t.Fatal(err)
-	}
-	return counted.Count
+	err := residentclient.New(5*time.Second).GetJSON(context.Background(), url,
+		"/v0/presence-count?actor="+actor, waitResponseLimit, &counted)
+	return counted.Count, err
 }
 
 func TestWaitNamesTheRepairWhenTheResidentPredatesTheFilter(t *testing.T) {
@@ -488,10 +794,19 @@ func TestWaitNamesTheRepairWhenTheResidentPredatesTheFilter(t *testing.T) {
 			fixture.handler.ServeHTTP(writer, request)
 			return
 		}
-		if strings.Contains(string(body), `"until"`) {
+		// The refusal is produced the way the resident produces it — a strict
+		// decode into the request shape that existed before `until` did — so
+		// what this test pins is the real wording, not a string a test wrote.
+		decoder := json.NewDecoder(bytes.NewReader(body))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&struct {
+			Cursor    service.Cursor `json:"cursor"`
+			TimeoutMS int            `json:"timeout_ms,omitempty"`
+			Session   string         `json:"credential,omitempty"`
+		}{}); err != nil {
 			writer.Header().Set("Content-Type", "application/json")
 			writer.WriteHeader(http.StatusBadRequest)
-			_ = json.NewEncoder(writer).Encode(map[string]string{"error": `json: unknown field "until"`})
+			_ = json.NewEncoder(writer).Encode(map[string]string{"error": err.Error()})
 			return
 		}
 		// The same resident also predates the `changed` field, so its answer

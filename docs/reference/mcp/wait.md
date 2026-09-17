@@ -52,7 +52,8 @@ everything up to now with `reset` set.
 | `cursor` | The new cursor. Pass this to the next `wait`. |
 | `changed` | True when the poll's filter accepted something, absent when the poll ran out of time. Under `until=actionable` the durable list still holds every event after the cursor, so this is the field that tells a wake from a timeout. |
 | `reset` | The live side restarted; treat presence and conversation as new. |
-| `durable` | Durable events after your cursor. |
+| `durable` | Durable events after your cursor, capped at fifty with `durable_skipped` counting the rest. |
+| `accepted` | Under `until=actionable`, the events the filter let through — the reason this call returned. Decided over every event after the cursor, not over the capped `durable` list, and itself capped with `accepted_skipped`. Empty under `until=any`, where no filter ran. |
 | `live` | Presence and conversation changes. |
 | `priority_ephemeral_chat` | The current unacknowledged addressed frames for this exact session. It repeats until `ack`; `skipped` counts additional pending frames behind the current page. |
 | `current_awaiting_ratification` | The complete bounded current lane of standing proposals whose captured role satisfier you hold. |
@@ -112,9 +113,18 @@ room no longer returns a tool call's worth of nothing every few seconds. It is
 one filter with one meaning on every surface; `gs wait` defaults to
 `actionable`, and this tool keeps `any`.
 
-The whole-workroom route behind `wait`'s degraded twin, `/v0/wait`, refuses
-`until=actionable`: it has no actor whose lanes and signed events the filter
-could be about.
+It decides over **every** durable event after your cursor, not over the
+`durable` list in the answer. That list is capped at fifty; a decision about
+whether to wake somebody is not, or fifty unrelated acts arriving behind the
+one record that was yours would bury it and the cursor would then move past it.
+What the filter let through comes back in `accepted`, so a caller can say why
+it woke without asking a second question.
+
+The resident's whole-workroom wait route, `/v0/wait`, refuses
+`until=actionable`: it serves no particular actor, so it has no lanes or signed
+events for the filter to be about. This tool never calls it. (The degraded path
+for this tool is the adapter's own fold of the local log, described under
+*Resets are not losses* below, and `until` applies there too.)
 
 A call that omits `until` sends no such field at all, so it is answered by a
 resident built before the filter existed. A call that names one is refused by

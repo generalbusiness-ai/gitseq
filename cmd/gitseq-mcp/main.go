@@ -1242,6 +1242,10 @@ func (s *mcpServer) dispatchResolved(ctx context.Context, call toolCall, current
 			}
 			degraded := digestWait(local, requested, identity.actor.Fingerprint, current.actor, true)
 			degraded.Changed = changed
+			if statusview.Until(stringValue(arguments["until"])) == statusview.UntilActionable {
+				degraded.Accepted, degraded.AcceptedSkipped = statusview.AcceptedWaitEvents(
+					local.Status.Durable, requested, degraded, identity.actor.Fingerprint)
+			}
 			return degraded, nil
 		}
 		if err != nil {
@@ -2260,7 +2264,7 @@ func (s *mcpServer) waitDurable(ctx context.Context, current *room, arguments ma
 		}
 		if filteredHead != durable.Head {
 			filteredHead = durable.Head
-			filteredAnswer = statusview.ActionableWait(durable.Projection,
+			filteredAnswer = statusview.ActionableWait(durable, input.Cursor,
 				digestWait(response, input.Cursor, fingerprint, actorName, true), fingerprint)
 		}
 		return filteredAnswer, nil

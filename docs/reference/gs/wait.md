@@ -82,11 +82,26 @@ frontier and is not yours; presence and conversation churn is not durable
 news. `--until any` drops the filter and wakes on any durable or live change
 after the cursor, which is what the MCP tool does by default.
 
+Work *leaving* your lanes is not a wake either, by construction: nothing here
+looks at what a row used to be. The retirement of a request addressed to you,
+and a reassignment of it away from you, both pass in silence — the row simply
+is not in your lanes on the next answer. A merge receipt closing your
+commitment is the one to know about: the closure itself wakes nothing, but the
+receipt normally rests on artifacts you signed, and that is rule three, so it
+usually does wake you. When you need to know what has gone rather than what has
+arrived, read [`gs work --next`](work.md); a wait is for work arriving.
+
 The filter is one function shared by the resident, the MCP tool and this
 command, so `actionable` means the same thing on every surface. With
 `--server` it is applied **at the resident**, inside its poll: a change that
 is not yours leaves the poll ticking rather than crossing the socket for you
 to discard.
+
+It decides over **every** event after your cursor, not over the delta the
+answer prints. A response is capped at fifty events; a decision about whether
+to wake somebody is not, or fifty unrelated acts arriving behind the one
+request that was yours would bury it — and the cursor would then move past it,
+so no later wait could report it either.
 
 A resident built before the filter existed decodes the request strictly and
 refuses the field by name. `--until any` is sent as an *absent* field rather
@@ -102,9 +117,15 @@ waiting out its deadline in silence.
 ## The cursor
 
 Each call resumes from the last one. The cursor is written after every poll,
-whether or not it woke, so events the filter declined are not reconsidered
-next time; and it is written atomically, so a call interrupted mid-write
-leaves a readable file behind.
+whether or not it woke. That is safe because the filter judged every event
+after the cursor, not just the printed ones: an event it declined has been
+seen and decided, so not reconsidering it next time loses nothing. The file is
+written atomically, so a call interrupted mid-write leaves a readable one
+behind.
+
+A wake writes its cursor only after the wake has printed. If the rendering
+fails, the cursor stays where it was and the next call sees the same news
+again, rather than the news being lost for good.
 
 The default file is `wait-cursor-<fingerprint>.json` under the repository's
 `gitseq` directory in the common Git directory, so every worktree of one
@@ -115,12 +136,18 @@ costs one replay and never a wrong answer.
 ## The presence session
 
 `/v0/actor-wait` answers only a session, so this command opens one: the same
-`POST /v0/presence` the MCP adapter sends, with this actor's name and a lease
-of one minute. The resident opens the actor's key from this checkout, which
+`POST /v0/presence` the MCP adapter sends, with this actor's name, a lease of
+one minute, and the activity status `waiting` — which is what the session is
+actually doing. The resident opens the actor's key from this checkout, which
 is why `gs wait` needs `--as` and the local key just as the adapter does. The
 lease is renewed between polls, and the session departs on every exit path,
 including an interrupt, so a stopped wait does not sit in the room's presence
 list until its lease expires.
+
+This is a session of its own. An actor who also has an MCP adapter attached
+will show **two** live sessions in the room while `gs wait` runs, and the
+room's presence list will say `waiting` for this one. That is the honest
+picture — two processes are attending — and it clears when the command exits.
 
 The credential stays in this process. It is never printed, never logged and
 never written to the cursor file.
@@ -129,14 +156,46 @@ Presence opened this way is still [advisory session
 attention](../../concepts/agent-practice.md): it is not a promise, a claim, a
 report or a completion signal.
 
+## Priority chat, and its one limit
+
+A frame addressed to you by name wakes the wait and is printed with it. Two
+things are worth knowing before relying on it.
+
+The inbox belongs to the session, and the session dies with the command, so
+`gs wait` sees only the frames that arrive **while one of its polls is open**.
+A frame sent between two invocations reaches the session that was open at the
+time, not the next one.
+
+There is no `gs ack`: acknowledging a thread is an [MCP `ack`](../mcp/ack.md)
+call, and it acknowledges the session that made it. From the CLI a frame is
+therefore read once, in the wake that carried it, and never repeats — because
+the session it was delivered to is gone.
+
+## When the resident does not answer
+
+Three things a resident can say are not answers, and each has an obvious
+repair, so this command performs it inside your `--timeout` rather than
+failing:
+
+- **Its wait budget is full** (`429`; the resident holds at most 64 long polls
+  across both wait routes). The command pauses briefly and asks again, because
+  that is what the refusal asks for.
+- **Your session lapsed** — the resident restarted and threw away the
+  credential it minted. The command says so on standard error, opens another
+  session, and carries on. Three lapses in one invocation is a resident that
+  will not keep a session, and that is reported rather than looped on.
+- **It stopped answering at all.** After two unanswered polls the command says
+  so on standard error and spends what is left of the deadline on the local
+  watch below, which is what the MCP adapter does with the same failure.
+
 ## Without a resident
 
-With no resident — `--server -`, or nothing advertised — the command says so
-on standard error and watches the local sequence ref every two seconds. A ref
-that has not moved costs one cheap Git call; a ref that has moved buys one
-verified local audit, and the same filter is applied to the same answer. This
-is the path that keeps working across a resident restart, which is when an
-agent most needs it.
+With no resident — `--server -`, nothing advertised, or one that stopped
+answering mid-wait — the command says so on standard error and watches the
+local sequence ref every two seconds. A ref that has not moved costs one cheap
+Git call; a ref that has moved buys one verified local audit, and the same
+filter is applied to the same answer. This is the path that keeps working
+across a resident restart, which is when an agent most needs it.
 
 ## Example
 
@@ -159,12 +218,14 @@ gs state --repo "$REPO" --as alice --kind request --text 'Add a changelog' \
 gs wait --repo "$REPO" --as bot --server - --timeout 30s
 ```
 
-The wake prints a header saying what moved, one line per durable event after
-the cursor, one line per unacknowledged priority frame, and then this actor's
-work in the exact shape `gs work --next` prints it:
+The wake prints the reason it woke and then what to do about it: one line per
+event the filter accepted, one line per unacknowledged priority frame, and
+then this actor's work in the exact shape `gs work --next` prints it. Under
+`--until any` no filter ran, so the reason is the durable delta itself, and
+that list — unlike the decision — really is capped, so a count of what was
+left out follows it.
 
 ```text
-# gs wait woke at depth 4: 1 durable events after your cursor, 0 live changes, 0 unacknowledged priority chat frames.
 # effective request by alice git:sha1:…#git:sha1:… — Add a changelog
 
 # Next acts for bot: 1 rows on this page, 1 matching, 0 remaining.

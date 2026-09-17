@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -59,7 +60,19 @@ const (
 	// ref. Reading a ref is one cheap Git call; folding the log is not, and
 	// only a ref that moved buys one.
 	localWatchInterval = 2 * time.Second
-	waitTimeoutExit    = 3
+	// residentBackoff is the pause before asking again after a refusal the
+	// resident invited: its wait budget is full, or the socket did not answer.
+	// Short, because the caller is already inside its own deadline.
+	residentBackoff = 250 * time.Millisecond
+	// residentTransportRetries is how many unanswered polls to absorb before
+	// deciding the resident is gone and watching the sequence ref instead. A
+	// resident restart is the ordinary cause and takes longer than one retry.
+	residentTransportRetries = 2
+	// maxCredentialLapses bounds re-announcing. One lapse is a restart; a
+	// stream of them is a resident that will not keep a session, and looping
+	// on it would look like a wait that never returns.
+	maxCredentialLapses = 3
+	waitTimeoutExit     = 3
 )
 
 // errWaitTimeout is the deadline passing with nothing new. It is not a
@@ -90,8 +103,14 @@ type waitOptions struct {
 	leaseTTL      time.Duration
 	renewEvery    time.Duration
 	watchInterval time.Duration
-	out           io.Writer
-	progress      io.Writer
+	// backoff is how long to wait before asking a resident again after a
+	// refusal it invited: a full wait budget, or a socket that did not answer.
+	backoff time.Duration
+	// transportRetries is how many unanswered polls to absorb before giving up
+	// on the resident and watching the sequence ref instead.
+	transportRetries int
+	out              io.Writer
+	progress         io.Writer
 }
 
 func waitCommand(ctx context.Context, arguments []string) error {
@@ -141,7 +160,8 @@ func waitCommand(ctx context.Context, arguments []string) error {
 		actorName: actorName, fingerprint: fingerprint, serverURL: serverURL,
 		until: filter, timeout: *timeout, cursorFile: path,
 		pollCap: residentPollCap, leaseTTL: waitLeaseTTL, renewEvery: waitRenewEvery,
-		watchInterval: localWatchInterval, out: os.Stdout, progress: os.Stderr,
+		watchInterval: localWatchInterval, backoff: residentBackoff, transportRetries: residentTransportRetries,
+		out: os.Stdout, progress: os.Stderr,
 	})
 }
 
@@ -159,10 +179,14 @@ func defaultCursorFile(ctx context.Context, workspace *app.Workspace, fingerprin
 func runWait(ctx context.Context, workspace *app.Workspace, options waitOptions) error {
 	genesis := workspace.View().Genesis
 	cursor := readWaitCursor(options.cursorFile, genesis)
+	// One deadline for the whole invocation, computed before anything is
+	// dialled. Both paths take it, so falling back from the resident to the
+	// local watch spends what is left rather than starting the clock again.
+	deadline := time.Now().Add(options.timeout)
 	if options.serverURL == "" {
-		return watchLocally(ctx, workspace, options, cursor)
+		return watchLocally(ctx, workspace, options, deadline, cursor)
 	}
-	return pollResident(ctx, workspace, options, cursor)
+	return pollResident(ctx, workspace, options, deadline, cursor)
 }
 
 // pollResident is the long poll, looped under this command's own deadline. The
@@ -170,16 +194,28 @@ func runWait(ctx context.Context, workspace *app.Workspace, options waitOptions)
 // refuses without a credential, and it is closed on every exit path including
 // an interrupt, so a departed session does not sit in the room's presence list
 // until its lease expires.
-func pollResident(ctx context.Context, workspace *app.Workspace, options waitOptions, cursor service.Cursor) error {
-	deadline := time.Now().Add(options.timeout)
+//
+// The three things a resident can say that are not answers are all recovered
+// from rather than reported, because each has an obvious repair and this
+// command is already inside a deadline that bounds every one of them: a full
+// wait budget is waited out, a lapsed credential is re-announced, and a
+// resident that stops answering altogether is replaced by the local watch.
+func pollResident(ctx context.Context, workspace *app.Workspace, options waitOptions, deadline time.Time, cursor service.Cursor) error {
 	client := residentclient.New(options.pollCap + 10*time.Second)
 	credential, err := announcePresence(ctx, client, options, "")
 	if err != nil {
+		if residentclient.IsTransportError(err) {
+			return fallBackLocally(ctx, workspace, options, deadline, cursor, err)
+		}
 		return fmt.Errorf("open a presence session at %s: %w", options.serverURL, err)
 	}
-	defer departPresence(client, options, credential)
+	// The departure reads the credential this loop holds now, not the one it
+	// held when the defer was written: a re-announced session must be the one
+	// that is closed.
+	defer func() { departPresence(client, options, credential) }()
 	registerInbox(ctx, client, options, credential)
 	renewed := time.Now()
+	unanswered, lapses := 0, 0
 	for {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
@@ -204,8 +240,47 @@ func pollResident(ctx context.Context, workspace *app.Workspace, options waitOpt
 			// behaviour it already implements is exactly `any`.
 			request.Until = string(options.until)
 		}
-		if err := client.PostJSON(ctx, options.serverURL, "/v0/actor-wait", request, waitResponseLimit, &delta); err != nil {
-			return unfilteredResidentError(options, err)
+		polled := client.PostJSON(ctx, options.serverURL, "/v0/actor-wait", request, waitResponseLimit, &delta)
+		switch {
+		case polled == nil:
+			unanswered, lapses = 0, 0
+		case budgetFull(polled):
+			// Every long-poll slot at the resident is taken. This caller is a
+			// long poller and the refusal says to retry shortly; giving up
+			// would make a busy resident look like a broken one.
+			if err := pause(ctx, deadline, options.backoff); err != nil {
+				return err
+			}
+			continue
+		case lapsedCredential(polled):
+			// The resident restarted, so the session it minted is gone. The
+			// repair is the request that opened the first one.
+			lapses++
+			if lapses > maxCredentialLapses {
+				return fmt.Errorf("the resident at %s would not keep a presence session: %w", options.serverURL, polled)
+			}
+			fmt.Fprintf(options.progress, "gs: the presence session lapsed (%v); opening another\n", polled)
+			opened, err := announcePresence(ctx, client, options, "")
+			if err != nil {
+				if residentclient.IsTransportError(err) {
+					return fallBackLocally(ctx, workspace, options, deadline, cursor, err)
+				}
+				return fmt.Errorf("reopen a presence session at %s: %w", options.serverURL, err)
+			}
+			credential, renewed = opened, time.Now()
+			registerInbox(ctx, client, options, credential)
+			continue
+		case residentclient.IsTransportError(polled):
+			unanswered++
+			if unanswered > options.transportRetries {
+				return fallBackLocally(ctx, workspace, options, deadline, cursor, polled)
+			}
+			if err := pause(ctx, deadline, options.backoff); err != nil {
+				return err
+			}
+			continue
+		default:
+			return unfilteredResidentError(options, polled)
 		}
 		woken := woke(options.until, request.Cursor, delta)
 		cursor = delta.Cursor
@@ -225,6 +300,49 @@ func pollResident(ctx context.Context, workspace *app.Workspace, options waitOpt
 		if woken {
 			return nil
 		}
+	}
+}
+
+// fallBackLocally gives up on a resident that is not answering and spends what
+// is left of the deadline watching the sequence ref, which is what the MCP
+// adapter does with the same failure. A resident restart is the ordinary cause,
+// and it is exactly when an agent most needs the wait to keep working.
+func fallBackLocally(ctx context.Context, workspace *app.Workspace, options waitOptions, deadline time.Time, cursor service.Cursor, cause error) error {
+	fmt.Fprintf(options.progress, "gs: the resident at %s is not answering (%v); watching the local sequence ref instead\n",
+		options.serverURL, cause)
+	local := options
+	local.serverURL = ""
+	return watchLocally(ctx, workspace, local, deadline, cursor)
+}
+
+// budgetFull recognises the resident's own refusal when every long-poll slot is
+// taken. It is a 429 by design: the resource it protects is the goroutine
+// holding a poll open, and queueing behind it would consume the same thing.
+func budgetFull(err error) bool {
+	var refusal *residentclient.HTTPError
+	return errors.As(err, &refusal) && refusal.StatusCode == http.StatusTooManyRequests
+}
+
+// lapsedCredential recognises a session the resident no longer holds. It is the
+// ordinary consequence of a resident restart, not a mistake by the caller.
+func lapsedCredential(err error) bool {
+	var refusal *residentclient.HTTPError
+	return errors.As(err, &refusal) && strings.Contains(refusal.Message, "credential is not valid")
+}
+
+// pause waits out a short backoff without overrunning this command's deadline.
+func pause(ctx context.Context, deadline time.Time, backoff time.Duration) error {
+	remaining := time.Until(deadline)
+	if remaining <= 0 {
+		return errWaitTimeout
+	}
+	timer := time.NewTimer(min(remaining, backoff))
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -252,6 +370,10 @@ func pollWindow(remaining, capped time.Duration) (time.Duration, bool) {
 // frontier that moved, an event after the cursor, a live change, a reset or a
 // pending frame. Without this an older resident answered every poll with an
 // absent field and the command waited out its whole deadline in silence.
+//
+// This function and frontierMoved exist only for that compatibility window.
+// Once every resident this command meets sets `changed`, both can go and the
+// field can be read directly.
 func woke(until statusview.Until, requested service.Cursor, delta statusview.WaitDelta) bool {
 	if delta.Changed || until == statusview.UntilActionable {
 		return delta.Changed
@@ -289,10 +411,9 @@ func unfilteredResidentError(options waitOptions, err error) error {
 // that can change underneath it — the sequence ref — and pays for a verified
 // fold only when that ref moves. The filter is the same function the resident
 // applies, so `--until actionable` means the same thing here as there.
-func watchLocally(ctx context.Context, workspace *app.Workspace, options waitOptions, cursor service.Cursor) error {
-	fmt.Fprintf(options.progress, "gs: no resident named; watching the local sequence ref every %s and verifying the durable log on every move\n",
+func watchLocally(ctx context.Context, workspace *app.Workspace, options waitOptions, deadline time.Time, cursor service.Cursor) error {
+	fmt.Fprintf(options.progress, "gs: watching the local sequence ref every %s and verifying the durable log on every move\n",
 		options.watchInterval)
-	deadline := time.Now().Add(options.timeout)
 	ref := kernel.Ref(workspace.View().Genesis)
 	seen := cursorHead(cursor)
 	for {
@@ -344,9 +465,14 @@ func localDelta(ctx context.Context, workspace *app.Workspace, options waitOptio
 	frontier := service.Cursor{Frontier: []service.Frontier{{Genesis: snapshot.Genesis, Head: snapshot.Head, Depth: snapshot.Depth}},
 		Live: nexus.Cursor{Generation: "degraded"}}
 	delta := statusview.BuildWait(snapshot, frontier, nil, false, requested, nil, options.fingerprint, options.actorName, true)
-	delta.Changed = service.DurableChanged(requested.Frontier, snapshot) &&
-		(options.until != statusview.UntilActionable ||
-			statusview.ActionableWait(snapshot.Projection, delta, options.fingerprint))
+	if options.until != statusview.UntilActionable {
+		delta.Changed = service.DurableChanged(requested.Frontier, snapshot)
+		return delta, nil
+	}
+	// The filter runs over every event after the cursor, not over the capped
+	// list the delta prints, and what it accepted is what the wake reports.
+	delta.Accepted, delta.AcceptedSkipped = statusview.AcceptedWaitEvents(snapshot, requested, delta, options.fingerprint)
+	delta.Changed = len(delta.Accepted) > 0 || len(delta.PriorityChat.Frames) > 0
 	return delta, nil
 }
 
@@ -357,28 +483,33 @@ func cursorHead(cursor service.Cursor) string {
 	return cursor.Frontier[0].Head
 }
 
-// renderWake prints what woke this call: the durable events after the cursor,
-// the priority chat that has not been acknowledged, and then the actor's own
-// work in the exact shape `gs work --next` prints it, commands and all. The
-// point of reusing that renderer rather than writing a second one is that an
-// agent reading a wake does not have to learn a second output.
+// renderWake prints the reason this call woke and then what to do about it:
+// the events the filter accepted, one per line, the priority chat that has not
+// been acknowledged, and then the actor's own work in the exact shape
+// `gs work --next` prints it, commands and all. The point of reusing that
+// renderer rather than writing a second one is that an agent reading a wake
+// does not have to learn a second output.
+//
+// Under `--until actionable` the lines are exactly the events the filter let
+// through, so nothing on screen is noise and nothing is a summary of something
+// unshown. Under `--until any` no filter ran, so the reason is the durable
+// delta itself, and that list really is capped — which is the one case where a
+// count of what was left out is information rather than clutter.
 func renderWake(ctx context.Context, workspace *app.Workspace, options waitOptions, delta statusview.WaitDelta) error {
 	var out strings.Builder
-	// The live count is named as well as the durable one, because under
-	// `--until any` a wake with nothing durable behind it is an ordinary
-	// answer — presence or conversation moved — and a header that reported
-	// only durable events would leave the reader asking why it printed.
-	fmt.Fprintf(&out, "# gs wait woke at depth %d: %d durable events after your cursor, %d live changes, %d unacknowledged priority chat frames.\n",
-		delta.Totals.Depth, len(delta.Durable), len(delta.Live), len(delta.PriorityChat.Frames))
-	if delta.Skipped > 0 {
-		fmt.Fprintf(&out, "# %d older durable events were omitted by the delta cap.\n", delta.Skipped)
+	events, omitted := delta.Accepted, delta.AcceptedSkipped
+	if options.until != statusview.UntilActionable {
+		events, omitted = delta.Durable, delta.Skipped
 	}
-	for _, event := range delta.Durable {
+	for _, event := range events {
 		fmt.Fprintf(&out, "# %s %s by %s %s", verdictOrKind(event), event.Kind, event.Actor, event.Event)
 		if event.Text != "" {
 			fmt.Fprintf(&out, " — %s", oneLine(event.Text, 90))
 		}
 		out.WriteString("\n")
+	}
+	if omitted > 0 {
+		fmt.Fprintf(&out, "# and %d more events after your cursor, not shown.\n", omitted)
 	}
 	for _, frame := range delta.PriorityChat.Frames {
 		fmt.Fprintf(&out, "# priority chat from %s in thread %s: %s\n", frame.ActorName, frame.Thread, oneLine(frame.Text, 90))
@@ -441,7 +572,10 @@ type presenceAnswer struct {
 // local key just as the adapter does. The credential stays in this process:
 // it is never printed, logged or written to the cursor file.
 func announcePresence(ctx context.Context, client *residentclient.Client, options waitOptions, credential string) (string, error) {
-	request := map[string]any{"actor": options.actorName, "ttl_ms": options.leaseTTL.Milliseconds()}
+	// `waiting` is what this session is actually doing, and presence is where
+	// the workroom says so. It is advisory attention and nothing more: it
+	// claims no work, reports nothing and authorizes nothing.
+	request := map[string]any{"actor": options.actorName, "ttl_ms": options.leaseTTL.Milliseconds(), "status": "waiting"}
 	if credential != "" {
 		request["credential"] = credential
 	}

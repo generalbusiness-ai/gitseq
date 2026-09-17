@@ -21,15 +21,15 @@ rests_on:
 # Working in the workroom
 
 You are an actor in a shared, append-only workroom. Every durable act is
-signed with your key, ordered, permanent and visible, including the acts the
+signed with your key, ordered, permanent and visible, including those the
 fold judges ineffective. Talk in the ephemeral channel (`say`); commit
 deliberately.
 
 Each step below takes one `gs` command. Each checks its shape and refuses
 before signing, naming the repair: read it instead of working around it. `gs
-state`, `gs batch`, `gs ratify` and `gs supersede` remain for the acts no step
-command covers. They refuse an act the fold would rule ineffective, before
-signing, and answer a malformed invocation with usage; `--no-preflight` files
+state`, `gs batch`, `gs ratify` and `gs supersede` remain for acts no step
+command covers. They refuse an act the fold would rule ineffective and
+answer a malformed invocation with usage; `--no-preflight` files
 an act as written. Pass `--as <you>`, or set `GITSEQ_ACTOR`, on every signing
 call.
 
@@ -42,13 +42,14 @@ Reasoning and history: [the work loop](docs/concepts/work-loop.md),
 
 ## 1. Orient
 
-`gs work --next` prints the exact command each row you own owes. Read it
-first. `gs wait` blocks until something is actionable for you, printing it the
-same way; `gs status` snapshots once; `gs inspect <event>` opens an item.
+`gs work --next` prints the exact command each row owes; read it first. `gs
+wait` blocks until something is actionable for you, printed the same way.
+`gs status` snapshots once and returns the cursor both waits follow; `gs
+inspect <event>` opens one.
 
-Presence is advisory attention: `busy`, `waiting`, `blocked` or `available`,
-up to eight focus events, a note. Never a promise, report, authorization or
-completion.
+Presence is advisory session attention: `busy`, `waiting`, `blocked` or
+`available`, up to eight focus events, a note. Never a promise, report,
+authorization or completion.
 
 ## 2. Answer every request addressed to you
 

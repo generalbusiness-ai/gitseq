@@ -429,6 +429,13 @@ func (s *Server) handleWaitResponse(writer http.ResponseWriter, request *http.Re
 	delta := statusview.BuildWait(response.Status.Durable, response.Status.Cursor, response.LiveChanges, response.Reset,
 		input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false)
 	delta.Changed = changed
+	if until == statusview.UntilActionable {
+		// The filter's working travels with its verdict, so the caller can say
+		// why it woke without asking a second question. It is capped for the
+		// wire; the decision behind it was not.
+		delta.Accepted, delta.AcceptedSkipped = statusview.AcceptedWaitEvents(
+			response.Status.Durable, input.Cursor, delta, observation.Fingerprint)
+	}
 	write(writer, delta, nil)
 }
 
@@ -502,7 +509,7 @@ func (s *Server) wait(ctx context.Context, input WaitRequest, until statusview.U
 		// told there is none.
 		if filteredHead != response.Status.Durable.Head || filteredPending != pending {
 			filteredHead, filteredPending = response.Status.Durable.Head, pending
-			filteredAnswer = statusview.ActionableWait(response.Status.Durable.Projection,
+			filteredAnswer = statusview.ActionableWait(response.Status.Durable, input.Cursor,
 				statusview.BuildWait(response.Status.Durable, response.Status.Cursor, observation.Changes, observation.Reset,
 					input.Cursor, response.Status.Inbox, observation.Fingerprint, observation.Actor, false),
 				observation.Fingerprint)
