@@ -323,7 +323,7 @@ func TestReceiptCheckpointRequiresAnAuthorizedPlan(t *testing.T) {
 		t.Fatal("the receipt earned a plan after all, so the forced flags below test nothing")
 	}
 	receipt.mergeLeftLivePresent, receipt.mergeChangedPathsValid = true, true
-	if scope.receiptCheckpointSettles(successor, receipt, stale, scope.succeededRetirements()) {
+	if scope.receiptCheckpointSettles(make(map[string]bool), successor, receipt, stale, scope.succeededRetirements()) {
 		t.Fatal("a prospective-looking receipt with no authorized plan settled its signer's successor")
 	}
 }
@@ -345,14 +345,14 @@ func TestReceiptCheckpointRefusesACauseItCannotDate(t *testing.T) {
 
 	receipt := state.byID["merge"]
 	successor := state.byID["successor"]
-	if !scope.receiptCheckpointSettles(successor, receipt, stale, scope.succeededRetirements()) {
+	if !scope.receiptCheckpointSettles(make(map[string]bool), successor, receipt, stale, scope.succeededRetirements()) {
 		t.Fatal("the dated fixture does not settle, so removing the date proves nothing")
 	}
 	if scope.active["r6"] == 0 {
 		t.Fatal("the cause under test is already undated, so the fixture is inert")
 	}
 	delete(scope.active, "r6")
-	if scope.receiptCheckpointSettles(successor, receipt, stale, scope.succeededRetirements()) {
+	if scope.receiptCheckpointSettles(make(map[string]bool), successor, receipt, stale, scope.succeededRetirements()) {
 		t.Fatal("a live retirement the scope cannot date was read as settled")
 	}
 }

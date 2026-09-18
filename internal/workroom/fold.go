@@ -452,12 +452,18 @@ type foldState struct {
 	// log order, and succession gives the earliest qualifying supersession
 	// the say — so readers that need "first wins" walk this slice instead of
 	// rescanning every record.
-	supersessions    []*parsedRecord
-	retirementCauses map[string]int
-	roleGrants       []roleGrant
-	roleGrantsByRole map[actorRole][]roleGrant
-	membershipGrants map[actorStatement][]roleGrant
-	ratifications    map[string][]string
+	supersessions []*parsedRecord
+	// supersessionsByTarget indexes the same records by the event each one
+	// retires. Questions of the form "what did this supersession say about that
+	// event" are asked once per commitment row and once per artifact, and
+	// answering them by walking every supersession in the log made the cost of
+	// both quadratic in the number of retirements.
+	supersessionsByTarget map[string][]*parsedRecord
+	retirementCauses      map[string]int
+	roleGrants            []roleGrant
+	roleGrantsByRole      map[actorRole][]roleGrant
+	membershipGrants      map[actorStatement][]roleGrant
+	ratifications         map[string][]string
 	// The claim each report was admitted against, decided once when the record
 	// was folded. Recomputing it later reverses an immutable decision as the
 	// world moves: withdrawing a promise turned its own report into a second
@@ -511,18 +517,19 @@ func Evaluate(records []Record) FoldResult {
 func NewFolder(records []Record) *Folder {
 	state := &foldState{
 		byID: make(map[string]*parsedRecord), decisions: make(map[string]Decision),
-		strings:            make(map[string]string),
-		effectiveSup:       make(map[string]string),
-		retirementCauses:   make(map[string]int),
-		roleGrantsByRole:   make(map[actorRole][]roleGrant),
-		membershipGrants:   make(map[actorStatement][]roleGrant),
-		ratifications:      make(map[string][]string),
-		admittedClaims:     make(map[string]reportClaim),
-		authorizations:     make(map[string][]*parsedRecord),
-		abandonments:       make(map[string][]*parsedRecord),
-		dependents:         make(map[dependentKey][]*parsedRecord),
-		definitions:        starterCatalog(),
-		definitionVersions: make(map[Kind][]*parsedRecord),
+		strings:               make(map[string]string),
+		effectiveSup:          make(map[string]string),
+		supersessionsByTarget: make(map[string][]*parsedRecord),
+		retirementCauses:      make(map[string]int),
+		roleGrantsByRole:      make(map[actorRole][]roleGrant),
+		membershipGrants:      make(map[actorStatement][]roleGrant),
+		ratifications:         make(map[string][]string),
+		admittedClaims:        make(map[string]reportClaim),
+		authorizations:        make(map[string][]*parsedRecord),
+		abandonments:          make(map[string][]*parsedRecord),
+		dependents:            make(map[dependentKey][]*parsedRecord),
+		definitions:           starterCatalog(),
+		definitionVersions:    make(map[Kind][]*parsedRecord),
 	}
 	for index, record := range records {
 		state.append(index, record)
@@ -749,6 +756,7 @@ func (f *foldState) append(index int, record Record) {
 	case *Supersede:
 		f.effectiveSup[record.ID] = value.Target
 		f.supersessions = append(f.supersessions, parsed)
+		f.supersessionsByTarget[value.Target] = append(f.supersessionsByTarget[value.Target], parsed)
 		changed := f.changeRetirement(value.Target, 1)
 		f.refreshDefinitionsAffectedBy(changed)
 	}
@@ -1346,9 +1354,8 @@ func (f *foldState) requestHasRatifiedChangesRequestedArtifact(request *parsedRe
 // request. Retiring the supersession restores the ordinary commitment state;
 // retiring the child does not, because the transfer itself still happened.
 func (f *foldState) linkedRequestSuccessor(request string) string {
-	for _, supersession := range f.supersessions {
-		value, ok := supersession.body.(*Supersede)
-		if !ok || value.Target != request || f.retired(supersession.record.ID) {
+	for _, supersession := range f.supersessionsByTarget[request] {
+		if f.retired(supersession.record.ID) {
 			continue
 		}
 		// The rejected-round transfer and the carried approved head are two
@@ -1546,12 +1553,22 @@ func (f *foldState) hasAuthorizedMergeReceipt(record *parsedRecord, target strin
 // at another: the same string, or a directory containing it. Comparison is
 // exact-string and slash-delimited, the same reading the projection gives every
 // other artifact path.
+//
+// The separator is compared in place rather than by building the directory
+// prefix. Every projection of an artifact-heavy log calls this a few million
+// times, and one allocated string per call was the largest single cost in the
+// pass, most of it the garbage collection behind it.
 func pathCovers(successor, predecessor string) bool {
 	if successor == "" || predecessor == "" {
 		return false
 	}
-	return successor == predecessor ||
-		strings.HasPrefix(predecessor, strings.TrimSuffix(successor, "/")+"/")
+	if successor == predecessor {
+		return true
+	}
+	directory := strings.TrimSuffix(successor, "/")
+	return len(predecessor) > len(directory) &&
+		predecessor[len(directory)] == '/' &&
+		predecessor[:len(directory)] == directory
 }
 
 func (f *foldState) citesMergeSuccessor(record, receipt *parsedRecord, path string) bool {
@@ -1922,13 +1939,11 @@ func (f *foldState) retirementOnOwnStanding(artifact string) bool {
 	if !f.retired(artifact) {
 		return false
 	}
-	for _, supersession := range f.supersessions {
+	for _, supersession := range f.supersessionsByTarget[artifact] {
 		if !supersession.retiresOnOwnStanding || f.retired(supersession.record.ID) {
 			continue
 		}
-		if supersede, ok := supersession.body.(*Supersede); ok && supersede.Target == artifact {
-			return true
-		}
+		return true
 	}
 	return false
 }
@@ -2075,10 +2090,15 @@ func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
 // evaluated at the caller's frontier: receipt admission captures the incoming
 // set once; current cleanup accounting asks again after later acts take effect.
 func (f *foldState) unsettledCommitmentEvents() map[string]bool {
-	succeeded := f.succeededRetirements()
-	result := f.stalenessNow().staleness(succeeded)
+	return f.unsettledCommitmentsIn(f.stalenessNow().staleness(f.succeededRetirements()).stale)
+}
+
+// unsettledCommitmentsIn is unsettledCommitmentEvents against a staleness set
+// the caller already holds. The set is the one stalenessNow answers with, so a
+// caller mid-projection passes its own rather than folding the graph twice.
+func (f *foldState) unsettledCommitmentsIn(stale map[string]bool) map[string]bool {
 	active := make(map[string]bool)
-	for _, commitment := range f.projectCommitments(result.stale) {
+	for _, commitment := range f.projectCommitments(stale) {
 		switch commitment.Status {
 		case "open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale":
 			active[commitment.Request] = true
@@ -2652,6 +2672,12 @@ func (s *stalenessScope) computeStaleness(targets []string, successors map[strin
 	// needs that position, and cannot recover it from the acts, which say a
 	// supersession happened but not whether its own supersession withdrew it.
 	causedAt := make(map[string]int)
+	// settled memoizes the receipt-checkpoint walk for this pass. Every
+	// successor one receipt published asks the same question of the same
+	// closure, and that closure lies entirely before the receipt, so the answer
+	// cannot change once the pass has reached a successor. The memo is per pass
+	// because the narrowed plan depends on this pass's successors.
+	settled := make(map[string]bool)
 	for _, index := range s.closure(targets) {
 		record := &f.records[index]
 		// A record past the scope's position cannot carry a fact the question
@@ -2730,7 +2756,7 @@ func (s *stalenessScope) computeStaleness(targets []string, successors map[strin
 			// untouched. A receipt is an assert, never an artifact, so this edge
 			// could not have carried the world flag in either direction; every
 			// other basis of the same successor is examined exactly as before.
-			if staleBasis && s.receiptCheckpointSettles(record, basisRecord, stale, successors) {
+			if staleBasis && s.receiptCheckpointSettles(settled, record, basisRecord, stale, successors) {
 				continue
 			}
 			if !retiredBasis && !staleBasis {
@@ -2968,7 +2994,7 @@ func (s *stalenessScope) stalenessCoveredByMergePlan(event string, plan map[stri
 // letting an unverified sibling claim decide this artifact's freshness would
 // give one actor's unchecked prose authority over another lane's projection.
 // Only the presence of the pair and the canonical form of the frontier matter.
-func (s *stalenessScope) receiptCheckpointSettles(successor, receipt *parsedRecord, stale map[string]bool, successors map[string]string) bool {
+func (s *stalenessScope) receiptCheckpointSettles(settled map[string]bool, successor, receipt *parsedRecord, stale map[string]bool, successors map[string]string) bool {
 	if receipt == nil {
 		return false
 	}
@@ -2994,8 +3020,42 @@ func (s *stalenessScope) receiptCheckpointSettles(successor, receipt *parsedReco
 	if !s.f.publishedByMerge(successor, receipt) {
 		return false
 	}
-	return s.causesSettledAtReceipt(receipt.record.ID, receipt.sequence(),
-		s.withoutCondemnedSuccessions(plan, successors), stale, make(map[string]bool))
+	// Every successor this receipt published asks the same question, and within
+	// one pass the answer is the same for all of them. Three facts make the reuse
+	// exact, and none of them is a property of the order the successors ask in:
+	// the narrowed plan and the dates come from the receipt and the scope, which
+	// do not change inside a pass; the walk reads staleness only of the receipt's
+	// own basis closure, which lies at or below the receipt's index because the
+	// kernel refuses a rests_on naming an event the log does not yet hold — that
+	// one is a property of internal/kernel, not of this file; and closure()
+	// visits records in ascending order, so every staleness value below the
+	// cursor is already final when the first successor asks.
+	//
+	// The key is the receipt, and it has to be: two receipts in one pass can
+	// answer differently, and a reuse that ignored which one asked would hand a
+	// settled merge's answer to one the world overtook afterwards.
+	if answer, known := settled[receipt.record.ID]; known {
+		return answer
+	}
+	walk := &receiptWalk{
+		scope: s, at: receipt.sequence(),
+		plan: s.withoutCondemnedSuccessions(plan, successors), stale: stale,
+		visited: make(map[string]bool),
+	}
+	answer := walk.causesSettledAtReceipt(receipt.record.ID)
+	settled[receipt.record.ID] = answer
+	return answer
+}
+
+// receiptWalk is one causesSettledAtReceipt walk, holding the pass state the
+// recursion reads.
+type receiptWalk struct {
+	scope *stalenessScope
+	// at is the receipt's own sequence, the position causes are dated against.
+	at      int
+	plan    map[string]string
+	stale   map[string]bool
+	visited map[string]bool
 }
 
 // causesSettledAtReceipt walks the live staleness causes at and under a sealed
@@ -3019,17 +3079,18 @@ func (s *stalenessScope) receiptCheckpointSettles(successor, receipt *parsedReco
 // A cause the fold cannot date fails closed. activeRetirements leaves the date
 // zero for a retirement whose act the fold does not hold, and an undated cause
 // is not permission to call anything fresh: unknown means no.
-func (s *stalenessScope) causesSettledAtReceipt(event string, at int, plan map[string]string, stale map[string]bool, visited map[string]bool) bool {
+func (w *receiptWalk) causesSettledAtReceipt(event string) bool {
+	s := w.scope
 	// Both the cycle guard and the memo. Only a settled answer is ever recorded,
 	// because the first unsettled cause abandons the whole walk.
-	if visited[event] {
+	if w.visited[event] {
 		return true
 	}
-	visited[event] = true
+	w.visited[event] = true
 	if s.retired(event) {
-		if _, planned := plan[event]; !planned {
+		if _, planned := w.plan[event]; !planned {
 			when := s.active[event]
-			if when == 0 || when > at {
+			if when == 0 || when > w.at {
 				return false
 			}
 		}
@@ -3043,10 +3104,10 @@ func (s *stalenessScope) causesSettledAtReceipt(event string, at int, plan map[s
 		if basisRecord := s.f.byID[basis]; basisRecord != nil && basisRecord.definition != nil {
 			mode = basisRecord.definition.Staleness
 		}
-		if mode == StalenessExempt || (!s.retired(basis) && !(stale[basis] && mode == StalenessPropagates)) {
+		if mode == StalenessExempt || (!s.retired(basis) && !(w.stale[basis] && mode == StalenessPropagates)) {
 			continue
 		}
-		if !s.causesSettledAtReceipt(basis, at, plan, stale, visited) {
+		if !w.causesSettledAtReceipt(basis) {
 			return false
 		}
 	}
@@ -3246,6 +3307,10 @@ func (f *foldState) project() Projection {
 	protectedSiblings := make(map[string]bool)
 	receiptDebts := make(map[string]bool)
 	var currentUnsettled map[string]bool
+	// Both indexes answer questions about intervals of the log, and both are
+	// filled on demand and dropped with this projection.
+	scans := make(receiptScans)
+	liveArtifacts := make(liveArtifactIndex)
 	// Review independence needs the author of the artifact for the head judged,
 	// and the commit each artifact stands at, so a verdict cannot be paired
 	// with an artifact for some other head. All three indexes are filled by the
@@ -3315,7 +3380,7 @@ func (f *foldState) project() Projection {
 				// remain unaccounted even if a later retirement would have removed
 				// them from the old end-of-fold count. The one subtraction is the
 				// receipt's own accounted deletions, which were never debt.
-				postCount, postLive := f.postReceiptAccounting(receipt, &record, path)
+				postCount, postLive := f.postReceiptAccounting(scans, receipt, &record, path)
 				live = max(0, receipt.mergeUnaccounted[path]+postCount-f.accountedDeletions(receipt, path))
 				leftLive = f.projectLeftLive(receipt.mergeLeftLive, path)
 				if !f.retired(record.record.ID) {
@@ -3329,10 +3394,15 @@ func (f *foldState) project() Projection {
 						switch entry.Class {
 						case "sibling":
 							if currentUnsettled == nil {
-								currentUnsettled = f.unsettledCommitmentEvents()
+								// The staleness this projection already computed
+								// is the same set the commitment rows are read
+								// against. Folding it again here was a second
+								// complete pass over the whole graph for an
+								// answer already in hand.
+								currentUnsettled = f.unsettledCommitmentsIn(result.stale)
 							}
 							artifact := f.byID[entry.Artifact]
-							if currentUnsettled[entry.Commitment] && artifact != nil && f.commitmentProtectsArtifact(entry.Commitment, artifact) && !f.hasPostReceiptLiveArtifact(receipt, artifact, &record) {
+							if currentUnsettled[entry.Commitment] && artifact != nil && f.commitmentProtectsArtifact(entry.Commitment, artifact) && !f.hasPostReceiptLiveArtifact(liveArtifacts, receipt, artifact, &record) {
 								protectedSiblings[entry.Artifact] = true
 							} else {
 								receiptDebts[entry.Artifact] = true
@@ -3549,51 +3619,144 @@ func (f *foldState) leftLiveReceiptFor(artifact *parsedRecord) *parsedRecord {
 	return latest
 }
 
-// postReceiptAccounting scans the receipt-to-successor interval once for both
+// postReceiptAccounting reads the receipt-to-successor interval for both
 // projections of the same fact: the frozen count records every covered
 // post-frontier artifact, while live IDs are the subset which still owe
 // retirement now.
-func (f *foldState) postReceiptAccounting(receipt, successor *parsedRecord, path string) (int, []string) {
+//
+// The index is what makes this affordable. Every successor a receipt published
+// asks about the same interval from the same frontier, and walking the log again
+// for each of them — calling closestCoveringPath on every record each time — was
+// the largest cost in the projection of an artifact-heavy log. The interval is
+// now walked once per receipt, no further than the successors actually ask for.
+func (f *foldState) postReceiptAccounting(scans receiptScans, receipt, successor *parsedRecord, path string) (int, []string) {
+	// A successor that follows its receipt immediately closes an empty interval,
+	// which is the ordinary shape of a merge that publishes one path. Answering
+	// it here keeps the common case free of any bookkeeping.
+	if successor.index <= receipt.index+1 {
+		return 0, nil
+	}
 	count := 0
 	var live []string
-	successors := f.mergeSuccessorPaths(receipt)
-	for index := receipt.index + 1; index < successor.index; index++ {
-		record := &f.records[index]
+	// Each bucket is ascending, and every answer is bounded here by the successor
+	// that asked, so a question out of order or asked twice gets the same answer
+	// as the first time. Only the cost depends on the order they arrive in.
+	for _, covered := range scans.upTo(f, receipt, successor.index)[path] {
+		if covered.index >= successor.index {
+			break
+		}
+		count++
+		if !covered.retired {
+			live = append(live, covered.event)
+		}
+	}
+	return count, live
+}
+
+// coveredArtifact is one post-frontier artifact a receipt accounts for, kept
+// with the two facts the accounting reads so answering costs no lookup.
+type coveredArtifact struct {
+	index   int
+	event   string
+	retired bool
+}
+
+// receiptScan is one receipt's walk of the log after its own frontier: the
+// artifacts its plan accounts for, bucketed by the declared successor path each
+// one attaches to, and how far the walk has got.
+type receiptScan struct {
+	// cursor is the next index to read. The walk is resumed rather than
+	// restarted: project() asks about one receipt's successors in ascending
+	// order, so restarting would re-read the same interval for each of them and
+	// double-count what it found. Correctness does not rest on that order —
+	// postReceiptAccounting bounds every answer itself — but the cost does.
+	cursor     int
+	successors []string
+	byPath     map[string][]coveredArtifact
+}
+
+// receiptScans holds those walks for the length of one projection. It is
+// deliberately not kept on foldState: a later append changes what the walk would
+// say, and a memo that outlives the fact it caches is a defect waiting for the
+// next event.
+//
+// The facts it holds are settled for the projection that built it: project()
+// runs over a complete fold, where retired() is final.
+type receiptScans map[string]*receiptScan
+
+// upTo returns the artifacts after this receipt's frontier and before limit,
+// bucketed by covering successor path, reading only the part of the log the
+// walk has not reached yet.
+func (scans receiptScans) upTo(f *foldState, receipt *parsedRecord, limit int) map[string][]coveredArtifact {
+	scan := scans[receipt.record.ID]
+	if scan == nil {
+		scan = &receiptScan{cursor: receipt.index + 1, successors: f.mergeSuccessorPaths(receipt)}
+		scans[receipt.record.ID] = scan
+	}
+	for ; scan.cursor < limit; scan.cursor++ {
+		record := &f.records[scan.cursor]
 		if record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact {
 			continue
 		}
 		state, ok := record.body.(*State)
-		if ok && artifactCoversChangedPath(state.Body["path"], receipt.mergeChangedPaths) && closestCoveringPath(successors, state.Body["path"]) == path {
-			count++
-			if !f.retired(record.record.ID) {
-				live = append(live, record.record.ID)
-			}
+		if !ok || !artifactCoversChangedPath(state.Body["path"], receipt.mergeChangedPaths) {
+			continue
 		}
+		// Most intervals hold nothing the receipt accounts for, so the buckets
+		// are built only once there is something to put in them.
+		if scan.byPath == nil {
+			scan.byPath = make(map[string][]coveredArtifact)
+		}
+		covering := closestCoveringPath(scan.successors, state.Body["path"])
+		scan.byPath[covering] = append(scan.byPath[covering], coveredArtifact{
+			index: scan.cursor, event: record.record.ID, retired: f.retired(record.record.ID),
+		})
 	}
-	return count, live
+	return scan.byPath
 }
 
 // hasPostReceiptLiveArtifact keeps a receipt's protection from suppressing a
 // different succession debt created after its frontier. The receipt-published
 // successor itself is the accounted replacement and is excluded; any other
 // later live artifact at the sibling's exact path is new, unsealed work.
-func (f *foldState) hasPostReceiptLiveArtifact(receipt, artifact, successor *parsedRecord) bool {
+func (f *foldState) hasPostReceiptLiveArtifact(live liveArtifactIndex, receipt, artifact, successor *parsedRecord) bool {
 	artifactState, ok := artifact.body.(*State)
 	if !ok {
 		return false
 	}
-	path := artifactState.Body["path"]
-	for index := receipt.index + 1; index < len(f.records); index++ {
-		record := &f.records[index]
-		if record.record.ID == successor.record.ID || f.retired(record.record.ID) || record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact {
+	for _, index := range live.at(f, artifactState.Body["path"]) {
+		if index <= receipt.index {
 			continue
 		}
-		state, ok := record.body.(*State)
-		if ok && state.Body["path"] == path {
-			return true
+		if f.records[index].record.ID == successor.record.ID {
+			continue
 		}
+		return true
 	}
 	return false
+}
+
+// liveArtifactIndex lists, per exact path, the indexes of the live effective
+// artifacts standing at it, ascending. Built lazily for one projection and
+// discarded with it, for the reason receiptScans is.
+type liveArtifactIndex map[string][]int
+
+func (live liveArtifactIndex) at(f *foldState, path string) []int {
+	if indexes, ok := live[path]; ok {
+		return indexes
+	}
+	var indexes []int
+	for index := range f.records {
+		record := &f.records[index]
+		if record.decision.Verdict != Effective || record.definition == nil || record.definition.Render != RenderArtifact || f.retired(record.record.ID) {
+			continue
+		}
+		if state, ok := record.body.(*State); ok && state.Body["path"] == path {
+			indexes = append(indexes, index)
+		}
+	}
+	live[path] = indexes
+	return indexes
 }
 
 func (f *foldState) vocabulary() Vocabulary {
