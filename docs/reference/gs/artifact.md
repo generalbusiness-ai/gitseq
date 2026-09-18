@@ -31,6 +31,7 @@ artifact at an untouched path can never flare.
 | `--text` | | Extra text for the reporting artifact, such as the tests and conditions actually met. |
 | `--rests-on` | | An extra basis for every artifact, repeatable: the behaviour a documentation page describes, or the decision the work adopts. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 
 Paths are positional and come after the flags:
 `gs artifact [flags] <path…>`. `--promise` and `--rests-on` accept

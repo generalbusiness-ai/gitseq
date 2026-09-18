@@ -20,7 +20,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
@@ -57,6 +56,14 @@ func run(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
+	// The deadline is read here, before any observation is made, so a value
+	// nobody can read stops this run rather than failing at the append, where
+	// the operator would read it as the resident's fault instead of their own.
+	deadline, err := residentclient.ResolveSubmitDeadline("")
+	if err != nil {
+		return err
+	}
+	ctx = withSubmitDeadline(ctx, deadline)
 	if *charter == "" {
 		return errors.New("--charter is required: the connector may not append without a ratified charter to rest on")
 	}
@@ -545,8 +552,12 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 // was appended, and RefusedDial says so; a reply lost after the resident took
 // the request is reported as it came, and the idempotency key makes the
 // retry safe.
+//
+// The connector takes no deadline flag, so the deadline comes from the
+// environment this run started with, read once before any observation and
+// carried on the context from there.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
-	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
+	submission, err := residentclient.New(submitDeadline(ctx)).Submit(ctx, workspace, server, request)
 	if err != nil {
 		return "", residentclient.RefusedDial(server, err)
 	}

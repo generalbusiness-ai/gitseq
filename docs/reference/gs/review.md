@@ -33,6 +33,7 @@ review of nothing in particular, because the branch can move afterwards.
 | `--prepare` | | Read-only. Resolves the binding for the same scope inputs and prints its explanation; signs nothing, reserves nothing, and needs no `--verdict` or `--text`. Filing re-resolves everything whether or not this ran. |
 | `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane are head news: the command refuses until you acknowledge exactly that set, once each. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. News the verdict already cites counts once and needs no separate flag. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
 It takes no positional arguments.

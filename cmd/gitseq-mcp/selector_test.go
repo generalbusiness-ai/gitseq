@@ -92,7 +92,7 @@ func TestRepeatedSelectionReusesValidatedApplicationBinding(t *testing.T) {
 	}
 
 	server := newServer("human", workspace.Repo)
-	server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+	server.client = residentclient.NewWithHTTP(httpServer.Client(), defaultResidentDeadlines.http())
 	productionOpen := server.open
 	var opens atomic.Int64
 	server.open = func(ctx context.Context, repo string) (*app.Workspace, error) {
@@ -151,7 +151,7 @@ func TestCachedSelectionRechecksStandingWhenTheHeadMoves(t *testing.T) {
 	}
 
 	server := newServer("builder", workspace.Repo)
-	server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+	server.client = residentclient.NewWithHTTP(httpServer.Client(), defaultResidentDeadlines.http())
 	if _, _, err := server.call(ctx, toolCall{Name: "whoami"}); err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestResidentLeaseStateIsScopedByRepositoryAndAgent(t *testing.T) {
 	defer resident.Close()
 
 	server := newServer("human", workspace.Repo)
-	server.client = residentclient.NewWithHTTP(resident.Client(), residentHTTPTimeout)
+	server.client = residentclient.NewWithHTTP(resident.Client(), defaultResidentDeadlines.http())
 	humanRoom, err := server.attachAs(ctx, workspace.Repo, "human")
 	if err != nil {
 		t.Fatal(err)
@@ -670,7 +670,7 @@ func TestPersistentInvalidCredentialVerificationFailsOnceWithoutRecursion(t *tes
 		t.Fatal(err)
 	}
 	server := newServer("human", workspace.Repo)
-	server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+	server.client = residentclient.NewWithHTTP(httpServer.Client(), defaultResidentDeadlines.http())
 	current, err := server.attachAs(ctx, workspace.Repo, "human")
 	if err != nil {
 		t.Fatal(err)
@@ -707,7 +707,7 @@ func TestInvalidStartupDefaultsNeverPreAttend(t *testing.T) {
 			t.Fatal(err)
 		}
 		server := newServer(actor, workspace.Repo)
-		server.client = residentclient.NewWithHTTP(httpServer.Client(), residentHTTPTimeout)
+		server.client = residentclient.NewWithHTTP(httpServer.Client(), defaultResidentDeadlines.http())
 		if current, err := server.attend(ctx, ""); err == nil || current != nil {
 			t.Fatalf("invalid startup identity attended: current=%+v err=%v", current, err)
 		}

@@ -23,6 +23,7 @@ Prefer supersession to contradiction.
 | `--text` | *(required)* | Why. This is what a later reader gets. |
 | `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |

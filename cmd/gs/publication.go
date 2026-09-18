@@ -17,7 +17,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -998,7 +997,7 @@ func publicationDecision(ctx context.Context, workspace *app.Workspace, serverUR
 		return localPublicationDecision(ctx, workspace, event)
 	}
 	var inspection statusview.ItemInspection
-	if err := residentclient.New(10*time.Second).PostJSON(ctx, serverURL, "/v0/inspect",
+	if err := residentclient.New(submitDeadline(ctx)).PostJSON(ctx, serverURL, "/v0/inspect",
 		statusview.InspectRequest{Event: event}, residentclient.SubmissionResponseLimit, &inspection); err != nil {
 		return workroom.Decision{}, false, err
 	}

@@ -27,6 +27,12 @@ const (
 	// not receive its actor flag explicitly.
 	ActorEnvironment = "GITSEQ_ACTOR"
 
+	// SubmitDeadlineEnvironment is the process-level answer to how long the
+	// resident has to answer one submission, used when a command does not
+	// receive the deadline explicitly. An adapter that takes no flags at all
+	// reads it here and nowhere else.
+	SubmitDeadlineEnvironment = "GITSEQ_SUBMIT_DEADLINE"
+
 	// SubmissionResponseLimit is deliberately larger than a normal receipt but
 	// still finite. Request payload size is governed separately by the workroom.
 	SubmissionResponseLimit int64 = 2 << 20
@@ -48,6 +54,57 @@ func ResolveActor(flagName, explicit string) (string, error) {
 		return name, nil
 	}
 	return "", errors.New("no actor identity: pass " + flagName + ", or set " + ActorEnvironment + " to the identity this instance signs as")
+}
+
+// DefaultSubmitDeadline is what a submission waits when nobody says otherwise.
+// Ten seconds is long enough for a warm resident to answer and short enough
+// that a dead one is noticed, and it is the value every caller used before the
+// deadline could be set at all.
+const DefaultSubmitDeadline = 10 * time.Second
+
+// ResolveSubmitDeadline gives an explicit value precedence over the process
+// environment, and falls back to DefaultSubmitDeadline when neither says
+// anything. It is the one place the deadline is decided: a caller that dials
+// the resident to append takes its answer from here rather than writing a
+// literal, so raising it raises it everywhere one invocation submits.
+//
+// A value that cannot be read as a positive duration is refused rather than
+// quietly replaced by the default. Someone who writes one meant something by
+// it, and a submission that silently keeps the old deadline is the failure they
+// were trying to avoid.
+func ResolveSubmitDeadline(explicit string) (time.Duration, error) {
+	if value := strings.TrimSpace(explicit); value != "" {
+		return parseSubmitDeadline("--deadline", value)
+	}
+	if value := strings.TrimSpace(os.Getenv(SubmitDeadlineEnvironment)); value != "" {
+		return parseSubmitDeadline(SubmitDeadlineEnvironment, value)
+	}
+	return DefaultSubmitDeadline, nil
+}
+
+func parseSubmitDeadline(source, value string) (time.Duration, error) {
+	deadline, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s %q is not a duration: write how long to wait, such as 30s or 2m", source, value)
+	}
+	if deadline <= 0 {
+		return 0, fmt.Errorf("%s %q is not a wait at all: write a positive duration, such as 30s or 2m", source, value)
+	}
+	return deadline, nil
+}
+
+// TimedOut reports whether a submission failed because the deadline expired
+// rather than because the resident refused it. The distinction is the whole of
+// the recovery advice: a refusal is definite and nothing landed, while an
+// expired deadline leaves the act's fate unknown — the resident may have
+// sequenced it and been too slow to say so.
+// One test answers for every shape this sees. context.DeadlineExceeded and
+// os.ErrDeadlineExceeded both implement net.Error with Timeout reporting true,
+// so naming them separately was a second spelling of this same question — and
+// an untestable one, since removing it changed no answer.
+func TimedOut(err error) bool {
+	var timeout net.Error
+	return errors.As(err, &timeout) && timeout.Timeout()
 }
 
 // ValidateURL accepts only the loopback HTTP origin shape the resident

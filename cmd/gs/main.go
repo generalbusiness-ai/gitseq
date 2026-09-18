@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -214,13 +215,17 @@ func usage(output io.Writer) {
 // read or anything is queued. Passing the raw flag through would have made
 // this the one write command that ignores what the repository publishes.
 func publishCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("publish", arguments)
+	set, repo := actFlags("publish", arguments)
 	as := set.String("as", "", "publishing actor")
 	remote := set.String("remote", "origin", "configured Git remote")
 	ref := set.String("ref", "", "published branch ref; defaults to the current branch")
 	basis := set.String("basis", "", "event governing publication in this repository")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
@@ -543,7 +548,7 @@ func resolveText(set *flag.FlagSet, required bool) (string, error) {
 }
 
 func stateCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("state", arguments)
+	set, repo := actFlags("state", arguments)
 	as := set.String("as", "", "actor name")
 	kind := set.String("kind", "", "statement kind")
 	set.String("text", "", "statement text")
@@ -557,6 +562,10 @@ func stateCommand(ctx context.Context, arguments []string) error {
 	set.Var(&rests, "rests-on", "causal event id (repeatable)")
 	set.Var(&evidence, "evidence", "attachment name=path (repeatable)")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	// Both required arguments are settled before an actor is resolved, a
@@ -653,7 +662,7 @@ func reviewCommand(ctx context.Context, arguments []string) error {
 // confirmation choreography reviewguard owns. A non-nil inject replaces the
 // real basis read for tests that stage movement between reads.
 func reviewCommandWithValidator(ctx context.Context, arguments []string, inject reviewguard.ReadFunc) error {
-	set, repo := flags("review", arguments)
+	set, repo := actFlags("review", arguments)
 	as := set.String("as", "", "reviewer actor name")
 	checkout := set.String("checkout", "", "checkout reviewed")
 	var artifactsFlag repeatedFlag
@@ -672,6 +681,10 @@ func reviewCommandWithValidator(ctx context.Context, arguments []string, inject 
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
@@ -786,7 +799,7 @@ func reviewRead(ctx context.Context, workspace *app.Workspace, actorName, checko
 }
 
 func mergeCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("merge", arguments)
+	set, repo := actFlags("merge", arguments)
 	as := set.String("as", "", "actor recording the merge receipt")
 	checkout := set.String("checkout", "", "checkout receiving the merge")
 	candidate := set.String("candidate", "", "full approved commit ID")
@@ -795,6 +808,10 @@ func mergeCommand(ctx context.Context, arguments []string) error {
 	mergeText := set.String("text", "", "plain-language merge description and impact")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	if set.NArg() != 0 {
@@ -1808,13 +1825,17 @@ func validateArtifactCommit(ctx context.Context, repo, commit string) error {
 }
 
 func ratifyCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("ratify", arguments)
+	set, repo := actFlags("ratify", arguments)
 	as := set.String("as", "", "actor name")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "ratify requires one target event")
@@ -1850,7 +1871,7 @@ func ratifyCommand(ctx context.Context, arguments []string) error {
 }
 
 func supersedeCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("supersede", arguments)
+	set, repo := actFlags("supersede", arguments)
 	as := set.String("as", "", "actor name")
 	message := set.String("text", "", "reason")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the target")
@@ -1861,6 +1882,10 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	set.Var(&rests, "rests-on", "additional causal event id")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "supersede requires one target event")
@@ -1912,7 +1937,7 @@ type reassignIfUnclaimedResult struct {
 // tuple. The stable key is required because the only honest recovery from a
 // crash between acts is to replay the retirement exactly and continue.
 func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("reassign-if-unclaimed", arguments)
+	set, repo := actFlags("reassign-if-unclaimed", arguments)
 	as := set.String("as", "", "requester actor name")
 	to := set.String("to", "", "new requested performer")
 	message := set.String("text", "", "replacement request text")
@@ -1926,6 +1951,10 @@ func reassignIfUnclaimedCommand(ctx context.Context, arguments []string) error {
 	set.Var(&bodyValues, "body", "replacement request body key=value (repeatable); state its result with target_ref, target=inherit, or no_git_artifact=true")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "reassign-if-unclaimed requires one old request event")
@@ -2094,13 +2123,17 @@ type batchReport struct {
 // verified frontier, and batch semantics stay per-act exactly as they are
 // locally.
 func batchCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("batch", arguments)
+	set, repo := actFlags("batch", arguments)
 	as := set.String("as", "", "actor name for every act in the batch")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites a target")
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	if set.NArg() > 1 {
 		return usageErrorf(set, "batch takes one file, or - for standard input")
@@ -2273,7 +2306,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		act := resolveBatchAct(entry, minted, citedOK)
 		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
 		if err != nil {
-			failure := batchFail("submit", "%v", err)
+			failure := batchFail("submit", "%v", batchSubmitRefusal(err, position, acts, submitDeadline(ctx)))
 			report.Acts[position].Outcome = "failed"
 			report.Error = failure
 			return report, failure
@@ -2397,6 +2430,48 @@ func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app
 		act.RestsOn = append(act.RestsOn, resolveLabel(reference, minted))
 	}
 	return act
+}
+
+// batchSubmitRefusal says what a caller has to know to recover, which differs
+// by the kind of failure. A refused act is definite: nothing landed, and the
+// batch stopped where it says it did. An expired deadline is not: the resident
+// may have sequenced the act and been too slow to answer.
+//
+// Whether rerunning the file is safe is a property of the whole prefix, not of
+// the act that timed out. Rerunning replays every act that already landed only
+// where each of them carries a key; an act given none lands afresh, as the
+// batch's own account says. So the advice is only ever given when every act up
+// to the failure carries one, and otherwise the refusal names the positions
+// that would be appended a second time. Telling an author to rerun a file that
+// would duplicate its own first act is worse than telling them nothing.
+func batchSubmitRefusal(err error, position int, acts []batchAct, deadline time.Duration) error {
+	if !residentclient.TimedOut(err) {
+		return err
+	}
+	var unkeyed []string
+	for index := 0; index <= position && index < len(acts); index++ {
+		if acts[index].IdempotencyKey == "" {
+			unkeyed = append(unkeyed, strconv.Itoa(index))
+		}
+	}
+	const lost = "%w. The act at position %d may already have landed: the resident had %s to answer and did not. "
+	if len(unkeyed) == 0 {
+		return fmt.Errorf(lost+"Run the same file again — every act up to this one carries an idempotency key, "+
+			"so what landed replays and nothing is appended twice — or raise --deadline",
+			err, position, deadline)
+	}
+	if acts[position].IdempotencyKey != "" {
+		return fmt.Errorf(lost+"Do not rerun the file yet: the acts at position %s carry no idempotency_key and would land a "+
+			"second time. Look for this one under key %q, give the others keys, or raise --deadline",
+			err, position, deadline, strings.Join(unkeyed, ", "), acts[position].IdempotencyKey)
+	}
+	if len(unkeyed) == 1 {
+		return fmt.Errorf(lost+"It carries no idempotency_key, so running the file again would append a second copy of it: "+
+			"find it first, give it a key, or raise --deadline", err, position, deadline)
+	}
+	return fmt.Errorf(lost+"It carries no idempotency_key, so running the file again would append a second copy of it, "+
+		"and of the other keyless acts at positions %s: find them first, give them keys, or raise --deadline",
+		err, position, deadline, strings.Join(unkeyed[:len(unkeyed)-1], ", "))
 }
 
 // checkBatch validates the shape of every act and proves that each intra-batch
@@ -2530,7 +2605,9 @@ func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, serverURL 
 }
 
 // submitRequest sequences one signed act, and refuses rather than folding it
-// locally when the resident does not answer. A silent local fallback would
+// locally when the resident does not answer. How long it waits is this
+// invocation's deadline, which the author may raise for a loaded resident or a
+// large act; see cmd/gs/deadline.go. A silent local fallback would
 // trade the second the resident costs for a whole-log fold nobody asked for,
 // and now that the address is usually the repository's own advertisement
 // rather than something the author typed, they would have no way to tell.
@@ -2538,7 +2615,7 @@ func warnUndefinedKind(ctx context.Context, workspace *app.Workspace, serverURL 
 // asymmetry the ownership probe holds — so only that failure names the way
 // out; any other refusal is reported as it came.
 func submitRequest(ctx context.Context, workspace *app.Workspace, serverURL string, request kernel.Request) (app.Submission, error) {
-	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, serverURL, request)
+	submission, err := residentclient.New(submitDeadline(ctx)).Submit(ctx, workspace, serverURL, request)
 	if err != nil {
 		return app.Submission{}, residentclient.RefusedDial(serverURL, err)
 	}

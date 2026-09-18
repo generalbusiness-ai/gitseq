@@ -28,6 +28,7 @@ and a lease on every deletion.
 | `--text` | *(required)* | A plain-language description of the change and its impact, for a reader who will never see an event id. |
 | `--cleanup` | `false` | After the candidate is provably in the target, remove its worktree and delete its branch here and on origin. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 
 It takes no positional arguments. `--approval` accepts a
 [short reference](../event-identifiers.md#typing-one-at-a-boundary).

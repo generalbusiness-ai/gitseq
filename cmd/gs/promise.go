@@ -15,7 +15,7 @@ import (
 // can close, and a second live promise splits one commitment across two
 // closures. See docs/reference/gs/promise.md.
 func promiseCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("promise", arguments)
+	set, repo := actFlags("promise", arguments)
 	as := set.String("as", "", "actor accepting the request")
 	text := set.String("text", "", "promise text; the default names the request")
 	branch := set.String("branch", "", "advisory branch this work will run on, recorded as body.branch")
@@ -23,6 +23,10 @@ func promiseCommand(ctx context.Context, arguments []string) error {
 	stepUsage(set, "gs promise [flags] <request>")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	if set.NArg() != 1 {
 		return usageErrorf(set, "promise takes exactly one request event, after the flags: gs promise [flags] <request>")

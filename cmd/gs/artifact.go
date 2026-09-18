@@ -24,7 +24,7 @@ import (
 // merge later sealed the remainder as a sibling or abandoned and owed the
 // author a cleanup it could not do itself. See docs/reference/gs/artifact.md.
 func artifactCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("artifact", arguments)
+	set, repo := actFlags("artifact", arguments)
 	as := set.String("as", "", "actor publishing the artifacts")
 	head := set.String("head", "", "the exact full commit every artifact stands at")
 	promise := set.String("promise", "", "the actor's own live promise these artifacts report")
@@ -37,6 +37,10 @@ func artifactCommand(ctx context.Context, arguments []string) error {
 	stepUsage(set, "gs artifact [flags] <path…>")
 	if err := set.Parse(arguments); err != nil {
 		return parseRefusal(set, err)
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
+		return err
 	}
 	paths := set.Args()
 	if *head == "" || *promise == "" || len(paths) == 0 {

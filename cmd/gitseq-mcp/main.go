@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -61,11 +62,15 @@ const (
 	artifactResponseLimit     = 2 << 20
 	inspectionResponseLimit   = 2 << 20
 	residentResponseLimit     = 64 << 20
-	residentCallTimeout       = 10 * time.Second
 	residentWaitTimeout       = 35 * time.Second
 	residentShutdownTimeout   = 2 * time.Second
-	residentHTTPTimeout       = 40 * time.Second
 	residentOrientationSource = "resident_statusview_current"
+
+	// residentHTTPMargin is how far the transport backstop stands above the
+	// longest deadline the policy hands out. The backstop exists to notice a
+	// resident that stopped answering at all, so it has to outlast the wait it
+	// is protecting rather than cut it.
+	residentHTTPMargin = 5 * time.Second
 )
 
 type residentDeadlinePolicy struct {
@@ -75,9 +80,28 @@ type residentDeadlinePolicy struct {
 }
 
 var defaultResidentDeadlines = residentDeadlinePolicy{
-	call:     residentCallTimeout,
+	call:     residentclient.DefaultSubmitDeadline,
 	wait:     residentWaitTimeout,
 	shutdown: residentShutdownTimeout,
+}
+
+// http is the transport backstop this policy needs. It is derived rather than
+// written down, because a call deadline the operator raised above a fixed
+// backstop would be cut by the very client that was supposed to outlast it.
+//
+// The addition saturates. A duration close enough to the maximum would wrap to a
+// negative one, which net/http reads as no timeout at all — turning a backstop
+// the operator raised into one that never fires. Saturating keeps it above every
+// deadline the policy hands out, which is the whole of its job.
+func (p residentDeadlinePolicy) http() time.Duration {
+	longest := p.call
+	if p.wait > longest {
+		longest = p.wait
+	}
+	if longest > math.MaxInt64-residentHTTPMargin {
+		return math.MaxInt64
+	}
+	return longest + residentHTTPMargin
 }
 
 // The era is a property of the connection rather than of a single request:
@@ -367,7 +391,11 @@ type mcpServer struct {
 	client    *residentclient.Client
 	notices   io.Writer
 	deadlines residentDeadlinePolicy
-	open      func(context.Context, string) (*app.Workspace, error)
+	// startupRefusal is what the environment made impossible: it is held from
+	// construction and answered by run, so a bad value stops one adapter rather
+	// than every caller of the constructor.
+	startupRefusal error
+	open           func(context.Context, string) (*app.Workspace, error)
 
 	roomsMu     sync.Mutex
 	byPath      map[roomSelection]*room
@@ -395,6 +423,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
 	server := newServer(name, *repo)
+
 	// Attaching the default repository here is a courtesy, not a
 	// precondition: presence appears before the first tool call when there is
 	// a workroom to join, and one installation still serves whatever
@@ -414,20 +443,42 @@ func main() {
 	}
 }
 
+// newServer reads the deadline the adapter was started with. The adapter takes
+// no deadline flag, so the environment is the only place an operator can say how
+// long the resident has to answer, and reading it here means every server this
+// process builds is the server the operator asked for — including in tests,
+// which is what makes the reading itself testable.
+//
+// A value nobody can read is kept rather than acted on, and refused by run()
+// before the first frame is served. The alternative was for this constructor to
+// return an error, which every one of its call sites would have had to carry for
+// a condition none of them can cause.
 func newServer(actor, repo string) *mcpServer {
+	deadlines := defaultResidentDeadlines
+	deadline, refusal := residentclient.ResolveSubmitDeadline("")
+	if refusal == nil {
+		deadlines.call = deadline
+	}
 	return &mcpServer{
-		actor:       actor,
-		repo:        absolute(repo),
-		client:      newResidentClient(),
-		notices:     os.Stderr,
-		deadlines:   defaultResidentDeadlines,
-		open:        app.Open,
-		byPath:      map[roomSelection]*room{},
-		byCommonDir: map[roomSelection]*room{},
+		actor:          actor,
+		repo:           absolute(repo),
+		client:         newResidentClient(deadlines),
+		notices:        os.Stderr,
+		deadlines:      deadlines,
+		startupRefusal: refusal,
+		open:           app.Open,
+		byPath:         map[roomSelection]*room{},
+		byCommonDir:    map[roomSelection]*room{},
 	}
 }
 
 func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) error {
+	// A deadline nobody can read stops the adapter before it serves anything,
+	// rather than at the first call, where the operator would see it as the
+	// resident's failure instead of their own typing.
+	if s.startupRefusal != nil {
+		return s.startupRefusal
+	}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 2<<20)
 	encoder := json.NewEncoder(output)
@@ -799,6 +850,12 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 }
 
 func (s *mcpServer) attendAs(ctx context.Context, repo, actor string) (*room, error) {
+	// Attaching announces presence and takes a lease, so an adapter the
+	// environment made impossible must stop here and not only at run: the
+	// refusal has to come before the workroom hears from it, not after.
+	if s.startupRefusal != nil {
+		return nil, s.startupRefusal
+	}
 	current, err := s.attachAs(ctx, repo, actor)
 	if err != nil {
 		return nil, err
@@ -2213,8 +2270,8 @@ func validateResidentURL(raw string) (string, error) {
 	return residentclient.ValidateURL(raw)
 }
 
-func newResidentClient() *residentclient.Client {
-	return residentclient.New(residentHTTPTimeout)
+func newResidentClient(policy residentDeadlinePolicy) *residentclient.Client {
+	return residentclient.New(policy.http())
 }
 
 func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {
