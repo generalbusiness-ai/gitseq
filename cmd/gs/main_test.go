@@ -28,6 +28,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
+	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/reviewguard"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
@@ -3915,6 +3916,13 @@ func buildBatchTemplate(root string) error {
 // TestMain removes the shared fixture templates once every test is done with
 // them.
 func TestMain(m *testing.M) {
+	// Every appending command here reads GITSEQ_SUBMIT_DEADLINE, so a developer
+	// who has set it for their own work would otherwise see these tests answer
+	// for their environment rather than for the code — and an unreadable value,
+	// which is exactly what the refusal path exists for, would fail tests that
+	// have nothing to do with deadlines. The tests that are about it set it
+	// themselves.
+	os.Unsetenv(residentclient.SubmitDeadlineEnvironment)
 	code := testgit.Run(m)
 	templates := []*fixtureTemplate{&batchTemplate, &preflightTemplate.fixtureTemplate}
 	for _, workflow := range workflowTemplates {
