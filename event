@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:031038096b78136d0c442f8be675b559a22df846","text":"Replaced by the review request for exact head 3049d18b34b62846a4b547b6ba8787afbe0bac53; any review promised on this request is released, and a verdict filed against it would bind to nothing."}
+{"kind":"promise","text":"Accept request git:sha1…2425d0e: SKILL.md and AGENTS.md only; no Go change. Recut onto main 5b54561d after the submit-deadline lane landed, so the page's behaviour citations were repointed a se…"}
