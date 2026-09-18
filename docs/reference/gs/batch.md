@@ -21,6 +21,7 @@ the log, and then appends every act against that one frontier.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
 | `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--cited-ok` | `false` | Allow a `supersede` or `retire-if-unclaimed` act whose target tracked documentation still names. Guarded retirement signs this admission observation separately from its fold-enforced commitment guard. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
@@ -179,6 +180,14 @@ interleaving is allowed, while a promise or direct completion refuses.
 `--server` forwards the same signed requests to the resident sequencer,
 one at a time. That server holds the single verified frontier, and batch
 semantics stay per-act exactly as they are locally.
+
+Each act waits under the same `--deadline`, so batching does not shorten the
+wait for any one of them. When one act's wait expires, the batch stops there and
+says so, and what it says depends on the act: one that carries an
+`idempotency_key` names that key, because running the same file again replays
+what landed and appends nothing. An act without a key cannot be replayed — a
+second run would append a second copy — so the refusal says to find that act
+before retrying. [`gs state`](state.md) has the rest.
 
 ## See also
 

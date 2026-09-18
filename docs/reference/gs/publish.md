@@ -54,6 +54,7 @@ command records.
 | `--ref` | current branch | The full `refs/heads/...` branch ref. Tag refs are ignored. |
 | `--basis` | *(required)* | The event that governs publication in this repository. |
 | `--server` | *(the repository's advertisement)* | Where the durable acts are submitted. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 
 It takes no positional arguments.
 

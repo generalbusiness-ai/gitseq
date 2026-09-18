@@ -910,7 +910,7 @@ func TestStatusAndWaitUseBoundedResidentViews(t *testing.T) {
 func attachedServer(t testing.TB, workspace *app.Workspace, actor, baseURL string, client *http.Client) (*mcpServer, *room) {
 	t.Helper()
 	server := newServer(actor, workspace.Repo)
-	server.client = residentclient.NewWithHTTP(client, residentHTTPTimeout)
+	server.client = residentclient.NewWithHTTP(client, server.deadlines.http())
 	configured, err := workspace.ResolveActor(actor)
 	if err != nil {
 		t.Fatal(err)
@@ -2289,16 +2289,69 @@ func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 	}
 }
 
-func TestResidentRequestDeadlinesPreserveCallerCancellation(t *testing.T) {
-	if residentCallTimeout != 10*time.Second || residentWaitTimeout != 35*time.Second || residentHTTPTimeout != 40*time.Second {
-		t.Fatalf("resident deadline policy changed: call=%s wait=%s client=%s", residentCallTimeout, residentWaitTimeout, residentHTTPTimeout)
+// The adapter has no flags, so the environment is the only thing that can raise
+// its deadline — and raising it has to reach both the policy the calls are made
+// under and the transport that could otherwise cut them short.
+func TestAdapterTakesItsDeadlineFromTheEnvironment(t *testing.T) {
+	t.Setenv(residentclient.SubmitDeadlineEnvironment, "")
+	server := newServer("human", "")
+	if err := configureResidentDeadlines(server); err != nil {
+		t.Fatal(err)
 	}
-	if client := newResidentClient(); client.Timeout() != residentHTTPTimeout {
-		t.Fatalf("resident HTTP backstop = %s, want %s", client.Timeout(), residentHTTPTimeout)
+	if server.deadlines.call != residentclient.DefaultSubmitDeadline {
+		t.Fatalf("unset deadline = %s, want %s", server.deadlines.call, residentclient.DefaultSubmitDeadline)
+	}
+
+	t.Setenv(residentclient.SubmitDeadlineEnvironment, "90s")
+	raised := newServer("human", "")
+	if err := configureResidentDeadlines(raised); err != nil {
+		t.Fatal(err)
+	}
+	if raised.deadlines.call != 90*time.Second {
+		t.Fatalf("raised deadline = %s, want 90s", raised.deadlines.call)
+	}
+	if raised.deadlineFor("/v0/submit") != 90*time.Second {
+		t.Fatalf("a submission would be made under %s, not the deadline it was given", raised.deadlineFor("/v0/submit"))
+	}
+	if raised.client.Timeout() != raised.deadlines.http() || raised.client.Timeout() <= 90*time.Second {
+		t.Fatalf("transport backstop = %s, which does not outlast a 90s call", raised.client.Timeout())
+	}
+
+	// A value nobody can read stops the adapter at startup. It must not be
+	// quietly replaced by the default: the operator who wrote it was trying to
+	// stop exactly the wait the default gives them.
+	t.Setenv(residentclient.SubmitDeadlineEnvironment, "eventually")
+	refused := newServer("human", "")
+	if err := configureResidentDeadlines(refused); err == nil {
+		t.Fatalf("unreadable deadline accepted as %s", refused.deadlines.call)
+	}
+	if refused.deadlines.call != defaultResidentDeadlines.call {
+		t.Fatalf("a refused value still changed the policy: %s", refused.deadlines.call)
+	}
+}
+
+func TestResidentRequestDeadlinesPreserveCallerCancellation(t *testing.T) {
+	// The call deadline is the one the CLI submits under, read from the one
+	// place that decides it rather than from a second literal here: raising it
+	// for an author raises it for this adapter too, and a test that pinned its
+	// own copy of the number would go on passing after it diverged.
+	if defaultResidentDeadlines.call != residentclient.DefaultSubmitDeadline ||
+		residentWaitTimeout != 35*time.Second || defaultResidentDeadlines.http() != 40*time.Second {
+		t.Fatalf("resident deadline policy changed: call=%s wait=%s client=%s",
+			defaultResidentDeadlines.call, residentWaitTimeout, defaultResidentDeadlines.http())
+	}
+	if client := newResidentClient(defaultResidentDeadlines); client.Timeout() != defaultResidentDeadlines.http() {
+		t.Fatalf("resident HTTP backstop = %s, want %s", client.Timeout(), defaultResidentDeadlines.http())
 	}
 	policy := newServer("human", "").deadlines
-	if policy.call != residentCallTimeout || policy.wait != residentWaitTimeout || policy.shutdown != residentShutdownTimeout {
+	if policy != defaultResidentDeadlines {
 		t.Fatalf("server deadline policy = %#v", policy)
+	}
+	// The backstop has to stand above whichever deadline is longest, or a raised
+	// call deadline would be cut by the transport rather than honoured.
+	raised := residentDeadlinePolicy{call: 5 * time.Minute, wait: residentWaitTimeout, shutdown: residentShutdownTimeout}
+	if raised.http() <= raised.call {
+		t.Fatalf("backstop %s does not outlast a raised call deadline %s", raised.http(), raised.call)
 	}
 
 	workspace, _ := signedWorkspace(t, 1)

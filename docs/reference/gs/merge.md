@@ -30,6 +30,7 @@ resumable batch.
 | `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. For a held state@3 request, this is the hold owner's exact release; an unheld state@3 request refuses it. Legacy lanes retain optional phase-one authorization. See the held-landing compatibility window below. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message, or — when the target already contains the candidate — is the text of the incorporation receipt. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 
 It takes no positional arguments.
 

@@ -32,6 +32,15 @@ There is no default actor name. When `--actor` is absent the adapter
 reads the `GITSEQ_ACTOR` environment variable, and refuses to start if
 neither names an identity.
 
+The adapter takes no deadline flag, so `GITSEQ_SUBMIT_DEADLINE` is where it
+learns how long the resident has to answer a call. It is read once at startup —
+a value that is not a positive duration stops the adapter there rather than at
+the first call — and it governs every call the adapter makes to the resident,
+not only the ones that append. The default is ten seconds, and the transport
+backstop moves with it, so raising the deadline is honoured rather than cut.
+[`gs state`](../reference/gs/state.md#how-long-to-wait-for-the-resident) says
+when raising it is the right answer.
+
 More than one session may deliberately use the same actor. Durable records
 attribute their work to that actor's fingerprint, not to an individual client
 session. The adapter therefore allows the attachment, but prints a warning

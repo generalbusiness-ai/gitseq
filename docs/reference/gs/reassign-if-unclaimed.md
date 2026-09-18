@@ -34,6 +34,7 @@ reassigns like any other.
 | `--retirement-text` | `retire unclaimed request before reassignment` | Why the old request is retired. |
 | `--rests-on` | | An additional current basis for the replacement, repeatable. Its guarded retirement is placed first automatically. |
 | `--server` | | Submit through a resident sequencer. The repository's advertised resident is the default; `-` forces the local fold. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--idempotency-key` | *(required)* | Stable base key. The command derives separate retirement and request keys so a retry can resume between acts. |
 | `--cited-ok` | `false` | Record the caller's admission override and retire even though tracked documentation still names the old request. It does not change the fold's commitment guard. |
 

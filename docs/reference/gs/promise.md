@@ -25,6 +25,7 @@ refuses with the repair named.
 | `--text` | *(names the request)* | The promise text. The default quotes the request it accepts. |
 | `--branch` | | The branch this work will run on, recorded as advisory `body.branch`. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 
 It takes one positional argument, the request, after the flags:
 `gs promise [flags] <request>`. The request accepts a

@@ -21,7 +21,7 @@ import (
 // is appended before the read-only refusals, and no deletion follows from a
 // durable act having succeeded.
 func landCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("land", arguments)
+	set, repo := actFlags("land", arguments)
 	as := set.String("as", "", "actor recording the merge receipt")
 	approval := set.String("approval", "", "the ratified approval report this landing rests on")
 	checkout := set.String("checkout", "", "the target checkout: the working tree standing on the request's target ref")
@@ -29,6 +29,10 @@ func landCommand(ctx context.Context, arguments []string) error {
 	cleanup := set.Bool("cleanup", false, "after the candidate is provably in the target, remove its worktree and delete its branch here and on origin")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	if set.NArg() != 0 {

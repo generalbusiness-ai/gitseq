@@ -29,6 +29,7 @@ the only two acts it cannot make.
 | `--evidence` | | `name=path`, repeatable. Files embedded as attachments. |
 | `--allow-dead-basis` | `false` | Rest on a retired basis anyway. Asking for it signs `dead_basis_override=true`: testimony that you saw it, not a repair of it. A merely stale basis needs no flag; see below. Citing an effective supersession, or a record the fold refused, stays advisory. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
@@ -413,6 +414,26 @@ log locally. What that accepts and what it still checks is in
 [the architecture](../architecture.md). The fold preflight below, and the
 admission that builds and signs the act, read the local verified log either
 way.
+
+## How long to wait for the resident
+
+A submission gives the resident ten seconds to answer. That is enough for a
+resident that is already warm, and it is the value every command used before
+the wait could be set at all.
+
+Raise it with `--deadline`, or with `GITSEQ_SUBMIT_DEADLINE` for every command
+one instance runs; the flag wins where both are given. Raise it when the
+resident has just started and is still verifying, when the workroom's log is
+large enough that folding it takes longer than the wait, or when the act itself
+is large. A value that is not a positive duration is refused before anything is
+signed, naming what it would accept.
+
+An expired deadline is not a refusal. A refused act definitely did not land; an
+expired wait means the resident may have sequenced the act and been too slow to
+say so. That is what `--idempotency-key` is for: submit again with the same key
+and the answer says whether the act is already in the log. Without a key, a
+second submission appends a second act, so look for the first one before
+retrying.
 
 ## See also
 

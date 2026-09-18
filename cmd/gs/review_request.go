@@ -26,7 +26,7 @@ type reviewArtifact struct {
 }
 
 func reviewRequestCommand(ctx context.Context, arguments []string) error {
-	set, repo := flags("review-request", arguments)
+	set, repo := actFlags("review-request", arguments)
 	as := set.String("as", "", "actor asking for the review")
 	head := set.String("head", "", "the exact full commit to be reviewed")
 	to := set.String("to", "", "the reviewing actor: a roster name, @name, or fingerprint")
@@ -35,6 +35,10 @@ func reviewRequestCommand(ctx context.Context, arguments []string) error {
 	replace := set.Bool("replace", false, "supersede your live review request for this promise in the same run, resting the supersession on the new request")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	if err := set.Parse(arguments); err != nil {
+		return err
+	}
+	ctx, err := withSubmitDeadline(ctx, set)
+	if err != nil {
 		return err
 	}
 	if set.NArg() != 0 {

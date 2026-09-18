@@ -61,11 +61,15 @@ const (
 	artifactResponseLimit     = 2 << 20
 	inspectionResponseLimit   = 2 << 20
 	residentResponseLimit     = 64 << 20
-	residentCallTimeout       = 10 * time.Second
 	residentWaitTimeout       = 35 * time.Second
 	residentShutdownTimeout   = 2 * time.Second
-	residentHTTPTimeout       = 40 * time.Second
 	residentOrientationSource = "resident_statusview_current"
+
+	// residentHTTPMargin is how far the transport backstop stands above the
+	// longest deadline the policy hands out. The backstop exists to notice a
+	// resident that stopped answering at all, so it has to outlast the wait it
+	// is protecting rather than cut it.
+	residentHTTPMargin = 5 * time.Second
 )
 
 type residentDeadlinePolicy struct {
@@ -75,9 +79,20 @@ type residentDeadlinePolicy struct {
 }
 
 var defaultResidentDeadlines = residentDeadlinePolicy{
-	call:     residentCallTimeout,
+	call:     residentclient.DefaultSubmitDeadline,
 	wait:     residentWaitTimeout,
 	shutdown: residentShutdownTimeout,
+}
+
+// http is the transport backstop this policy needs. It is derived rather than
+// written down, because a call deadline the operator raised above a fixed
+// backstop would be cut by the very client that was supposed to outlast it.
+func (p residentDeadlinePolicy) http() time.Duration {
+	longest := p.call
+	if p.wait > longest {
+		longest = p.wait
+	}
+	return longest + residentHTTPMargin
 }
 
 // The era is a property of the connection rather than of a single request:
@@ -395,6 +410,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
 	server := newServer(name, *repo)
+	if err := configureResidentDeadlines(server); err != nil {
+		fatal(err)
+	}
+
 	// Attaching the default repository here is a courtesy, not a
 	// precondition: presence appears before the first tool call when there is
 	// a workroom to join, and one installation still serves whatever
@@ -418,7 +437,7 @@ func newServer(actor, repo string) *mcpServer {
 	return &mcpServer{
 		actor:       actor,
 		repo:        absolute(repo),
-		client:      newResidentClient(),
+		client:      newResidentClient(defaultResidentDeadlines),
 		notices:     os.Stderr,
 		deadlines:   defaultResidentDeadlines,
 		open:        app.Open,
@@ -2213,8 +2232,25 @@ func validateResidentURL(raw string) (string, error) {
 	return residentclient.ValidateURL(raw)
 }
 
-func newResidentClient() *residentclient.Client {
-	return residentclient.New(residentHTTPTimeout)
+// configureResidentDeadlines gives one adapter process the deadline it was
+// started with. The adapter takes no deadline flag, so the environment is the
+// only place an operator can say how long the resident has to answer, and it is
+// read once here through the one place that decides it. A value nobody can read
+// stops the adapter now rather than at the first call, and the transport client
+// is rebuilt with it so a raised deadline is not cut by a backstop sized for the
+// old one.
+func configureResidentDeadlines(server *mcpServer) error {
+	deadline, err := residentclient.ResolveSubmitDeadline("")
+	if err != nil {
+		return err
+	}
+	server.deadlines.call = deadline
+	server.client = newResidentClient(server.deadlines)
+	return nil
+}
+
+func newResidentClient(policy residentDeadlinePolicy) *residentclient.Client {
+	return residentclient.New(policy.http())
 }
 
 func (s *mcpServer) localStatus(ctx context.Context, current *room) (service.Status, error) {

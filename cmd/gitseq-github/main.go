@@ -20,7 +20,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/connector/github"
@@ -545,8 +544,15 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 // was appended, and RefusedDial says so; a reply lost after the resident took
 // the request is reported as it came, and the idempotency key makes the
 // retry safe.
+//
+// The connector takes no flags, so the deadline comes from the environment it
+// was started with, through the one place that decides it.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
-	submission, err := residentclient.New(10*time.Second).Submit(ctx, workspace, server, request)
+	deadline, err := residentclient.ResolveSubmitDeadline("")
+	if err != nil {
+		return "", err
+	}
+	submission, err := residentclient.New(deadline).Submit(ctx, workspace, server, request)
 	if err != nil {
 		return "", residentclient.RefusedDial(server, err)
 	}
