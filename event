@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a9b12a8acc8d9b27bcc167507d30bc162425d0e","text":"Replaced by the review request for exact head d4726958c7d3fc763e734e43b42be0da40e2daa3; any review promised on this request is released, and a verdict filed against it would bind to nothing."}
+{"kind":"promise","text":"Accept request git:sha1…ce79e5c: Repair of verdict 7d3ef0e5 on the same request and promise. All three blocking findings addressed and four of the non-blocking ones. (1) docs/reference/architec…"}
