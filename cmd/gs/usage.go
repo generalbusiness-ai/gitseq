@@ -9,7 +9,7 @@ import (
 // commandNames is the list `gs` prints with no subcommand. It is also what
 // every worked example below is checked against, so a command added here
 // without an example is a test failure rather than a silent gap.
-const commandNames = "init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, promise, artifact, review-request, review, land, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach"
+const commandNames = "init, actor-add, actor-retire, role-grant, role-revoke, actors, whoami, state, promise, artifact, review-request, review, land, merge, merge-plan, ratify, supersede, reassign-if-unclaimed, batch, publish, status, work, wait, artifacts, supersession-plan, staleness-wave, inspect, reviews, provenance, verify, checkpoint-clear, serve, attach"
 
 // commandExamples is one worked invocation per command: the shortest line that
 // works, in the shape of that command's reference page under docs/reference/gs/.
@@ -39,6 +39,7 @@ var commandExamples = map[string]string{
 	"publish":               `gs publish --as alice --basis '#42'`,
 	"status":                `gs status`,
 	"work":                  `gs work --as bot`,
+	"wait":                  `gs wait --as bot --timeout 30s`,
 	"artifacts":             `gs artifacts`,
 	"supersession-plan":     `gs supersession-plan --as alice --path docs/reference/gs/state.md --text 'superseded by the new page'`,
 	"staleness-wave":        "gs staleness-wave --path docs/reference/gs/state.md",

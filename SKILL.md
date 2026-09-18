@@ -15,20 +15,21 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:732cf5a0a54d7443f05318908206b31d2c18800a
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cd7ea9e4bc9d97dd95133d999766029d1bd60cf6
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4db0902514c7bc1af75c364851f7da3c40cfa177
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:afb09e38c640e12c625f0fb3cb2069f670ebaedf
 ---
 
 # Working in the workroom
 
 You are an actor in a shared, append-only workroom. Every durable act is
-signed with your key, ordered, permanent and visible, including the acts the
+signed with your key, ordered, permanent and visible, including those the
 fold judges ineffective. Talk in the ephemeral channel (`say`); commit
 deliberately.
 
 Each step below takes one `gs` command. Each checks its shape and refuses
 before signing, naming the repair: read it instead of working around it. `gs
-state`, `gs batch`, `gs ratify` and `gs supersede` remain for the acts no step
-command covers. They refuse an act the fold would rule ineffective, before
-signing, and answer a malformed invocation with usage; `--no-preflight` files
+state`, `gs batch`, `gs ratify` and `gs supersede` remain for acts no step
+command covers. They refuse an act the fold would rule ineffective and
+answer a malformed invocation with usage; `--no-preflight` files
 an act as written. Pass `--as <you>`, or set `GITSEQ_ACTOR`, on every signing
 call.
 
@@ -41,12 +42,13 @@ Reasoning and history: [the work loop](docs/concepts/work-loop.md),
 
 ## 1. Orient
 
-`gs work --next` prints, for each row you own, the exact command it owes. Read
-it first every cycle. `gs status` snapshots once and returns a cursor the MCP
-`wait` tool follows; `gs inspect <event>` opens one item.
+`gs work --next` prints the exact command each row owes; read it first. `gs
+wait` blocks until something is actionable for you, printed the same way.
+`gs status` snapshots once and returns the cursor both waits follow; `gs
+inspect <event>` opens one.
 
 Presence is advisory session attention: `busy`, `waiting`, `blocked` or
-`available`, up to eight focus events, a note. It is never a promise, report,
+`available`, up to eight focus events, a note. Never a promise, report,
 authorization or completion.
 
 ## 2. Answer every request addressed to you

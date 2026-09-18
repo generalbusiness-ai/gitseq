@@ -16,6 +16,7 @@ import (
 
 	nexus "github.com/generalbusiness-ai/gitseq/host/live"
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -136,7 +137,7 @@ func TestHeadWaitEvidence(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					<-started
-					_, _, changed, err := server.wait(ctx, WaitRequest{Cursor: before.Cursor, TimeoutMS: 6000})
+					_, _, changed, err := server.wait(ctx, WaitRequest{Cursor: before.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 					if err != nil || !changed {
 						t.Errorf("external wake: changed=%v err=%v", changed, err)
 						return
@@ -185,7 +186,7 @@ func TestHeadWaitEvidence(t *testing.T) {
 				go func() {
 					defer wg.Done()
 					<-started
-					response, _, changed, err := server.wait(ctx, WaitRequest{Cursor: before.Cursor, TimeoutMS: 6000})
+					response, _, changed, err := server.wait(ctx, WaitRequest{Cursor: before.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 					if err != nil || !changed || len(response.LiveChanges) == 0 {
 						t.Errorf("live wake: changed=%v live=%d err=%v", changed, len(response.LiveChanges), err)
 						return

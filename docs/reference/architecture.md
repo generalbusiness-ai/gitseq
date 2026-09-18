@@ -1617,6 +1617,41 @@ pages, exact-path artifact pages, exact-item inspection, the whole-log review
 gate, the bounded staleness-wave summary, and the bounded join of a caller's
 live priority inbox.
 
+It also owns the `until` filter all three wait paths share: one pure function
+over the verified snapshot, the cursor asked about, the wait delta and the
+actor's fingerprint, deciding whether an answer holds something that actor can
+act on — unacknowledged priority chat, a new event inside one of their own
+actionable lanes, or a new event resting directly on a live event they signed.
+The resident applies it inside its own poll for `/v0/actor-wait`, so a change
+that is not the caller's leaves the poll ticking rather than crossing the
+socket; the MCP adapter applies it to its degraded local fold; and `gs wait`
+applies it to the sequence ref it watches when no resident answers.
+`actionable` therefore means one thing on every surface and no surface
+re-derives it.
+
+The filter reads the whole range of decisions after the cursor, not the
+delta's capped list, and reads the actor's lanes from the projection, not from
+the twenty rows a response carries. A response is bounded because a response
+must be; a decision about whom to wake is not, and deciding from either capped
+list lost the one event that was the caller's whenever enough unrelated ones
+arrived behind it — and then advanced the caller's cursor past it. The range
+and the view builder are one function each, shared by the delta and the filter.
+An event the actor signed themself is excluded by all of the rules: their own
+promise on their own request is inside their own lane row, and waking on it
+made every act they filed return their own next wait.
+
+A poll that declines under the filter moves its own baseline past what it
+judged, because a change it has judged is a change it has seen. That is what
+keeps the cost of a declining poll flat: without it the same change was found
+on every one of the four ticks a second — refiltered each time, and, when it
+was a live change, re-reading the verified durable snapshot each time as well,
+which is one Git process per tick for a poll that was never going to answer.
+
+The wait request gains one optional `until` field, and a wait answer two
+optional fields: `changed`, saying whether the filter accepted or the deadline
+passed, and `accepted`, the events it let through. A caller sending none of
+them gets exactly the behaviour it had before.
+
 The named commitment populations a reader counts work in — open, completed,
 closed-not-completed, stale, with the open lifecycle breakdown and the
 commitment total — have exactly one owner, `workroom.WorkOf`. It sits beside
@@ -1814,6 +1849,23 @@ fails is named on standard error and answered by the local audit. Without
 commands — `gs status --all` and `--json`, `gs artifacts` with its CLI-only
 selectors, `gs reviews` — read the same endpoint under the frontier check
 [`gs status`](gs/status.md) documents, and are unchanged by this.
+
+[`gs wait`](gs/wait.md) is the one reading command that blocks. The
+actor-scoped wait route answers only a session, so it opens a presence session
+of its own — the same announce the MCP adapter sends, carrying the advisory
+status `waiting`, renewed between polls and departed on every exit path
+including an interrupt. It loops the resident's capped poll under its own
+deadline, so one invocation is one wake rather than one call every half minute,
+and keeps its cursor in a per-actor file under `.git/gitseq` so the next call
+resumes rather than replaying. Its exit status, not its output, separates a
+change from a deadline.
+
+The three things a resident says that are not answers are recovered from
+inside that deadline rather than reported, because each has one obvious repair:
+a full wait budget is waited out and retried, a lapsed credential is
+re-announced, and a resident that stops answering is replaced by the local
+watch — the sequence ref, with one verified local audit per move, which is the
+path that survives a resident restart.
 
 Those checks bind the frontier, and only the frontier. The head is proved
 against this checkout's own ref; the rows folded at that head are the

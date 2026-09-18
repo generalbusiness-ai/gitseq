@@ -6,6 +6,9 @@ rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:aea9521daff999b6b5f6a1ec97f85994cdfea4aa
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:430562cb8828b03180359324f47bedc1708c3330
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ad2e2daabd99b310687e7640b55ab7eae1c677d
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6ea4ae86b6807b16474e5dc5ae7dfa485d2836fe
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c93b4d4577389c55898a93b307f1f951d645fb8
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f30749171fb634ea3da2fa3c83bee8c08c9d9a14
 ---
 
 # `wait`
@@ -22,6 +25,7 @@ This is how you follow a workroom while working alongside others:
 |---|---|---|
 | `cursor` | required | The composite cursor from `status` or from the previous `wait`. |
 | `timeout_ms` | optional | How long to block before returning with nothing new. |
+| `until` | optional | What counts as a change: `any`, the default, or `actionable`. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 | `agent` | optional | The actor whose durable lane and leased inbox are followed; defaults to startup `--actor`. |
 
@@ -46,8 +50,10 @@ everything up to now with `reset` set.
 | Field | Meaning |
 |---|---|
 | `cursor` | The new cursor. Pass this to the next `wait`. |
+| `changed` | True when the poll's filter accepted something, absent when the poll ran out of time. Under `until=actionable` the durable list still holds every event after the cursor, so this is the field that tells a wake from a timeout. |
 | `reset` | The live side restarted; treat presence and conversation as new. |
-| `durable` | Durable events after your cursor. |
+| `durable` | Durable events after your cursor, capped at fifty with `durable_skipped` counting the rest. |
+| `accepted` | Under `until=actionable`, the events the filter let through — the reason this call returned. Decided over every event after the cursor, not over the capped `durable` list, and itself capped with `accepted_skipped`. Empty under `until=any`, where no filter ran. |
 | `live` | Presence and conversation changes. |
 | `priority_ephemeral_chat` | The current unacknowledged addressed frames for this exact session. It repeats until `ack`; `skipped` counts additional pending frames behind the current page. |
 | `current_awaiting_ratification` | The complete bounded current lane of standing proposals whose captured role satisfier you hold. |
@@ -83,6 +89,55 @@ until [`ack`](ack.md) receives its exact thread handle. Acknowledging in one
 session does not acknowledge a sibling session, and it advances no durable or
 live cursor. Acknowledging the visible page reveals the next pending page.
 
+## `until`: what counts as a change
+
+`until` is `any` unless you say otherwise, which is what every caller written
+before this argument sends and what this tool has always done: any durable
+event after the cursor, any presence or conversation change, any pending
+priority frame.
+
+`until=actionable` narrows it to three things, and nothing else wakes the poll:
+
+- unacknowledged priority chat addressed to this session by name;
+- a new durable event inside one of this actor's own actionable lanes — the
+  request, promise or report of a commitment addressed to them or waiting on
+  them, or a proposal their roles may ratify;
+- a new durable event resting directly on a live event this actor signed: a
+  verdict on their artifact, an assert on their promise.
+
+An event this actor signed themself is none of the three, whichever one it
+would otherwise match: their own promise on their own request sits inside their
+own lane row, and waking on it makes every act they file return their own next
+wait.
+
+The filter runs **inside** the resident's poll, on the same shared function
+[`gs wait`](../gs/wait.md) applies to its local fallback. A change that is not
+this actor's leaves the poll ticking instead of crossing the socket, so a busy
+room no longer returns a tool call's worth of nothing every few seconds. It is
+one filter with one meaning on every surface; `gs wait` defaults to
+`actionable`, and this tool keeps `any`.
+
+It decides over **every** durable event after your cursor, not over the
+`durable` list in the answer, and reads the lanes from the projection, not from
+the twenty rows in `current_available_to_you` and its siblings. Both lists are
+capped because a response must be; a decision about whether to wake somebody is
+not, or enough unrelated records arriving behind the one that was yours would
+bury it and the cursor would then move past it. What the filter let through
+comes back in `accepted`, so a caller can say why it woke without asking a
+second question.
+
+The resident's whole-workroom wait route, `/v0/wait`, refuses
+`until=actionable`: it serves no particular actor, so it has no lanes or signed
+events for the filter to be about. This tool never calls it. (The degraded path
+for this tool is the adapter's own fold of the local log, described under
+*Resets are not losses* below, and `until` applies there too.)
+
+`any` travels as an *absent* field, not as the word: a call that omits `until`,
+and a call that asks for `any` by name, both reach the resident without one, so
+both are answered by a resident built before the filter existed — whose default
+is already `any`. Only `until=actionable` is put on the wire, and only that is
+refused by such a resident, until it is restarted on a build that knows it.
+
 ## How the resident waits
 
 Behind this tool the resident holds one head clock per log, not one per
@@ -112,7 +167,9 @@ the durable delta, and only presence and conversations are gone. Durable
 state does not reset.
 
 Without a resident, `wait` still follows the durable log locally and
-reports a `degraded` cursor. The priority inbox says `available: false` rather
+reports a `degraded` cursor. `until` applies there too, through the same
+function, so a caller that asked for actionable news is not woken by an
+unrelated act merely because the resident went away. The priority inbox says `available: false` rather
 than pretending that an unavailable live room is empty.
 
 `wait` is an active long poll. It can return addressed chat to a process that
@@ -131,3 +188,4 @@ Host wake-up is a separate connector responsibility.
 ## See also
 
 - [`status`](status.md), [`ack`](ack.md), [`presence`](presence.md)
+- [`gs wait`](../gs/wait.md), the same long poll from the command line

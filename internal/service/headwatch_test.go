@@ -17,6 +17,7 @@ import (
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
+	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -75,7 +76,7 @@ func runWaiters(t *testing.T, server *Server, cursor Cursor, n int, stagger time
 			defer wg.Done()
 			time.Sleep(time.Duration(i) * stagger)
 			began := time.Now()
-			_, _, didChange, err := server.wait(ctx, WaitRequest{Cursor: cursor, TimeoutMS: timeoutMS})
+			_, _, didChange, err := server.wait(ctx, WaitRequest{Cursor: cursor, TimeoutMS: timeoutMS}, statusview.UntilAny)
 			elapsed[i] = time.Since(began)
 			errs[i] = err
 			if didChange {
@@ -145,7 +146,7 @@ func TestExternalHeadChangeWakesAnOpenWait(t *testing.T) {
 	began := time.Now()
 	go func() {
 		defer close(done)
-		response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000})
+		response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 	}()
 	time.Sleep(150 * time.Millisecond)
 	if _, err := other.Act(ctx, "human", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "from another process", IdempotencyKey: "headwatch-external"}); err != nil {
@@ -233,7 +234,7 @@ func TestHeadClockPassesRewindsAndMissingRefsToTheSnapshot(t *testing.T) {
 			began := time.Now()
 			go func() {
 				defer close(done)
-				response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000})
+				response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 			}()
 			time.Sleep(150 * time.Millisecond)
 			tc.move(t, repo, ref)
@@ -268,7 +269,7 @@ func TestLiveOnlyChangeWakesWithoutExtraRefReads(t *testing.T) {
 	began := time.Now()
 	go func() {
 		defer close(done)
-		response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000})
+		response, _, changed, waitErr = server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 	}()
 	time.Sleep(150 * time.Millisecond)
 	public, _, err := ed25519.GenerateKey(rand.Reader)
@@ -476,7 +477,7 @@ func TestCancelledWaitReturnsWhileAnotherWaitersReadIsSlow(t *testing.T) {
 	server.heads.read = read.read
 	first := make(chan error, 1)
 	go func() {
-		_, _, _, err := server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 1500})
+		_, _, _, err := server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 1500}, statusview.UntilAny)
 		first <- err
 	}()
 	<-read.started // the clock's baseline read is blocked on the fake
@@ -484,7 +485,7 @@ func TestCancelledWaitReturnsWhileAnotherWaitersReadIsSlow(t *testing.T) {
 	second := make(chan error, 1)
 	began := time.Now()
 	go func() {
-		_, _, _, err := server.wait(cancelCtx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000})
+		_, _, _, err := server.wait(cancelCtx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000}, statusview.UntilAny)
 		second <- err
 	}()
 	time.Sleep(100 * time.Millisecond)
