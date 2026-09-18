@@ -596,6 +596,47 @@ external-change wake latency at about one clock tick. Depths 1, 31 and 300,
 one machine, warm fixtures, before and after runs taken one after the other;
 not a claim about deep logs.
 
+## Artifact-heavy projection cost
+
+A workroom whose log is mostly artifacts costs far more to project than the
+envelope corpora suggested. Two real logs were measured on the machine named
+above, folding read-only and projecting the whole workroom, before and after the
+projection lane, one run after the other:
+
+| Log | Events | Artifacts | Before | After |
+|---|---|---|---|---|
+| Artifact-heavy workroom | 7,029 | 5,091 | 18.10 s | 2.11 s and 2.21 s |
+| This repository | 23,945 | 6,610 | 21.70 s | 13.32 s |
+
+The projection each run produced is byte-identical to the one the previous
+implementation produced, compared as 25 MB and 52 MB of JSON.
+
+Four repeated reads accounted for the difference. `pathCovers` allocated a
+directory prefix on every call and was 35 percent of all samples in the
+artifact-heavy fold; it now compares the separator in place. The
+receipt-to-successor interval was walked once per successor, with the covering
+path recomputed for every record in it; it is now walked once per receipt, no
+further than its successors ask. The receipt-checkpoint staleness walk ran once
+per successor over the same closure; its answer is now reused across the
+successors of one receipt. The projection folded a second complete staleness
+pass to read commitment protection; it now uses the one it has already computed.
+
+The two logs differ in where their time went, and the table is the reason to
+measure both. The artifact-heavy log spent it in the projection, which is what a
+reader waits for after each new act. This repository spends it in the fold, at
+one complete staleness pass per merge receipt admitted — 160 of them — which is
+a cost paid when a resident starts, not per act.
+
+`BenchmarkFoldArtifactHeavy` and `BenchmarkProjectionArtifactHeavy` in
+`internal/workroom` hold the shape: merges that publish one successor above the
+files they changed. At 160 merges of 24 files the fold went from 226 ms to
+127 ms, and the projection stayed where it was, with fewer allocations. The
+envelope corpora miss all of this because they are artifact-poor and carry no
+merge receipts.
+
+This is evidence from two logs and one machine. It is not a target, and nothing
+here is enforced.
+
 ## Residual dimensions
 
 Five dimensions of the two envelopes had no measurement on this page: cold
