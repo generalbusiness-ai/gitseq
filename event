@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f1395faf67fbc70fd40f18939b8014966ff64663","text":"Merge retired a covered predecessor; the successor is at docs/reference/performance.md."}
+{"kind":"promise","text":"Accept request git:sha1…d3742a6: Claude: give the submit deadline an override, and stop making batching the answer."}
