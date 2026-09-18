@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/wait.go","body":{"commit":"ccd161c6caa71f800bfdf17796d11bb3419f181f","path":"cmd/gs/wait.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/wait_test.go","body":{"commit":"ccd161c6caa71f800bfdf17796d11bb3419f181f","path":"cmd/gs/wait_test.go"}}
