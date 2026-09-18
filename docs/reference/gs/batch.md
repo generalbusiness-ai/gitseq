@@ -183,11 +183,12 @@ semantics stay per-act exactly as they are locally.
 
 Each act waits under the same `--deadline`, so batching does not shorten the
 wait for any one of them. When one act's wait expires, the batch stops there and
-says so, and what it says depends on the act: one that carries an
-`idempotency_key` names that key, because running the same file again replays
-what landed and appends nothing. An act without a key cannot be replayed — a
-second run would append a second copy — so the refusal says to find that act
-before retrying. [`gs state`](state.md) has the rest.
+says so — and whether you may simply run the file again is a property of the
+whole prefix, not of the act that timed out. Rerunning replays what landed only
+where every act up to the failure carries an `idempotency_key`; an act given
+none lands afresh, so rerunning would append a second copy of it. The refusal
+says which of those two cases you are in, and names the positions that have no
+key. [`gs state`](state.md) has the rest.
 
 ## See also
 

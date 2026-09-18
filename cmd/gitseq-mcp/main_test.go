@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2290,23 +2291,19 @@ func TestWhoamiBoundsStallsAndRejectsRedirects(t *testing.T) {
 }
 
 // The adapter has no flags, so the environment is the only thing that can raise
-// its deadline — and raising it has to reach both the policy the calls are made
-// under and the transport that could otherwise cut them short.
+// its deadline — and raising it has to reach the policy the calls are made
+// under and the transport that could otherwise cut them short. Every server this
+// package builds goes through newServer, so this is the reading itself, not a
+// copy of it.
 func TestAdapterTakesItsDeadlineFromTheEnvironment(t *testing.T) {
 	t.Setenv(residentclient.SubmitDeadlineEnvironment, "")
 	server := newServer("human", "")
-	if err := configureResidentDeadlines(server); err != nil {
-		t.Fatal(err)
-	}
-	if server.deadlines.call != residentclient.DefaultSubmitDeadline {
-		t.Fatalf("unset deadline = %s, want %s", server.deadlines.call, residentclient.DefaultSubmitDeadline)
+	if server.deadlines.call != residentclient.DefaultSubmitDeadline || server.startupRefusal != nil {
+		t.Fatalf("unset deadline = %s, refusal = %v", server.deadlines.call, server.startupRefusal)
 	}
 
 	t.Setenv(residentclient.SubmitDeadlineEnvironment, "90s")
 	raised := newServer("human", "")
-	if err := configureResidentDeadlines(raised); err != nil {
-		t.Fatal(err)
-	}
 	if raised.deadlines.call != 90*time.Second {
 		t.Fatalf("raised deadline = %s, want 90s", raised.deadlines.call)
 	}
@@ -2317,16 +2314,41 @@ func TestAdapterTakesItsDeadlineFromTheEnvironment(t *testing.T) {
 		t.Fatalf("transport backstop = %s, which does not outlast a 90s call", raised.client.Timeout())
 	}
 
-	// A value nobody can read stops the adapter at startup. It must not be
-	// quietly replaced by the default: the operator who wrote it was trying to
-	// stop exactly the wait the default gives them.
+	// A value nobody can read stops the adapter before it serves anything. It
+	// must not be quietly replaced by the default: the operator who wrote it was
+	// trying to stop exactly the wait the default gives them.
 	t.Setenv(residentclient.SubmitDeadlineEnvironment, "eventually")
 	refused := newServer("human", "")
-	if err := configureResidentDeadlines(refused); err == nil {
+	if refused.startupRefusal == nil {
 		t.Fatalf("unreadable deadline accepted as %s", refused.deadlines.call)
 	}
 	if refused.deadlines.call != defaultResidentDeadlines.call {
 		t.Fatalf("a refused value still changed the policy: %s", refused.deadlines.call)
+	}
+	var output strings.Builder
+	err := refused.run(context.Background(), strings.NewReader(""), &output)
+	if err == nil || !strings.Contains(err.Error(), residentclient.SubmitDeadlineEnvironment) {
+		t.Fatalf("run with an unreadable deadline = %v, want a refusal naming the variable", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("an adapter that refused to start still answered: %q", output.String())
+	}
+}
+
+// The backstop exists to outlast the deadlines the policy hands out. A duration
+// near the maximum used to wrap it to a negative one, which net/http reads as no
+// timeout at all: the raised backstop became no backstop.
+func TestBackstopOutlastsEvenAnAbsurdDeadline(t *testing.T) {
+	for _, call := range []time.Duration{residentclient.DefaultSubmitDeadline, 90 * time.Second,
+		time.Duration(math.MaxInt64) - time.Second, math.MaxInt64} {
+		policy := residentDeadlinePolicy{call: call, wait: residentWaitTimeout, shutdown: residentShutdownTimeout}
+		backstop := policy.http()
+		if backstop <= 0 {
+			t.Fatalf("backstop for a %s call = %s, which net/http reads as no timeout", call, backstop)
+		}
+		if backstop < call {
+			t.Fatalf("backstop %s is shorter than the %s call it must outlast", backstop, call)
+		}
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -53,23 +54,28 @@ func TestResolveSubmitDeadlineRefusesWhatItCannotUse(t *testing.T) {
 	}
 }
 
-type fakeTimeout struct{}
+type fakeNetError struct{ timeout bool }
 
-func (fakeTimeout) Error() string   { return "i/o timeout" }
-func (fakeTimeout) Timeout() bool   { return true }
-func (fakeTimeout) Temporary() bool { return false }
+func (e fakeNetError) Error() string   { return "network error" }
+func (e fakeNetError) Timeout() bool   { return e.timeout }
+func (e fakeNetError) Temporary() bool { return false }
 
 // Whether the deadline expired decides what a caller is told to do next, so the
 // two failures must not be confused: a refusal is definite, an expiry is not.
 func TestTimedOutSeparatesAnExpiredDeadlineFromARefusal(t *testing.T) {
-	var timeout net.Error = fakeTimeout{}
+	var timeout net.Error = fakeNetError{timeout: true}
 	for _, err := range []error{context.DeadlineExceeded, os.ErrDeadlineExceeded, timeout,
 		&TransportError{Err: context.DeadlineExceeded}, &ReadError{Err: timeout}} {
 		if !TimedOut(err) {
 			t.Fatalf("expired deadline %v was read as a refusal", err)
 		}
 	}
-	for _, err := range []error{errors.New("connection refused"), context.Canceled,
+	// A refused dial is a net.Error too, and it is the one that must not be
+	// read as an expiry: nothing was appended, and telling the author their act
+	// may have landed would send them looking for something that is not there.
+	refusedDial := &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+	for _, err := range []error{errors.New("connection refused"), context.Canceled, refusedDial,
+		fakeNetError{}, &TransportError{Err: refusedDial},
 		&HTTPError{StatusCode: 400, Message: "refused"}} {
 		if TimedOut(err) {
 			t.Fatalf("refusal %v was read as an expired deadline", err)

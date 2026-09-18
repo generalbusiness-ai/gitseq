@@ -11,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -87,10 +88,18 @@ var defaultResidentDeadlines = residentDeadlinePolicy{
 // http is the transport backstop this policy needs. It is derived rather than
 // written down, because a call deadline the operator raised above a fixed
 // backstop would be cut by the very client that was supposed to outlast it.
+//
+// The addition saturates. A duration close enough to the maximum would wrap to a
+// negative one, which net/http reads as no timeout at all — turning a backstop
+// the operator raised into one that never fires. Saturating keeps it above every
+// deadline the policy hands out, which is the whole of its job.
 func (p residentDeadlinePolicy) http() time.Duration {
 	longest := p.call
 	if p.wait > longest {
 		longest = p.wait
+	}
+	if longest > math.MaxInt64-residentHTTPMargin {
+		return math.MaxInt64
 	}
 	return longest + residentHTTPMargin
 }
@@ -382,7 +391,11 @@ type mcpServer struct {
 	client    *residentclient.Client
 	notices   io.Writer
 	deadlines residentDeadlinePolicy
-	open      func(context.Context, string) (*app.Workspace, error)
+	// startupRefusal is what the environment made impossible: it is held from
+	// construction and answered by run, so a bad value stops one adapter rather
+	// than every caller of the constructor.
+	startupRefusal error
+	open           func(context.Context, string) (*app.Workspace, error)
 
 	roomsMu     sync.Mutex
 	byPath      map[roomSelection]*room
@@ -410,9 +423,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "gitseq-mcp: --server is ignored; the resident service is read from the repository it serves")
 	}
 	server := newServer(name, *repo)
-	if err := configureResidentDeadlines(server); err != nil {
-		fatal(err)
-	}
 
 	// Attaching the default repository here is a courtesy, not a
 	// precondition: presence appears before the first tool call when there is
@@ -433,20 +443,42 @@ func main() {
 	}
 }
 
+// newServer reads the deadline the adapter was started with. The adapter takes
+// no deadline flag, so the environment is the only place an operator can say how
+// long the resident has to answer, and reading it here means every server this
+// process builds is the server the operator asked for — including in tests,
+// which is what makes the reading itself testable.
+//
+// A value nobody can read is kept rather than acted on, and refused by run()
+// before the first frame is served. The alternative was for this constructor to
+// return an error, which every one of its call sites would have had to carry for
+// a condition none of them can cause.
 func newServer(actor, repo string) *mcpServer {
+	deadlines := defaultResidentDeadlines
+	deadline, refusal := residentclient.ResolveSubmitDeadline("")
+	if refusal == nil {
+		deadlines.call = deadline
+	}
 	return &mcpServer{
-		actor:       actor,
-		repo:        absolute(repo),
-		client:      newResidentClient(defaultResidentDeadlines),
-		notices:     os.Stderr,
-		deadlines:   defaultResidentDeadlines,
-		open:        app.Open,
-		byPath:      map[roomSelection]*room{},
-		byCommonDir: map[roomSelection]*room{},
+		actor:          actor,
+		repo:           absolute(repo),
+		client:         newResidentClient(deadlines),
+		notices:        os.Stderr,
+		deadlines:      deadlines,
+		startupRefusal: refusal,
+		open:           app.Open,
+		byPath:         map[roomSelection]*room{},
+		byCommonDir:    map[roomSelection]*room{},
 	}
 }
 
 func (s *mcpServer) run(ctx context.Context, input io.Reader, output io.Writer) error {
+	// A deadline nobody can read stops the adapter before it serves anything,
+	// rather than at the first call, where the operator would see it as the
+	// resident's failure instead of their own typing.
+	if s.startupRefusal != nil {
+		return s.startupRefusal
+	}
 	scanner := bufio.NewScanner(input)
 	scanner.Buffer(make([]byte, 64*1024), 2<<20)
 	encoder := json.NewEncoder(output)
@@ -2230,23 +2262,6 @@ func (s *mcpServer) deadlineForShutdown() time.Duration {
 
 func validateResidentURL(raw string) (string, error) {
 	return residentclient.ValidateURL(raw)
-}
-
-// configureResidentDeadlines gives one adapter process the deadline it was
-// started with. The adapter takes no deadline flag, so the environment is the
-// only place an operator can say how long the resident has to answer, and it is
-// read once here through the one place that decides it. A value nobody can read
-// stops the adapter now rather than at the first call, and the transport client
-// is rebuilt with it so a raised deadline is not cut by a backstop sized for the
-// old one.
-func configureResidentDeadlines(server *mcpServer) error {
-	deadline, err := residentclient.ResolveSubmitDeadline("")
-	if err != nil {
-		return err
-	}
-	server.deadlines.call = deadline
-	server.client = newResidentClient(server.deadlines)
-	return nil
 }
 
 func newResidentClient(policy residentDeadlinePolicy) *residentclient.Client {

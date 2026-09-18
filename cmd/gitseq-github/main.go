@@ -56,6 +56,14 @@ func run(ctx context.Context, arguments []string) error {
 	if err := set.Parse(arguments); err != nil {
 		return err
 	}
+	// The deadline is read here, before any observation is made, so a value
+	// nobody can read stops this run rather than failing at the append, where
+	// the operator would read it as the resident's fault instead of their own.
+	deadline, err := residentclient.ResolveSubmitDeadline("")
+	if err != nil {
+		return err
+	}
+	ctx = withSubmitDeadline(ctx, deadline)
 	if *charter == "" {
 		return errors.New("--charter is required: the connector may not append without a ratified charter to rest on")
 	}
@@ -545,14 +553,11 @@ func appendObservation(ctx context.Context, workspace *app.Workspace, actor obse
 // the request is reported as it came, and the idempotency key makes the
 // retry safe.
 //
-// The connector takes no flags, so the deadline comes from the environment it
-// was started with, through the one place that decides it.
+// The connector takes no deadline flag, so the deadline comes from the
+// environment this run started with, read once before any observation and
+// carried on the context from there.
 func submit(ctx context.Context, workspace *app.Workspace, server string, request kernel.Request) (string, error) {
-	deadline, err := residentclient.ResolveSubmitDeadline("")
-	if err != nil {
-		return "", err
-	}
-	submission, err := residentclient.New(deadline).Submit(ctx, workspace, server, request)
+	submission, err := residentclient.New(submitDeadline(ctx)).Submit(ctx, workspace, server, request)
 	if err != nil {
 		return "", residentclient.RefusedDial(server, err)
 	}

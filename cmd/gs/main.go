@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -2305,7 +2306,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		act := resolveBatchAct(entry, minted, citedOK)
 		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
 		if err != nil {
-			failure := batchFail("submit", "%v", batchSubmitRefusal(err, position, entry, submitDeadline(ctx)))
+			failure := batchFail("submit", "%v", batchSubmitRefusal(err, position, acts, submitDeadline(ctx)))
 			report.Acts[position].Outcome = "failed"
 			report.Error = failure
 			return report, failure
@@ -2434,23 +2435,39 @@ func resolveBatchAct(entry batchAct, minted map[string]string, citedOK bool) app
 // batchSubmitRefusal says what a caller has to know to recover, which differs
 // by the kind of failure. A refused act is definite: nothing landed, and the
 // batch stopped where it says it did. An expired deadline is not: the resident
-// may have sequenced the act and been too slow to answer, so the way back in is
-// the act's own dedup key, which replays what landed instead of appending a
-// second copy. An act that carries no key cannot be replayed — rerunning the
-// file would append it again — so that case says to look for it rather than
-// retry, and says which act to look for.
-func batchSubmitRefusal(err error, position int, entry batchAct, deadline time.Duration) error {
+// may have sequenced the act and been too slow to answer.
+//
+// Whether rerunning the file is safe is a property of the whole prefix, not of
+// the act that timed out. Rerunning replays every act that already landed only
+// where each of them carries a key; an act given none lands afresh, as the
+// batch's own account says. So the advice is only ever given when every act up
+// to the failure carries one, and otherwise the refusal names the positions
+// that would be appended a second time. Telling an author to rerun a file that
+// would duplicate its own first act is worse than telling them nothing.
+func batchSubmitRefusal(err error, position int, acts []batchAct, deadline time.Duration) error {
 	if !residentclient.TimedOut(err) {
 		return err
 	}
-	if entry.IdempotencyKey != "" {
-		return fmt.Errorf("%w. The act at position %d may already have landed: the resident had %s to answer and did not. "+
-			"Run the same file again — idempotency key %q replays what landed and appends nothing — or raise --deadline",
-			err, position, deadline, entry.IdempotencyKey)
+	var unkeyed []string
+	for index := 0; index <= position && index < len(acts); index++ {
+		if acts[index].IdempotencyKey == "" {
+			unkeyed = append(unkeyed, strconv.Itoa(index))
+		}
 	}
-	return fmt.Errorf("%w. The act at position %d may already have landed: the resident had %s to answer and did not. "+
-		"It carries no idempotency_key, so running the file again would append a second copy: find that act first, "+
-		"give it a key, or raise --deadline", err, position, deadline)
+	const lost = "%w. The act at position %d may already have landed: the resident had %s to answer and did not. "
+	if len(unkeyed) == 0 {
+		return fmt.Errorf(lost+"Run the same file again — every act up to this one carries an idempotency key, "+
+			"so what landed replays and nothing is appended twice — or raise --deadline",
+			err, position, deadline)
+	}
+	if acts[position].IdempotencyKey != "" {
+		return fmt.Errorf(lost+"Do not rerun the file yet: the acts at position %s carry no idempotency_key and would land a "+
+			"second time. Look for this one under key %q, give the others keys, or raise --deadline",
+			err, position, deadline, strings.Join(unkeyed, ", "), acts[position].IdempotencyKey)
+	}
+	return fmt.Errorf(lost+"It carries no idempotency_key, so running the file again would append a second copy of it, "+
+		"and of every other keyless act at position %s: find them first, give them keys, or raise --deadline",
+		err, position, deadline, strings.Join(unkeyed, ", "))
 }
 
 // checkBatch validates the shape of every act and proves that each intra-batch

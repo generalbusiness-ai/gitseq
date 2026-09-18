@@ -46,9 +46,11 @@ func withSubmitDeadline(ctx context.Context, set *flag.FlagSet) (context.Context
 // submitDeadline answers with this invocation's deadline. A context that was
 // never given one — a test calling a helper directly, or a path that reaches a
 // submission without going through a command's flags — gets the same default
-// every caller had before the deadline could be set at all.
+// every caller had before the deadline could be set at all. There is no guard
+// against a non-positive value here: withSubmitDeadline is the only writer and
+// it refuses one, so a second check could never be shown to do anything.
 func submitDeadline(ctx context.Context) time.Duration {
-	if deadline, ok := ctx.Value(submitDeadlineKey{}).(time.Duration); ok && deadline > 0 {
+	if deadline, ok := ctx.Value(submitDeadlineKey{}).(time.Duration); ok {
 		return deadline
 	}
 	return residentclient.DefaultSubmitDeadline

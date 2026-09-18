@@ -33,11 +33,12 @@ reads the `GITSEQ_ACTOR` environment variable, and refuses to start if
 neither names an identity.
 
 The adapter takes no deadline flag, so `GITSEQ_SUBMIT_DEADLINE` is where it
-learns how long the resident has to answer a call. It is read once at startup —
-a value that is not a positive duration stops the adapter there rather than at
-the first call — and it governs every call the adapter makes to the resident,
-not only the ones that append. The default is ten seconds, and the transport
-backstop moves with it, so raising the deadline is honoured rather than cut.
+learns how long the resident has to answer a call. It is read when the adapter
+is built — a value that is not a positive duration stops it before it serves
+anything, rather than at the first call — and it governs every call the adapter
+makes to the resident, not only the ones that append. The default is ten
+seconds, and the transport backstop moves with it, so raising the deadline is
+honoured rather than cut.
 [`gs state`](../reference/gs/state.md#how-long-to-wait-for-the-resident) says
 when raising it is the right answer.
 

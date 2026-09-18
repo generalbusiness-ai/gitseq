@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
+	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -56,10 +58,6 @@ func TestSubmitDeadlineComesFromTheFlagThenTheEnvironment(t *testing.T) {
 func TestSubmitDeadlineFallsBackToTheDefault(t *testing.T) {
 	if deadline := submitDeadline(context.Background()); deadline != residentclient.DefaultSubmitDeadline {
 		t.Fatalf("deadline without a context value = %s, want %s", deadline, residentclient.DefaultSubmitDeadline)
-	}
-	stale := context.WithValue(context.Background(), submitDeadlineKey{}, time.Duration(0))
-	if deadline := submitDeadline(stale); deadline != residentclient.DefaultSubmitDeadline {
-		t.Fatalf("deadline from a zero value = %s, want the default", deadline)
 	}
 }
 
@@ -114,26 +112,59 @@ func TestSubmitRequestWaitsForThisInvocationsDeadline(t *testing.T) {
 	}
 }
 
-// A command that appends accepts the flag and refuses a value it cannot read
-// before anything is signed. This is the link between the flag and the context:
-// a command that forgot to bind it would refuse the flag as undefined, and one
-// that bound it without resolving it would accept nonsense.
+// Every command that appends has to bind the flag, not merely register it: one
+// that parsed --deadline and then submitted under the old wait would look
+// configured and behave exactly as before. The refusal is the observable end of
+// that binding, and it is asked of each of the twelve in turn, because the
+// binding is a line per command and a missing line is silent.
+func TestEveryAppendingCommandBindsItsDeadline(t *testing.T) {
+	t.Setenv(residentclient.SubmitDeadlineEnvironment, "")
+	fixture := newWorkflowFixture(t)
+	for _, command := range []struct {
+		name string
+		run  func(context.Context, []string) error
+		args []string
+	}{
+		{name: "state", run: stateCommand, args: []string{"--kind", "assert", "--text", "never signed", "--rests-on", fixture.artifact}},
+		{name: "promise", run: promiseCommand, args: []string{fixture.request}},
+		{name: "artifact", run: artifactCommand, args: []string{"--head", fixture.candidate, "--promise", fixture.promise, "spike"}},
+		{name: "review", run: reviewCommand, args: []string{"--artifact", fixture.artifact, "--promise", fixture.promise, "--verdict", "approved"}},
+		{name: "review-request", run: reviewRequestCommand, args: []string{"--head", fixture.candidate, "--to", "reviewer"}},
+		{name: "ratify", run: ratifyCommand, args: []string{fixture.artifact}},
+		{name: "supersede", run: supersedeCommand, args: []string{fixture.artifact, "--text", "withdrawn"}},
+		{name: "reassign-if-unclaimed", run: reassignIfUnclaimedCommand, args: []string{fixture.request, "--to", "reviewer"}},
+		{name: "batch", run: batchCommand, args: []string{"-"}},
+		{name: "merge", run: mergeCommand, args: []string{"--approval", fixture.artifact}},
+		{name: "land", run: landCommand, args: []string{"--approval", fixture.artifact, "--checkout", fixture.repo}},
+		{name: "publish", run: publishCommand, args: []string{}},
+	} {
+		t.Run(command.name, func(t *testing.T) {
+			arguments := append([]string{"--repo", fixture.repo, "--as", "reviewer", "--deadline", "soon"}, command.args...)
+			err := command.run(fixture.ctx, arguments)
+			if err == nil {
+				t.Fatalf("gs %s accepted an unreadable deadline", command.name)
+			}
+			if !strings.Contains(err.Error(), "--deadline") || !strings.Contains(err.Error(), "30s") {
+				t.Fatalf("gs %s did not refuse on the deadline: %v", command.name, err)
+			}
+		})
+	}
+}
+
+// A refused deadline stops the command before anything is signed, and the
+// refusal is the command's own usage error rather than a failure later on.
 func TestSubmittingCommandsRefuseAnUnreadableDeadline(t *testing.T) {
 	t.Setenv(residentclient.SubmitDeadlineEnvironment, "")
 	fixture := newWorkflowFixture(t)
-	err := stateCommand(fixture.ctx, []string{
-		"--repo", fixture.repo, "--as", "reviewer", "--kind", "assert",
-		"--text", "never signed", "--rests-on", fixture.artifact, "--deadline", "soon",
-	})
-	if err == nil || !strings.Contains(err.Error(), "--deadline") || !strings.Contains(err.Error(), "30s") {
-		t.Fatalf("state with an unreadable deadline = %v", err)
-	}
 	before := fixture.snapshot(t).Depth
-	if err := stateCommand(fixture.ctx, []string{
-		"--repo", fixture.repo, "--as", "reviewer", "--kind", "assert",
-		"--text", "never signed either", "--rests-on", fixture.artifact, "--deadline", "0s",
-	}); err == nil {
-		t.Fatal("a deadline of zero was accepted")
+	for _, value := range []string{"soon", "0s", "-1m"} {
+		err := stateCommand(fixture.ctx, []string{
+			"--repo", fixture.repo, "--as", "reviewer", "--kind", "assert",
+			"--text", "never signed", "--rests-on", fixture.artifact, "--deadline", value,
+		})
+		if err == nil {
+			t.Fatalf("state accepted %q as a deadline", value)
+		}
 	}
 	if after := fixture.snapshot(t).Depth; after != before {
 		t.Fatalf("a refused deadline still appended: depth %d -> %d", before, after)
@@ -141,24 +172,41 @@ func TestSubmittingCommandsRefuseAnUnreadableDeadline(t *testing.T) {
 }
 
 // What a caller is told after a batch act times out is the whole of the
-// recovery: the act may have landed, and whether it can be replayed depends on
-// whether it carries a key of its own.
-func TestBatchSubmitRefusalNamesTheKeyToReplayUnder(t *testing.T) {
+// recovery, and whether rerunning the file is safe depends on the acts before
+// the failure as much as on the one that failed.
+func TestBatchSubmitRefusalWeighsTheWholePrefix(t *testing.T) {
 	expired := &residentclient.TransportError{Err: context.DeadlineExceeded}
-	keyed := batchSubmitRefusal(expired, 2, batchAct{IdempotencyKey: "publish-report"}, 30*time.Second)
-	for _, want := range []string{"may already have landed", "position 2", "publish-report", "30s", "--deadline"} {
-		if !strings.Contains(keyed.Error(), want) {
-			t.Fatalf("timed-out refusal does not say %q: %v", want, keyed)
+	keyed := func(key string) batchAct { return batchAct{IdempotencyKey: key} }
+
+	// Every act up to the failure carries a key, so the file can be rerun.
+	safe := batchSubmitRefusal(expired, 2, []batchAct{keyed("a"), keyed("b"), keyed("publish-report")}, 30*time.Second)
+	for _, want := range []string{"may already have landed", "position 2", "30s", "Run the same file again", "--deadline"} {
+		if !strings.Contains(safe.Error(), want) {
+			t.Fatalf("refusal for a fully keyed prefix does not say %q: %v", want, safe)
 		}
 	}
-	if !errors.Is(keyed, context.DeadlineExceeded) {
-		t.Fatalf("timed-out refusal dropped the cause: %v", keyed)
+	if !errors.Is(safe, context.DeadlineExceeded) {
+		t.Fatalf("refusal dropped the cause: %v", safe)
 	}
 
-	unkeyed := batchSubmitRefusal(expired, 0, batchAct{}, 30*time.Second)
-	for _, want := range []string{"no idempotency_key", "second copy", "find that act first"} {
+	// The failing act carries a key, but an earlier one does not: rerunning the
+	// file would append that earlier act a second time, so the advice may not be
+	// given. This is the case that made the previous wording unsafe.
+	mixed := batchSubmitRefusal(expired, 2, []batchAct{keyed("a"), {}, keyed("publish-report")}, 30*time.Second)
+	for _, want := range []string{"Do not rerun the file", "position 1", "publish-report"} {
+		if !strings.Contains(mixed.Error(), want) {
+			t.Fatalf("refusal with a keyless act before the failure does not say %q: %v", want, mixed)
+		}
+	}
+	if strings.Contains(mixed.Error(), "Run the same file again") {
+		t.Fatalf("a file that would duplicate an earlier act was called safe to rerun: %v", mixed)
+	}
+
+	// The failing act itself carries no key.
+	unkeyed := batchSubmitRefusal(expired, 1, []batchAct{keyed("a"), {}}, 30*time.Second)
+	for _, want := range []string{"no idempotency_key", "second copy", "position 1", "find them first"} {
 		if !strings.Contains(unkeyed.Error(), want) {
-			t.Fatalf("refusal for an act with no key does not say %q: %v", want, unkeyed)
+			t.Fatalf("refusal for a keyless act does not say %q: %v", want, unkeyed)
 		}
 	}
 
@@ -166,14 +214,69 @@ func TestBatchSubmitRefusalNamesTheKeyToReplayUnder(t *testing.T) {
 	// act may have landed when the resident said it did not is worse than
 	// saying nothing.
 	refused := errors.New("rests on a retired basis")
-	if got := batchSubmitRefusal(refused, 1, batchAct{IdempotencyKey: "k"}, 30*time.Second); got.Error() != refused.Error() {
+	if got := batchSubmitRefusal(refused, 0, []batchAct{keyed("k")}, 30*time.Second); got.Error() != refused.Error() {
 		t.Fatalf("refusal was rewritten as a lost answer: %v", got)
 	}
 }
 
-// The batch has to say it, not merely be able to: a run that stops on an
-// expired deadline reports the key of the act whose fate is unknown.
+// The batch has to say it, not merely be able to — and it has to say it about
+// the file it was running. The first act lands against a real resident and the
+// second never gets an answer, so the refusal is about an act at position 1
+// whose recovery depends on the keyless act at position 0 that already landed.
+// A refusal built from the failing act alone would call this file safe to rerun.
 func TestBatchReportsTheReplayKeyWhenAnActsDeadlineExpires(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	resident, err := service.New(fixture.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := make(chan struct{})
+	var answered atomic.Int64
+	// The first submission is served; every one after it is left hanging.
+	gate := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/submit" || answered.Add(1) == 1 {
+			resident.Handler().ServeHTTP(writer, request)
+			return
+		}
+		select {
+		case <-release:
+		case <-request.Context().Done():
+		}
+	}))
+	t.Cleanup(func() { close(release); gate.Close() })
+
+	_, private, err := fixture.workspace.Actor("reviewer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	acts := []batchAct{
+		{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the act that lands", RestsOn: []string{fixture.artifact}},
+		{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the act whose answer is lost",
+			RestsOn: []string{fixture.artifact}, IdempotencyKey: "batch-deadline-probe"},
+	}
+	ctx := context.WithValue(fixture.ctx, submitDeadlineKey{}, 400*time.Millisecond)
+	report, err := runBatch(ctx, fixture.workspace, gate.URL, "reviewer", private, acts, false)
+	if err == nil {
+		t.Fatal("a batch whose act never got an answer reported success")
+	}
+	for _, want := range []string{"may already have landed", "position 1", "400ms",
+		"Do not rerun the file", "position 0", "batch-deadline-probe"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("batch refusal does not say %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "Run the same file again") {
+		t.Fatalf("a file whose first act carries no key was called safe to rerun: %v", err)
+	}
+	if report.Landed != 1 || report.Acts[0].Outcome != "landed" || report.Acts[1].Outcome != "failed" {
+		t.Fatalf("batch report = %+v", report)
+	}
+}
+
+// gs publish reads the resident's verdict on each queued act, and it advertises
+// --deadline like every other appending command. A read left on its own literal
+// would ignore the deadline the author set for the command they ran.
+func TestPublicationDecisionReadsUnderThisInvocationsDeadline(t *testing.T) {
 	fixture := newWorkflowFixture(t)
 	release := make(chan struct{})
 	stalled := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
@@ -184,25 +287,16 @@ func TestBatchReportsTheReplayKeyWhenAnActsDeadlineExpires(t *testing.T) {
 	}))
 	t.Cleanup(func() { close(release); stalled.Close() })
 
-	_, private, err := fixture.workspace.Actor("reviewer")
-	if err != nil {
-		t.Fatal(err)
-	}
-	acts := []batchAct{{
-		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the first act of the file",
-		RestsOn: []string{fixture.artifact}, IdempotencyKey: "batch-deadline-probe",
-	}}
 	ctx := context.WithValue(fixture.ctx, submitDeadlineKey{}, 200*time.Millisecond)
-	report, err := runBatch(ctx, fixture.workspace, stalled.URL, "reviewer", private, acts, false)
+	started := time.Now()
+	_, _, err := publicationDecision(ctx, fixture.workspace, stalled.URL, fixture.artifact)
 	if err == nil {
-		t.Fatal("a batch whose act never got an answer reported success")
+		t.Fatal("a resident that never answered was read as a decision")
 	}
-	for _, want := range []string{"may already have landed", "batch-deadline-probe", "200ms"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("batch refusal does not say %q: %v", want, err)
-		}
+	if !residentclient.TimedOut(err) {
+		t.Fatalf("stalled resident error = %v, want an expired deadline", err)
 	}
-	if report.Acts[0].Outcome != "failed" || report.Landed != 0 {
-		t.Fatalf("batch report = %+v", report)
+	if waited := time.Since(started); waited > 3*time.Second {
+		t.Fatalf("the read waited %s under a 200ms deadline: it kept its own literal", waited)
 	}
 }
