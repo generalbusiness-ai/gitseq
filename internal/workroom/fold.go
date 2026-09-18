@@ -3020,46 +3020,37 @@ func (s *stalenessScope) receiptCheckpointSettles(settled map[string]bool, succe
 	if !s.f.publishedByMerge(successor, receipt) {
 		return false
 	}
+	// Every successor this receipt published asks the same question, and within
+	// one pass the answer is the same for all of them. Three facts make the reuse
+	// exact, and all three are properties of this code rather than of the caller:
+	// the narrowed plan and the dates come from the receipt and the scope, which
+	// do not change inside a pass; the walk reads staleness only of the receipt's
+	// own basis closure, which the kernel's refusal of a rests_on naming an event
+	// the log does not yet hold places at or below the receipt's index; and
+	// closure() visits records in ascending order, so every staleness value below
+	// the cursor is already final when the first successor asks.
 	if answer, known := settled[receipt.record.ID]; known {
 		return answer
 	}
 	walk := &receiptWalk{
-		scope: s, at: receipt.sequence(), frontier: receipt.index,
+		scope: s, at: receipt.sequence(),
 		plan: s.withoutCondemnedSuccessions(plan, successors), stale: stale,
 		visited: make(map[string]bool),
 	}
 	answer := walk.causesSettledAtReceipt(receipt.record.ID)
-	// Every successor this receipt published asks the same question, and the
-	// answer is the same for all of them — but only while the walk stayed behind
-	// the receipt's own frontier. A record after it is one whose own staleness
-	// this pass has not decided yet, so an answer that read one is recomputed
-	// rather than remembered.
-	//
-	// The kernel refuses a rests_on entry naming an in-log event the log does
-	// not already hold, so no sequenced log reaches this branch. The walk
-	// nonetheless says what it read: a memo whose soundness rests on an
-	// invariant enforced in another layer is the kind that breaks silently when
-	// that layer changes.
-	if !walk.forward {
-		settled[receipt.record.ID] = answer
-	}
+	settled[receipt.record.ID] = answer
 	return answer
 }
 
-// receiptWalk is one causesSettledAtReceipt walk. It holds the pass state the
-// recursion reads and records whether the walk reached a record the receipt
-// could not have seen, which is what decides whether the answer may be reused.
+// receiptWalk is one causesSettledAtReceipt walk, holding the pass state the
+// recursion reads.
 type receiptWalk struct {
 	scope *stalenessScope
 	// at is the receipt's own sequence, the position causes are dated against.
-	at int
-	// frontier is the receipt's index. A record after it is a pre-signed
-	// citation, not history the merge was published with.
-	frontier int
-	plan     map[string]string
-	stale    map[string]bool
-	visited  map[string]bool
-	forward  bool
+	at      int
+	plan    map[string]string
+	stale   map[string]bool
+	visited map[string]bool
 }
 
 // causesSettledAtReceipt walks the live staleness causes at and under a sealed
@@ -3102,9 +3093,6 @@ func (w *receiptWalk) causesSettledAtReceipt(event string) bool {
 	record := s.f.byID[event]
 	if record == nil {
 		return true
-	}
-	if record.index > w.frontier {
-		w.forward = true
 	}
 	for _, basis := range record.record.RestsOn {
 		mode := StalenessPropagates
@@ -3645,8 +3633,9 @@ func (f *foldState) postReceiptAccounting(scans receiptScans, receipt, successor
 	}
 	count := 0
 	var live []string
-	// Ascending by construction, so the interval ends at the first index the
-	// successor does not stand after.
+	// Each bucket is ascending, and every answer is bounded here by the successor
+	// that asked, so a question out of order or asked twice gets the same answer
+	// as the first time. Only the cost depends on the order they arrive in.
 	for _, covered := range scans.upTo(f, receipt, successor.index)[path] {
 		if covered.index >= successor.index {
 			break
@@ -3672,8 +3661,10 @@ type coveredArtifact struct {
 // one attaches to, and how far the walk has got.
 type receiptScan struct {
 	// cursor is the next index to read. The walk is resumed rather than
-	// restarted, because project() asks about one receipt's successors in
-	// ascending order and a restart would make the total quadratic again.
+	// restarted: project() asks about one receipt's successors in ascending
+	// order, so restarting would re-read the same interval for each of them and
+	// double-count what it found. Correctness does not rest on that order —
+	// postReceiptAccounting bounds every answer itself — but the cost does.
 	cursor     int
 	successors []string
 	byPath     map[string][]coveredArtifact

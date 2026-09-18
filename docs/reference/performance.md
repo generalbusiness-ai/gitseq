@@ -605,8 +605,8 @@ projection lane, one run after the other:
 
 | Log | Events | Artifacts | Before | After |
 |---|---|---|---|---|
-| Artifact-heavy workroom | 7,029 | 5,091 | 18.10 s | 2.11 s and 2.21 s |
-| This repository | 23,945 | 6,610 | 21.70 s | 13.32 s |
+| Artifact-heavy workroom | 7,029 | 5,091 | 18.10 s | 2.06 s and 2.07 s |
+| This repository | 23,945 | 6,610 | 21.70 s | 13.03 s |
 
 The projection each run produced is byte-identical to the one the previous
 implementation produced, compared as 25 MB and 52 MB of JSON.

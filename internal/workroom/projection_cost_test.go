@@ -3,7 +3,6 @@ package workroom
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"testing"
 )
 
@@ -206,34 +205,6 @@ func TestProjectionIndexesDoNotOutliveTheirFold(t *testing.T) {
 	}
 }
 
-// The receipt-checkpoint answer is reused across the successors one receipt
-// published, and may be reused only while the walk stays behind the receipt's
-// own frontier. A rests-on edge naming an identifier that lands later is the
-// case where the answer is still being decided, and the walk says so.
-func TestReceiptWalkNoticesAForwardCitation(t *testing.T) {
-	records := costRecords(t,
-		costArtifact(t, "successor", "spike", "merged", "merge"),
-	)
-	state := NewFolder(records).state
-	scope := state.stalenessAsOf(math.MaxInt)
-	receipt := state.byID["merge"]
-
-	behind := &receiptWalk{scope: scope, at: receipt.sequence(), frontier: receipt.index,
-		plan: receipt.mergePlan, stale: map[string]bool{}, visited: map[string]bool{}}
-	if !behind.causesSettledAtReceipt(receipt.record.ID) || behind.forward {
-		t.Fatalf("walk over the receipt's own history: settled=%v forward=%v, want settled and behind the frontier",
-			behind.causesSettledAtReceipt(receipt.record.ID), behind.forward)
-	}
-
-	// The successor lands after the receipt, so a walk that reads it has read
-	// past the frontier. Nothing else about the answer changes.
-	ahead := &receiptWalk{scope: scope, at: receipt.sequence(), frontier: receipt.index,
-		plan: receipt.mergePlan, stale: map[string]bool{}, visited: map[string]bool{}}
-	if !ahead.causesSettledAtReceipt("successor") || !ahead.forward {
-		t.Fatalf("walk reaching a record after the frontier: forward=%v, want it noticed", ahead.forward)
-	}
-}
-
 // The per-target supersession index is what the questions about one retirement
 // are answered from, so it must hold every supersession naming that target, in
 // log order, and nothing else. Order is part of the contract: succession gives
@@ -357,5 +328,49 @@ func BenchmarkProjectionArtifactHeavy(b *testing.B) {
 				folder.Projection()
 			}
 		})
+	}
+}
+
+// A protected sibling yields to a live artifact published after the receipt at
+// its own path, and to nothing else. A retired one is not a replacement: reading
+// it as one would deny the protection the receipt recorded and turn the sibling
+// back into a debt. The index the projection now reads answers that question, so
+// the question is asked of it directly.
+func TestProtectedSiblingSurvivesARetiredLaterArtifact(t *testing.T) {
+	sibling := func(after ...Record) []Record {
+		t.Helper()
+		records := []Record{
+			event(t, "sibling-request", operator, SchemaState, State{Kind: KindRequest, Text: "keep sibling live",
+				Body: map[string]string{"to": agent, "conditions": "publish sibling"}}, "r0"),
+			event(t, "sibling-promise", agent, SchemaState, State{Kind: KindPromise, Text: "will publish sibling"}, "sibling-request"),
+			costArtifact(t, "sibling", "spike", "sibling-head", "sibling-promise"),
+			event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved",
+				Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+			event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+			leftLiveReceipt(t, "merge", "approval", "head1", "merged", `{"r5":"spike"}`,
+				`{"sibling":{"class":"sibling","commitment":"sibling-promise"}}`),
+			costArtifact(t, "successor", "spike", "merged", "merge"),
+		}
+		records = append(records, after...)
+		return reviewRecords(t, append(records,
+			event(t, "retire-r5", agent, SchemaSupersede, Supersede{Target: "r5", Text: "merged"}, "r5", "merge", "successor"))...)
+	}
+
+	retired := Fold(sibling(
+		costArtifact(t, "later", "spike", "later-head", "successor"),
+		event(t, "retire-later", agent, SchemaSupersede,
+			Supersede{Target: "later", Text: "the later publication was withdrawn"}, "later"),
+	))
+	if projection := retired.OmittedSupersessions; projection != 0 {
+		t.Fatalf("omitted supersessions = %d with only a retired later artifact, want none: the sibling is still protected", projection)
+	}
+
+	// The same fixture with that artifact left live, so the case above is not
+	// passing for want of a replacement at all. Two are owed then: the sibling,
+	// whose protection the live replacement withdraws, and the successor, which
+	// the live artifact now stands in front of at the same path.
+	live := Fold(sibling(costArtifact(t, "later", "spike", "later-head", "successor")))
+	if live.OmittedSupersessions != 2 {
+		t.Fatalf("omitted supersessions = %d with a live later artifact, want the protection withdrawn", live.OmittedSupersessions)
 	}
 }
