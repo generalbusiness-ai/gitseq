@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/statusview/until_test.go","body":{"commit":"ccd161c6caa71f800bfdf17796d11bb3419f181f","path":"internal/statusview/until_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:01c90cca3c31ac8419b3bef4578dba371d959ce2","text":"Merge retired a covered predecessor; the successor is at SKILL.md."}
