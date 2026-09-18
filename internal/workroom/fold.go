@@ -3022,13 +3022,18 @@ func (s *stalenessScope) receiptCheckpointSettles(settled map[string]bool, succe
 	}
 	// Every successor this receipt published asks the same question, and within
 	// one pass the answer is the same for all of them. Three facts make the reuse
-	// exact, and all three are properties of this code rather than of the caller:
+	// exact, and none of them is a property of the order the successors ask in:
 	// the narrowed plan and the dates come from the receipt and the scope, which
 	// do not change inside a pass; the walk reads staleness only of the receipt's
-	// own basis closure, which the kernel's refusal of a rests_on naming an event
-	// the log does not yet hold places at or below the receipt's index; and
-	// closure() visits records in ascending order, so every staleness value below
-	// the cursor is already final when the first successor asks.
+	// own basis closure, which lies at or below the receipt's index because the
+	// kernel refuses a rests_on naming an event the log does not yet hold — that
+	// one is a property of internal/kernel, not of this file; and closure()
+	// visits records in ascending order, so every staleness value below the
+	// cursor is already final when the first successor asks.
+	//
+	// The key is the receipt, and it has to be: two receipts in one pass can
+	// answer differently, and a reuse that ignored which one asked would hand a
+	// settled merge's answer to one the world overtook afterwards.
 	if answer, known := settled[receipt.record.ID]; known {
 		return answer
 	}

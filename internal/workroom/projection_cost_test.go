@@ -374,3 +374,70 @@ func TestProtectedSiblingSurvivesARetiredLaterArtifact(t *testing.T) {
 		t.Fatalf("omitted supersessions = %d with a live later artifact, want the protection withdrawn", live.OmittedSupersessions)
 	}
 }
+
+// costRound is one merge in a log that holds several: a candidate, its review
+// chain, a receipt that publishes one successor above the file it changed, and
+// the retirement of the candidate the merge replaced. The promise the approval
+// rests on is withdrawn either before the receipt or after it, which is the one
+// fact that decides whether the receipt's checkpoint settles: a cause dated at
+// or before the merge was news the merge was published with, and a later one was
+// not.
+func costRound(t testing.TB, round int, settled bool) []Record {
+	t.Helper()
+	name := func(prefix string) string { return fmt.Sprintf("%s:%d", prefix, round) }
+	directory := fmt.Sprintf("spike/round%02d", round)
+	file := directory + "/file00.ts"
+	candidate, promise := name("candidate"), name("promise")
+	approval, receipt := name("approval"), name("merge")
+	withdraw := event(t, name("retire-promise"), other, SchemaSupersede,
+		Supersede{Target: promise, Text: "the review promise was withdrawn"}, promise)
+	records := []Record{
+		costArtifact(t, candidate, file, name("head"), "r0"),
+		event(t, name("request"), operator, SchemaState, State{Kind: KindRequest, Text: "review it",
+			Body: map[string]string{"to": other, "conditions": "exact head"}}, candidate),
+		event(t, promise, other, SchemaState, State{Kind: KindPromise, Text: "will review"}, name("request")),
+		event(t, approval, other, SchemaState, State{Kind: KindReport, Text: "approved",
+			Body: map[string]string{"verdict": "approved", "head": name("head"), "artifact": candidate}}, promise, candidate),
+		event(t, name("approval-ratified"), operator, SchemaRatify, Ratify{Target: approval}, approval),
+	}
+	if settled {
+		records = append(records, withdraw)
+	}
+	records = append(records,
+		event(t, receipt, agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": approval, "merge_candidate": name("head"), "merge_target_pre_head": "base",
+			"merge_head": name("merged"), "merge_retirements": fmt.Sprintf("{%q:%q}", candidate, directory),
+			"merge_successors": fmt.Sprintf("[%q]", directory), "merge_changed_paths": fmt.Sprintf("[%q]", file),
+			"merge_left_live": `{}`,
+		}}, approval),
+		costArtifact(t, name("successor"), directory, name("merged"), receipt))
+	if !settled {
+		records = append(records, withdraw)
+	}
+	return append(records, event(t, name("retire-candidate"), agent, SchemaSupersede,
+		Supersede{Target: candidate, Text: "the merge replaced the reviewed candidate"},
+		candidate, receipt, name("successor")))
+}
+
+// One staleness pass, two receipts, opposite answers. The checkpoint answer is
+// reused across the successors of one receipt, and a receipt may only ever
+// answer for its own: the first merge here was published with its cause in hand
+// and its successor begins a fresh epoch, while the second was overtaken
+// afterwards and its successor is stale from birth. A reuse that ignored which
+// receipt asked would hand the first merge's answer to the second and call a
+// stale successor current.
+func TestCheckpointAnswersPerReceiptWithinOnePass(t *testing.T) {
+	records := reviewRecords(t, append(costRound(t, 0, true), costRound(t, 1, false)...)...)
+	projection := Fold(records)
+	for _, round := range []int{0, 1} {
+		if !statementByEvent(t, projection, fmt.Sprintf("merge:%d", round)).Stale {
+			t.Fatalf("inert fixture: receipt of round %d is not stale, so its checkpoint decides nothing", round)
+		}
+	}
+	if fresh := artifactByEvent(t, projection, "successor:0"); fresh.Stale {
+		t.Fatalf("successor of the settled merge is stale: %+v", fresh)
+	}
+	if overtaken := artifactByEvent(t, projection, "successor:1"); !overtaken.Stale {
+		t.Fatalf("successor of the merge that was overtaken afterwards is fresh: %+v", overtaken)
+	}
+}
