@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/main.go","body":{"commit":"ccd161c6caa71f800bfdf17796d11bb3419f181f","path":"cmd/gs/main.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/usage.go","body":{"commit":"ccd161c6caa71f800bfdf17796d11bb3419f181f","path":"cmd/gs/usage.go"}}
