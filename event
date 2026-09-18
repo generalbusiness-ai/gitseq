@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3a650b6fcb55d8ae03f1455d3e94921db2c189b2","text":"Merge retired a covered predecessor; the successor is at cmd/gs/land.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:3d6078118d19afa2c6fabcb5b6a52bd2828eeb80","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/ratify.md."}
