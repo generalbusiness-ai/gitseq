@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:df9d8fc5edf0d2ce69e504bd72e354a4b79b5900","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:e3cd1f410afbbdaadf6aee5dce3e2201b94f6dd5","text":"Merge retired a covered predecessor; the successor is at docs/how-to/configure-an-agent.md."}
