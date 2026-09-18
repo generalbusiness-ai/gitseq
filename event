@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:896d2d929bca09532b2fc17e83016e7eae1e44f7","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-github/ambient_git_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8c873b3416e3518c9bd58738b5b5c50d895c50ee","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/land.md."}
