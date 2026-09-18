@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:01c90cca3c31ac8419b3bef4578dba371d959ce2","text":"Merge retired a covered predecessor; the successor is at SKILL.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0a4a1c0b90bb2617a0e57baefb7bb79ec18432ca","text":"Merge retired a covered predecessor; the successor is at cmd/gs/wait.go."}
