@@ -850,6 +850,12 @@ func (s *mcpServer) attend(ctx context.Context, repo string) (*room, error) {
 }
 
 func (s *mcpServer) attendAs(ctx context.Context, repo, actor string) (*room, error) {
+	// Attaching announces presence and takes a lease, so an adapter the
+	// environment made impossible must stop here and not only at run: the
+	// refusal has to come before the workroom hears from it, not after.
+	if s.startupRefusal != nil {
+		return nil, s.startupRefusal
+	}
 	current, err := s.attachAs(ctx, repo, actor)
 	if err != nil {
 		return nil, err

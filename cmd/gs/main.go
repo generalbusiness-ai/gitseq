@@ -2465,9 +2465,13 @@ func batchSubmitRefusal(err error, position int, acts []batchAct, deadline time.
 			"second time. Look for this one under key %q, give the others keys, or raise --deadline",
 			err, position, deadline, strings.Join(unkeyed, ", "), acts[position].IdempotencyKey)
 	}
+	if len(unkeyed) == 1 {
+		return fmt.Errorf(lost+"It carries no idempotency_key, so running the file again would append a second copy of it: "+
+			"find it first, give it a key, or raise --deadline", err, position, deadline)
+	}
 	return fmt.Errorf(lost+"It carries no idempotency_key, so running the file again would append a second copy of it, "+
-		"and of every other keyless act at position %s: find them first, give them keys, or raise --deadline",
-		err, position, deadline, strings.Join(unkeyed, ", "))
+		"and of the other keyless acts at positions %s: find them first, give them keys, or raise --deadline",
+		err, position, deadline, strings.Join(unkeyed[:len(unkeyed)-1], ", "))
 }
 
 // checkBatch validates the shape of every act and proves that each intra-batch

@@ -34,8 +34,9 @@ neither names an identity.
 
 The adapter takes no deadline flag, so `GITSEQ_SUBMIT_DEADLINE` is where it
 learns how long the resident has to answer a call. It is read when the adapter
-is built — a value that is not a positive duration stops it before it serves
-anything, rather than at the first call — and it governs every call the adapter
+is built — a value that is not a positive duration stops it before it attaches
+to a workroom, so it neither announces presence nor takes a lease, rather than
+failing at the first call — and it governs every call the adapter
 makes to the resident, not only the ones that append. The default is ten
 seconds, and the transport backstop moves with it, so raising the deadline is
 honoured rather than cut.

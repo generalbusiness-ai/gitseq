@@ -202,11 +202,24 @@ func TestBatchSubmitRefusalWeighsTheWholePrefix(t *testing.T) {
 		t.Fatalf("a file that would duplicate an earlier act was called safe to rerun: %v", mixed)
 	}
 
-	// The failing act itself carries no key.
-	unkeyed := batchSubmitRefusal(expired, 1, []batchAct{keyed("a"), {}}, 30*time.Second)
-	for _, want := range []string{"no idempotency_key", "second copy", "position 1", "find them first"} {
-		if !strings.Contains(unkeyed.Error(), want) {
-			t.Fatalf("refusal for a keyless act does not say %q: %v", want, unkeyed)
+	// The failing act itself carries no key, and it is the only one: it is named
+	// once, as itself, and not also as one of the others.
+	alone := batchSubmitRefusal(expired, 1, []batchAct{keyed("a"), {}}, 30*time.Second)
+	for _, want := range []string{"no idempotency_key", "second copy of it", "position 1", "find it first"} {
+		if !strings.Contains(alone.Error(), want) {
+			t.Fatalf("refusal for the only keyless act does not say %q: %v", want, alone)
+		}
+	}
+	if strings.Contains(alone.Error(), "other keyless") {
+		t.Fatalf("the failing act was listed among the other keyless acts: %v", alone)
+	}
+
+	// Several keyless acts: the failing one is named as itself and the rest by
+	// position, so the author knows how many copies a rerun would make.
+	several := batchSubmitRefusal(expired, 2, []batchAct{{}, {}, {}}, 30*time.Second)
+	for _, want := range []string{"second copy of it", "other keyless acts at positions 0, 1", "find them first"} {
+		if !strings.Contains(several.Error(), want) {
+			t.Fatalf("refusal for several keyless acts does not say %q: %v", want, several)
 		}
 	}
 
@@ -254,12 +267,17 @@ func TestBatchReportsTheReplayKeyWhenAnActsDeadlineExpires(t *testing.T) {
 		{Verb: app.VerbState, Kind: workroom.KindAssert, Text: "the act whose answer is lost",
 			RestsOn: []string{fixture.artifact}, IdempotencyKey: "batch-deadline-probe"},
 	}
-	ctx := context.WithValue(fixture.ctx, submitDeadlineKey{}, 400*time.Millisecond)
+	// The deadline is generous because act 0 has to succeed under it: signing,
+	// folding and a compare-and-swap, on whatever the machine is doing at the
+	// time. A lane about residents being slower than a fixed short wait has no
+	// business assuming one is fast. Only the stalled act spends the whole
+	// budget, so the cost of being generous is one wait, once.
+	ctx := context.WithValue(fixture.ctx, submitDeadlineKey{}, 5*time.Second)
 	report, err := runBatch(ctx, fixture.workspace, gate.URL, "reviewer", private, acts, false)
 	if err == nil {
 		t.Fatal("a batch whose act never got an answer reported success")
 	}
-	for _, want := range []string{"may already have landed", "position 1", "400ms",
+	for _, want := range []string{"may already have landed", "position 1", "5s",
 		"Do not rerun the file", "position 0", "batch-deadline-probe"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("batch refusal does not say %q: %v", want, err)

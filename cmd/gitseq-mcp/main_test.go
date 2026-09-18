@@ -2335,6 +2335,29 @@ func TestAdapterTakesItsDeadlineFromTheEnvironment(t *testing.T) {
 	}
 }
 
+// Attaching announces presence and takes a lease in the workroom, so an adapter
+// the environment made impossible has to stop before that and not merely before
+// it serves its first call. Otherwise the room hears from an adapter that is
+// about to refuse to start.
+func TestAdapterRefusesBeforeAnnouncingItself(t *testing.T) {
+	t.Setenv(residentclient.SubmitDeadlineEnvironment, "eventually")
+	workspace, _ := signedWorkspace(t, 1)
+	server := newServer("human", workspace.Repo)
+	if server.startupRefusal == nil {
+		t.Fatal("inert fixture: the adapter accepted an unreadable deadline")
+	}
+	room, err := server.attend(context.Background(), workspace.Repo)
+	if err == nil || !strings.Contains(err.Error(), residentclient.SubmitDeadlineEnvironment) {
+		t.Fatalf("attend with an unreadable deadline = %v, want a refusal naming the variable", err)
+	}
+	if room != nil {
+		t.Fatal("an adapter that refused to start attached to a workroom anyway")
+	}
+	if len(server.byPath) != 0 || len(server.byCommonDir) != 0 {
+		t.Fatalf("an adapter that refused to start holds %d rooms", len(server.byPath)+len(server.byCommonDir))
+	}
+}
+
 // The backstop exists to outlast the deadlines the policy hands out. A duration
 // near the maximum used to wrap it to a negative one, which net/http reads as no
 // timeout at all: the raised backstop became no backstop.
