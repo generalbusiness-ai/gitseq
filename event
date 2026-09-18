@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/residentclient/client.go","body":{"commit":"5b54561d523099fae8536a35fca945755386e82c","path":"internal/residentclient/client.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/residentclient/deadline_test.go","body":{"commit":"5b54561d523099fae8536a35fca945755386e82c","path":"internal/residentclient/deadline_test.go"}}
