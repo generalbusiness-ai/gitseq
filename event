@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:42e5fb97eea35153b7035ab4bf4bbac05d7f72b2","text":"Merge retired a covered predecessor; the successor is at docs/reference/gs/batch.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:495faace9dc3cfe588a7a6b2d16fae9b8b681f18","text":"Merge retired a covered predecessor; the successor is at cmd/gs/promise.go."}
