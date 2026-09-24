@@ -16,10 +16,10 @@ those rest on, and so down to the seed.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 
-The event is a **positional argument**, and exactly one is required. It takes
-a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well
-as the canonical identifier, resolved against the projection this command has
-already folded. This command records nothing.
+The command takes the event as a **positional argument**, and requires exactly
+one. It takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary)
+as well as the canonical identifier, and resolves it against the projection it
+has already folded. This command records nothing.
 
 ## Example
 
@@ -51,35 +51,35 @@ git:sha1:…#git:sha1:<report>
 
 ## Reading it
 
-Indentation is depth. An event reached by more than one path is printed
-once in full and then marked `(already shown)`, so the output stays
-finite on a graph that is not a tree.
+Indentation shows depth. The command prints an event reached by more than
+one path once in full and then marks it `(already shown)`, so the output
+stays finite on a graph that does not form a tree.
 
 This works in a fresh clone with no service and no local history beyond
-the fetched sequence. It is the command an auditor uses to ask *what is
-this claim standing on?*
+the fetched sequence. An auditor uses this command to ask *what does this
+claim stand on?*
 
 ## One event, every hop
 
-The walk is complete and it is per event: it starts where you point it and
-follows every basis it can resolve. It does not filter by kind, so an
-artifact's chain and a request's chain are shown the same way.
+The walk misses nothing and runs per event: it starts where you point it and
+follows every basis it can resolve. It does not filter by kind, so it shows
+an artifact's chain and a request's chain the same way.
 
-The population-wide version of the same question — *which artifacts still
-anchor to this path, however many hops away* — is
-[`gs artifacts --reaches <path>`](artifacts.md). It follows artifact
+[`gs artifacts --reaches <path>`](artifacts.md) answers the population-wide
+version of the same question — *which artifacts still anchor to this path,
+however many hops away*. It follows artifact
 provenance only, and answers about every artifact in the log at once
 rather than about one event.
 
 ## What it does not tell you
 
-It reports structure, not judgement. A basis appearing here does not mean
-it was effective, live, or relevant — only that the author cited it.
+It reports structure, not judgement. A basis appearing here does not show
+that it had effect, liveness, or relevance — only that the author cited it.
 Cross-read with [`gs status`](status.md) for verdicts and staleness.
 
-A basis that does not resolve simply does not appear. That is the failure
-mode of a mistyped citation: the act stands, and its intended support is
-silently absent. See
+A basis that does not resolve simply does not appear. That describes the failure
+mode of a mistyped citation: the act stands, and its intended support
+silently goes missing. See
 [Event identifiers](../event-identifiers.md).
 
 ## See also

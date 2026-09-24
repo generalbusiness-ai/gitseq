@@ -8,8 +8,8 @@ rests_on:
 
 # `gs ratify`
 
-Appends a ratification of one target event. Whether it confers anything
-is decided by the fold, from who signed it and what the target is.
+Appends a ratification of one target event. The fold decides whether it
+confers anything, from its signer and its target.
 
 ## Flags
 
@@ -17,14 +17,14 @@ is decided by the fold, from who signed it and what the target is.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The ratifying actor. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a cold or loaded resident, or one folding a large log; the command refuses any value other than a positive duration before it signs anything. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
-The target event is a **positional argument**, and flag parsing stops at
-the first positional. Put every flag before it, or the flags after it are
-read as further arguments and the command fails.
+The command takes the target event as a **positional argument**, and flag
+parsing stops at the first positional. Put every flag before it, or the
+command reads the flags after it as further arguments and fails.
 
 The target takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary): the `#N` record number a display prints, or
 an unambiguous prefix or suffix of the event hash, as well as the canonical
@@ -53,8 +53,8 @@ gs ratify --repo "$REPO" --as alice "$REPORT"
 
 ## Refused before signing
 
-Before anything is signed, this command asks the fold what it would decide
-about the ratification, and refuses when the answer is not effective: an
+Before signing anything, this command asks the fold what it would decide
+about the ratification, and refuses when the answer falls short of effective: an
 unknown target, a record the fold refused, a retired one, a kind nobody may
 ratify, a role this actor does not hold.
 
@@ -65,15 +65,15 @@ file it as written with --no-preflight
 ```
 
 [Refused before signing](state.md#refused-before-signing) states the whole
-rule: the reason is the fold's own, the fold decides again at sequencing,
-`--no-preflight` files the act as written, and four cases are left to the fold
-with no refusal here — including an exact retry under an `--idempotency-key`
-this actor already holds, which replays the accepted event however far the
-world has moved since.
+rule: the reason comes from the fold itself, the fold decides again at
+sequencing, `--no-preflight` files the act as written, and this command leaves
+four cases to the fold with no refusal here — including an exact retry under
+an `--idempotency-key` this actor already holds, which replays the accepted
+event however far the world has moved since.
 
 ## Who may ratify what
 
-Authority is target-specific:
+Authority depends on the target:
 
 | Target | Who confers force |
 |---|---|
@@ -81,42 +81,42 @@ Authority is target-specific:
 | An `assert`, `propose`, or governance statement | An actor holding `ratifier`. |
 | A `roster` grant | An actor holding the target-class authority: `operator` for an operator grant, otherwise `ratifier`. |
 
-Human or agent is an identity kind, not an authority test. An agent with
+Human or agent names an identity kind, not an authority test. An agent with
 a live `ratifier` grant may ratify.
 
 The beneficiary of an authority grant may neither author nor ratify that
-grant. Membership grants are separate from this rule. Report satisfaction
+grant. Membership grants fall outside this rule. Report satisfaction
 also remains separate: only the originating requester may ratify a report.
 
 An assigned implementation that reaches Git does not use this command for a
 second completion judgement. Its exact-head artifact reports the work, and the
 sealed approved merge closes the implementation commitment. The review
-approval is still explicitly ratified before that merge. Explicit reports for
-work that does not merge continue to use the rule above.
+requester still explicitly ratifies the review approval before that merge.
+Explicit reports for work that does not merge continue to use the rule above.
 
-You never ratify your own report. That is the point of the work loop:
-satisfaction is judged by whoever asked.
+You never ratify your own report. The work loop exists for exactly that:
+whoever asked judges satisfaction.
 
 ## Strictness
 
-`ratify` is the one act that refuses a surplus citation. Its `rests_on`
-must be the target and nothing else, so it cannot be dressed up as
-resting on anything more.
+Only `ratify` refuses a surplus citation. Its `rests_on` must name the
+target and nothing else, so nobody can dress it up as resting on anything
+more.
 
-## Attempts are kept
+## The record keeps attempts
 
-An unauthorized ratification that reaches the log is not an error. It is
-appended, judged ineffective, and listed under **Attempts** in
-[`gs status`](status.md), permanently. Read current state before retrying; do
-not retry blindly.
+An unauthorized ratification that reaches the log does not count as an error.
+It lands, the fold judges it ineffective, and [`gs status`](status.md) lists
+it under **Attempts**, permanently. Read current state before retrying; do not
+retry blindly.
 
-This command refuses most of those attempts before they are signed, so fewer
-of them reach the log at all — see
-[Refused before signing](#refused-before-signing). The ones that still land are
-the ones it did not judge: an act filed with `--no-preflight`, a retry under a
-key this actor already holds, an act whose world moved between the check and
-the sequencer, and an act filed by a surface that makes no such check. The
-record of an attempt is permanent either way.
+This command refuses most of those attempts before signing them, so fewer of
+them reach the log at all — see
+[Refused before signing](#refused-before-signing). The ones that still land
+come from cases it did not judge: an act filed with `--no-preflight`, a retry
+under a key this actor already holds, an act whose world moved between the
+check and the sequencer, and an act filed by a surface that makes no such
+check. The record of an attempt stays permanent either way.
 
 ## See also
 

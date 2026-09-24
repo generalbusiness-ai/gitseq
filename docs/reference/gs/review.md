@@ -10,10 +10,10 @@ rests_on:
 # `gs review`
 
 Signs a review report that names one immutable commit, after checking
-that the reviewer really was looking at it.
+that the reviewer really looked at it.
 
-This is the enforced verdict boundary. A review of "the branch" is a
-review of nothing in particular, because the branch can move afterwards.
+This command enforces the verdict boundary. A review of "the branch"
+reviews nothing in particular, because the branch can move afterwards.
 
 ## Flags
 
@@ -22,26 +22,26 @@ review of nothing in particular, because the branch can move afterwards.
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The reviewing actor. |
 | `--checkout` | *(required)* | The working tree the reviewer examined. |
-| `--artifact` | *(required)* | An artifact standing at the reviewed head. Repeat it to sign the whole set you read: the first is the artifact the verdict names, and every citation bounds what a later [`gs merge`](merge.md) receipt may retire. Each must be live and stand at the same head. |
+| `--artifact` | *(required)* | An artifact standing at the reviewed head. Repeat it to sign the whole set you read: the verdict names the first, and every citation bounds what a later [`gs merge`](merge.md) receipt may retire. Each must remain live and stand at the same head. |
 | `--promise` | *(required)* | The reviewer's own promise to review. |
 | `--verdict` | *(required)* | `approved` or `changes-requested`. |
 | `--text` | *(required, or `--text-file`)* | The review itself, typed on the command line. |
 | `--text-file` | | The review, read from this file instead. Give one of the two, never both; the contents become the report text as written, apart from trailing whitespace. |
-| `--implementation` | | An implementation request, or its exact promise or report, repeatable. Disambiguates the lifecycle of a cited report when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the first selected report must be the primary. A selector never narrows the delivery: every other cited artifact that reports a commitment still joins the resolved set, with its target and hold, exactly as it would with no selector. |
-| `--self-initiated` | | The adopted decision a self-initiated primary rests on directly: a ratified proposal, or a satisfied authority-bearing request. Without it, an artifact no commitment reports is refused, never assumed independent. |
-| `--evidence-only` | | The primary was filed by its performer straight against a request that owes no Git artifact. The verdict is valid and not mergeable. |
+| `--implementation` | | An implementation request, or its exact promise or report, repeatable. Disambiguates the lifecycle of a cited report when the primary alone would not say. Every selected implementation must have an effective reporting artifact at this head inside the cited set, and the primary must serve as the first selected report. A selector never narrows the delivery: every other cited artifact that reports a commitment still joins the resolved set, with its target and hold, exactly as it would with no selector. |
+| `--self-initiated` | | The adopted decision a self-initiated primary rests on directly: a ratified proposal, or a satisfied authority-bearing request. Without it, the command refuses an artifact no commitment reports; it never assumes that artifact independent. |
+| `--evidence-only` | | Its performer filed the primary straight against a request that owes no Git artifact. The verdict counts as valid, and no merge can use it. |
 | `--prepare` | | Read-only. Resolves the binding for the same scope inputs and prints its explanation; signs nothing, reserves nothing, and needs no `--verdict` or `--text`. Filing re-resolves everything whether or not this ran. |
-| `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane are head news: the command refuses until you acknowledge exactly that set, once each. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. News the verdict already cites counts once and needs no separate flag. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--ack-head-news` | | An event identifier, repeatable. Durable statements sequenced after the review request that name this head or lane count as head news: the command refuses until you acknowledge exactly that set, once each. The signed body records every acknowledgment, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; the body alone acknowledges a request or promise, because a report's request and promise bases name the one commitment it answers. News the verdict already cites counts once and needs no separate flag. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a cold or loaded resident, or one folding a large log; the command refuses a value other than a positive duration before signing anything. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 
 It takes no positional arguments.
 
 `--artifact`, `--promise`, `--ack-head-news`, `--implementation` and
 `--self-initiated` each take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
-identifier. The whole citation set of one verdict is resolved against one
-verified event set, so every reference this command signs was read from one
+identifier. The command resolves the whole citation set of one verdict against
+one verified event set, so it reads every reference it signs from one
 world, and the verdict signs canonical identifiers.
 
 ## Example
@@ -87,30 +87,30 @@ gs review --repo "$REPO" --as carol --checkout "$REPO" \
 
 ## Writing the review to a file
 
-A review is formatted text: headings, tables, quoted findings, code. Passing
-that through `--text` on a command line means shell quoting, escaped newlines
-and truncated pastes, and the workroom then holds a mangled verdict. Write the
-review to a file and name it with `--text-file`, as the example above does.
-`--text` is still there for the one-line verdict that needs no file.
+A review contains formatted text: headings, tables, quoted findings, code.
+Passing that through `--text` on a command line means shell quoting, escaped
+newlines and truncated pastes, and the workroom then holds a mangled verdict.
+Write the review to a file and name it with `--text-file`, as the example above
+does. `--text` still serves the one-line verdict that needs no file.
 
 The file's contents become the report text exactly as written, apart from
-trailing whitespace, which is trimmed. Nothing about how the text is signed or
-displayed changes.
+trailing whitespace, which the command trims. Nothing changes about how the
+command signs or displays the text.
 
-The two flags are exclusive, judged by presence rather than value, and filing
-a verdict needs one of them. Each of these is refused before signing, and the
-message names the flag:
+The two flags exclude each other, judged by presence rather than value, and
+filing a verdict needs one of them. The command refuses each of these before
+signing, and the message names the flag:
 
 | what you gave | refusal |
 |---|---|
 | both `--text` and `--text-file`, even with one of them empty | `--text and --text-file cannot both be given` |
 | neither, without `--prepare` | `--text or --text-file is required` |
-| a file that is empty or only whitespace | `--text-file <path> is empty` |
-| a path that cannot be read | `--text-file <path>: <the read error>` |
+| an empty or whitespace-only file | `--text-file <path> is empty` |
+| an unreadable path | `--text-file <path>: <the read error>` |
 
 `--prepare` records no verdict, so it needs neither flag.
 
-## What the review is of
+## What the review covers
 
 Every verdict carries an implementation binding, resolved by
 `internal/reviewguard` from the cited artifacts and the selectors above, and
@@ -118,14 +118,14 @@ resolved again at every one of the three confirming reads, at sequencing, and
 by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
 
 - **assigned** — a projected commitment reports the primary by exact
-  `Commitment.Report` equality; other implementation reports are found only
-  inside the cited set, and every one of them is included whether or not a
-  selector was given. The verdict records `binding=assigned` and
+  `Commitment.Report` equality; the resolver finds other implementation reports
+  only inside the cited set, and includes every one of them whether or not the
+  caller gave a selector. The verdict records `binding=assigned` and
   `implementations` as the JSON array of exact lifecycle witnesses, one per
   implementation in examined order: the selected promise, or the report when
   the lane made no promise. A request can carry a withdrawn promise and a
-  renewed one, so the witness, not the request, is what every consumer
-  re-resolves; it names the requests a sealed receipt closes. A verdict filed
+  renewed one, so every consumer re-resolves the witness, not the request; it
+  names the requests a sealed receipt closes. A verdict filed
   before this field carried witnesses recorded requests and still re-resolves
   while each request has one lifecycle.
 - **self-initiated** — no commitment reports the primary, the primary and
@@ -138,10 +138,10 @@ by [`gs merge`](merge.md) and merge authorization. One of three kinds results:
 
 The resolver reads one hop of the primary's own provenance and nothing else:
 no request ancestry, no prose, no sweep of other artifacts at the head.
-Absence of a report is never independence. A supplied primary that reports
-nothing while its request is reported by another artifact refuses and names
+Absence of a report never means independence. A supplied primary that reports
+nothing while another artifact reports its request refuses and names
 that artifact and its path; keep the wrong one as a companion if you examined
-it. Ambiguous lifecycles, a selector whose report is absent or uncited,
+it. Ambiguous lifecycles, a selector with a missing or uncited report,
 implementations owed to different targets, and a direct assignment relabelled
 as self-initiated or evidence all refuse with the missing witness named.
 
@@ -149,42 +149,42 @@ as self-initiated or evidence all refuse with the missing witness named.
 
 Durable checks:
 
-- the named **artifact** is effective and not retired;
-- the named **promise** is effective, not retired, and owned by the
-  reviewer;
-- the promise rests on exactly one standing `request`, which is copied
-  from the graph rather than retyped;
-- the reviewer did not sign the artifact under review. Independence is
-  compared by fingerprint, so a self-signed verdict is refused here
-  rather than left for [`gs merge`](merge.md) to catch.
+- the named **artifact** counts as effective, not retired;
+- the named **promise** counts as effective, not retired, and the reviewer
+  owns it;
+- the promise rests on exactly one standing `request`, which the command
+  copies from the graph rather than retyping;
+- the reviewer did not sign the artifact under review. The command compares
+  independence by fingerprint, so it refuses a self-signed verdict here
+  rather than leaving it for [`gs merge`](merge.md) to catch.
 
 Local checks on `--checkout`:
 
 - it belongs to the same repository as the workroom;
-- it is clean, including no untracked files;
-- its `HEAD` is the artifact's full commit ID.
+- it has a clean tree, with no untracked files either;
+- its `HEAD` matches the artifact's full commit ID.
 
-Every one of those is re-read immediately before signing, and the command
+The command re-reads every one of those immediately before signing, and
 aborts if anything moved in between. The verdict names the immutable
 commit, so a later checkout movement cannot retarget it.
 
-A linked worktree is a fine checkout: gitseq state belongs to the common
+A linked worktree makes a fine checkout: gitseq state belongs to the common
 directory, and the selected worktree stays an ordinary git context.
 
 ## Staleness does not stop a review
 
-Retired and stale are different facts. Retired means this act was
-superseded; stale means something underneath it was. A stale artifact
-still names the commit it always named, and whether the movement matters
-to *that commit* is exactly the reviewer's question. Refusing would leave
-it permanently unanswered by the only party positioned to answer it.
+Retired and stale name different facts. Retired means a later act superseded
+this one; stale means a later act superseded something underneath it. A stale
+artifact still names the commit it always named, and the reviewer's question
+asks exactly whether the movement matters to *that commit*. Refusing would
+leave it permanently unanswered by the only party in a position to answer it.
 
 So `review` goes ahead and records what had moved. The verdict body then
 carries `stale=true` and a `staleness` line naming which of the artifact,
-promise and request are stale, whether the movement was in the world they
-describe, and the retired bases that caused it — up to four of them, with
-a count of the rest, because a verdict is a message and
-[`gs provenance`](provenance.md) is the projection.
+promise and request have gone stale, whether the movement happened in the
+world they describe, and the retired bases that caused it — up to four of
+them, with a count of the rest, because a verdict serves as a message and
+[`gs provenance`](provenance.md) as the projection.
 
 The signed report therefore says plainly that the world had moved and the
 reviewer signed anyway.
@@ -195,7 +195,7 @@ A `report` resting on the promise, the request, and the artifact, with
 `body.verdict`, `body.head` and `body.artifact`, the binding fields
 `body.binding` and, as resolved, `body.implementations` or `body.decision`,
 plus `body.stale` and `body.staleness` when something underneath had moved. Naming the
-artifact is what lets the projection say who implemented the head, so an
+artifact lets the projection say who implemented the head, so an
 approval written any other way can leave independence unresolved and
 unmergeable. The review requester ratifies it; then, for an approval,
 [`gs merge`](merge.md) can use it.
@@ -203,15 +203,15 @@ unmergeable. The review requester ratifies it; then, for an approval,
 ## What it does not replace
 
 Running the tests, building the binary, reading the diff, poking at git
-plumbing — all of that is the reviewer's evidence and none of it is
-automated here. `gs review` guards the **state at which the verdict is
-signed**, not the judgement.
+plumbing — all of that makes up the reviewer's evidence, and this command
+automates none of it. `gs review` guards the **state at which the reviewer
+signs the verdict**, not the judgement.
 
 ## After a change to the head
 
 Any change to the head invalidates an approval. The implementer records a
 **new** artifact at the new head and asks for review again; the old
-approval describes a commit nobody is proposing any more.
+approval describes a commit nobody proposes any more.
 
 ## Signing more than one artifact
 
@@ -221,10 +221,10 @@ succession unauthorized, so the merge that lands it can retire the predecessor
 in one tree and not the others.
 
 Repeat `--artifact` for every artifact you actually read. The set travels as the
-report's own bases, which is what lets `gs merge` treat it as reviewed: a set
-the implementer assembles proves nothing, because the implementer is the party
-asking for the authority. What you cite is what a receipt for this head may
-reach.
+report's own bases, which lets `gs merge` treat it as reviewed: a set
+the implementer assembles proves nothing, because the implementer itself asks
+for the authority. A receipt for this head may reach what you cite and nothing
+more.
 
 ## See also
 

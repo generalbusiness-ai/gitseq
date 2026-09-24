@@ -26,22 +26,22 @@ behavior at one or more maintained paths.
 
 The `artifacts` array contains only live, non-retired artifacts at the exact
 requested paths. Every row gives the event, path, commit, and explicit
-`stale`, `retired`, and `describes_superseded_world` flags. `retired` is false
-for every returned row; carrying it explicitly prevents callers from having to
-infer that fact from an omitted field.
+`stale`, `retired`, and `describes_superseded_world` flags. Every returned row
+carries `retired` as false; carrying it explicitly prevents callers from having
+to infer that fact from an omitted field.
 
 A stale row also gives `stale_because`, naming the nearest retired basis that
-actually propagated to it, and `stale_because_path` when that basis is an
-artifact. The explanation looks through at most four cause edges. If the cause
-is farther away, `stale_because_truncated` is true and no nearer cause is
-invented. Non-stale rows omit all three fields.
+actually propagated to it, and, for an artifact basis, `stale_because_path`.
+The explanation looks through at most four cause edges. If the cause lies
+farther away, the row sets `stale_because_truncated` to true and invents no
+nearer cause. Non-stale rows omit all three fields.
 
 The response also gives the exact frontier, sorted requested paths, matching
 total, returned count, preceding count, remaining count, and a next cursor when
-more remain. The cursor is bound to the exact durable head and path set. If the
+more remain. The cursor binds to the exact durable head and path set. If the
 head moves, start again rather than mixing artifact bases from two worlds.
 
-The resident selects and caps the rows before encoding. If it is unavailable,
+The resident selects and caps the rows before encoding. If it does not answer,
 the adapter applies the same exact-path selection to a verified local snapshot
 and marks the response `degraded`.
 

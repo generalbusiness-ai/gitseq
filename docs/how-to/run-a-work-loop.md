@@ -10,7 +10,7 @@ rests_on:
 
 # Run a work loop
 
-[End to end](end-to-end.md) walks the happy path once. This page is the
+[End to end](end-to-end.md) walks the happy path once. This page shows the
 loop on its own, plus the variations you will hit: changes requested,
 work you cannot finish, and work discovered halfway through.
 
@@ -42,8 +42,8 @@ Address a request with `body.to`, as a configured name, `@name`, or a
 fingerprint. The signed event stores the fingerprint, and the fold
 requires it to identify a live roster actor.
 
-`body.conditions` is required. A request without conditions of
-satisfaction cannot be satisfied, so the fold refuses it.
+The fold requires `body.conditions`. Nothing can satisfy a request without
+conditions of satisfaction, so the fold refuses it.
 
 Implement on a named branch, never on the integration branch:
 
@@ -62,11 +62,11 @@ ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --rests-on "$PROMISE")
 ```
 
-State the tests and conditions **actually** met in the artifact. It is both
+State the tests and conditions **actually** met in the artifact. It serves as both
 the durable pointer to the exact head and the implementation report. A second
 `ready-for-review` report would repeat those same facts.
 
-## Review, and what happens when changes are requested
+## Review, and what happens when a reviewer requests changes
 
 ```sh
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
@@ -89,7 +89,7 @@ A `changes-requested` verdict returns the work to the implementer. Any
 change to the head invalidates an approval, so after fixing it you record
 a **new** artifact at the new head and ask for review again. The correction
 stays on the same request and promise: the outcome, conditions, performer,
-destination and authority are unchanged, so it needs no child request and
+destination and authority stay unchanged, so it needs no child request and
 no transfer. Cite the finding in the new artifact's text:
 
 ```sh
@@ -128,8 +128,8 @@ gs merge --repo "$REPO" --as bot --checkout "$REPO" \
 
 The command records the merge, publishes the successor artifact, and retires
 the covered candidate artifacts in one resumable batch. Its sealed receipt
-also closes the implementation commitment. The approval was already ratified
-before merge; no implementation report or ratification follows it.
+also closes the implementation commitment. The review requester already ratified
+the approval before merge; no implementation report or ratification follows it.
 
 ## Work you cannot finish
 
@@ -142,16 +142,16 @@ gs supersede --repo "$REPO" --as bot \
   --text 'reneging: the parser rewrite needs a decision I cannot make' "$ABANDONED"
 ```
 
-This is **reneging**, and it is visible forever. Do it as early as you
-know. Early reneging is honourable; late reneging is not.
+This counts as **reneging**, and it stays visible forever. Do it as early as
+you know. Reneging early does you credit; reneging late does not.
 
 ## Work discovered halfway through
 
 Do not quietly widen the job. Work that adds a separate outcome, or changes
 the conditions, authority or performer, gets a child request resting on the
-current request or promise, and is implemented separately (a review finding
-that only shows an existing condition unmet is a correction, above, not new
-work):
+current request or promise, and a separate implementation (a review finding
+that only shows an existing condition unmet counts as a correction, above, not
+new work):
 
 ```sh
 CHILD=$(gs state --repo "$REPO" --as bot --kind request \
@@ -163,7 +163,7 @@ gs state --repo "$REPO" --as bot --kind assert \
   --rests-on "$CHILD" >/dev/null
 ```
 
-An `assert` can preserve the evidence for a breakdown, but it is not a
+An `assert` can preserve the evidence for a breakdown, but it does not
 substitute for the request that assigns the follow-up work.
 
 ## Check the loop
@@ -174,6 +174,6 @@ gs status --repo "$REPO"
 
 ## See also
 
-- [The work loop](../concepts/work-loop.md) — why it is shaped this way.
+- [The work loop](../concepts/work-loop.md) — why it has this shape.
 - [`gs review`](../reference/gs/review.md),
   [`gs merge`](../reference/gs/merge.md)

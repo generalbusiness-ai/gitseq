@@ -8,13 +8,13 @@ rests_on:
 
 # `gs inspect`
 
-Reads one exact event: the statement or act it is, the fold's decision on
+Reads one exact event: its statement or act, the fold's decision on
 it, the commitment chain it belongs to, the bases it rests on directly,
 and the artifacts and reviews related to it.
 
-It is the follow-up to a row from [`gs work`](work.md) or
+It follows up a row from [`gs work`](work.md) or
 [`gs artifacts`](artifacts.md) — one event, in full, without folding the
-whole projection into a terminal. It is the same selection the MCP
+whole projection into a terminal. It makes the same selection the MCP
 [`inspect`](../mcp/inspect.md) tool makes, through the same code, and
 `--json` prints the same shape.
 
@@ -24,10 +24,11 @@ whole projection into a terminal. It is the same selection the MCP
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--json` | `false` | Emit the inspection as JSON instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
 
-The event is a **positional argument**, and exactly one is required. It
-must be a canonical event identifier; an abbreviation resolves to nothing.
+The command takes the event as a **positional argument**, and requires exactly
+one. It must take the form of a canonical event identifier; an abbreviation
+resolves to nothing.
 See [Event identifiers](../event-identifiers.md).
 
 ## Example
@@ -57,18 +58,18 @@ delivery-debt and `landing_receipt` fields. A sibling `landing` block carries
 the shared [receipt evidence and current Git observations](../landing-observations.md),
 including the sealed hold warning and nullable local/remote incorporation.
 
-Direct bases only. `provenance_bases` is one hop — what this event itself
+Direct bases only. `provenance_bases` covers one hop — what this event itself
 cited — capped, with the number omitted reported beside it. Follow the
 whole tree with [`gs provenance`](provenance.md), or ask which artifacts
 a chain anchors to with [`gs artifacts --reaches`](artifacts.md).
 
-The related artifacts and reviews are ranked: the event's own first, then
-its commitment chain's, then the rest. Each list is capped and says how
+The command ranks the related artifacts and reviews: the event's own first,
+then its commitment chain's, then the rest. Each list has a cap and says how
 many it left out.
 
 ## What it refuses
 
-An event the durable projection does not hold is a refusal naming that
+An event the durable projection does not hold draws a refusal naming that
 fact, not an empty inspection. An empty page for a mistyped identifier
 would read like a real answer about a real event that happens to have
 nothing on it.
@@ -77,17 +78,17 @@ The refusal also names the three forms this command accepts: the canonical
 identifier `git:sha1:<genesis>#git:sha1:<event>` — or its equivalent for the
 repository's object format — and the two halves of a
 [short reference](../event-identifiers.md#typing-one-at-a-boundary), the `#N`
-record number and a prefix or suffix of one event hash. One naming no event, or
-more than one, is refused rather than guessed at; an ellipsis-truncated display
-value like `git:sha1…02aa808` is missing its middle and is not one of the
+record number and a prefix or suffix of one event hash. The command refuses one
+naming no event, or more than one, rather than guessing; an ellipsis-truncated
+display value like `git:sha1…02aa808` lacks its middle and matches none of the
 three.
 
-A canonical identifier is passed to the resident as it stands, so nothing is
-folded locally to answer for it. A number or a fragment is resolved against
+The command passes a canonical identifier to the resident as it stands, so no
+local fold runs to answer for it. It resolves a number or a fragment against
 this checkout's own verified event set first, which means a very recent event
 this checkout has not fetched will not resolve here; fetch the workroom, or
 name it by its canonical identifier. The human inspection prints its event and
-direct event bases in full so the answer can be copied back.
+direct event bases in full so you can copy the answer back.
 
 ## See also
 

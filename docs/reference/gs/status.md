@@ -16,11 +16,11 @@ rests_on:
 
 # `gs status`
 
-Runs the fold over the sequence and prints what is current and
+Runs the fold over the sequence and prints what stands current and
 actionable: commitments and who they wait on, artifacts and their
 staleness, and the acts that took no force.
 
-The default view is **bounded**. Everything is still there — `--all` and
+The default view comes **bounded**. Everything still exists — `--all` and
 `--json` render it — but a workroom accumulates satisfied commitments and
 retired artifacts forever, so the default answers "what now" rather than
 "what ever".
@@ -32,9 +32,9 @@ retired artifacts forever, so the default answers "what now" rather than
 | `--repo` | `.` | The repository holding the workroom. |
 | `--all` | `false` | Render the complete commitment, artifact, dissent, ratification, uninterpretable-record and attempt tables instead of the bounded view. |
 | `--json` | `false` | Emit the complete snapshot as JSON, with no human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; `gs status` honours an explicit loopback URL as given. |
 
-`--all` and `--json` are mutually exclusive; asking for both is refused.
+`--all` and `--json` exclude each other; `gs status` refuses a request for both.
 
 ## Example
 
@@ -68,20 +68,20 @@ from — `verified local`, `resident summary`, or `verified local
 fallback`. Then a line of totals, the [Work summary](#the-work-summary), and
 six sections:
 
-| Section | What is in it |
+| Section | What it holds |
 |---|---|
 | Actionable commitments | Commitments still in flight: `open`, `promised`, `reported`, `awaiting-review`, `awaiting-authorization`, `awaiting-landing`. |
 | Needs attention | Live commitments in any other state — `stale`, `reneged`, `cancelled`. Terminal `superseded` rows stay in history. |
-| Current artifacts | Artifacts that are neither retired nor stale. |
-| Stale artifacts | Artifacts that were retired, and artifacts a retirement reached. |
-| Dissents | Standing objections, each naming the act it is recorded against. |
+| Current artifacts | Artifacts neither retired nor stale. |
+| Stale artifacts | Retired artifacts, and artifacts a retirement reached. |
+| Dissents | Standing objections, each naming the act the workroom recorded it against. |
 | Non-effective attempts | Acts judged ineffective or disputed, with the reason. |
 
-Superseded, satisfied, withdrawn, and abandoned commitments are finished, and are counted in the
-totals rather than listed.
+Superseded, satisfied, withdrawn, and abandoned commitments have finished; the
+totals count them rather than list them.
 
 `awaiting-review`, `awaiting-authorization` and `awaiting-landing` name an
-artifact-backed completion at its three stages. The artifact's satisfier is
+artifact-backed completion at its three stages. The artifact's satisfier reads
 `none`, so requester ratification never closes one. `awaiting-review` waits on
 the performer, who must obtain an independent approval of the exact head.
 `awaiting-authorization` waits on the hold owner named by a held request.
@@ -89,33 +89,33 @@ the performer, who must obtain an independent approval of the exact head.
 request named.
 
 `abandoned` names an approved head a supersession deliberately dropped rather
-than carrying into a successor. It is terminal, and distinct from `cancelled`:
-it says work that had been approved was given up, not that the request was
-withdrawn.
+than carrying into a successor. It marks a terminal state, distinct from
+`cancelled`: it says the supersession gave up approved work, not that anyone
+withdrew the request.
 
 `superseded` names a request whose work explicitly moved to a successor: a
-rejected implementation parent whose required repair was transferred to one
-qualifying child, or a request whose approved head was carried into a successor
-that rests on it. Its JSON row carries `successor_request`; it is terminal
+rejected implementation parent whose required repair passed by transfer to one
+qualifying child, or a request whose approved head a successor resting on it
+carried forward. Its JSON row carries `successor_request`; it counts as terminal
 history, not cancelled work and not a satisfied implementation. A supersession
 that dropped an approved head instead of carrying it reads `abandoned`.
 
 ## Two kinds of staleness
 
-Both are called staleness, and only one of them is a reason to stop.
+Both go by the name staleness, and only one of them gives a reason to stop.
 
-**Ordinary reasoning staleness** means a basis under a record was
-retired. The reasoning that led to the record moved; the record itself
+**Ordinary reasoning staleness** means someone retired a basis under a
+record. The reasoning that led to the record moved; the record itself
 did not. It blocks nothing: a merge may still land the exact head an
 approval named, and it records the movement in its receipt.
 
 **A superseded world** crosses a direct retired-artifact edge and then
 artifact-to-artifact provenance. Merge judges its date against the verdict:
 a cause already present when the reviewer signed refuses, a cause arising
-afterwards is recorded, and an undated flagged cause refuses. A refusal needs
+afterwards goes on record, and an undated flagged cause refuses. A refusal needs
 a fresh artifact on current bases, not another review of the same old chain.
 
-The difference matters here because the first one is ordinary. In a
+The difference matters here because the first one counts as ordinary. In a
 workroom of any age most closed commitments and most artifacts carry it,
 so a mark on every row would fire almost everywhere and tell a reader
 nothing about which row to pick — and a warning that fires everywhere
@@ -129,11 +129,11 @@ it**:
   stale)` says how many of that lane's commitments rest on something
   retired.
 - A superseded, satisfied, or withdrawn commitment stays out of the lists whether or
-  not it is stale. It is finished, and a basis moving under it afterwards
+  not it carries staleness. It has finished, and a basis moving under it afterwards
   does not reopen it. The totals still count it.
-- A commitment that was never reported has no outcome to preserve, so
-  the fold gives it the status `stale` outright. That is unfinished work,
-  it appears under "Needs attention", and the word is not repeated.
+- A commitment with no report has no outcome to preserve, so
+  the fold gives it the status `stale` outright. That marks unfinished work;
+  it appears under "Needs attention", and the view does not repeat the word.
 
 The loud facts stay on their own rows. A retired artifact reads
 `retired`, and an artifact describing a superseded world says so in its
@@ -144,10 +144,10 @@ separately from ordinary staleness:
 Artifacts: 55 current, 121 stale, 1037 retired, 388 describing a superseded world.
 ```
 
-Nothing is lost. [`--all`](#all) prints a `qualifiers` column with
+Nothing gets lost. [`--all`](#all) prints a `qualifiers` column with
 `stale` on every commitment that carries it, and `--json` carries the
 `stale` field on every record. The bounded summary the resident serves
-keeps its per-row `stale` field too — only the rendered page is quiet.
+keeps its per-row `stale` field too — only the rendered page stays quiet.
 
 ## The Work summary
 
@@ -160,12 +160,12 @@ Work, workroom: 5 open, 1534 completed, 958 closed and not completed, 14 stale a
 Open by lifecycle: open 1, promised 1, reported 0, awaiting-review 3, awaiting-authorization 0, awaiting-landing 0. Overlapping counts: 3 open resting on reasoning that moved, 78 under an artifact landing audit. Acts awaiting ratification are a separate duty and are not in the commitment total.
 ```
 
-The first line is the named populations. The second keeps the lifecycle
-diagnostic underneath them, because **`open` is two numbers**: the lifecycle
+The first line gives the named populations. The second keeps the lifecycle
+diagnostic underneath them, because **`open` names two numbers**: the lifecycle
 word the fold writes on a request nobody has claimed, and the name of the
 population holding all six in-flight words. A page printing only one of them
-is why the board read `open 5` while this command read `open 1` at the same
-head, and both were right.
+explains why the board read `open 5` while this command read `open 1` at the
+same head, and both answers held.
 
 | Population | Selection |
 |---|---|
@@ -175,28 +175,28 @@ head, and both were right.
 | stale, not in flight | Lifecycle status `stale` |
 
 Those four partition the commitments: their counts add up to the commitment
-total exactly, and nothing is in two of them. A lifecycle word this grouping
-does not know would be counted as `other` and named in the line, so the total
+total exactly, and nothing falls in two of them. The line would count a
+lifecycle word this grouping does not know as `other` and name it, so the total
 stays true; the shipped fold emits none.
 
-Two more counts are printed beside that partition and are **not** members of
+Two more counts print beside that partition and do **not** belong to
 it:
 
 - **reasoning moved** — open commitments carrying ordinary staleness. A subset
   of open, not a fifth population.
 - **artifact landing audit** — `approved_not_landed` across every commitment,
-  finished ones included. It overlaps any population. It is the same number as
-  `Approved but not landed at their target`, counted once.
+  finished ones included. It overlaps any population. It gives the same number
+  as `Approved but not landed at their target`, counted once.
 
-`awaiting ratification` is a different duty, owed by a role holder rather than
-by a performer. It has its own queue on the board and enters no count here.
-Artifact counts stay separate throughout: they are not commitments.
+`awaiting ratification` names a different duty, which a role holder owes rather
+than a performer. It has its own queue on the board and enters no count here.
+Artifact counts stay separate throughout: artifacts do not count as commitments.
 
-`scope` says what a summary covered. Every count above is `workroom`: every
+`scope` says what a summary covered. Every count above carries the scope `workroom`: every
 commitment at this frontier, unfiltered. A searched board, an actor's own
 lanes, and [`gs work`](work.md) answer a different question and say so —
 the board's headline reads `2 open requests, matching your search — 8 in the
-workroom` — so a scoped number is never read as this one.
+workroom` — so nobody reads a scoped number as this one.
 
 Where it appears:
 
@@ -210,28 +210,28 @@ Where it appears:
 | MCP [`status`](../mcp/status.md), [`wait`](../mcp/wait.md) | `totals.work`, workroom-wide beside your own lanes. |
 | The browser | One tab per population, counting exactly the rows that tab opens to. |
 
-A bounded summary carries no projection, so its counts are the answering
-resident's. One that predates them sends none, and the page then says `Work
+A bounded summary carries no projection, so its counts come from the answering
+resident. One that predates them sends none, and the page then says `Work
 populations: not reported by this resident` rather than printing zeros.
 
-The browser keeps its own row selector, because a tab count has to be exactly
+The browser keeps its own row selector, because a tab count has to match exactly
 the rows that tab renders under the current search. Two gates hold it to the Go
 answer on one frozen projection — `internal/wireparity/work_populations_test.go`
 and `ui/test/work-populations.test.mjs` — including controls that drop an
 awaiting-review member and regroup one surface and watch the comparison fail.
 
-Source closure and the selected approved artifact's landing are labelled
+The browser labels source closure and the selected approved artifact's landing
 separately. Search selects the same rows in Table and Graph; graph context
 cards do not enter the population count.
 See [browser landing presentation](../landing-observations.md#browser-presentation).
 
 Each list keeps the **newest 20** entries and says exactly how many older
 ones it omitted — "Showing 20 of 500; 480 older omitted" — so a shortened
-list never reads as a complete one. Request text is normalized to one
-line and capped at 240 bytes. The exact numbers are in
-[Limits](../limits.md).
+list never reads as a complete one. The view normalizes request text to one
+line and caps it at 240 bytes. [Limits](../limits.md) gives the exact
+numbers.
 
-An open unclaimed request names the actor it is addressed to and shows as
+An open unclaimed request names the actor it addresses and shows as
 `addressed to NAME — unclaimed`, rather than inventing a debt against
 someone who has not promised anything.
 
@@ -239,21 +239,21 @@ Artifact rows carry a state and any notes:
 
 | State | Meaning |
 |---|---|
-| `current` | It stands, and nothing under it has been retired. |
-| `succeeded` | It was superseded, and the act that superseded it rests on an artifact covering the same path. The pointer moved; the log says where. |
-| `retired` | It was superseded and no successor was named. The pointer was withdrawn and there is nowhere to follow it to. |
-| `stale` | A basis was retired. Re-check the thing it describes. |
+| `current` | It stands, and nobody has retired anything under it. |
+| `succeeded` | An act superseded it, and that act rests on an artifact covering the same path. The pointer moved; the log says where. |
+| `retired` | An act superseded it and named no successor. The act withdrew the pointer, leaving nowhere to follow it to. |
+| `stale` | Someone retired a basis. Re-check the thing it describes. |
 
-All three non-current states are listed under stale artifacts, because to
-a reader looking for what is current they mean the same thing: not this
-one. They are named apart because a replaced pointer, a withdrawn one and
+The view lists all three non-current states under stale artifacts, because to
+a reader looking for what stands current they mean the same thing: not this
+one. The view names them apart because a replaced pointer, a withdrawn one and
 a moved world call for different work.
 
-Succeeded and retired are the same act read for different content, and
-the difference is what the act rested on. `gs supersede` naming a
-successor at the same path — which is what every merge does — says the
-behaviour moved there. A bare `gs supersede` says the behaviour is gone,
-or the claim was never true. Only the second propagates ordinary reasoning staleness. Descriptive
+Succeeded and retired come from the same act read for different content, and
+the difference lies in what the act rested on. `gs supersede` naming a
+successor at the same path — as every merge does — says the
+behaviour moved there. A bare `gs supersede` says the behaviour has gone,
+or the claim never held. Only the second propagates ordinary reasoning staleness. Descriptive
 artifact-to-artifact edges flare in either case; the sealed successor checkpoint
 prevents the merge from making its own published successor stale at birth. In the `--all` tables these read `SUCCEEDED — replaced at
 the same path` and `RETIRED — withdrawn with no successor`.
@@ -261,21 +261,21 @@ the same path` and `RETIRED — withdrawn with no successor`.
 | Note | Meaning |
 |---|---|
 | `describes a superseded world` | A direct retired-artifact edge, followed only through artifact provenance, describes replaced behavior; merge also checks its date. |
-| `unable to flare` | It cites nothing resolvable, so nothing could ever make it stale. Its silence is not currency. |
-| `succession not recorded` | An earlier artifact for the identical path is still live — a probable forgotten supersession. |
+| `unable to flare` | It cites nothing resolvable, so nothing could ever make it stale. Its silence does not mean currency. |
+| `succession not recorded` | An earlier artifact for the identical path remains live — a probable forgotten supersession. |
 
 ## `--all`
 
 The complete human-readable tables, with no cap: every commitment, every
 artifact, every standing dissent, every ratified statement, every record
 the fold could not interpret, and every non-effective attempt. Nothing the
-bounded view shows is missing here; the bounded view shows the newest
+bounded view shows goes missing here; the bounded view shows the newest
 twenty of each, this shows all of them.
 
 The artifact summary under that table reports both the number of rows and
 the number of supersessions **actually owed**. Those differ: one forgotten
 retirement at a long-lived path repeats on every later link of the chain,
-so the row count overstates how many situations there are to fix. An
+so the row count overstates how many situations need fixing. An
 artifact row whose notes say `rests on ineffective support` cites a record
 the fold refused; see [staleness](../../concepts/staleness.md#ineffective-bases)
 for what that does and does not mean.
@@ -285,17 +285,17 @@ record it stands against and that record's state now: `current`, `stale`
 or `retired` for a record that took force, the fold's verdict
 (`ineffective`, `undefined-kind`, `uninterpretable`) for one it refused,
 and `unknown` only for a target this log does not hold. A dissent never
-rewrites its target, so the target reads as it always did; this section is
-where a reader learns it is opposed.
+rewrites its target, so the target reads as it always did; this section
+tells a reader that someone opposes it.
 
 **Ratified statements** lists every statement whose ratification stands,
-with the ratifying act. This is the fold's own reading of authority: a
+with the ratifying act. This gives the fold's own reading of authority: a
 proposal that became a decision, a report that closed a commitment, a
 roster grant that took effect.
 
 **Uninterpretable records** lists statements of a kind the vocabulary does
 not define, grouped by the kind they claimed and with their text, and any
-record whose payload could not be read at all. Each also appears among the
+record whose payload the fold could not read at all. Each also appears among the
 attempts with the fold's refusal; this section gives them back the only
 disposition they have.
 
@@ -309,18 +309,18 @@ which both human views abbreviate for reading.
 
 ## Selecting instead of dumping
 
-`--json` prints the complete snapshot, which is the right answer when you
+`--json` prints the complete snapshot, which gives the right answer when you
 need whole event identifiers and the wrong one when you need a subset. A
 subset has its own commands, and each of them makes its selection before
-anything is rendered:
+rendering anything:
 
 | Question | Command |
 |---|---|
 | Which artifacts sit at this exact path, and in which state? | [`gs artifacts --path <p> --state live\|retired\|succeeded\|all`](artifacts.md) |
 | Which artifacts still anchor to that path, however many hops away? | [`gs artifacts --reaches <p>`](artifacts.md) |
 | What does one actor still owe, or wait on? | [`gs work --as <actor>`](work.md) |
-| What is this one event, and what does it rest on? | [`gs inspect <event>`](inspect.md) |
-| Is the review queue quiet enough to run an irreversible step? | [`gs reviews --branch main`](reviews.md) |
+| What does this one event say, and what does it rest on? | [`gs inspect <event>`](inspect.md) |
+| Has the review queue gone quiet enough to run an irreversible step? | [`gs reviews --branch main`](reviews.md) |
 
 Each answers in a bounded page and says what it left out, and each prints
 the same JSON shape the matching MCP tool returns, so a caller learns one
@@ -329,52 +329,52 @@ shape rather than one per surface.
 ## `--server`
 
 `--server http://127.0.0.1:7777` asks a resident service for the answer
-instead of folding the log here. The URL must be an HTTP **loopback**
-address with no credentials, path, query or fragment; anything else is
-refused outright. With the flag omitted, `gs status` asks the resident this
-repository publishes and folds locally only when nothing is advertised;
+instead of folding the log here. The URL must name an HTTP **loopback**
+address with no credentials, path, query or fragment; `gs status` refuses
+anything else outright. With the flag omitted, `gs status` asks the resident this
+repository publishes and folds locally only when the repository advertises nothing;
 `--server -` always folds locally.
 
-Nothing advertised means the record is not there. A record that is there and
-cannot be trusted — unreadable, larger than 8 KiB, not a record, carrying no
-address, naming another workroom, or carrying an address that is not a bare
-loopback origin — is refused with the reason and with `--server -` named as
-the way out. That is the same refusal every `gs` command makes, reads
-included, so a repository whose advertisement has been tampered with does
+Nothing advertised means the record does not exist. `gs status` refuses a
+record that exists but that it cannot trust — unreadable, larger than 8 KiB,
+not a record, carrying no address, naming another workroom, or carrying an
+address other than a bare loopback origin — giving the reason and naming
+`--server -` as the way out. Every `gs` command makes that same refusal, reads
+included, so a repository whose advertisement someone has tampered with does
 not answer some questions and refuse others.
 
-The default view is read from the resident's bounded summary endpoint.
-That read is deliberately narrow: no redirects are followed, the response
-is limited to 64 KiB and the request to two seconds, and the returned
+The default view reads from the resident's bounded summary endpoint.
+That read stays deliberately narrow: it follows no redirects, limits the
+response to 64 KiB and the request to two seconds, and the returned
 genesis, head, depth and cursor must still match the workroom selected
 here. `--all` and `--json` use the resident's full response instead, with
 a larger limit and a longer deadline.
 
-A refusal, a timeout, an oversized response, a stale head, or a head that
-moves while the answer is being read is **named on standard error** and
-the command then does the verified local read instead. The header says
-`verified local fallback`, so a fallback answer is never presented as a
+The command **names on standard error** a refusal, a timeout, an oversized
+response, a stale head, or a head that moves during the read, and then does
+the verified local read instead. The header says
+`verified local fallback`, so no fallback answer ever passes as a
 resident one.
 
-This fallback belongs to reading, and only after the resident has been
-asked and the request or the response failed. It is not what happens when
-the advertisement itself cannot be trusted. An unreadable, oversized,
+This fallback belongs to reading, and happens only after the command has
+asked the resident and the request or the response failed. It does not apply
+when the command cannot trust the advertisement itself. An unreadable, oversized,
 unparseable or addressless `resident.json`, or one naming another
-workroom, refuses here as it does everywhere, before any request is made
-— see [`gs serve`](serve.md). Durable writes never fall back at all.
+workroom, refuses here as it does everywhere, before the command makes any
+request — see [`gs serve`](serve.md). Durable writes never fall back at all.
 
 ## The cursor, and following it
 
-Every status answer carries a **cursor**: the frontier it was taken at, and
-the position of the live room around it. It is what turns a snapshot into a
+Every status answer carries a **cursor**: the frontier it captures, and
+the position of the live room around it. It turns a snapshot into a
 starting point. Pass it back to the MCP [`wait`](../mcp/wait.md) tool, or let
 [`gs wait`](wait.md) keep it for you — it writes one cursor file per actor
 under `.git/gitseq` and resumes from it on the next call, so a shell loop
 follows the workroom without re-reading the log it has already seen.
 
-`gs status` itself keeps no cursor: it is a snapshot, and every call answers
-about now. Reading it in a loop to find out whether anything happened is what
-`gs wait` exists to replace.
+`gs status` itself keeps no cursor: it takes a snapshot, and every call answers
+about now. `gs wait` exists to replace reading it in a loop to find out whether
+anything happened.
 
 ## Cost
 
@@ -382,7 +382,7 @@ The local read tries the application-owned checkpoint selector under
 `.git/gitseq` and the local Git reachability ref, verifies the
 sequencer-signed checkpoint object they name, and verifies the tail that
 descends from it. A resident restart and a no-server `gs` process use this same
-path. If no checkpoint is usable it performs the
+path. If it finds no usable checkpoint it performs the
 ordinary full audit, and prints a progress line after one second rather
 than appearing to hang. [`gs verify`](verify.md) never takes the
 checkpoint shortcut: it always audits the whole sequence.

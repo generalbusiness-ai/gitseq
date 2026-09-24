@@ -27,9 +27,9 @@ make build
 `make test` runs the full gates, including documentation gates that
 build scratch workrooms and execute every example in these pages. Expect
 about ten minutes with little visible progress, even on a fast machine —
-it is working, not hung. On a busy machine one package can take a good
-deal longer, so the Makefile passes `-timeout 40m` in place of go test's
-ten-minute default; without it a slow run is killed and reported as
+it keeps working; it has not hung. On a busy machine one package can take a
+good deal longer, so the Makefile passes `-timeout 40m` in place of go test's
+ten-minute default; without it go test kills a slow run and reports it as
 `panic: test timed out`, which looks like a failure of the product rather
 than of the clock. Override the figure with `GO_TEST_TIMEOUT` if you need
 to.
@@ -51,7 +51,7 @@ CLI-only work loop, from an empty repository through review and merge, use
 
 ## Create a workroom
 
-A workroom is an overlay on a repository you already have — yours, not
+A workroom overlays a repository you already have — yours, not
 gitseq's. Point `gs init` at that repository and name yourself as the
 operator:
 
@@ -60,7 +60,7 @@ gs init --repo /path/to/your/repo --operator "$(whoami)"
 ```
 
 The same command against a scratch repository, so the example on this page
-is one that runs:
+actually runs:
 
 ```sh
 REPO="$(mktemp -d)/project"
@@ -77,9 +77,9 @@ later needs it.
 
 Init writes a `gitseq/` directory inside the repository's **git common
 directory**: a config file, a sequencer key, and your operator key under
-`actors/`. In an ordinary checkout that is `.git/gitseq/`. In a linked
-worktree `.git` is a file rather than a directory, and in a bare
-repository there is no `.git` at all, so derive the location rather than
+`actors/`. An ordinary checkout keeps it at `.git/gitseq/`. A linked
+worktree has a `.git` file rather than a directory, and a bare
+repository has no `.git` at all, so derive the location rather than
 assuming it:
 
 ```text
@@ -91,26 +91,26 @@ tree — the genesis — and then appends one event, the roster statement that
 makes you the operator. A single ref, `refs/seq/<genesis>`, points at the
 tip.
 
-Two keys are made, and they sign different things. The **sequencer key**
+Init makes two keys, and they sign different things. The **sequencer key**
 signs the genesis commit and the sequence itself. Your **operator key**
 signs your acts, starting with that roster statement and continuing with
 every grant and statement you make afterwards.
 
-It is safe to run inside a repository you are working in. It writes no
+You can safely run it inside a repository you work in. It writes no
 branch, moves no HEAD, and touches neither the index nor the working tree:
-the genesis tree is built with `git mktree`, which never reads the index.
+init builds the genesis tree with `git mktree`, which never reads the index.
 Nothing leaves the machine until you push that ref deliberately.
 
-Two things it is not.
+Two things it lacks.
 
-It is **not idempotent**. A second run against the same repository stops
-with `workroom already initialized` and changes nothing. That is a refusal,
-not a repair — there is no rebuild path.
+It does **not behave idempotently**. A second run against the same repository
+stops with `workroom already initialized` and changes nothing. That counts as a
+refusal, not a repair — no rebuild path exists.
 
-It has **no default identity**. `--operator` is required, or
+It has **no default identity**. It requires `--operator`, or
 `GITSEQ_ACTOR` in the environment. The operator seeded here signs the
-grants and statements they make, so who it is has to be a choice someone
-made. Every actor admitted later signs their own acts with their own key. The `operator` role carries `ratifier` with it.
+grants and statements they make, so its identity has to come from a choice
+someone made. Every actor admitted later signs their own acts with their own key. The `operator` role carries `ratifier` with it.
 
 To undo it, remove that directory and delete the one ref:
 
@@ -121,9 +121,9 @@ git update-ref -d refs/seq/<genesis>
 
 ## Add the agents
 
-One workroom holds several actors, and every durable act is signed with
-the key of exactly one of them. Add an agent actor for each coding
-session you intend to run. Three is a good first shape — one to plan,
+One workroom holds several actors, and the key of exactly one of them
+signs every durable act. Add an agent actor for each coding
+session you intend to run. Three makes a good first shape — one to plan,
 one to build, one to check:
 
 ```sh
@@ -178,9 +178,9 @@ The roster now shows you and the three agents, each with its own key:
 ]
 ```
 
-The names are yours to choose; the fingerprints are not. Every event an
-agent records carries its fingerprint, so the roster is how you tell
-which actor you are talking to — and how everyone else tells, later,
+You choose the names, but not the fingerprints. Every event an
+agent records carries its fingerprint, so the roster tells you
+which actor you talk to — and tells everyone else, later,
 who did what.
 
 At any later point, `gs whoami --repo "$REPO"` shows the signing actor selected
@@ -215,12 +215,12 @@ done
 ```
 
 The loop proves that **this** resident answered for **this** workroom. If
-the port is already taken — by anything, including a resident serving a
+something already holds the port — anything, including a resident serving a
 different workroom — `gs serve` exits, the loop stops with the error
-above, and nothing later pretends the resident is up. `gs status` alone
+above, and nothing later pretends the resident runs. `gs status` alone
 cannot tell you this: pointed at a missing or mismatched resident it
-falls back to a slower local read and still exits 0. If port 7777 is
-busy on your machine, set `PORT` to a free one and rerun the block.
+falls back to a slower local read and still exits 0. If something on your
+machine already uses port 7777, set `PORT` to a free one and rerun the block.
 
 The `trap` ties the resident to this shell, so keep this terminal open
 for the rest of the walkthrough. If it closes, the resident dies with
@@ -236,7 +236,7 @@ The service prints that sentence next to its address on every start.
 
 ## Give each agent its own identity
 
-`gitseq-mcp` is one process per client session. `--repo` and `--actor`
+`gitseq-mcp` runs as one process per client session. `--repo` and `--actor`
 provide safe defaults; every tool call may instead name `repo` and `agent`.
 Register one MCP server for the workroom. A multi-agent harness can then use
 the same adapter for `planner`, `builder` and `checker`, while a simple client
@@ -247,7 +247,7 @@ rely on the `PATH` you exported above.
 ### claude-code
 
 Run these in the project directory (the default scope records them for
-this directory only). `$GITSEQ` is the checkout path you exported after
+this directory only). `$GITSEQ` holds the checkout path you exported after
 `make build`; in a fresh shell, set it again first:
 
 ```text
@@ -272,8 +272,8 @@ cp "$GITSEQ/SKILL.md" "$REPO/.claude/skills/workroom/SKILL.md"
 ### codex
 
 The same single registration. Codex records it in
-`~/.codex/config.toml`, so it is global to your account rather than
-scoped to the project:
+`~/.codex/config.toml`, so it applies globally to your account rather than
+to the project alone:
 
 ```text
 codex mcp add workroom -- "$GITSEQ/bin/gitseq-mcp" --actor planner --repo "$REPO"
@@ -316,7 +316,7 @@ The reply names the actor and its fingerprint:
 …"structuredContent":{"actor":{"fingerprint":"293072f8…","name":"builder"},…
 ```
 
-The first reply names `planner`; the second fingerprint is `builder`'s row in
+The first reply names `planner`; the second fingerprint matches `builder`'s row in
 the roster above. The selector uses an existing accessible key and never
 creates an actor. An unknown actor, inaccessible key or unavailable repository
 refuses instead of silently falling back to `planner`. [Configure an

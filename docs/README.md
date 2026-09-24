@@ -10,12 +10,12 @@ rests_on:
 
 # gitseq documentation
 
-gitseq is an overlay on an ordinary git repository. It gives every
+gitseq overlays an ordinary git repository. It gives every
 deliberate act a final position in one sequence, signed by whoever made
 it. A tracked artifact can name the acts it rests on, so the projection
 marks it for re-checking when one of those premises moves.
 
-Read in this order if you are new:
+New to gitseq? Read in this order:
 
 1. **[Why gitseq exists](why.md)** — the problem, and the shape of the
    answer. Ten minutes, no commands.
@@ -33,12 +33,12 @@ Read in this order if you are new:
 
 | Page | What it settles |
 |---|---|
-| [The record](concepts/record.md) | What an event is, what the fold does, why a recorded act may carry no force. |
-| [Actors and authority](concepts/actors.md) | Who may do what, and why kind is not authority. |
+| [The record](concepts/record.md) | What defines an event, what the fold does, why a recorded act may carry no force. |
+| [Actors and authority](concepts/actors.md) | Who may do what, and why kind does not confer authority. |
 | [The work loop](concepts/work-loop.md) | How a promise becomes an exact artifact report, how an independently approved merge closes it, and when explicit reports still apply. |
 | [Staleness](concepts/staleness.md) | What a flare means, what it does not cover, and one known gap. |
-| [Agent practice](concepts/agent-practice.md) | Why the working loop is shaped as it is: taking work, refusing it, starting your own. |
-| [Decision authority](concepts/decision-authority.md) | How a decision is adopted, and how implementation reaches that authority. |
+| [Agent practice](concepts/agent-practice.md) | Why the working loop takes its shape: taking work, refusing it, starting your own. |
+| [Decision authority](concepts/decision-authority.md) | How a room adopts a decision, and how implementation reaches that authority. |
 | [Connectors](concepts/connectors.md) | How work enters from GitHub, what a charter does, and what it deliberately does not. |
 | [Components](concepts/components.md) | The CLI, the resident service, the MCP adapter, the browser view, and the repository underneath. |
 
@@ -111,8 +111,8 @@ Read in this order if you are new:
   every MCP tool result carries.
 - [Event identifiers](reference/event-identifiers.md) — the one name
   everything else cites.
-- [Limits](reference/limits.md) — sizes and counts a call is refused for
-  exceeding.
+- [Limits](reference/limits.md) — the sizes and counts past which gitseq
+  refuses a call.
 - [Performance evidence](reference/performance.md) — the versioned fan-out
   measurement contract and its current result.
 - [Glossary](reference/glossary.md) — the vocabulary, in one place.
@@ -121,14 +121,14 @@ Read in this order if you are new:
 
 Every page here names the durable acts that govern the behaviour it
 describes, and ships with its own artifact statement resting on them. So
-when the behaviour moves, the page — that page, not the set — flares. The
-convention, and the four gates that enforce it, are described in
-[Anchoring](anchoring.md).
+when the behaviour moves, the page — that page, not the set — flares.
+[Anchoring](anchoring.md) describes the convention and the four gates that
+enforce it.
 
 ## Not user documentation
 
-- [`SKILL.md`](../SKILL.md) is the normative contract for an agent
-  working in a workroom. If you are configuring an agent, that is what
-  the agent reads.
+- [`SKILL.md`](../SKILL.md) holds the normative contract for an agent
+  working in a workroom. If you configure an agent, the agent reads that
+  file.
 - [`notes/`](../notes/) holds dated design notes. They record thinking at
-  a point in time and are not maintained.
+  a point in time, and nobody maintains them.

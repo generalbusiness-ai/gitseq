@@ -12,10 +12,10 @@ rests_on:
 
 # Publish and audit
 
-The strongest check on a workroom is that a stranger with nothing but a
+The strongest check on a workroom: a stranger with nothing but a
 clone can confirm it: no service, no chat logs, no trust in you.
 
-Both halves have to be arranged. Git ignores `refs/seq/*` on push and on
+You have to arrange both halves. Git ignores `refs/seq/*` on push and on
 fetch, so an unpublished sequence looks exactly like a missing ref.
 
 ## Set up a workroom with something in it
@@ -45,11 +45,10 @@ git -C "$REPO" push origin 'refs/seq/*:refs/seq/*'
 ```
 
 The refspec has no leading `+`, deliberately. A sequence only ever
-advances, so publishing is always a fast-forward. A push git refuses is
-telling you the remote holds something your copy does not; forcing it
-would rewind published history, and in a record whose whole purpose is
-that positions are final, that is the one thing you must not be able to
-do out of habit.
+advances, so publishing always fast-forwards. A push git refuses tells
+you the remote holds something your copy does not; forcing it
+would rewind published history, and in a record whose whole purpose lies
+in final positions, habit must never let you do that one thing.
 
 Keep fetch destinations separate from `refs/seq/*`, including in the
 publisher. Git updates tracking refs after a successful push; mapping them
@@ -58,8 +57,8 @@ the push. New remotes have no sequence fetch rule by default. Existing
 read-only clones migrate through `attach`; remove either old direct mapping
 from a writer and use `refs/remotes/<name>/seq/*` if it needs tracking.
 
-Publish whenever you want others to see new events. It is the step that
-makes the record shared rather than local.
+Publish whenever you want others to see new events. That step makes the
+record shared rather than local.
 
 ## Audit
 
@@ -83,7 +82,7 @@ gs status --repo "$AUDIT"
 
 `verify` checks every actor signature, every sequencer signature, and the
 integrity of the sequence, and reports the genesis, head, depth and event
-count. It is an explicit full audit and never consults a resident's
+count. It runs an explicit full audit and never consults a resident's
 cache.
 
 This first audit proves the bytes and signatures the remote supplied. It
@@ -113,25 +112,26 @@ gs attach --repo "$AUDIT" --remote origin --genesis "$GENESIS"
 
 Each successful verification also persists the signed head and depth in
 `.git/gitseq/config.json`. Later verification refuses a sibling sequence, and a
-shorter one unless the authoritative ref still continues the recorded head — a
-read another appender overtook is admitted and leaves the marker alone. Where
-that ref was lost or rewound, any shorter sequence is refused. Keep that config
-with the clone; deleting it discards the clone's rollback memory.
+shorter one unless the authoritative ref still continues the recorded head —
+verification admits a read another appender overtook and leaves the marker
+alone. Where someone lost or rewound that ref, verification refuses any shorter
+sequence. Keep that config with the clone; deleting it discards the clone's
+rollback memory.
 
 ## Troubleshooting
 
 | Symptom | Cause |
 |---|---|
-| `attach` reports a missing `refs/seq/...` ref | The sequence was never published. Push it, then rerun `attach` in the clone you already have. |
+| `attach` reports a missing `refs/seq/...` ref | Nobody ever published the sequence. Push it, then rerun `attach` in the clone you already have. |
 | `attach` refuses a non-descendant authoritative sequence | The remote no longer continues the local ref. Preserve both positions and investigate. |
-| `attach` reports that the local rollback witness could not advance | A verified ref may be installed while the old checkpoint remains. Restore metadata writes, then retry or audit the actual local head; never rewind it. See the [failure boundary](../reference/gs/attach.md#what-it-changes-in-the-clone). |
+| `attach` reports that the local rollback witness could not advance | `attach` may have installed a verified ref while the old checkpoint remains. Restore metadata writes, then retry or audit the actual local head; never rewind it. See the [failure boundary](../reference/gs/attach.md#what-it-changes-in-the-clone). |
 | `attach` refuses a verified frontier rollback | The remote no longer continues the last head this clone verified. Preserve the clone and compare with another holder. |
-| The clone warns that it is empty | Only `refs/seq/*` was pushed and no branch. Harmless for auditing. |
+| The clone warns of an empty repository | The publisher pushed only `refs/seq/*` and no branch. Harmless for auditing. |
 
 ## Leaving
 
-An attached clone is read-only unless local actor custody and a sequencer
-endpoint are configured. Delete `.git/gitseq` and the extra `refs/seq/*`
+An attached clone stays read-only unless someone configures local actor
+custody and a sequencer endpoint. Delete `.git/gitseq` and the extra `refs/seq/*`
 fetch rule and you have an ordinary git repository.
 
 ## See also

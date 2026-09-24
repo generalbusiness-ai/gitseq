@@ -48,27 +48,27 @@ gs actors --repo "$REPO"
 
 ## Reading it
 
-**`roles` is current, not historical.** It answers what authority is live
-at the moment you ask. Whether some past act was effective is a different
-question, answered by the decisions in
-[`gs status`](status.md). A grant can be effective, ratified, and confer
-nothing today because a basis under it has been retired.
+**`roles` reports the present, not history.** It answers what authority
+counts as live at the moment you ask. Whether the fold judged some past act
+effective poses a different question, which the decisions in
+[`gs status`](status.md) answer. An effective, ratified grant can confer
+nothing today because someone has retired a basis under it.
 
-**`kind` grants nothing.** It says what a principal is.
+**`kind` grants nothing.** It describes the nature of a principal.
 
-**`custody` is local.** It means this repository holds the private key,
-so this machine can sign as that actor. It is not durable state and says
+**`custody` stays local.** It means this repository holds the private key,
+so this machine can sign as that actor. It carries no durable state and says
 nothing about the roster. An attached clone typically shows `custody:
 false` for everyone.
 
-**A retired principal is still listed.** Retiring a membership leaves the
+**The list still includes a retired principal.** Retiring a membership leaves the
 principal on the roster with `retired: true` and an empty `roles`, because
-the events it signed are permanent and dropping the row would leave those
+the events it signed remain permanent and dropping the row would leave those
 signatures attributed to nothing. Read the flag, not the absence.
 
 **`custody` and `retired` can disagree.** A retired principal whose key
-file survives still shows `custody: true`. That is a local custody problem
-this view is meant to make visible.
+file survives still shows `custody: true`. That signals a local custody
+problem; this view exists to make it visible.
 
 ## See also
 

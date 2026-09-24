@@ -12,7 +12,7 @@ rests_on:
 Use `gitseq-github` to bring selected GitHub issues into a workroom and to
 open a pull request for an exact implementation candidate. GitHub remains the
 place where people discover and discuss the issue. Gitseq records who chose to
-act on it, who accepted the work, and which commit was reviewed.
+act on it, who accepted the work, and which commit received review.
 
 > **Status:** the connector runs one issue-observation pass at a time. It can
 > open a pull request, but it does not watch continuously, import comments or
@@ -61,7 +61,7 @@ actor. Its private key stays in the workroom's local Gitseq configuration.
 
 Create and ratify a charter for this GitHub repository. The example permits
 both supported operations: observing issues and opening pull requests. Use
-`operations=observe` if this connection should be read-only.
+`operations=observe` if this connection should only read.
 
 ```sh
 CHARTER=$(gs state --repo "$REPO" --as "$OPERATOR" --kind propose \
@@ -100,9 +100,9 @@ CLAUSE=$(gs state --repo "$REPO" --as "$OPERATOR" --kind assert \
   --rests-on "$CHARTER")
 ```
 
-When valid issue numbers are present, they select those issues. Otherwise,
+When the clause names valid issue numbers, they select those issues. Otherwise,
 `state` and `labels` form a criteria clause, and all criteria it states must
-match. `state` may be `open`, `closed`, or `all`; `issues` and `labels` accept
+match. `state` takes `open`, `closed`, or `all`; `issues` and `labels` accept
 comma-separated values. A clause that names no valid issue, state, or label
 selects nothing.
 
@@ -124,7 +124,7 @@ GITHUB_TOKEN="$GITHUB_TOKEN" GITSEQ_ACTOR="$CONNECTOR" gitseq-github \
 ```
 
 The preview prints each issue it would observe and makes no durable change.
-Remove `--dry-run` when the selection is right:
+Remove `--dry-run` when the selection looks right:
 
 ```text
 GITHUB_TOKEN="$GITHUB_TOKEN" GITSEQ_ACTOR="$CONNECTOR" gitseq-github \
@@ -133,8 +133,8 @@ GITHUB_TOKEN="$GITHUB_TOKEN" GITSEQ_ACTOR="$CONNECTOR" gitseq-github \
   --owner "$OWNER" --repo-name "$GITHUB_REPOSITORY"
 ```
 
-Outcome: each new issue is recorded once as an `assert`, signed by the
-connector and resting on the charter and the clause that selected it. The
+Outcome: the connector records each new issue once as an `assert` it
+signs, resting on the charter and the clause that selected it. The
 record includes the issue number, title, URL, and GitHub author. It does not
 copy the issue body.
 
@@ -142,23 +142,23 @@ Running the command again does not duplicate an issue already observed by
 this connector. It also does not record later edits, label changes, closure,
 or reopening.
 
-Where the observation is appended follows the same rule as `gs`. With no
-`--server` flag the connector uses the resident this repository advertises
-(the one `gs serve` published), so concurrent appenders are sequenced by
-default; with no advertisement it appends locally, exactly as before. An
+The connector chooses where to append the observation by the same rule as
+`gs`. With no `--server` flag the connector uses the resident this repository
+advertises (the one `gs serve` published), so the resident sequences
+concurrent appenders by default; with no advertisement it appends locally, exactly as before. An
 explicit loopback URL selects that resident:
 
 ```text
   --server http://127.0.0.1:7777
 ```
 
-and `--server -` deliberately appends locally even when a resident is
-advertised. The route is decided before the connector's key is read. An
-advertisement that cannot be trusted (unreadable, not a record, addressless,
-or naming another workroom) or cannot be used (not an `http` loopback
-address) refuses the run, as does an advertised resident that is not
-listening or that refuses the submission; the connector never falls back to
-a local append on its own, so nothing is recorded that the operator did not
+and `--server -` deliberately appends locally even when the repository
+advertises a resident. The connector decides the route before it reads its
+key. An advertisement the connector cannot trust (unreadable, not a record,
+addressless, or naming another workroom) or cannot use (not an `http`
+loopback address) refuses the run, as does an advertised resident that does
+not listen or that refuses the submission; the connector never falls back to
+a local append on its own, so it records nothing that the operator did not
 route. `--dry-run` makes no durable change on any route.
 
 ## 5. Turn an observation into work
@@ -176,10 +176,10 @@ REQUEST=$(gs state --repo "$REPO" --as "$OPERATOR" --kind request \
   --rests-on 'git:sha1:<genesis>#git:sha1:<observation>')
 ```
 
-Outcome: the issue is now ordinary workroom work. The addressee can promise
+Outcome: the issue has now become ordinary workroom work. The addressee can promise
 it, implement it on a branch, publish an exact-head artifact, and request
 independent review. GitHub text remains quoted foreign input; the signed
-request is the decision to act.
+request records the decision to act.
 
 Follow [Run a work loop](run-a-work-loop.md) for the implementation and review
 steps.
@@ -196,13 +196,13 @@ Push the candidate branch to GitHub, then collect these exact values:
 
 The artifact must belong to the work the request governs, in either of the
 two lawful shapes: it rests directly on the request, or it rests on the
-performer's standing promise for that request, which is the ordinary
+performer's standing promise for that request, the ordinary
 assigned-work shape. The command checks the chain against the projection
-before it posts anything: the request and the artifact must both be
-effective and neither retired nor stale, a promise bridging them must meet
+before it posts anything: the request and the artifact must both stay
+effective, with neither retired nor stale, a promise bridging them must meet
 the same standard, the artifact must name exactly the `--commit` head, and
-an artifact that rests on some other request or on a dead promise is refused
-as work that merely shares the log. Nothing in the record needs reshaping to
+the command refuses an artifact that rests on some other request or on a
+dead promise as work that merely shares the log. Nothing in the record needs reshaping to
 satisfy it.
 
 Check the branch and commit yourself, because the connector does not compare
@@ -250,7 +250,7 @@ The connector does not currently:
 ## See also
 
 - [Run a work loop](run-a-work-loop.md) — claim, implement, review, and merge
-  the work after an issue is selected.
+  the work after you select an issue.
 - [Deploy a resident](deploy-a-resident.md) — sequence concurrent appends
   through the local service.
 - [Connectors](../concepts/connectors.md) — the boundary between foreign

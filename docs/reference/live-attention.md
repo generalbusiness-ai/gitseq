@@ -21,55 +21,56 @@ collaboration stays optional; this only removes the need to remember.
 
 | Field | Meaning |
 |---|---|
-| `available` | Whether the resident answered. `false` is the honest degraded answer, never an error. |
+| `available` | Whether the resident answered. `false` gives the honest degraded answer, never an error. |
 | `cursor` | The live room cursor at the moment of the read. |
 | `frames` | This session's unacknowledged addressed messages, bounded to the priority page. |
-| `pending` | How many addressed messages are unacknowledged in total. |
-| `omitted` | How many of those are not in `frames`, so a shortened list says so. |
+| `pending` | How many addressed messages remain unacknowledged in total. |
+| `omitted` | How many of those `frames` leaves out, so a shortened list says so. |
 | `actors` | Live actors whose leased focus contains an event this call named or returned. |
 | `omitted_actors` | Actors beyond the cap, counted rather than dropped. |
 
 Each actor row carries the full durable fingerprint, the configured name,
 how many of that actor's live sessions matched, the exact event
-identifiers that matched, the leased status, a note when one is set, and
+identifiers that matched, the leased status, a note when the actor set one, and
 `activity_changed_at`.
 
 ## What it does not mean
 
-`live_attention` is leased, advisory, and ephemeral. It creates no
+`live_attention` remains leased, advisory, and ephemeral. It creates no
 ownership, no promise, no authority, no completion, and no durable read
 receipt. Nothing in it advances the durable sequence. A client that
 discards it entirely loses awareness and nothing else.
 
 It never fails your call. The durable act has already happened by the
 time the attention read runs, so a resident that cannot answer yields
-`available: false` and the tool result is otherwise untouched. An
-attention read that failed is not an error you need to handle.
+`available: false` and the tool result otherwise stays untouched. An
+attention read that failed does not count as an error you need to handle.
 
 An actor appearing in `actors` has said, through a lease that expires,
-that they are attending to that event. They have not claimed it, promised
-it, or acquired any standing over it, and you gain none by seeing them.
+that they have turned their attention to that event. They have not claimed
+it, promised it, or acquired any standing over it, and you gain none by
+seeing them.
 
-## How actors are matched
+## How matching works
 
-Matching is exact string equality on canonical event identifiers the call
-already named or returned. There is no prefix matching, no normalisation,
+Matching uses exact string equality on canonical event identifiers the call
+already named or returned. It does no prefix matching, no normalisation,
 and no inference about which events relate to which others. A guess about
-relatedness would be the adapter asserting a relationship nobody stated,
+relatedness would have the adapter asserting a relationship nobody stated,
 and presenting it as an observation.
 
 An identifier counts as named only when it stands as a whole token. A
-canonical identifier sitting inside a longer run of identifier bytes is
-part of that longer token, not a mention of the event, so nothing matches
+canonical identifier sitting inside a longer run of identifier bytes belongs
+to that longer token and does not mention the event, so nothing matches
 it.
 
-Your own sessions are filtered out before actors are aggregated, so one
+Filtering removes your own sessions before aggregating actors, so one
 person working from two windows reads as one actor with two matching
-sessions rather than as two people. Identity is keyed on the durable
+sessions rather than as two people. Identity keys on the durable
 fingerprint, so two actors who happen to share a display name stay two
 rows.
 
-`activity_changed_at` is observed by the resident and moves only when
+The resident observes `activity_changed_at`, which moves only when
 status, focus, or note actually changes. A heartbeat renewal leaves it
 alone, so an old timestamp means an old decision rather than a quiet
 client.
@@ -77,9 +78,9 @@ client.
 ## Repetition and acknowledgement
 
 Addressed frames keep appearing until you acknowledge them with
-[`ack`](mcp/ack.md). Reading is not acknowledging: a tool call that ignores
+[`ack`](mcp/ack.md). Reading does not acknowledge: a tool call that ignores
 the adjunct does not consume it, and the next call reports the same
-frames again. Acknowledgement is per leased session, so acknowledging in
+frames again. Acknowledgement applies per leased session, so acknowledging in
 one session never clears another's.
 
 The guaranteed text block of every result states pending chat and

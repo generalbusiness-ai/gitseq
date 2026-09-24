@@ -36,19 +36,20 @@ gs actors --repo "$REPO"
 
 ## When a grant confers
 
-A non-membership grant is live only while three things hold: the grant
-statement is live, at least one effective ratification of it is live, and
-the **membership it named as its first basis** is live. The fold looks at
-the first basis and nowhere else.
+The fold counts a non-membership grant as live only while three things
+hold: the grant statement remains live, at least one effective
+ratification of it remains live, and the **membership it named as its
+first basis** remains live. The fold looks at the first basis and nowhere
+else.
 
-The ratification condition is a disjunction. One grant may be ratified
-more than once, and any surviving ratification keeps the role, so
+The ratification condition forms a disjunction. One grant may receive
+more than one ratification, and any surviving ratification keeps the role, so
 retiring one of two changes nothing.
 
-Effectiveness and current authority are different questions.
-`gs role-grant` records an act, and its verdict is settled forever;
-whether the role is live now is answered only by
-[`gs actors`](actors.md), and only for the moment you ask.
+Effectiveness and current authority pose different questions.
+`gs role-grant` records an act, and the fold settles its verdict forever;
+only [`gs actors`](actors.md) answers whether the role counts as live
+now, and only for the moment you ask.
 
 ## Roles in use here
 

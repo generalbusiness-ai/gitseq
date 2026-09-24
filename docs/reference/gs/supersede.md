@@ -9,7 +9,7 @@ rests_on:
 # `gs supersede`
 
 Retires one act and marks everything that rests on it stale,
-transitively. Nothing is deleted; the retired act stays in the log with a
+transitively. It deletes nothing; the retired act stays in the log with a
 pointer to what replaced it.
 
 Prefer supersession to contradiction.
@@ -20,16 +20,16 @@ Prefer supersession to contradiction.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The superseding actor. |
-| `--text` | *(required)* | Why. This is what a later reader gets. |
-| `--rests-on` | | An additional event identifier, repeatable. The target is added first automatically. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--text` | *(required)* | Why. A later reader gets this. |
+| `--rests-on` | | An additional event identifier, repeatable. The command adds the target first automatically. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a cold or loaded resident, or one folding a large log; the command refuses any value other than a positive duration before it signs anything. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
-| `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
+| `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the command refuses the retirement and lists the pages, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
-The target is a **positional argument**, and flag parsing stops at the
-first positional. Put every flag before it.
+The command takes the target as a **positional argument**, and flag parsing
+stops at the first positional. Put every flag before it.
 
 The target and every `--rests-on` value take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the
 canonical identifier. The act signs the canonical identifier either way, and
@@ -55,14 +55,14 @@ gs supersede --repo "$REPO" --as alice \
 gs status --repo "$REPO"
 ```
 
-The note resting on the retired claim is now stale. That is a signal to
-re-check it, not a verdict that it is wrong.
+The note resting on the retired claim has now gone stale. That signals a
+re-check, not a verdict that it errs.
 
 ## Refused before signing
 
-Before anything is signed, this command asks the fold what it would decide
-about the retirement, and refuses when the answer is not effective: an unknown
-target, or a target this actor has no standing to retire.
+Before signing anything, this command asks the fold what it would decide about
+the retirement, and refuses when the answer falls short of effective: an
+unknown target, or a target this actor has no standing to retire.
 
 ```text
 gs: the fold would rule this act ineffective: actor may not supersede target
@@ -72,37 +72,38 @@ file it as written with --no-preflight
 
 The fix line names who may: the target's author, and any actor holding
 `ratifier`. [Refused before signing](state.md#refused-before-signing) states
-the whole rule: the reason is the fold's own, the fold decides again at
-sequencing, `--no-preflight` files the act as written, and four cases are left
-to the fold with no refusal here — including an exact retry under an
-`--idempotency-key` this actor already holds.
+the whole rule: the reason comes from the fold itself, the fold decides again
+at sequencing, `--no-preflight` files the act as written, and this command
+leaves four cases to the fold with no refusal here — including an exact retry
+under an `--idempotency-key` this actor already holds.
 
-Whether tracked documentation still cites the target is a separate question,
-answered by `--cited-ok` above, and it is asked after this one.
+Whether tracked documentation still cites the target poses a separate
+question, answered by `--cited-ok` above, and the command asks it after this
+one.
 
-## What it is for
+## Why use it
 
 **Replacing an artifact.** When new work lands at a path, record the new
 artifact and supersede the previous one for the same path, as one step.
-That supersession is what makes documents describing the old
+That supersession makes documents describing the old
 implementation flare. Skip it, and `gs status` marks the new artifact
 **succession not recorded**.
 
 **Withdrawing a request.** If a requester supersedes a request after
-someone promised it, the promisor is released. The promise stays in
+someone promised it, the supersession releases the promisor. The promise stays in
 history as kept faith.
 
-When you are reassigning a request because it appeared unclaimed, use
+When you reassign a request because it appeared unclaimed, use
 [`gs reassign-if-unclaimed`](reassign-if-unclaimed.md). Its signed pair refuses
 if a promise or direct completion raced your read. Ordinary supersession stays
 available for a requester deliberately withdrawing promised work.
 
-**Reneging.** Superseding your own promise is reneging, and it is visible
-forever. Do it as early as you know you cannot keep it.
+**Reneging.** Superseding your own promise counts as reneging, and it stays
+visible forever. Do it as early as you know you cannot keep it.
 
-**Revoking authority.** [`gs role-revoke`](role-revoke.md) is a
+**Revoking authority.** [`gs role-revoke`](role-revoke.md) performs a
 supersession of a roster grant, with the derived-role handling built in.
-The founding operator seed cannot be retired. Other governance changes
+Nobody can retire the founding operator seed. Other governance changes
 require current authority for their target: changing an operator grant,
 or membership carrying a live or dormant operator grant, requires an
 `operator` rather than an ordinary `ratifier`.
@@ -110,17 +111,17 @@ or membership carrying a live or dormant operator grant, requires an
 ## The first-basis rule
 
 A supersession must cite its target as the **first** basis. `gs
-supersede` puts it there for you; anything you pass with `--rests-on` is
-appended after. If you construct the act by hand and get the order wrong,
-it is ineffective.
+supersede` puts it there for you; the command appends anything you pass with
+`--rests-on` after it. If you construct the act by hand and get the order
+wrong, the fold judges it ineffective.
 
 ## Reversible
 
 Superseding a supersession restores the earlier act, and everything that
-went stale because of it becomes current again. Liveness is current and
-moves; decisions are history and do not. Governance restoration is the
-exception to ordinary author-owned supersession: its target-class
-authority is checked again at the time of restoration.
+went stale because of it becomes current again. Liveness stays current and
+moves; decisions belong to history and do not. Governance restoration forms
+the exception to ordinary author-owned supersession: the fold checks its
+target-class authority again at the time of restoration.
 
 ## See also
 

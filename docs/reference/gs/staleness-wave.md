@@ -28,7 +28,7 @@ gs staleness-wave --repo "$REPO" --path docs --json
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--path` | *(required)* | Exact artifact path whose causal wave is measured. |
+| `--path` | *(required)* | Exact artifact path whose causal wave the command measures. |
 | `--json` | `false` | Emit the summary as JSON. |
 
 The walk follows every basis of every effective record. It skips only the edge
@@ -36,9 +36,10 @@ from an effective supersession to its own target, because retiring a record
 does not make the supersession stale at the instant it lands. Retired artifacts
 remain seeds: retirement withdraws a pointer but does not erase history.
 
-This is a measurement, not a gate. Re-anchoring current documentation does not
-remove the completed requests, promises and reports that honestly descend from
-the old path, so the reached counts are not expected to return to zero.
+This command measures; it does not gate. Re-anchoring current documentation
+does not remove the completed requests, promises and reports that honestly
+descend from the old path, so do not expect the reached counts to return to
+zero.
 
 ## See also
 

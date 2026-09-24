@@ -20,12 +20,12 @@ the log, and then appends every act against that one frontier.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor signing every act in the chain. |
-| `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--server` | | Forward each act to a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a cold or loaded resident, or one folding a large log; the command refuses a value other than a positive duration before signing anything. |
 | `--cited-ok` | `false` | Allow a `supersede` or `retire-if-unclaimed` act whose target tracked documentation still names. Guarded retirement signs this admission observation separately from its fold-enforced commitment guard. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
-The one positional argument is the file to read. `-`, or no argument at
+The one positional argument names the file to read. `-`, or no argument at
 all, reads standard input.
 
 ## The input
@@ -33,8 +33,8 @@ all, reads standard input.
 A JSON array of acts. Each entry carries an optional `label`, a `verb` of
 `state`, `ratify`, `supersede`, `retire-if-unclaimed`, or
 `reassign-if-unclaimed`, and that verb's usual fields: `kind`, `text`, `body`,
-`rests_on`, `target`, `retirement`, and `idempotency_key`. Unknown
-fields are refused.
+`rests_on`, `target`, `retirement`, and `idempotency_key`. The command
+refuses unknown fields.
 
 ```text
 [
@@ -51,20 +51,21 @@ fields are refused.
 `rests_on`, `target`, `retirement` and the recognized event fields of an
 entry's `body` each take a
 [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
-the canonical identifier. The whole chain is resolved against one verified
-event set before the first append, so a chain carrying a reference that names
-no event lands nothing at all; every resolution is named on standard error,
-leaving the report on standard output unchanged.
+the canonical identifier. The command resolves the whole chain against one
+verified event set before the first append, so a chain carrying a reference
+that names no event lands nothing at all; it names every resolution on
+standard error, leaving the report on standard output unchanged.
 
 A later act cites an earlier act of the same chain as `$label`, in
 `rests_on`, `target`, or `retirement`. A label names an act the batch has yet
-to mint, so it is not an event reference: it passes the resolver untouched and
-resolves to the identifier minted for that act. The whole file is parsed and
-every reference checked before the first append, so a malformed entry, a
-duplicate label, or a label that is unknown or defined later lands nothing.
+to mint, so it does not count as an event reference: it passes the resolver
+untouched and resolves to the identifier minted for that act. The command
+parses the whole file and checks every reference before the first append, so a
+malformed entry, a duplicate label, or an unknown label or one defined later
+lands nothing.
 
-The array must be the whole input. Anything after it other than
-whitespace — a stray `]`, a second value — is refused before the first
+The array must make up the whole input. The command refuses anything after
+it other than whitespace — a stray `]`, a second value — before the first
 append.
 
 ## Example
@@ -96,8 +97,8 @@ gs batch --repo "$REPO" --as alice "$REPO/chain.json"
 ## Refused before signing
 
 Before the first append, this command asks the fold what it would decide about
-every act of the chain, and refuses the whole chain when the answer for any of
-them is not effective. The refusal names the act by its position:
+every act of the chain, and refuses the whole chain when the fold would not
+rule any one of them effective. The refusal names the act by its position:
 
 ```text
 gs: act 1: the fold would rule this act ineffective: artifact state requires body.path
@@ -105,23 +106,25 @@ fix: an artifact names one file: --body path=<file>, at the exact string the mer
 file it as written with --no-preflight
 ```
 
-The chain is judged in order, in a fold built for the question and thrown away.
-Each act is judged against the world the acts before it would make, so a
-`$label` is resolved to the identifier its act will be judged under and an act
-resting on one is judged against it: a promise on `$request` is as effective
-here as it will be in the log. The projection this process holds is untouched.
+The fold judges the chain in order, in a fold built for the question and thrown
+away. It judges each act against the world the acts before it would make, so it
+resolves a `$label` to the identifier under which it will judge that act, and
+judges an act resting on one against it: a promise on `$request` counts as
+exactly as effective here as it will in the log. The projection this process
+holds stays untouched.
 
 [Refused before signing](state.md#refused-before-signing) states the rest of
-the rule: the reason is the fold's own, the fold decides again per act at
+the rule: the reason comes from the fold itself, the fold decides again per act at
 sequencing, and `--no-preflight` files the chain as written.
 
-A retry is judged per act, because a chain is not all one thing. An act whose
-`idempotency_key` this actor already holds is one the log has: it is not judged
-again, it is already in the world the rest of the chain is judged against, and
-the sequencer replays it or refuses its key. Its label names that real event, so
-the acts behind it stand on what actually landed. Everything else in the chain
-is new and is judged as new. So a chain whose prefix landed and whose suffix is
-fresh — the ordinary way a broken chain is resumed — replays the prefix and
+The fold judges a retry per act, because a chain does not behave as one thing.
+The log already has an act whose `idempotency_key` this actor already holds: the
+fold does not judge it again, it already belongs to the world against which the
+fold judges the rest of the chain, and the sequencer replays it or refuses its
+key. Its label names that real event, so the acts behind it stand on what
+actually landed. Everything else in the chain counts as new, and the fold judges
+it as new. So a chain whose prefix landed and whose suffix remains fresh — the
+ordinary way to resume a broken chain — replays the prefix and
 holds the suffix to the same check any first filing gets, and an exact retry of
 the whole chain replays whole and appends nothing.
 
@@ -133,17 +136,17 @@ position, its label, the event it minted, and its outcome.
 | Outcome | Meaning |
 |---|---|
 | `landed` | Appended by this run. |
-| `replayed` | Its idempotency key matched an act already in the log; nothing was appended. |
-| `failed` | This act was refused. |
+| `replayed` | Its idempotency key matched an act already in the log; the run appended nothing. |
+| `failed` | `gs` refused this act. |
 | `skipped` | The run stopped before reaching this act. |
 
 A failure adds a typed `error` and exits nonzero, so the report says
 exactly which acts landed and which did not.
 
-## It is not atomic
+## It does not run atomically
 
-Events are commits on `refs/seq/<genesis>`, and the kernel owns the whole
-write for each one: envelope and actor signature checks, the payload
+Each event lives as a commit on `refs/seq/<genesis>`, and the kernel owns the
+whole write for each one: envelope and actor signature checks, the payload
 ceiling, the admission hook, the dedup index, sequencer signing, and the
 compare-and-swap that publishes the commit. Building a chain of commits
 outside that path, so the ref could move once, would mean repeating those
@@ -152,7 +155,7 @@ checks where the kernel cannot enforce them.
 Per-act idempotency keys carry the recovery instead. Rerunning the same
 file replays the prefix that already landed, without duplicating it, and
 continues from the first act that did not. Acts given no idempotency key
-are not resumable and land afresh.
+cannot resume and land afresh.
 
 For guarded reassignment, use adjacent `retire-if-unclaimed` and
 `reassign-if-unclaimed` entries. The replacement names both the old request in
@@ -172,22 +175,22 @@ For guarded reassignment, use adjacent `retire-if-unclaimed` and
 ```
 
 The fold checks the same signed tuple as the purpose-specific command. Batch
-labels save callers from retyping the retirement event identifier; unrelated
-interleaving is allowed, while a promise or direct completion refuses.
+labels save callers from retyping the retirement event identifier; the fold allows
+unrelated interleaving, while a promise or direct completion refuses.
 
 ## Through a resident
 
 `--server` forwards the same signed requests to the resident sequencer,
 one at a time. That server holds the single verified frontier, and batch
-semantics stay per-act exactly as they are locally.
+semantics stay per-act exactly as they do locally.
 
 Each act waits under the same `--deadline`, so batching does not shorten the
 wait for any one of them. When one act's wait expires, the batch stops there and
-says so — and whether you may simply run the file again is a property of the
-whole prefix, not of the act that timed out. Rerunning replays what landed only
+says so — and whether you may simply run the file again depends on the
+whole prefix, not on the act that timed out. Rerunning replays what landed only
 where every act up to the failure carries an `idempotency_key`; an act given
 none lands afresh, so rerunning would append a second copy of it. The refusal
-says which of those two cases you are in, and names the positions that have no
+says which of those two cases applies, and names the positions that have no
 key. [`gs state`](state.md) has the rest.
 
 ## See also

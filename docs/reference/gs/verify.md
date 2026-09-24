@@ -45,61 +45,61 @@ gs verify --repo "$REPO"
 }
 ```
 
-On a log whose sequencer key has never been rotated, `Depth` and `Events`
-match, and that is itself a check: every commit on the first-parent chain
-from genesis to head decoded as an event. A rotation is a commit and not
-an event, so each one raises `Depth` above `Events` by one.
+On a log whose sequencer key nobody has ever rotated, `Depth` and `Events`
+match, and that match itself serves as a check: every commit on the
+first-parent chain from genesis to head decoded as an event. A rotation counts
+as a commit and not an event, so each one raises `Depth` above `Events` by one.
 
 ## What it establishes
 
-- Each event's **actor signature** covers the intent that was signed, and
-  the key is the one the roster attributes to that actor.
+- Each event's **actor signature** covers the signed intent, and the key
+  matches the one the roster attributes to that actor.
 - Each sequence commit's **sequencer signature** validates against the
   key current at that position. Genesis pins exactly one canonical
   `ssh-ed25519` key, with no options, principals, comments or extra
   lines, so a genesis carrying an injected second key cannot validate an
   attacker-signed event.
-- Where the sequencer key has been **rotated**, the audit carries the
-  current key forward as it walks. A rotation must itself be signed by
-  the key it replaces, and a commit signed under a retired key is refused
-  from the rotation point onward. Rotation commits count in the depth but
-  are not events, which is why `Depth` can exceed `Events` on a rotated
-  log.
+- Where someone has **rotated** the sequencer key, the audit carries the
+  current key forward as it walks. The key a rotation replaces must itself
+  sign that rotation, and the audit refuses a commit signed under a retired
+  key from the rotation point onward. Rotation commits count in the depth but
+  do not count as events, which explains why `Depth` can exceed `Events` on a
+  rotated log.
 - Each event occupies the commit it claims, with matching envelope,
   causal trailers and payload tree.
 - The signed envelope, the inline payload and every attachment together
-  are within the workroom's ceiling. The ceiling covers all three as one
+  fit within the workroom's ceiling. The ceiling covers all three as one
   total, not each of them separately.
 - The verified head and depth do not move away from the last frontier
   recorded in this repository's Gitseq config, and never move behind it. Any
   verified read, including an explicit full audit, advances that local marker
   before it returns data from a newer head. A read at the unchanged head
-  reuses the marker without rewriting the config. A read that finishes at a
-  head shorter than the marker is admitted only where the authoritative ref
+  reuses the marker without rewriting the config. Gitseq admits a read that
+  finishes at a head shorter than the marker only where the authoritative ref
   still stands on the recorded head or continues it, and the read's own head
-  is that recorded head's ancestor at exactly the depth between them: that is
-  a read another appender overtook, so it returns the world it verified and
-  leaves the marker where the appender put it. Anything else — a ref that
-  moved back, a sibling line, a depth the distance does not bear out — is
-  refused as a rollback, and the refusal names which test failed. If the
-  sequence advances but `.git/gitseq` cannot be written, the read fails closed
+  sits as that recorded head's ancestor at exactly the depth between them:
+  another appender overtook that read, so it returns the world it verified and
+  leaves the marker where the appender put it. Gitseq refuses anything
+  else — a ref that moved back, a sibling line, a depth the distance does not
+  bear out — as a rollback, and the refusal names which test failed. If the
+  sequence advances but the read cannot write `.git/gitseq`, it fails closed
   and leaves the old marker in place.
 
-It is an **explicit full audit**. It never consults a resident's
-checkpoint cache, no matter how recent that cache is, because the point
-of the command is to depend on nothing but the repository in front of
+It performs an **explicit full audit**. It never consults a resident's
+checkpoint cache, however recent that cache, because the command exists
+to depend on nothing but the repository in front of
 you.
 
 ## What it does not establish
 
-`verify` answers *is this record internally sound and correctly signed, and
-does it continue the frontier this repository already verified?* It does not
-answer *is this the same record everyone else has?*
+`verify` answers *does this record hold together internally, carry correct
+signatures, and continue the frontier this repository already verified?* It
+does not answer *does everyone else have this same record?*
 
 A repository that has already verified one branch refuses a non-descendant
 branch, and a shorter one unless its authoritative ref still continues the
-head that repository recorded — the case where a long read was overtaken by an
-appender rather than pointed at a rewound sequence.
+head that repository recorded — the case where an appender overtook a long
+read, rather than the read pointing at a rewound sequence.
 A first-time auditor has no such local memory: two fresh
 copies that share a genesis but receive different internally valid branches
 can each verify their first branch. Publication constrains this in practice —
@@ -107,17 +107,17 @@ a sequence only advances, so a push that Git refuses means the remote holds
 something you do not — but detecting first-contact equivocation requires a
 witness or trusted checkpoint.
 
-It also says nothing about whether an act was **effective**, whether an
-authority is live, or whether a document is stale. Signatures are one
-question; the fold's verdicts are another. Use [`gs status`](status.md)
-for those.
+It also says nothing about whether the fold judged an act **effective**,
+whether an authority remains live, or whether a document has gone stale.
+Signatures pose one question; the fold's verdicts pose another. Use
+[`gs status`](status.md) for those.
 
 ## Cost
 
-A full audit is linear in the depth of the sequence, and the expensive
-part is signature checking. On a long history it is not instant, and it
-is not meant to be run in a loop — that is what the resident's
-checkpointed restart is for.
+A full audit scales linearly with the depth of the sequence, and signature
+checking makes up the expensive part. On a long history it does not finish
+instantly, and it does not suit a loop — the resident's checkpointed restart
+serves that purpose.
 
 ## See also
 

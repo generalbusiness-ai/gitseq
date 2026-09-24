@@ -16,7 +16,7 @@ the durable artifact row rather than from a checkout, and everything else —
 independence, standing, head news, the frontier binding — judges exactly
 as the command line does.
 
-The verdict is a report whose body carries `verdict` and the reserved
+The verdict takes the form of a report whose body carries `verdict` and the reserved
 guard fields. A generic [`state`](state.md) call cannot write that shape:
 admission refuses it and names this tool.
 
@@ -24,31 +24,31 @@ admission refuses it and names this tool.
 
 | argument | required | meaning |
 |---|---|---|
-| `artifacts` | required | Array of artifact events standing at the reviewed head; the first is the primary the verdict names. Each must be effective, not retired, and stand at the exact head. |
+| `artifacts` | required | Array of artifact events standing at the reviewed head; the first serves as the primary the verdict names. Each must count as effective and unretired, and stand at the exact head. |
 | `promise` | required | The reviewer's own promise to review. |
 | `verdict` | optional | `approved` or `changes-requested`. Required to file a verdict; omitted with `prepare`. |
 | `text` | optional | The review itself. Acknowledgment means seen; judgment lives here in words. Required to file a verdict; omitted with `prepare`. |
 | `implementations` | optional | Array of implementation requests, or their exact promise or report, that disambiguate cited reports. Same rule as `--implementation` on the command line: a selector never drops another cited report from the resolved set. |
 | `self_initiated` | optional | The adopted decision a self-initiated primary rests on directly. |
-| `evidence_only` | optional | The primary is evidence against a request that owes no Git artifact; the verdict is valid and not mergeable. |
-| `prepare` | optional | Read-only: returns the resolved binding and its explanation with `recorded: false`; signs nothing. `verdict` and `text` are not needed. |
-| `ack_head_news` | optional | Array of event identifiers. Durable statements sequenced after the review request that name this head or lane are head news: the call refuses until you acknowledge exactly that set, once each. News the verdict already cites counts once. Every acknowledgment is recorded in the signed body, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; a request or promise is acknowledged in the body alone, because a report's request and promise bases name the one commitment it answers. |
+| `evidence_only` | optional | The primary serves as evidence against a request that owes no Git artifact; the verdict counts as valid and not mergeable. |
+| `prepare` | optional | Read-only: returns the resolved binding and its explanation with `recorded: false`; signs nothing. It needs neither `verdict` nor `text`. |
+| `ack_head_news` | optional | Array of event identifiers. Durable statements sequenced after the review request that name this head or lane count as head news: the call refuses until you acknowledge exactly that set, once each. News the verdict already cites counts once. The signed body records every acknowledgment, and every acknowledged event other than a request or a promise also becomes a citation of the verdict; the body alone acknowledges a request or promise, because a report's request and promise bases name the one commitment it answers. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The reviewer whose existing accessible key signs this verdict; defaults to startup `--actor`. |
 
 `artifacts`, `promise`, `ack_head_news`, `implementations` and
 `self_initiated` each take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
-identifier. The whole citation set of one verdict is resolved against one
-verified event set, and the result names what it resolved in a `resolved`
+identifier. The tool resolves the whole citation set of one verdict against
+one verified event set, and the result names what it resolved in a `resolved`
 field.
 
 ## Implementation binding
 
 The tool resolves the same binding as [`gs review`](../gs/review.md) from the
 same inputs: assigned by exact report equality, self-initiated by a named
-adopted decision, or evidence-only. The kind and its witnesses are recorded in
-the signed body and re-resolved by admission, authorization and merge; the
+adopted decision, or evidence-only. The signed body records the kind and its
+witnesses, and admission, authorization and merge re-resolve them; the
 explanations match the command line word for word.
 
 ## Head news
@@ -56,8 +56,8 @@ explanations match the command line word for word.
 Anything sequenced after the review request that carries the reviewed
 object ID in a structured `head` or `commit` field, or rests directly on
 the request, the promise, or an effective artifact standing at that head,
-is news to the reviewer. Matched records are shown whatever force they
-have — ineffective, retired, and undefined-kind rows included — because
+counts as news to the reviewer. The tool shows matched records whatever force
+they have — ineffective, retired, and undefined-kind rows included — because
 the guard directs attention; it does not judge.
 
 Missing, duplicate, or extraneous acknowledgments refuse with the full set

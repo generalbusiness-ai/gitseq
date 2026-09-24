@@ -13,12 +13,12 @@ judges the supersession effective. An ineffective attempt leaves both
 membership and custody untouched.
 
 The principal stays in the projection with `retired: true` and no
-roles: the events it signed are permanent, so forgetting it would leave
-those signatures attributed to nothing, and a reader must still be able
-to tell it from a live actor. A retired principal cannot be addressed
-by a request, cannot ratify, and cannot be granted a role. Retiring the
-retirement returns the principal to membership, because liveness is
-reversible and a verdict is not.
+roles: the events it signed remain permanent, so forgetting it would leave
+those signatures attributed to nothing, and a reader must still tell it
+apart from a live actor. A request cannot address a retired
+principal, a retired principal cannot ratify, and no one can grant it a
+role. Retiring the retirement returns the principal to membership,
+because liveness can reverse and a verdict cannot.
 
 Retire an instance identity when its engagement ends.
 

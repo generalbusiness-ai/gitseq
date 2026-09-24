@@ -9,7 +9,7 @@ rests_on:
 # `gs supersession-plan`
 
 Builds the `supersede` acts for every live artifact at one exact path. The JSON
-form is input for [`gs batch`](batch.md):
+form serves as input for [`gs batch`](batch.md):
 
 ```sh
 REPO="$(mktemp -d)/project"
@@ -44,8 +44,9 @@ The command never prints a partial plan. If more live artifacts match than the
 limit holds, it exits non-zero before writing output and reports both counts.
 This makes a redirected file bounded without letting truncation look complete.
 
-Paths are exact strings. The command always selects `live`: a retired artifact
-has already been withdrawn and must not receive another supersession act.
+The command matches paths as exact strings and always selects `live`: the
+record has already withdrawn a retired artifact, which must not receive another
+supersession act.
 
 ## See also
 

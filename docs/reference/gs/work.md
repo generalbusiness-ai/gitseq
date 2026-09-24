@@ -1,6 +1,6 @@
 ---
 title: gs work
-summary: Select the work one actor still owes or is owed, bounded and paged.
+summary: Select the work one actor still owes, or others still owe it, bounded and paged.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:2d135abad0f792f493ac3124c7025d4ff0076d5c
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:14a05c918ecb152f54bf0eea4848339aba18fdb1
@@ -16,7 +16,7 @@ rests_on:
 Selects one actor's commitments and pending ratification attention by relationship lane, row state
 and staleness policy, and pages through the result.
 
-This is the same selection the MCP [`work`](../mcp/work.md) tool and the
+It makes the same selection the MCP [`work`](../mcp/work.md) tool and the
 resident's `/v0/work-query` route make, through the same code. The
 filters, the caps and the cursor mean one thing on every surface, and
 `--json` prints the same page shape those surfaces return.
@@ -31,7 +31,7 @@ Rows expose [landing evidence and current Git observations](../landing-observati
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | | The actor whose work is selected. Required; falls back to `GITSEQ_ACTOR`. |
+| `--as` | | The actor whose work the command selects. Required; falls back to `GITSEQ_ACTOR`. |
 | `--lane` | all five | Relationship lane: `awaiting_ratification`, `available_to_you`, `waiting_on_you`, `you_are_waiting_on`, `not_actionable`; add `approved_not_landed` explicitly for that audit. Repeat to name several. |
 | `--status` | | Row state: the commitment lifecycle states or `awaiting-ratification`. Repeat to name several. |
 | `--target-ref` | | Exact destination filter, such as `refs/heads/release`. |
@@ -41,11 +41,11 @@ Rows expose [landing evidence and current Git observations](../landing-observati
 | `--cursor` | | The opaque continuation from a previous page. |
 | `--json` | `false` | Emit the page as JSON instead of the human view. |
 | `--next` | `false` | Print one exact command line for the act each selected row owes, instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
 
-There is no default actor, for the same reason there is none on a write:
-a default was a name several concurrent instances shared, and a lane read
-under the wrong identity is the wrong answer rather than a slower one.
+No default actor exists, for the same reason none exists on a write:
+a default served as a name several concurrent instances shared, and a lane
+read under the wrong identity gives the wrong answer rather than a slower one.
 If neither `--as` nor `GITSEQ_ACTOR` selects an actor, the refusal names the
 non-retired actors whose keys this checkout holds. Use [`gs whoami`](whoami.md)
 to inspect the same custody view directly.
@@ -75,7 +75,7 @@ gs work --repo "$REPO" --as bot --next
 
 ## `--next`: what to type
 
-The page says what each row is. `--next` says what to do about it: for
+The page describes each row. `--next` says what to do about it: for
 every row it returns, one `#` comment naming the row and one command line
 you can copy.
 
@@ -86,12 +86,12 @@ gs promise --as bot git:sha1:…#git:sha1:…
 #   or decline: gs state --as bot --kind assert --rests-on git:sha1:…#git:sha1:… --text '<why you decline>', and ask alice to retire it
 ```
 
-It is a formatter over the same rows, not a second rule set, and it prints
-the same selection: `--lane`, `--status`, `--stale`, `--limit` and
-`--cursor` all still apply. The mapping is one line per lane:
+It acts as a formatter over the same rows, not a second rule set, and it
+prints the same selection: `--lane`, `--status`, `--stale`, `--limit` and
+`--cursor` all still apply. The mapping gives one line per lane:
 
-Whose row it is decides what it prints. A commitment has a performer and a
-requester, and their acts are not interchangeable: the performer's acts
+The row's owner decides what it prints. A commitment has a performer and a
+requester, and their acts cannot substitute for each other: the performer's acts
 appear only on the performer's page, and telling a requester to publish
 somebody else's artifacts would print a command the preflight refuses.
 
@@ -118,49 +118,50 @@ that prints nothing and a row that owes nothing must not look the same.
 
 Facts the bounded page does not carry appear as angle-bracketed
 placeholders: `<head>`, `<path…>`, `<reviewer>`, `<checkout on
-refs/heads/main>`. A command line with a hole in it is still the shape of
-the act, and it is honest about the part only you know. A row that is
-stale carries a note naming its successor, or the requester to ask for a
+refs/heads/main>`. A command line with a hole in it still shows the shape of
+the act, and it stays honest about the part only you know. A stale row
+carries a note naming its successor, or the requester to ask for a
 refile, above the act it still owes.
 
-Asserts are not commitments and never appear as rows, so `--next` scans
-for asserts resting on your live promises and prints the ten newest. A
-breakdown somebody filed against your work is otherwise found only by
-whoever thought to look.
+Asserts do not count as commitments and never appear as rows, so `--next`
+scans for asserts resting on your live promises and prints the ten newest.
+Otherwise only whoever thought to look would find a breakdown somebody
+filed against your work.
 
 Because those acts depend on facts the page does not carry, `--next` reads
 the whole projection as well as the page. Under `--server` it takes that
-projection from the same resident, accepted only while the resident names
-this checkout's own genesis and head — read before and after the answer —
-and the fold profile this command runs under; anything else is named on
-standard error and answered by verifying the durable log locally.
+projection from the same resident, and accepts it only while the resident
+names this checkout's own genesis and head — read before and after the
+answer — and the fold profile this command runs under; the command names
+anything else on standard error and answers it by verifying the durable
+log locally.
 
 ## Reading it
 
-The header names the frontier the answer was taken at. The line under it
+The header names the frontier at which the command took the answer. The line under it
 gives the whole-log totals — how many commitments matched, how many this
 page returned, how many came before it and how many remain — so a
 shortened list never reads as a complete one.
 
 Each row carries its lifecycle status, its lane, the request event, the
-request text, who the work waits on when anyone is named, and the latest effective review for
-the reported head. Those are the facts needed to act on a row without a
+request text, who the work waits on when the row names anyone, and the latest effective review for
+the reported head. Those give the facts needed to act on a row without a
 second call. An unclaimed request addressed to the selected actor stays in
 `available_to_you` if its bases move: its status becomes `stale`, its `stale`
-flag is `true`, and its full conditions remain present. Claimed and closed
+flag reads `true`, and its full conditions remain present. Claimed and closed
 stale commitments keep their existing lanes.
 
-The exception to the commitment-shaped row is `awaiting_ratification`. It
-names the proposal in `event` and leaves `request` empty, because a proposal is
-not a commitment. The row appears to every actor holding the role in the
+`awaiting_ratification` makes the exception to the commitment-shaped row. It
+names the proposal in `event` and leaves `request` empty, because a proposal
+does not count as a commitment. The row appears to every actor holding the role in the
 proposal's captured satisfier and carries its author, kind, text, satisfier,
 and staleness qualifier. Ratification, supersession, or standing direct
 dissent removes it.
 
 An artifact completion has status `awaiting-review` until a ratified approval
 names it, and then `awaiting-landing` — or `awaiting-authorization`, waiting on
-the hold owner, when the request is held. Its kind has satisfier `none`, so
-requester ratification is not an admissible closing act; the performer merges
+the hold owner, for a held request. Its kind has satisfier `none`, so
+requester ratification does not count as an admissible closing act; the performer merges
 the independently approved exact head, and that merge closes it.
 
 A request has terminal status `superseded` only after an explicit supersession
@@ -171,35 +172,35 @@ request that status explicitly to read the historical transfer. A supersession
 that declared the approved head dropped reads `abandoned` instead.
 
 The human view prints the request's full canonical event ID beside its `#N`
-record number, and `--json` carries every event ID in full. Either can be
-typed back: `--rests-on` and the target of every command that takes one accept
+record number, and `--json` carries every event ID in full. You can type
+either back: `--rests-on` and the target of every command that takes one accept
 the number as well as the identifier, and resolve it before signing. A
-`Rests-On:` trailer is the exception and takes the full identifier only, since
-a commit message is not a boundary anything resolves at. See
+`Rests-On:` trailer makes the exception and takes the full identifier only,
+since no boundary resolves anything in a commit message. See
 [Event identifiers](../event-identifiers.md#typing-one-at-a-boundary).
 
-`--stale summary`, which is what a call naming no policy receives, answers
-*what is still owed*. A superseded, satisfied, withdrawn or abandoned commitment carrying only
-ordinary reasoning staleness, with no approved-artifact landing debt, is counted in `closed_stale_omitted` rather
-than listed. Naming any `--status` also overrides the summary. The other
+`--stale summary`, the policy a call naming no policy receives, answers
+*what remains owed*. A superseded, satisfied, withdrawn or abandoned commitment carrying only
+ordinary reasoning staleness, with no approved-artifact landing debt, counts in `closed_stale_omitted` rather
+than appearing in the list. Naming any `--status` also overrides the summary. The other
 three policies return exactly what they say: `include` adds the closed
 stale rows, `only` returns records carrying staleness in any lifecycle
 state, `exclude` returns records carrying none.
 
 An approved artifact can retain landing debt after source closure, so the
 audit preserves the original status and waiting party. `latest_review` and
-the fold-selected `approval` are distinct fields: a newer review is not itself
-a sealed landing.
+the fold-selected `approval` name distinct fields: a newer review does not itself
+make a sealed landing.
 
-A cursor is bound to its exact durable head **and** its exact filters. Changing
-either is refused rather than silently splicing two selections into one
+A cursor binds to its exact durable head **and** its exact filters. The command
+refuses a change to either rather than silently splicing two selections into one
 answer; restart the query instead. Current Git observations may change between
 pages without moving that durable frontier.
 
 ## Cost
 
-Selection happens before any rendering, and the response is bounded by the
-page cap rather than by workroom depth. With `--server`, the selection
+Selection happens before any rendering, and the page cap, rather than
+workroom depth, bounds the response. With `--server`, the selection
 happens at the resident and nothing larger than the page crosses the
 socket. Without it, the local read folds the log the way
 [`gs status`](status.md) does and then selects.

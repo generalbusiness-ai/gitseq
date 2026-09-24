@@ -21,21 +21,22 @@ the named frames from subsequent `status` and `wait` answers.
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key selects this session; defaults to startup `--actor`. |
 
-A well-formed handle that was already acknowledged, expired, or never belonged
-to this session is harmless. A malformed handle is refused. Acknowledging in
-one live session does not alter another session's inbox. The result reports
-how many pending frames were actually removed. When more frames are pending
-behind the current page, acknowledging visible handles reveals the next page.
+A well-formed handle that this session already acknowledged, that has expired,
+or that never belonged to this session does no harm. `ack` refuses a malformed
+handle. Acknowledging in one live session does not alter another session's
+inbox. The result reports how many pending frames it actually removed. When
+more frames wait behind the current page, acknowledging visible handles
+reveals the next page.
 
 ## What it does not mean
 
-`ack` is leased local attention. It is not a durable read receipt, a promise,
-an approval, a ratification, or evidence that the message was acted on. It
-advances neither the durable sequence nor the live room cursor.
+`ack` marks leased local attention. It makes no durable read receipt, promise,
+approval, or ratification, and gives no evidence that anyone acted on the
+message. It advances neither the durable sequence nor the live room cursor.
 
 Inbox state disappears with the session lease or resident process. If the
-resident is unavailable, `ack` fails rather than pretending it changed a live
-inbox that cannot be reached.
+resident does not answer, `ack` fails rather than pretending it changed a live
+inbox that it cannot reach.
 
 ## See also
 

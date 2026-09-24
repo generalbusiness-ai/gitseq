@@ -3590,7 +3590,7 @@ func TestReferencePageAgreesThatRetiredPrincipalsStayOnTheRoster(t *testing.T) {
 			t.Errorf("docs/concepts/actors.md says a retired principal is %q, but the fold keeps it listed", contradiction)
 		}
 	}
-	if !strings.Contains(unwrapped, "is left on the roster with `retired: true` and no roles") {
+	if !strings.Contains(unwrapped, "remains on the roster with `retired: true` and no roles") {
 		t.Error("docs/concepts/actors.md no longer states what retiring a seeded membership actually leaves behind")
 	}
 	if !strings.Contains(unwrapped, "from `[participant]` to retired with no roles") {

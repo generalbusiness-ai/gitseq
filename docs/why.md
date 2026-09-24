@@ -10,11 +10,11 @@ rests_on:
 
 ## The problem
 
-Many documents your team keeps are caches of earlier decisions, and nothing
-normally invalidates them. The design note, the runbook, the quote, the
-dashboard, the onboarding page: each was rendered from some state of the
-discussion and then kept serving reads after the discussion moved on. The
-usual repair is a human asking in a channel whether the page is still current,
+Many documents your team keeps serve as caches of earlier decisions, and
+nothing normally invalidates them. The design note, the runbook, the quote, the
+dashboard, the onboarding page: someone rendered each from some state of the
+discussion, and it then kept serving reads after the discussion moved on. The
+usual repair has a human asking in a channel whether the page remains current,
 which works about as well as it sounds.
 
 Agents make this sharper rather than different. More gets said, more gets
@@ -23,79 +23,78 @@ done, and it matters more who stands behind each act.
 ## Why git alone does not fix it
 
 Git solved the naming half of the problem. Content addressing answers
-*is this the same bytes I saw before?* exactly and cheaply.
+*do these bytes match the ones I saw before?* exactly and cheaply.
 
-It cannot answer *is this still true?*, and not by oversight. Currency
+It cannot answer *does this still hold?*, and not by oversight. Currency
 needs a clock, and git deliberately has no final one. The order of `main`
-is editorial and revisable, every branch is another partial order, and
-every rebase moves the hands. That is the right design for source code
+stays editorial and revisable, every branch forms another partial order, and
+every rebase moves the hands. That makes the right design for source code
 and the wrong one for commitments. You cannot say "as of commit X" to a
 colleague and have it mean one fixed thing to both of you, because X's
-position in history is negotiable.
+position in history remains negotiable.
 
 ## The shape of the answer
 
 gitseq adds the missing half: a sequenced log carried in ordinary git
-refs under `refs/seq/*`. Positions in that sequence are final. Nothing
+refs under `refs/seq/*`. Positions in that sequence stay final. Nothing
 rewrites them, and no merge reorders them.
 
-Three small mechanisms, and the value is entirely in their composition.
+Three small mechanisms, and the value lies entirely in their composition.
 
-**Every act gets a position.** A durable act is signed by its author,
-admitted at one position, and never moves. "As of #4312" means the same
+**Every act gets a position.** A durable act carries its author's signature,
+takes one position on admission, and never moves. "As of #4312" means the same
 thing to every reader, forever.
 
 **Acts point backwards.** Each act names what it rests on: the request it
-answers, the decision it implements, the claim it disputes. The result is
+answers, the decision it implements, the claim it disputes. Together they form
 a dependency graph pinned to a clock, rather than a wiki full of links
 with no before and after.
 
 **Tracked artifacts name the acts they describe.** Once an artifact statement
 names a page at an exact commit and the acts governing it, *does this need
 another look?* becomes a deterministic question. Retire one of those acts and
-the artifact is marked stale. That means re-check it; it does not mean the page
-is wrong.
+the fold marks the artifact stale. That means re-check it; it does not declare
+the page wrong.
 
 ## What that buys
 
 The record answers ordinary questions mechanically:
 
 - What did we agree to, and when relative to everything else?
-- Who is waiting on whom?
+- Who waits on whom?
 - What evidence supports this claim?
-- Was this adopted, disputed, withdrawn, replaced?
+- Did anyone adopt, dispute, withdraw, replace this?
 - Which tracked artifacts need re-checking, and what moved underneath them?
 
-The answers are projections, not decrees. Every reader replays the same
+The answers come as projections, not decrees. Every reader replays the same
 deterministic fold over the same signed events and reaches the same
 verdicts. Acts that exceeded their author's authority stay visible as
-attempts without gaining force, so the log records what was tried as well
+attempts without gaining force, so the log records what someone tried as well
 as what took effect.
 
 ## What gitseq deliberately does not do
 
-It has **no ontology**. `request`, `promise`, `artifact` and the rest are
+It has **no ontology**. `request`, `promise`, `artifact` and the rest name
 speech acts belonging to the practice of a particular room, not types the
 substrate understands. Two rooms can use different vocabularies over the
 same machinery.
 
-It does **not interpret on your behalf**. The fold is a library that
-readers and applications run; there is no server whose reading is
-authoritative.
+It does **not interpret on your behalf**. The fold lives in a library that
+readers and applications run; no server's reading carries authority.
 
 It does **not discover causal edges from files, imports, or prose**. Someone
-has to register the artifact and the premises it rests on. Unanchored work is
-invisible, and gitseq does not decide whether revised prose is correct.
+has to register the artifact and the premises it rests on. Unanchored work
+stays invisible, and gitseq does not judge whether revised prose holds up.
 
 It does **not hold your work hostage**. Artifacts stay where they always
-were — files, commits, branches. Delete `.git/gitseq` and the extra fetch
+lived — files, commits, branches. Delete `.git/gitseq` and the extra fetch
 rule and you have an ordinary repository back.
 
 ## Where to go next
 
 - [Do a piece of work, end to end](how-to/end-to-end.md) — the same ideas
   as a sequence of commands that run.
-- [The record](concepts/record.md) — what an event is and what the fold
+- [The record](concepts/record.md) — what makes up an event and what the fold
   does with it.
 - [Staleness](concepts/staleness.md) — what a flare covers, and the one
-  gap that is known and open.
+  known, open gap.

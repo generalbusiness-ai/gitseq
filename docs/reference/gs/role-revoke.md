@@ -9,7 +9,7 @@ rests_on:
 # `gs role-revoke`
 
 Supersedes the `roster` statement that granted a role. The role goes, and
-so does every role that was riding on it.
+so does every role riding on it.
 
 ## Flags
 
@@ -34,30 +34,30 @@ gs role-revoke --repo "$REPO" --as alice --actor bot --role ratifier
 gs actors --repo "$REPO"
 ```
 
-`bot` is back to `["participant"]`.
+`bot` returns to `["participant"]`.
 
 ## Blast radius
 
 Revoking retires the named grant **and every role derived from it**.
 Revoking `operator` takes a principal from
 `[operator, participant, ratifier]` to `[participant]`, because
-`ratifier` was riding on `operator` and had no grant of its own.
+`ratifier` rode on `operator` and had no grant of its own.
 
 An ordinary `ratifier` revocation looks narrow — `[participant,
-ratifier]` to `[participant]` — but that is because nothing was derived
-from it, not because revocation is narrow.
+ratifier]` to `[participant]` — but it looks that way because nothing
+derived from it, not because revocation acts narrowly.
 
 Retiring ratifications can also end a grant, but only by exhausting them:
-the role survives until every live effective ratification of that grant
-is retired.
+the role survives until someone retires every live effective ratification
+of that grant.
 
 ## Reversible
 
-Retirement can itself be retired. Superseding the supersession brings the
+An actor can retire a retirement itself. Superseding the supersession brings the
 authority back, without anyone appending a new grant, only when the actor
 still holds the authority required for that target. Restoring an operator
 grant, or membership carrying a dormant operator grant, requires a current
-`operator`. The check is made at restoration time.
+`operator`. The fold makes the check at restoration time.
 
 To remove someone entirely, retire the **membership** instead: one
 supersede, and every non-membership role that named it goes with it.

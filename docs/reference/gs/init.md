@@ -12,15 +12,15 @@ Creates a workroom over an existing git repository: generates the
 sequencer key and the operator's actor key, writes genesis, and appends
 the seed roster statement.
 
-Run it once per repository. It is the only command that creates a
-genesis, and genesis is immutable.
+Run it once per repository. No other command creates a genesis, and
+genesis never changes.
 
 ## Flags
 
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The ordinary git repository to overlay. |
-| `--operator` | *(required, or `GITSEQ_ACTOR`)* | Name of the founding actor. There is no default name. |
+| `--operator` | *(required, or `GITSEQ_ACTOR`)* | Name of the founding actor. It has no default name. |
 | `--payload-ceiling` | `1048576` | Maximum bytes for a signed envelope plus its inline payload and attachments. |
 
 ## Example
@@ -46,20 +46,20 @@ It prints the genesis hash, the operator actor, and the seed event:
 ```
 
 Keep the genesis hash. Everyone who attaches to this workroom later needs
-it, and there is no way to discover it from a clone that has not fetched
-the sequence.
+it, and a clone that has not fetched the sequence has no way to discover
+it.
 
 ## What it writes
 
 | Path | Contents |
 |---|---|
-| `refs/seq/<genesis>` | The sequence. The seed is its first commit. |
+| `refs/seq/<genesis>` | The sequence. The seed forms its first commit. |
 | `.git/gitseq/config.json` | Genesis, object format, payload ceiling, actor list. |
 | `.git/gitseq/actors/<name>.key` | Private keys. Local, never published. |
 
-Your branches, tags and working tree are untouched.
+`gs init` leaves your branches, tags and working tree untouched.
 
-## Choices that cannot be changed later
+## Choices you cannot change later
 
 - **The payload ceiling.** Every reader validates against the value
   recorded in genesis, so raising it afterwards would invalidate the
@@ -70,16 +70,16 @@ Genesis also pins the **first** sequencer key: exactly one canonical
 `ssh-ed25519` public key, key type, one space, base64 wire key, with no
 options, principals, comments or extra lines. Creation and auditor
 decoding share that validator, so a genesis carrying an injected second
-key cannot validate an attacker-signed event. That key is not permanent
-— it can be rotated in band, and readers carry the current key forward as
-they audit. What rotation does and does not recover is in
-[Limits](../limits.md).
+key cannot validate an attacker-signed event. That key has no permanence
+— you can rotate it in band, and readers carry the current key forward as
+they audit. [Limits](../limits.md) describes what rotation does and does
+not recover.
 
 ## The operator
 
 The founding actor holds `operator`, which carries `ratifier` with it —
-there is no earlier ratifier available to grant one. The seed is the sole
-grant that confers without a ratification.
+no earlier ratifier exists to grant one. The seed remains the sole grant
+that confers without a ratification.
 
 Add everyone else with [`gs actor-add`](actor-add.md).
 

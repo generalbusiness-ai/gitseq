@@ -12,8 +12,8 @@ rests_on:
 The commitment includes the fold's target, hold, approval, resolution, terminal,
 delivery-debt and `landing_receipt` fields. The sibling `landing` block carries
 the shared [receipt evidence and current Git observations](../landing-observations.md).
-Unknown incorporation is JSON null; the compatibility warning comes only from
-the witnessed receipt's explicit field.
+The response reports unknown incorporation as JSON null; the compatibility
+warning comes only from the witnessed receipt's explicit field.
 
 Reads one exact durable item. The tool calls `POST /v0/inspect` and
 never fetches the complete `/v0/status` projection; use it after
@@ -29,8 +29,8 @@ to read one event.
 | `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
 
 `event` takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical identifier. A canonical
-identifier reaches the resident as it stands; a short one is resolved against
-this checkout's own verified events first, so a very recent event this
+identifier reaches the resident as it stands; the adapter first resolves a
+short one against this checkout's own verified events, so a very recent event this
 checkout has not fetched will not resolve here. This tool records nothing.
 
 ## What comes back
@@ -39,9 +39,9 @@ The statement or act named by the event, its fold decision, any
 request–promise–completion chain it belongs to, its direct provenance
 bases, and bounded related artifact and review lists — each with an
 exact omitted count when the cap truncates it. The response names the
-exact durable frontier it was read at.
+exact durable frontier at which the tool read it.
 
-If the resident is unavailable, the tool makes the same bounded
+If the resident does not answer, the tool makes the same bounded
 selection from a verified local snapshot and marks the response
 `degraded`. The adapter caps inspection responses at 2 MiB.
 

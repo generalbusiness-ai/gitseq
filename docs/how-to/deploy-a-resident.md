@@ -1,6 +1,6 @@
 ---
 title: Deploy a resident
-summary: Run the local service, wait for it to be ready, and understand what the loopback boundary trusts.
+summary: Run the local service, wait for it to become ready, and understand what the loopback boundary trusts.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:b9b714309ab6aa17154b96083c9d7fc054a9218d
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
@@ -35,13 +35,13 @@ Then open `http://127.0.0.1:$PORT` for the live view.
 
 Serving publishes the address it bound inside the repository, together
 with the genesis it holds, so clients find the service by naming the
-repository rather than by being told a URL. Use `--listen 127.0.0.1:0`
-when you are serving several repositories at once and do not want to
+repository rather than by receiving a URL. Use `--listen 127.0.0.1:0`
+when you serve several repositories at once and do not want to
 allocate ports by hand.
 
 ## Wait for it properly
 
-Starting the process is not the same as being able to talk to it. Poll
+Starting the process does not mean you can talk to it yet. Poll
 for a real answer:
 
 ```sh
@@ -58,7 +58,7 @@ gs status --repo "$REPO" --server "http://127.0.0.1:$PORT" >/dev/null
 
 Durable subcommands that take `--server` submit through the resident
 instead of writing to the local log directly. Both land in the same
-sequence; going through the resident is what makes concurrent appends
+sequence; going through the resident makes concurrent appends
 safe.
 
 ```sh
@@ -72,10 +72,10 @@ gs state --repo "$REPO" --server "http://127.0.0.1:$PORT" --as alice \
 
 With no `--server` flag, `gs` and the GitHub connector (`gitseq-github`)
 both submit through the resident this repository advertises, and act locally
-only when nothing is advertised; `--server -` chooses the local fold
-deliberately. An advertisement that cannot be trusted or used, or an
-advertised resident that does not answer or refuses, stops the act rather
-than folding it locally. The MCP adapter is governed separately: after
+only when the repository advertises nothing; `--server -` chooses the local
+fold deliberately. An advertisement that the client cannot trust or use, or
+an advertised resident that does not answer or refuses, stops the act rather
+than folding it locally. Separate rules govern the MCP adapter: after
 transport loss it re-reads the advertisement and may fold locally, marked
 degraded.
 
@@ -85,8 +85,8 @@ append, or changes local key custody as well as the log. They therefore refuse
 before changing anything while the repository advertises a resident. Shut the
 resident down normally so it withdraws its advertisement, or pass `--server -`
 to one of these commands when you deliberately choose the local fold. A hard
-kill leaves the advertisement behind, so merely stopping the process is not
-enough: restart it and stop it normally to remove the record, or use the
+kill leaves the advertisement behind, so merely stopping the process does not
+suffice: restart it and stop it normally to remove the record, or use the
 explicit local override. The override never contacts the advertised resident.
 
 ## Loopback only, and why
@@ -95,52 +95,54 @@ explicit local override. The override never contacts the advertised resident.
 ! gs serve --repo "$REPO" --listen 0.0.0.0:9999
 ```
 
-The refusal is deliberate. The service is a **trusted local custodian** for
+The service refuses deliberately. It acts as a **trusted local custodian** for
 several actors at once: it holds their signing keys and signs on behalf of
-trusted processes. Its posture is trusted processes only: every process inside
-this resident boundary can act as every actor key this application can open.
+trusted processes. Its posture reads "trusted processes only: every process
+inside this resident boundary can act as every actor key this application can
+open."
 Starting the service accepts that boundary, and the service prints the same
 sentence next to its address on every start. Loopback binding limits who can
 reach the service from outside the host. It does nothing about a process
 already inside the boundary, and it does not separate the actors from one
 another there.
 
-The listener host is resolved and every result must be loopback. Each HTTP
-mutation separately rejects a Host that is not wholly loopback, then enforces
-same-origin browser provenance and JSON content type before routing or
-decoding, and every response carries a Content-Security-Policy confined to
-the service's own origin with framing denied. These guards narrow accidental
-exposure; they are not shared-host authentication.
+The service resolves the listener host, and every result must name a loopback
+address. Each HTTP mutation separately rejects a Host other than a wholly
+loopback one, then enforces same-origin browser provenance and JSON content
+type before routing or decoding, and every response carries a
+Content-Security-Policy confined to the service's own origin with framing
+denied. These guards narrow accidental exposure; they do not provide
+shared-host authentication.
 
 The resident, not the client, mints each private credential from 256 bits of
 system randomness. It binds the credential to one repository and actor.
 Renewal, acts, speech, inbox operations and departure use it in JSON bodies;
 expiry, departure, revocation or process restart invalidates it. Presence and
-the change stream show only a separate random `session:` handle. The handle is
-display-only and grants no authority.
+the change stream show only a separate random `session:` handle. The handle
+serves display only and grants no authority.
 
 The browser keeps its credential only in memory. The MCP adapter keeps one
 private credential per repository and consumes it internally; ordinary tool
 results, including `whoami`, do not return it. Credentials do not appear in
 status, logs, diagnostics, durable events, URLs, queries or referrers.
 
-What remains trusted is the operating-system boundary itself. Any process
+The operating-system boundary itself remains trusted. Any process
 running as the account that owns the resident can reach loopback and may read
 the repository's actor keys or invoke local `gs` commands directly. Such a
 process can act as any actor whose key the application can open.
 
-Two layers are worth separating, because conflating them overstates the
+Two layers deserve separating, because conflating them overstates the
 damage. Possession of a session makes the custodian produce a **genuinely
 actor-signed** event: no later reader can tell it from one the actor
 intended, because cryptography answers who holds the key and not who
-meant it. What the event then *means* is judged separately — the fold
+meant it. The fold judges separately what the event then *means* — it
 reads already-decoded records, checks no signatures, and can rule a
 perfectly signed act ineffective on its merits. The boundary buys an
 attacker authentic authorship, not automatic force.
 
-There is no authentication below that line, by design. A multi-user service,
-container boundary shared with untrusted workloads, or remote listener is not
-a supported deployment.
+No authentication exists below that line, by design. A multi-user service,
+container boundary shared with untrusted workloads, or remote listener falls
+outside the supported deployments.
 
 ## Supported deployment checklist
 
@@ -162,8 +164,8 @@ equally trusted account. Do not restore a repository carrying live actor keys
 onto a less trusted host merely to inspect it; use a read-only attachment or a
 copy without private custody instead.
 
-If the account, host, backup, snapshot or copied common directory may have
-been exposed, stop the resident, revoke access to the host, preserve the
+If exposure may have reached the account, host, backup, snapshot or copied
+common directory, stop the resident, revoke access to the host, preserve the
 durable log for audit, and treat every actor and sequencer key in that custody
 set as compromised. Recover from a known-good protected copy when possible.
 Rotate the sequencer key through the verified in-band rotation procedure and
@@ -173,50 +175,50 @@ credentials; it does not rotate durable keys or undo signed acts.
 
 ## One service per repository
 
-Exactly one runs, and this is now enforced. A second `gs serve` on a
-repository that is already served refuses before it serves anything, and
+Exactly one runs, and `gs serve` now enforces this. A second `gs serve` on a
+repository that already has a service refuses before it serves anything, and
 names the address already holding it.
 
-Two services on different ports against the same repository is the case
-being prevented. The durable log stays correct either way — appends are
-compare-and-swap on the git ref and retry on contention — but presence and
-ephemeral conversation are per-process, so the two would form separate
-rooms whose participants cannot see each other and are never told.
+This prevents two services on different ports against the same repository.
+The durable log stays correct either way — appends compare-and-swap the git
+ref and retry on contention — but presence and ephemeral conversation live
+per process, so the two would form separate rooms whose participants cannot
+see each other and never learn of it.
 
-Ownership is a claim at the ref `refs/gitseq/resident/<genesis>`, holding
-a small record of the address being served and a fresh random nonce. It is
-taken with a git ref update carrying the expected old value, the same
+Ownership takes the form of a claim at the ref `refs/gitseq/resident/<genesis>`,
+holding a small record of the served address and a fresh random nonce. A
+start takes it with a git ref update carrying the expected old value, the same
 compare-and-swap the durable log's own appends use, so exactly one of any
-number of simultaneous starts wins it. The claim is an ordinary shared ref
-in the repository's common directory, so every path alias, symlink and
+number of simultaneous starts wins it. The claim lives as an ordinary shared
+ref in the repository's common directory, so every path alias, symlink and
 linked worktree of one repository contends for the same claim, and two
 different repositories never contend at all.
 
-The advertisement at `.git/gitseq/resident.json` is endpoint metadata, not
+The advertisement at `.git/gitseq/resident.json` carries endpoint metadata, not
 authority. Only a process that already holds the claim writes it.
 
-A service that stops normally releases the claim. A service that is killed
-does not, and that is not a wedge: the next start reads the claim, asks the
-address it names whether it is still serving, and takes it over when
-nothing is listening there. Only a refused connection frees a claim.
+A service that stops normally releases the claim. A killed service does not,
+and that causes no wedge: the next start reads the claim, asks the address it
+names whether it still serves, and takes it over when nothing listens there.
+Only a refused connection frees a claim.
 Anything else — a timeout, a port that accepts and never answers, an
 unparseable answer, an answer naming another workroom — leaves the claim
-alone and refuses, because starting beside a resident that is really alive
-is worse than not starting at all.
+alone and refuses, because starting beside a really live resident does more
+harm than not starting at all.
 
-That asymmetry has one operational cost. If the address in a claim is
-reused by an unrelated program that accepts connections, or is firewalled
-so probes time out, `gs serve` will keep refusing. The refusal says what to
+That asymmetry has one operational cost. If an unrelated program that accepts
+connections reuses the address in a claim, or a firewall blocks it so probes
+time out, `gs serve` will keep refusing. The refusal says what to
 do:
 
 ```sh
 git -C "$REPO" update-ref -d "refs/gitseq/resident/$GENESIS"
 ```
 
-Check that no `gs serve` is actually running against the repository first.
-Removing the claim while a service holds it is how you get the two rooms.
+Check first that no `gs serve` actually runs against the repository.
+Removing the claim while a service holds it gives you the two rooms.
 
-This is coordination between cooperating services, not a security boundary.
+This coordinates cooperating services; it provides no security boundary.
 Any local process that can write the repository can write the claim, and it
 already has the durable log in reach.
 
@@ -227,24 +229,24 @@ under `.git/gitseq/checkpoints/<genesis>.json`. It names a signed checkpoint
 object. The local ref `refs/gitseq/checkpoints/<genesis>` names the same object:
 the ref keeps it reachable to Git garbage collection and can repair a missing
 or damaged selector, while the selector can recover from an unavailable or
-rewritten ref. Both are selectors, not proof. The object contains the original
-actor-signed events at one fully audited sequence head and is signed by the
-sequencer key **current at that head**. On restart gitseq checks its checkpoint
+rewritten ref. Both act as selectors, not proof. The object contains the original
+actor-signed events at one fully audited sequence head and carries the
+signature of the sequencer key **current at that head**. On restart gitseq checks its checkpoint
 schema, object format, genesis and exact head, proves the commit sequence from
 genesis to that head from local metadata, and re-reads sequencer signatures and
 payload objects only for events after the frontier. The checkpoint contains no
-folded state and is not keyed by the application profile: a fold change reuses
+folded state, and the application profile does not key it: a fold change reuses
 the authenticated events and rebuilds the separately profile-gated projection.
 
-Because the sequencer key can be rotated in band, deriving the right key
-is part of the check rather than an assumption. Every rotation inside the
-cached prefix is read from its own sequence commit and verified under the
-preceding key, and the key that walk arrives at must be the one that
+Because in-band rotation can change the sequencer key, deriving the right key
+forms part of the check rather than an assumption. Gitseq reads every rotation
+inside the cached prefix from its own sequence commit and verifies it under
+the preceding key, and the key that walk arrives at must match the one that
 signed the checkpoint. Cached application events skip the sequencer
 signature read; cached rotations do not.
 
 A missing, malformed, mismatched, oversized or non-descendant checkpoint
-is only a cache miss: gitseq performs the ordinary full audit and, if it
+counts only as a cache miss: gitseq performs the ordinary full audit and, if it
 holds sequencer custody, replaces the checkpoint.
 
 A writing process refreshes the reachability ref before the local selector
@@ -259,9 +261,9 @@ selector and rewinds the checkpoint ref to genesis; the next ordinary read
 rebuilds both after its cold audit. To keep checkpoints disabled for a command
 or process, set `GITSEQ_CHECKPOINT=off`. The off switch neither reads nor writes
 the selectors. It does not turn [`gs verify`](../reference/gs/verify.md) into a
-different operation: `verify` is always cold.
+different operation: `verify` always runs cold.
 
-Checkpoint refs are local. `attach` does not fetch them, the documented
+Checkpoint refs stay local. `attach` does not fetch them, the documented
 sequence push does not publish them, and `gs verify` never consults them.
 
 ## Stop it
@@ -271,17 +273,17 @@ kill "$SERVER"
 trap - EXIT
 ```
 
-Interrupt and terminate both count as being told to stop: the service
+Interrupt and terminate both count as an instruction to stop: the service
 withdraws its advertisement and exits reporting success, so an ordinary
 shutdown does not read as a fault in a supervisor's logs.
 
-Only a hard kill leaves the record behind. That record is still a
-well-formed advertisement, so what a client does next depends on what it
-was asked to do. A read command names the refused connection on standard
+Only a hard kill leaves the record behind. That record still reads as a
+well-formed advertisement, so what a client does next depends on what you
+asked it to do. A read command names the refused connection on standard
 error and answers from the verified local read instead. A durable write
 refuses and appends nothing, and tells you to start the resident again or
 pass `--server -` to act locally on purpose. Writing to the local log
-because a dial failed would rebuild the whole log without being asked, so
+because a dial failed would rebuild the whole log without anyone asking, so
 `gs` makes you say it.
 
 Remove the stale record, or start the resident again, and both go back to

@@ -40,23 +40,24 @@ statement and its ratification:
 }
 ```
 
-Both events matter. A membership grant is live when the grant statement
-is live **and** at least one effective ratification of it is live.
+Both events matter. The fold treats a membership grant as live when it
+treats the grant statement as live **and** at least one effective
+ratification of it as live.
 
-## Kind is not authority
+## Kind does not confer authority
 
-`kind` describes what a principal is. It confers nothing. An agent with a
+`kind` describes the nature of a principal. It confers nothing. An agent with a
 `ratifier` grant may ratify; a human without one may not. To give
 authority, use [`gs role-grant`](role-grant.md).
 
 ## Custody
 
-The private key is written under `.git/gitseq/actors/` in **this**
-repository. That is what makes the resident service able to sign for this
-actor, and it is why the service binds loopback only.
+The command writes the private key under `.git/gitseq/actors/` in
+**this** repository. That lets the resident service sign for this actor,
+and explains why the service binds loopback only.
 
 A principal can exist on the roster without this repository holding its
-key — that is the normal case for a clone. `gs actors` reports custody
+key — the normal case for a clone. `gs actors` reports custody
 separately from roles.
 
 ## See also

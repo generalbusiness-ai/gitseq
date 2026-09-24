@@ -18,19 +18,19 @@ from status rows or maintain a second set of merge rules.
 
 | argument | required | meaning |
 |---|---|---|
-| `candidate` | required | The full lowercase approved commit object ID. This names an ordinary Git commit, not an event, and is never resolved. |
+| `candidate` | required | The full lowercase approved commit object ID. This names an ordinary Git commit, not an event, and the tool never resolves it. |
 | `approval` | required | The ratified approval report event. |
 | `checkout` | optional | The checkout that would receive the merge. Defaults to `repo`. |
 | `repo` | optional | The repository whose workroom this call acts in. |
 | `agent` | optional | The actor whose existing accessible key selects this call; defaults to startup `--actor`. |
 
 `approval` takes a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical identifier.
-`candidate` names an ordinary Git commit, not an event, and is never resolved.
+`candidate` names an ordinary Git commit, not an event, and the tool never resolves it.
 This tool records nothing.
 
 The tool deliberately has no `authorization` argument. Structured merge
 authorization belongs to the mutating `gs merge` boundary. An allowed result
-therefore does not say that a required authorization exists or is valid, and
+therefore does not say that a required authorization exists or counts as valid, and
 `gs merge` may still refuse the candidate on that separate check.
 
 ## Result
@@ -38,8 +38,8 @@ therefore does not say that a required authorization exists or is valid, and
 The structured result names the durable frontier, receipt mode, approval,
 exact head and implementer; candidate artifacts and reviewed paths; changed
 paths; every covering artifact and its classification; retirements and
-successors; and stable allow or refusal reasons. The five classifications are
-`reviewed candidate`, `in-target predecessor`, `carried`, `protected sibling`,
+successors; and stable allow or refusal reasons. The plan uses five
+classifications: `reviewed candidate`, `in-target predecessor`, `carried`, `protected sibling`,
 and `abandoned`.
 
 `mode: incorporate` means the target already contains the approved candidate.
@@ -49,8 +49,8 @@ already landed and leave Git untouched. See
 [`gs merge`](../gs/merge.md#incorporation-the-head-the-target-already-has).
 
 For an existing sealed receipt at the matching target and head, `mode: resume`
-means succession acts remain. `mode: complete` with `allowed: true` means all
-canonical acts are already recorded and retrying merge appends nothing. The
+means succession acts remain. `mode: complete` with `allowed: true` means the
+workroom already records all canonical acts and retrying merge appends nothing. The
 same effective-act matching and refusal rules as the CLI apply; the MCP adapter
 does not decide completion separately.
 
@@ -61,10 +61,10 @@ ceiling and, when this MCP room has a resident endpoint, the resident submission
 ceiling. This proves the un-authorized suffix shape and size, not authority to
 merge it.
 
-The tool is read-only even on a cold workroom whose local verified-frontier or
-checkpoint state could be repaired. It does not announce completion, reserve
+The tool stays read-only even on a cold workroom whose local verified-frontier
+or checkpoint state admits repair. It does not announce completion, reserve
 the approval, append a durable act, or change repository-local acceleration
-state. The deterministic result is bounded to 2 MiB and refuses with
+state. The tool bounds the deterministic result to 2 MiB and refuses with
 `plan_output_too_large` when complete accounting would exceed that ceiling.
 
 ## See also

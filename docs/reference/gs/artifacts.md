@@ -9,12 +9,12 @@ rests_on:
 # `gs artifacts`
 
 Selects artifact statements without fetching the whole projection, by
-three things: the exact path they were recorded at, the lifecycle state
-they are in, and whether their chain of artifact bases reaches an anchor.
+three things: the exact path recorded for them, their lifecycle
+state, and whether their chain of artifact bases reaches an anchor.
 
 The exact live-path selection uses the same page-building code and JSON page
 shape as the MCP [`artifacts`](../mcp/artifacts.md) tool and the resident's
-`/v0/artifact-query` route. Lifecycle and provenance selectors are CLI-only:
+`/v0/artifact-query` route. Lifecycle and provenance selectors work only in the CLI:
 they do not widen either remote request contract.
 
 ## Flags
@@ -28,58 +28,58 @@ they do not widen either remote request contract.
 | `--limit` | `20` | Page size, 1 to 50. |
 | `--cursor` | | The opaque continuation from a previous page. |
 | `--json` | `false` | Emit the page as JSON instead of the human view. |
-| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
+| `--server` | | Read from a resident service instead of folding locally, falling back to the verified local read if that fails. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
 
-Either `--path` or `--reaches` is required. A query naming neither is the
-request for every artifact in the log, and it is refused.
+The command requires either `--path` or `--reaches`. A query naming neither
+asks for every artifact in the log, and the command refuses it.
 
-## Paths are exact strings
+## Paths match as exact strings
 
 The projection keys artifacts by the path field alone: no normalising, no
-prefix matching, no globbing. `internal/workroom` and
-`internal/workroom/fold.go` are unrelated paths to it. Ask for the string
-that was recorded, or the answer is empty.
+prefix matching, no globbing. To it, `internal/workroom` and
+`internal/workroom/fold.go` name unrelated paths. Ask for the string
+the log recorded, or the answer comes back empty.
 
 ## The four states
 
 | `--state` | What comes back |
 |---|---|
-| `live` | Not retired. This is what a query naming no state receives. |
-| `retired` | Superseded with no successor named: the pointer was withdrawn and there is nowhere to follow it to. |
+| `live` | Not retired. A query naming no state receives this. |
+| `retired` | Superseded with no successor named: someone withdrew the pointer, leaving nowhere to follow it to. |
 | `succeeded` | Superseded by an act that rested on an artifact covering the same path: the pointer moved, and the log says where. |
 | `all` | Every artifact at the selected paths, in any state. |
 
-Live means **not retired**. Staleness is a different fact and does not
-answer this question: a stale artifact still occupies its path and is
-still the predecessor a successor has to retire. Every returned row carries
+Live means **not retired**. Staleness states a different fact and does not
+answer this question: a stale artifact still occupies its path and still
+stands as the predecessor a successor has to retire. Every returned row carries
 its own `stale`, `retired` and `describes_superseded_world` fields. The
-`succeeded` field is present only when it is `true`; an absent field means
+`succeeded` field appears only when `true`; an absent field means
 `false`. A row from an `--state all` query therefore distinguishes the three
 lifecycles directly: `succeeded: true` marks succeeded, `retired: true` marks
-retired, and neither field being true marks live.
+retired, and a row with neither field true counts as live.
 
-When a row is stale, `stale_because` names its nearest causal retired basis
+For a stale row, `stale_because` names its nearest causal retired basis
 and `stale_because_path` gives that basis's artifact path when it has one. The
 fold follows only edges that actually propagated staleness, for at most four
-hops; `stale_because_truncated` says that bound was exhausted. These fields do
+hops; `stale_because_truncated` says the walk exhausted that bound. These fields do
 not replace the complete provenance side table or `gs provenance`.
 
-`retired` says the pointer was withdrawn and `succeeded` says a successor was
-named. Reading `retired` alone cannot tell a replaced artifact from a
+`retired` says someone withdrew the pointer and `succeeded` says someone named
+a successor. Reading `retired` alone cannot tell a replaced artifact from a
 withdrawn one,
-which is the difference that matters to anyone standing on it: one says
+and that difference matters to anyone standing on it: one says
 where the behaviour went, the other says go and look.
 
 ## `--reaches`
 
-`--reaches <path>` follows artifact provenance transitively. An artifact
-resting on an artifact recorded at that path is selected, and so is one
-resting on *that*, for as many hops as the chain has. This is the anchor a
-document follows to say which behaviour it describes, so it answers "what
+`--reaches <path>` follows artifact provenance transitively. The command
+selects an artifact resting on an artifact recorded at that path, and one
+resting on *that*, for as many hops as the chain has. A document follows
+this anchor to say which behaviour it describes, so it answers "what
 still points at this?" rather than "what cites it directly?".
 
-Artifacts recorded at the anchor path itself are excluded. They are the
-anchor, not something anchored to it.
+The command excludes artifacts recorded at the anchor path itself. They
+form the anchor, not something anchored to it.
 
 Naming both `--path` and `--reaches` intersects them: rows must satisfy
 both.
@@ -121,9 +121,9 @@ would report it as unanchored.
 ## Reading it
 
 The counts line gives the whole-log total beside what this page returned,
-so a bounded answer says how much it left out. An unknown path is an
-empty page rather than a refusal — nothing was ever recorded there, which
-is an answer. A selector matching every artifact pages like any other.
+so a bounded answer says how much it left out. An unknown path yields an
+empty page rather than a refusal — the log never recorded anything there,
+and that counts as an answer. A selector matching every artifact pages like any other.
 
 ## See also
 

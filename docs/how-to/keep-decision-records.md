@@ -10,7 +10,7 @@ rests_on:
 # Keep decision records
 
 Many teams keep decision records — often called ADRs — as Markdown files
-in the repository. The file says what was decided; nothing says who
+in the repository. The file records the decision; nothing says who
 accepted it, who reviewed it, or which decision replaced it. This page
 shows what gitseq adds: a signed, append-only record of exactly those
 facts, kept in the same repository, while the decision itself stays an
@@ -18,12 +18,12 @@ ordinary file.
 
 Colleagues who do not use gitseq lose nothing. They see the files, the
 branches, and merge commits whose messages summarise each decision.
-Everything else is an overlay they can ignore.
+Everything else forms an overlay they can ignore.
 
 You will take one decision from a draft to an adopted, reviewed, merged
 record, then revise its wording, then replace it with a new decision.
-Every command on this page runs; they are executed against a scratch
-repository by `make test`.
+Every command on this page runs; `make test` executes them against a scratch
+repository.
 
 The whole loop at a glance — the steps below walk through it once,
 then revise and replace the result:
@@ -63,7 +63,7 @@ flowchart TB
 
 ## Setup used below
 
-A **workroom** is gitseq's overlay on a repository. `gs init` creates
+A **workroom** serves as gitseq's overlay on a repository. `gs init` creates
 one and names its first participant, the **operator** — here `alice`,
 who thereby also holds the **ratifier** role, the authority to accept
 proposals. `dana` writes decisions and `rae` reviews them; neither needs
@@ -84,9 +84,9 @@ scratch repository here exists so the page can run from nothing.
 
 ## 1. Write the decision, on a branch
 
-A decision record is a Markdown file like any other. Write it on a
-branch, not on the integration branch, because it will be reviewed and
-merged like code.
+A decision record lives in a Markdown file like any other. Write it on a
+branch, not on the integration branch, because it goes through review and
+merge like code.
 
 ```sh
 git -C "$REPO" switch -q -c decision/use-postgres
@@ -117,19 +117,19 @@ ARTIFACT=$(gs state --repo "$REPO" --as dana --kind artifact \
   --body commit="$HEAD_COMMIT")
 ```
 
-This artifact rests on nothing, and that is correct: nobody asked for
-this decision, so there is no earlier act for it to cite. Today you copy
-the commit hash yourself; this is the manual step a publish tool would
-later do from the push.
+This artifact rests on nothing, and rightly so: nobody asked for
+this decision, so no earlier act exists for it to cite. Today you copy
+the commit hash yourself; a publish tool would later do this manual step
+from the push.
 
 ## 2. Propose adoption, and ratify it
 
-An artifact is a pointer, not a decision. **An artifact cannot be
-ratified** — the workroom refuses that outright. What carries the
-authority is a **proposal**: one or two sentences saying "adopt the
+An artifact acts as a pointer, not a decision. **Nobody can ratify an
+artifact** — the workroom refuses that outright. A **proposal** carries
+the authority: one or two sentences saying "adopt the
 decision recorded at this path, at this commit", resting on the
 artifact. An actor holding the ratifier role then ratifies the proposal,
-and the decision is adopted.
+and that adopts the decision.
 
 ```sh
 PROPOSAL=$(gs state --repo "$REPO" --as dana --kind propose \
@@ -142,13 +142,13 @@ Adoption comes **before** review on purpose. The review request in the
 next step will rest on this ratified proposal, so the verdict, the merge
 receipt, and the merged record all reach the adoption through that one
 chain. Ratify after the merge instead, and the merged record could never
-prove the decision was adopted.
+prove the adoption.
 
 ## 3. Ask for a review
 
-Review is an ordinary exchange: dana asks, rae promises, rae signs a
-verdict against the exact commit. The request rests on both the artifact
-and the ratified proposal — that is the link described above.
+Review takes the form of an ordinary exchange: dana asks, rae promises, rae
+signs a verdict against the exact commit. The request rests on both the
+artifact and the ratified proposal — the link described above.
 
 ```sh
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as dana --kind request \
@@ -167,14 +167,14 @@ APPROVAL=$(gs review --repo "$REPO" --as rae --checkout "$REPO" \
   --verdict approved --text 'APPROVED: consequences and trade-off are stated')
 ```
 
-`gs review` signs only if the checkout is clean and sitting on the
+`gs review` signs only in a clean checkout sitting on the
 artifact's exact commit, so the verdict names a commit somebody actually
 read. Nobody assigned this decision, so no request reports the artifact;
 `--self-initiated` names the ratified proposal as the adopted decision
 the work stands on, and the verdict records that binding. Without it the
-review refuses rather than assume the work was independent. Then the verdict is ratified — and **only the review requester
+review refuses rather than assume independent work. Then someone ratifies the verdict — and **only the review requester
 may ratify a verdict**. Not the reviewer, not a ratifier; the person who
-asked is the one positioned to say the question was answered.
+asked holds the standing to say the question got its answer.
 
 ```sh
 gs ratify --repo "$REPO" --as dana "$APPROVAL"
@@ -197,12 +197,12 @@ GitHub, and with anything that links commits.
 
 ## 5. Revise the decision
 
-The rule for later changes is one sentence: **amend the file in place
-while it is the same decision; when the decision itself changes, write a
-new file and stamp the old one.** This step is the first case.
+The rule for later changes fits in one sentence: **amend the file in place
+while it remains the same decision; when the decision itself changes, write a
+new file and stamp the old one.** This step covers the first case.
 
-A revision is the same loop at the same path. The decision was already
-adopted, so no new proposal is needed — the revised artifact rests on the
+A revision runs the same loop at the same path. The ratifier already
+adopted the decision, so it needs no new proposal — the revised artifact rests on the
 existing one, and the review names it as the work's adopted basis.
 
 ```sh
@@ -246,11 +246,11 @@ gs merge --repo "$REPO" --as dana --checkout "$REPO" \
 ```
 
 The first merge retired the artifact the proposal rests on, so the
-proposal is now **stale** — a recorded signal that something under it
+proposal has now become **stale** — a recorded signal that something under it
 moved, not a defect. Ordinary staleness does not block a merge: the
 merge records what had moved in its receipt and lands the head the
 reviewer signed for. The chain of artifacts at this path, one per merged
-revision, is now the decision's published history.
+revision, now forms the decision's published history.
 
 ## 6. Replace the decision
 
@@ -285,9 +285,9 @@ git -C "$REPO" commit -q -m 'Replace the PostgreSQL decision with a managed serv
 HEAD3=$(git -C "$REPO" rev-parse HEAD)
 ```
 
-The headers are for people; no tool reads them today. What the workroom
-records is two artifacts — the replacement, and the stamped predecessor
-resting on it — and a fresh adoption, because a replacement is a new
+The headers serve people; no tool reads them today. The workroom
+records two artifacts — the replacement, and the stamped predecessor
+resting on it — and a fresh adoption, because a replacement counts as a new
 decision:
 
 ```sh
@@ -344,7 +344,7 @@ git -C "$REPO" log --oneline -3
 ```
 
 `gs status` shows the current artifact at each path, the superseded ones
-behind them, and the satisfied review commitments. The `git log` line is
+behind them, and the satisfied review commitments. The `git log` line shows
 what a colleague without gitseq sees: three merge messages that read as
 the decision log.
 
@@ -352,7 +352,7 @@ the decision log.
 
 Each adopted decision costs one proposal, one ratification, one review
 exchange, and one merge. In return, four questions that a directory of
-Markdown files cannot answer are now signed facts anyone can audit from
+Markdown files cannot answer now become signed facts anyone can audit from
 a clone: who accepted this decision, who reviewed exactly which text,
 what replaced it, and what still rests on it.
 

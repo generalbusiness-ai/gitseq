@@ -13,36 +13,37 @@ rests_on:
 
 # Performance evidence
 
-Performance measurements are evidence from one named workload and machine,
+Performance measurements give evidence from one named workload and machine,
 not limits or service-level guarantees. [Limits](limits.md) records the sizes
 and counts that Gitseq actually refuses.
 
 ## Scale envelope targets
 
-This section is version 1 of the scale envelope table, published 2026-09-09. A
-later version replaces it whole at this path. It states what each envelope asks
-for, where the number came from, and what has actually been measured. It commits
-Gitseq to nothing.
+This section holds version 1 of the scale envelope table, published 2026-09-09.
+A later version replaces it whole at this path. It states what each envelope
+asks for, where the number came from, and what someone has actually measured. It
+commits Gitseq to nothing.
 
-Two envelopes are named. PREVIEW is 50,000 events with 8 actors.
-FIRST-PRODUCTION is 500,000 events with 50 actors.
+This page names two envelopes. PREVIEW means 50,000 events with 8 actors.
+FIRST-PRODUCTION means 500,000 events with 50 actors.
 
 Every cell carries one of three tags:
 
-- **planning target**: a number someone chose as the thing to aim at. It is not
-  enforced anywhere, and missing it refuses nothing.
-- **measured**: an observation from a named run on named hardware. It is
+- **planning target**: a number someone chose as the thing to aim at. Nothing
+  enforces it anywhere, and missing it refuses nothing.
+- **measured**: an observation from a named run on named hardware. It gives
   evidence about that workload and that machine, and nothing more.
-- **limit**: a bound the code actually enforces. Exceeding it is refused.
-  [Limits](limits.md) is the page that governs these.
+- **limit**: a bound the code actually enforces. Gitseq refuses anything that
+  exceeds it. The [Limits](limits.md) page governs these.
 
-Most measured cells below come from the envelope campaign, and each of those is
-the pair of primary samples that campaign recorded, reported in the residual
-dimensions section further down. Two samples are not a distribution, so no
-percentile is available for any of them. The fan-out cells and the one-actor
-memory cells come instead from the lanes already published below. Each cell
-carries its number and its tag and nothing else; where every number comes from
-is set out once, below the table, rather than in a column beside it.
+Most measured cells below come from the envelope campaign, and each of those
+shows the pair of primary samples that campaign recorded, reported in the
+residual dimensions section further down. Two samples do not make a
+distribution, so no percentile exists for any of them. The fan-out cells and the
+one-actor memory cells come instead from the lanes already published below. Each
+cell carries its number and its tag and nothing else; the page sets out where
+every number comes from once, below the table, rather than in a column beside
+it.
 
 | Row | PREVIEW, 50,000 events and 8 actors | FIRST-PRODUCTION, 500,000 events and 50 actors |
 |---|---|---|
@@ -59,7 +60,7 @@ is set out once, below the table, rather than in a column beside it.
 
 ### The hardware
 
-Every measured figure on this page was taken on one machine: an 18-core Apple
+Every measured figure on this page comes from one machine: an 18-core Apple
 M5 Max with 64 GiB of memory, running Darwin arm64, with Git 2.50.1 (Apple
 Git-155). The head and the Go toolchain differ by source, because the table
 carries results from earlier lanes as well as from this campaign. Each source
@@ -74,60 +75,59 @@ states its own, and the retained `evidence.json` for each run carries the
 | Fixed-append lane, carried | `e08e36e2bbdf6f3d7ba104a20654a0f5aea84684` | 1.26.5 |
 | Head-wait run, carried | its own before-and-after pair, recorded in [HEAD-WAIT.md](../../performance/HEAD-WAIT.md) | 1.27.0 |
 
-This campaign ran as one invocation at its head. Machine load during its window
-is reported with the samples. A different machine will produce different
-seconds, and a different toolchain may too: no figure here is comparable across
+This campaign ran as one invocation at its head. This page reports machine load
+during its window with the samples. A different machine will produce different
+seconds, and a different toolchain may too: no figure here compares across
 two rows of that table.
 
-### Why each target is what it is
+### Why each target has the value it does
 
-- **Sequence depth.** 50,000 is the depth the contract's own checkpoint case
-  already names below the top of the axis, and it is the depth at which the
-  first cold-audit and resident-memory misses were argued. 500,000 is the top of
-  the contract depth axis and the largest fixture the harness builds. They sit
-  one decade apart so a cost shape shows between them.
+- **Sequence depth.** 50,000 matches the depth the contract's own checkpoint
+  case already names below the top of the axis, and the first arguments over
+  cold-audit and resident-memory misses used that depth. 500,000 marks the top
+  of the contract depth axis and the largest fixture the harness builds. They
+  sit one decade apart so a cost shape shows between them.
 - **Application-event count.** The synthetic workload writes one application
   event per record, so this row repeats the depth by construction. A real
   workroom also carries sequencer-key rotation commits, which raise depth
   without raising the application-event count.
-- **Actor count.** 8 is a working room of people and agents. 50 is the largest
-  value the contract's actor axis already names, so the envelope reuses an axis
-  value rather than inventing a number.
-- **Dependency fan-out.** 64 and 256 are the contract's own
-  `preview_max_width` and `first_production_max_width`. The target is relative
-  because this axis measures what one extra causal base costs against the
-  one-base median, not what an append costs in total.
-- **Checkpoint size.** 256 MiB is not a target anyone chose here. It is an
+- **Actor count.** 8 represents a working room of people and agents. 50 matches
+  the largest value the contract's actor axis already names, so the envelope
+  reuses an axis value rather than inventing a number.
+- **Dependency fan-out.** 64 and 256 come from the contract's own
+  `preview_max_width` and `first_production_max_width`. The target stays
+  relative because this axis measures what one extra causal base costs against
+  the one-base median, not what an append costs in total.
+- **Checkpoint size.** Nobody chose 256 MiB here as a target. It acts as an
   enforced refusal, and it bounds the serialized blob because a reader loads the
   whole blob before it trusts any of it.
 - **Cold verify.** A workroom with no usable checkpoint verifies everything, so
-  this row is the worst restart a host can face. The 5 minute and 60 minute
-  figures are the ones a retired request argued against; they were never
-  adopted.
-- **Cold restart.** A near-head restart is the ordinary cost a running resident
-  pays. Tail 255 is the largest tail a successful checkpoint leaves, which
-  follows from the 256-event refresh cadence in [Limits](limits.md), so it is
+  this row shows the worst restart a host can face. A retired request argued
+  against the 5 minute and 60 minute figures; nobody ever adopted them.
+- **Cold restart.** A near-head restart represents the ordinary cost a running
+  resident pays. Tail 255, the largest tail a successful checkpoint leaves,
+  follows from the 256-event refresh cadence in [Limits](limits.md), so it marks
   the tail worth measuring. The 10 second and 60 second figures come from a
   retired artifact statement's own text.
-- **Warm status.** Warm reads are the interactive path, so this row is what a
-  person waits for. No number has been adopted for it.
-- **Memory.** 1 GiB and 4 GiB are the figures the retired resident-memory
-  requests were argued against, and 4 GiB is the figure the memory lane below
-  reports a measured pass against. Neither is enforced anywhere.
+- **Warm status.** Warm reads form the interactive path, so this row shows what
+  a person waits for. Nobody has adopted a number for it.
+- **Memory.** The retired resident-memory requests argued against the figures
+  1 GiB and 4 GiB, and the memory lane below reports a measured pass against
+  4 GiB. Nothing enforces either anywhere.
 
 ### The envelopes against the tracked contracts
 
-The two envelopes are older than the contract files, and the contracts have only
+The two envelopes predate the contract files, and the contracts have only
 ever encoded part of them.
 
 `performance/contract-v2.json` already names most of the shape. Its `depths`
 reach 500,000. Its `checkpoint_cases` carry a tail-255 case at both 50,000 and
-500,000, which is where the PREVIEW depth enters the contract at all, because
-50,000 is not on the depth axis. Its `actor_counts` are 1, 8 and 50. Its
-`dependency_fanout_axis` is the one place either envelope appears as a
+500,000, and there the PREVIEW depth enters the contract at all, because the
+depth axis does not include 50,000. Its `actor_counts` list 1, 8 and 50. Its
+`dependency_fanout_axis` gives the one place where either envelope appears as a
 machine-checked target: a 10 percent relative limit, `preview_max_width` 64 and
-`first_production_max_width` 256. Everything else in v2 is a workload
-description, not a target.
+`first_production_max_width` 256. Everything else in v2 describes a workload,
+not a target.
 
 `performance/contract-v3.json` bumps `schema_version` to
 `gitseq.performance/v3`, adds three things, and changes nothing else. It adds
@@ -135,65 +135,65 @@ description, not a target.
 500,000 with 50 actors, because separate axes do not prove a joint envelope and
 the case matrix otherwise keeps the scale axes independent at the smallest
 depth. It adds a `checkpoint_bytes` metric, because the serialized checkpoint
-size had no metric at all and so could not be compared with the 256 MiB limit.
-It lengthens the worker timeouts for `cold_status`, `warm_status`,
-`honest_fallback` and `checkpoint_restart`, because v2's ceilings were sized
-for the depths v2 reached with those scenarios. A warm sample pays a full cold
-read in setup, measured at about 126 seconds at 500,000 records, so v2's
-120-second `warm_status` ceiling would abort the first case of the run.
-Contract v2 is unchanged and stays the default, so every retained run still
-compares against the file it was measured with.
+size had no metric at all and so nothing could compare it with the 256 MiB
+limit. It lengthens the worker timeouts for `cold_status`, `warm_status`,
+`honest_fallback` and `checkpoint_restart`, because v2 sized its ceilings for
+the depths it reached with those scenarios. A warm sample pays a full cold read
+in setup, measured at about 126 seconds at 500,000 records, so v2's 120-second
+`warm_status` ceiling would abort the first case of the run. Contract v2 stays
+unchanged and remains the default, so every retained run still compares against
+the file its measurement used.
 
 Neither contract adopts a latency figure of any kind, apart from the fan-out
 relative limit. Neither carries a memory ceiling. Neither names a checkpoint
-byte target; the 256 MiB figure is a limit, enforced by the kernel and recorded
-in [Limits](limits.md), not a target this page sets. That is the whole reason
-the seconds and the gigabytes in the table above are tagged as planning targets:
-they exist in prose and in the conditions of requests that are now retired, and
+byte target; the 256 MiB figure acts as a limit, enforced by the kernel and
+recorded in [Limits](limits.md), not a target this page sets. For that reason
+alone the table above tags the seconds and the gigabytes as planning targets:
+they exist in prose and in the conditions of requests now retired, and
 nowhere else.
 
-Where the table's numbers come from, row by row. The depths are
+Where the table's numbers come from, row by row. The depths come from
 `contract-v3.json` `envelope_cases` with `contract-v2.json` `checkpoint_cases`
 and `depths`. The application-event count repeats the depth because the fixture
-writes one application event per sequence record, so the two counts coincide
-for this workload. The actor counts are v2's `actor_counts` and v3's
-`envelope_cases`. The fan-out limit is v2's `dependency_fanout_axis`, measured
-by the fan-out lane below at depth 1,000 with one actor; the only enforced
-bound on causal references is 4,096 in one intent, on the
-[Limits](limits.md) page. The checkpoint-size limit is that page's "Restart and
-the checkpoint", enforced in the kernel. The cold-verify figures appear in the
-conditions of retired request `a56bea44` and the cold-restart figures in the
-text of retired artifact statement `e2b15773`, in no contract file either way.
-Warm status has no earlier figure but the smoke hypothesis of 500 ms for
-exact-head status, still classified not yet measurable in
-`performance/BASELINE.md`. The one-actor memory figures are the published ones,
-`performance/BASELINE.md` at 50,000 and the 500,000-record resident memory lane
-below; neither is an envelope cell, because both are one actor.
+writes one application event per sequence record, so the two counts coincide for
+this workload. The actor counts come from v2's `actor_counts` and v3's
+`envelope_cases`. The fan-out limit comes from v2's `dependency_fanout_axis`,
+measured by the fan-out lane below at depth 1,000 with one actor; the only
+enforced bound on causal references allows 4,096 in one intent, on the
+[Limits](limits.md) page. The checkpoint-size limit comes from that page's
+"Restart and the checkpoint", enforced in the kernel. The cold-verify figures
+appear in the conditions of retired request `a56bea44` and the cold-restart
+figures in the text of retired artifact statement `e2b15773`, in no contract
+file either way. Warm status has no earlier figure but the smoke hypothesis of
+500 ms for exact-head status, still classified not yet measurable in
+`performance/BASELINE.md`. The one-actor memory figures repeat the published
+ones, `performance/BASELINE.md` at 50,000 and the 500,000-record resident memory
+lane below; neither counts as an envelope cell, because both use one actor.
 
-Full verification is a different scenario again, with no target of any kind. The
-checkpoint restart and the cold verify peaked between 1,807,319,040 and
+Full verification forms a different scenario again, with no target of any kind.
+The checkpoint restart and the cold verify peaked between 1,807,319,040 and
 2,250,342,400 bytes at 50,000 records, and between 16,204,529,664 and
-18,966,216,704 bytes at 500,000. Those figures are new on this page, and the
-section below says why they are neither a pass nor a miss.
+18,966,216,704 bytes at 500,000. Those figures appear for the first time on this
+page, and the section below says why they count as neither a pass nor a miss.
 
 One earlier statement already reads as a cold-verify pass at both envelopes, and
-it is worth saying why this page does not carry it forward. The act that
-withdrew the cold-audit request records that a cold audit of this workroom takes
-3.79 seconds with 6 Git subprocesses, against 242.3 seconds and 11,581
-subprocesses when the request was filed, and it says both envelopes pass. The
-improvement is real and is not questioned here. The envelope claim is a
-different thing: that audit was of this workroom's own history, a few thousand
-records, not of 50,000 or 500,000. A result at one depth is not a result at ten
-or a hundred times it. So the cold verify rows above come from measurements
-taken at each envelope depth, and nothing here inherits that pass.
+this page should say why it does not carry it forward. The act that withdrew the
+cold-audit request records that a cold audit of this workroom takes 3.79 seconds
+with 6 Git subprocesses, against 242.3 seconds and 11,581 subprocesses at the
+time the request went in, and it says both envelopes pass. The improvement
+holds, and this page does not question it. The envelope claim differs: that
+audit covered this workroom's own history, a few thousand records, not 50,000 or
+500,000. A result at one depth does not stand for a result at ten or a hundred
+times it. So the cold verify rows above come from measurements taken at each
+envelope depth, and nothing here inherits that pass.
 
 ### The 10-second and 60-second restart targets
 
 The 10-second PREVIEW and 60-second FIRST-PRODUCTION checkpoint-restart figures
 appear in the text of one retired artifact statement and in no tracked contract
-file. They are historical planning targets. This page publishes them so a reader
-can see what was aimed at, and it does not treat a measurement above them as a
-failed commitment or a measurement below them as a passed one.
+file. They count as historical planning targets. This page publishes them so a
+reader can see what the work aimed at, and it does not treat a measurement above
+them as a failed commitment or a measurement below them as a passed one.
 
 The same holds for the 5-minute and 60-minute cold-verify figures and the 1 GiB
 and 4 GiB memory figures. Turning any of them into a production commitment, and
@@ -203,38 +203,39 @@ measurement below reaches for it.
 
 ### Chronology
 
-This table was not published before the campaign timed anything. The harness
-head `0b689fe2` was committed at 11:50Z on 2026-09-09 and reviewed; the
-fixtures were prepared at 12:32Z; the campaign ran from 12:39:59Z to 13:30:57Z
-at that head. The table above and the campaign's
+Nobody published this table before the campaign timed anything. Harness head
+`0b689fe2` became a commit at 11:50Z on 2026-09-09 and received review; fixture
+preparation happened at 12:32Z; the campaign ran from 12:39:59Z to 13:30:57Z at
+that head. The author drafted the table above and the campaign's
 [classification rules](../../performance/retained/envelope-20260909-0b689fe2/classification-rules.md)
-were drafted in the author's working notes between 12:35Z and 12:49Z, while the
-run was in progress, and were first committed durably with the results at
-13:50Z. Neither is a pre-registration, and this page does not claim one.
+in working notes between 12:35Z and 12:49Z, while the run went on, and first
+committed them durably with the results at 13:50Z. Neither counts as a
+pre-registration, and this page does not claim one.
 
-What was fixed before the run is narrower, and it is what the classifications
-rest on. Every target in the table comes from a tracked document or a durable
-statement that predates the run, and the previous two subsections say which:
-the depths, actor counts and fan-out widths from the versioned workload
+The things fixed before the run form a narrower set, and the classifications
+rest on them. Every target in the table comes from a tracked document or a
+durable statement that predates the run, and the previous two subsections say
+which: the depths, actor counts and fan-out widths from the versioned workload
 contract; the 256 MiB checkpoint ceiling from [Limits](limits.md); the 1-GiB
 memory bound and the 500 ms exact-head status hypothesis from
 `performance/BASELINE.md`; the 4 GiB figure from the retired resident-memory
 requests and the memory lane below; the 5-minute and 60-minute cold-verify
 figures from the conditions of retired request `a56bea44`; the 10-second and
 60-second restart figures from retired artifact statement `e2b15773`. The
-harness commit fixed the ten cases and the sample count before any of them ran. The agreement bands come from the pair spreads of
-runs already published on this page, not from this campaign's numbers. No
-target and no band was changed after a result was read, and no classification
-was chosen to suit a result.
+harness commit fixed the ten cases and the sample count before any of them ran.
+The agreement bands come from the pair spreads of runs already published on this
+page, not from this campaign's numbers. Nobody changed a target or a band after
+reading a result, and nobody chose a classification to suit a result.
 
 ## Dependency fan-out
 
 The `gitseq.performance/v2` contract gives dependency fan-out one explicit
 axis at depth 1,000. Widths 1, 8, 16, 64, and 256 run as five consecutive case
-blocks. The width-one block is their temporal denominator; it is removed from
-the ordinary depth axis rather than measured twice under two names.
+blocks. The width-one block serves as their temporal denominator; the contract
+removes it from the ordinary depth axis rather than measuring it twice under two
+names.
 
-The full fan-out population is bounded and opt-in:
+The full fan-out population stays bounded and opt-in:
 
 ```text
 make perf PERF_ARGS='run --tier fanout'
@@ -243,9 +244,9 @@ make perf PERF_ARGS='run --tier fanout'
 Every width gets five warmups and 100 recorded repetitions. Primary samples
 finish before Trace2 and profiling reruns, so diagnostic work cannot split the
 five-block quiet window. Each sample retains the fixture identity, exact head,
-environment, raw latency, and both correctness digests. A digest mismatch is
-an error and invalidates the sample; equality is a precondition for admitting
-a sample, not evidence that the fold is correct.
+environment, raw latency, and both correctness digests. A digest mismatch
+counts as an error and invalidates the sample; equality serves as a precondition
+for admitting a sample, not as evidence of a correct fold.
 
 For width `f`, evidence reports two signed quantities beside the width-one
 median:
@@ -253,33 +254,33 @@ median:
 - relative increment: `median(T_f) / median(T_1) - 1`;
 - absolute increment: `median(T_f) - median(T_1)` in milliseconds.
 
-Negative increments stay negative. The cases are separate distributions;
+Negative increments stay negative. The cases form separate distributions;
 their adjacency does not make individual samples pairs and does not cancel an
 arbitrary load change.
 
-Fan-out is a relative dimension. This axis measures the cost one extra causal
-base adds, not the total cost of an append. The absolute cost of an append is
+Fan-out forms a relative dimension. This axis measures the cost one extra causal
+base adds, not the total cost of an append. The absolute cost of an append has
 a separate target with a separate verdict, recorded below.
 
 ### The measured run
 
 The run records both `harness_commit` and `candidate_commit` as
 `f71b4d73c46b5df1ba2c755571fc8ffdf4455275`: the harness and the measured
-subject are the same commit. It also records contract digest
+subject share one commit. It also records contract digest
 `b0795bc71c9485210a842decce2fc932627a88072bbd3494a22098fcf66c7d45`, fixture
 head `4fad5f2940e43d4436d5fbe84fb5973271e606da`, and fixture exact digest
 `d15f714d71d27b391bf63199c8ac9baaee81ddd032a2069738059c9b226b869e` — one
 fixture across all samples. It ran on Darwin arm64, an 18-core Apple M5 Max
 with 64 GiB memory, Go 1.26.5, and Git 2.50.1, against a clean worktree. The
-commit that publishes this page is a descendant of the measured commit,
+commit that publishes this page descends from the measured commit,
 because the retained files did not exist when the run started.
 
 The run produced 505 records: 100 primary samples at each width, plus one
 round-zero diagnostic per width that never enters a distribution. All 500
 primary samples had equal projected and trusted correctness digests.
 
-Everything below is derived from the raw samples. They are tracked, so the
-figures on this page can be checked rather than taken on trust:
+Everything below derives from the raw samples. The repository tracks them, so
+a reader can check the figures on this page rather than take them on trust:
 
 | File | SHA-256 |
 |---|---|
@@ -287,12 +288,12 @@ figures on this page can be checked rather than taken on trust:
 | [`samples.jsonl`](../../performance/retained/fanout-20260819-f71b4d73/samples.jsonl) | `21c74a93ff7ec928297b4fb25196244d1c61529b60b8028abe27f3d1f8ff3209` |
 | [`candidate.bench`](../../performance/retained/fanout-20260819-f71b4d73/candidate.bench) | `f5078a0e1263305c3615359c7f558c9ed12df414c3b5fe4da74afd28aa9e93e6` |
 
-`samples.jsonl` holds every raw record. `evidence.json` is the harness evidence
-document, and it retains the harness's own latency distributions and fan-out
-axis summary as well as the contract, environment and digests.
-`candidate.bench` is the 500 primary samples in Go benchmark format. No
-separate derived file is retained: the robustness calculations this page makes,
-which the harness does not compute, are recomputable from `samples.jsonl`.
+`samples.jsonl` holds every raw record. `evidence.json` holds the harness
+evidence document, and it retains the harness's own latency distributions and
+fan-out axis summary as well as the contract, environment and digests.
+`candidate.bench` holds the 500 primary samples in Go benchmark format. The run
+retains no separate derived file: a reader can recompute from `samples.jsonl`
+the robustness calculations this page makes, which the harness does not compute.
 
 | Width | p50 | p95 | p99 | Maximum |
 |---:|---:|---:|---:|---:|
@@ -302,8 +303,8 @@ which the harness does not compute, are recomputable from `samples.jsonl`.
 | 64 | 443.188 ms | 475.025 ms | 488.418 ms | 498.886 ms |
 | 256 | 442.514 ms | 457.511 ms | 462.791 ms | 465.051 ms |
 
-Width one's tail is conspicuous. The next section reports what is known about
-it, and what is not.
+Width one's tail stands out. The next section reports what the run shows about
+it, and what it does not.
 
 ### Cost per width
 
@@ -317,40 +318,40 @@ Against the harness p50 of the whole width-one block, 471.761 ms:
 | 64 | 443.188 ms | -28.573 ms | -6.057% |
 | 256 | 442.514 ms | -29.246 ms | -6.199% |
 
-No value is clamped, no magnitude is taken, and no sample is paired across
+The analysis clamps no value, takes no magnitude, and pairs no sample across
 cases. Every width from 8 upward sits below the one-base median, so the
-measured incremental cost of extra causal bases is not positive at any width
-this run reached.
+measured incremental cost of extra causal bases never rises above zero at any
+width this run reached.
 
-Between adjacent widths the only increase is 16 to 64, at **+3.626 ms**. The
-other steps fall: 1 to 8 by -7.292 ms, 8 to 16 by -24.907 ms, and 64 to 256 by
--0.673 ms. The largest step in absolute terms is therefore the fall from 8 to
-16, not the rise from 16 to 64.
+Between adjacent widths the only increase comes from 16 to 64, at **+3.626 ms**.
+The other steps fall: 1 to 8 by -7.292 ms, 8 to 16 by -24.907 ms, and 64 to 256
+by -0.673 ms. The fall from 8 to 16, not the rise from 16 to 64, therefore makes
+the largest step in absolute terms.
 
 ### Width one moved during the run, and what follows from it
 
-Two facts about how this run was conducted belong here, because neither can be
-recovered from the samples.
+Two facts about the conduct of this run belong here, because nobody can
+recover either from the samples.
 
-First, it is a second attempt. An earlier invocation of the same tier was
-suspended by machine sleep 48 samples into the width-one block. Sample records
-carry no wall-clock timestamp, so a suspend that a run spans cannot be found
+First, this run came as a second attempt. Machine sleep suspended an earlier
+invocation of the same tier 48 samples into the width-one block. Sample records
+carry no wall-clock timestamp, so nobody can find a suspend that a run spans
 afterwards in the data; repairing one width and keeping the rest would have
-meant trusting samples that might have straddled the gap. That run was
-discarded whole and the tier rerun as a single invocation, with sleep
+meant trusting samples that might have straddled the gap. The author discarded
+that run whole and reran the tier as a single invocation, with sleep
 inhibited. No sample here comes from it.
 
 Second, the quiet window did not hold. The run waited for a quiet machine and
 got one for its first sixty seconds. Then a sibling lane started two test
 processes; machine load climbed from 4.08 to a peak of 14.53 and stayed high
-for about three minutes before clearing. Width one is the block that was running
-during that window.
+for about three minutes before clearing. Width one's block ran during that
+window.
 
 Width one has 36 samples above 600 ms, all in rounds 46 to 93. No other width
-has a single one; the largest sample anywhere outside width one is 598.181 ms,
-at width 8. Splitting each block into four consecutive quarters of
-25 samples and taking the median of each shows how much each block moved
-within itself:
+has a single one; the largest sample anywhere outside width one reaches 598.181
+ms, at width 8. Splitting each block into four consecutive quarters of 25
+samples and taking the median of each shows how much each block moved within
+itself:
 
 | Width | Rounds 1–25 | 26–50 | 51–75 | 76–100 | Range, as % of that width's p50 |
 |---:|---:|---:|---:|---:|---:|
@@ -363,17 +364,17 @@ within itself:
 Width one climbs across its four quarters. Width eight, which runs next, falls
 across its own. Widths 16, 64 and 256 stay within 2.4%.
 
-What caused the two moving blocks to move is not something this run can settle.
-Machine load was observed only at twenty-second intervals, and the latency
-records carry no wall-clock timestamp, so no sample can be aligned to the
-machine's state when it was taken. The quarter table is reported as what was
-observed, and the attribution is left open.
+This run cannot settle what caused the two moving blocks to move. The run
+observed machine load only at twenty-second intervals, and the latency
+records carry no wall-clock timestamp, so nobody can align a sample to the
+machine's state at the moment of the sample. This page reports the quarter
+table as observation and leaves the attribution open.
 
-A block that moves this much within itself is the in-block variation the
+A block that moves this much within itself shows the in-block variation the
 governing decision said adjacency reduces but cannot remove. It matters because
-width one is the sole denominator of every relative figure above. So the honest
-question is not which denominator is right, but whether the verdict depends on
-the choice. It does not:
+width one supplies the sole denominator of every relative figure above. So the
+honest question asks not which denominator to trust, but whether the verdict
+depends on the choice. It does not:
 
 | Width-one denominator | Value | Worst width | Worst relative | PREVIEW | FIRST-PRODUCTION |
 |---|---:|---:|---:|---|---|
@@ -382,25 +383,25 @@ the choice. It does not:
 | Rounds 1–25, its lowest quarter | 448.474 ms | 8 | +3.566% | pass | pass |
 | Rounds 76–100, its highest quarter | 735.251 ms | 8 | -36.829% | pass | pass |
 
-Both envelopes pass on all four. The worst case anywhere is width 8 at
+Both envelopes pass on all four. The worst case anywhere comes at width 8:
 +3.566% against the lowest width-one quarter, well inside the 10-percent
 limit.
 
-Across the four tested denominators, the largest observed relative increment is
-+3.566% at width 8. Both classifications pass, but the magnitudes remain load-
-and order-sensitive.
+Across the four tested denominators, the largest observed relative increment
+reaches +3.566% at width 8. Both classifications pass, but the magnitudes remain
+load- and order-sensitive.
 
 ### Contract verdict
 
 The relative target permits no more than a 10-percent median increase at every
 measured width, through 64 for PREVIEW and through 256 for FIRST-PRODUCTION.
-Every clause of that contract is answered here, misses included.
+This page answers every clause of that contract, misses included.
 
 | Clause | Result |
 |---|---|
-| PREVIEW: no width through 64 exceeds +10% | pass, on all four denominators; worst is width 8 at +3.566% |
-| FIRST-PRODUCTION: no width through 256 exceeds +10% | pass, on all four denominators; width 256 is never the worst width |
-| No intermediate nonlinear jump, even if the endpoint falls | pass; the only increase between adjacent widths is +3.626 ms from 16 to 64 |
+| PREVIEW: no width through 64 exceeds +10% | pass, on all four denominators; the worst comes at width 8, +3.566% |
+| FIRST-PRODUCTION: no width through 256 exceeds +10% | pass, on all four denominators; width 256 never gives the worst width |
+| No intermediate nonlinear jump, even if the endpoint falls | pass; the only increase between adjacent widths comes to +3.626 ms, from 16 to 64 |
 | Consecutive block at the contract-selected depth, widths 1, 8, 16, 64, 256 | pass; one invocation, contract case order |
 | Width one measured exactly once, not duplicated in the depth axis | pass |
 | Five warmups and 100 recorded repetitions at every width | pass; 100 primary samples per width, diagnostics excluded |
@@ -408,55 +409,57 @@ Every clause of that contract is answered here, misses included.
 | No clamping, no magnitudes, no cross-case pairing | pass |
 | Trusted-versus-projected digest equality on every sample | pass, as a validity precondition; 500 of 500 equal |
 | Raw samples, distributions, case order, environment and digests retained | pass; tracked under `performance/retained/` |
-| Load disclosed, not assumed away | pass; the restart, the observed load range and the per-quarter movement of every block are set out above, with attribution left open |
+| Load disclosed, not assumed away | pass; this page sets out above the restart, the observed load range and the per-quarter movement of every block, with attribution left open |
 | Fixed one-base append within the separate 50 ms budget | miss, by about nine times; parked request `8add6909`, see below |
 | No cross-product claim at depth 50,000 or 500,000 | pass |
 
-The fan-out dimension passes both release envelopes. The one miss is the
-separate absolute append budget, which is not a fan-out result and is not
-repaired by this page.
+The fan-out dimension passes both release envelopes. The one miss concerns the
+separate absolute append budget, which gives no fan-out result and which this
+page does not repair.
 
 The contract treats the evidence as inconclusive if another complete
-consecutive-axis run changes either classification. This is the second complete
-campaign on this axis, and PREVIEW and FIRST-PRODUCTION were pass in both, so
-neither classification moved and the rule did not trigger. The earlier
-campaign's raw files no longer exist — they were written to untracked working
-space and deleted with their worktree — which is why this run is tracked and
-why none of its numbers appear on this page.
+consecutive-axis run changes either classification. This run makes the second
+complete campaign on this axis, and PREVIEW and FIRST-PRODUCTION passed in both,
+so neither classification moved and the rule did not trigger. The earlier
+campaign's raw files no longer exist — the harness wrote them to untracked
+working space, and deletion of their worktree removed them — which explains why
+the repository tracks this run and why none of the earlier numbers appear on
+this page.
 
 ### The separate absolute target
 
 The fixed cost of a one-base append has its own budget of 50 ms, and this run
-misses it badly. The lowest one-base figure the run produced is the
-first-quarter median of 448.474 ms, about nine times the budget; the
-full-block p50 of 471.761 ms is worse. This is reported as evidence, not
-argued away.
+misses it badly. The lowest one-base figure the run produced comes from the
+first-quarter median, 448.474 ms, about nine times the budget; the
+full-block p50 of 471.761 ms sits higher. This page reports that as evidence
+and does not argue it away.
 
-That target belongs to request `8add6909`. Its report was ratified on
-2026-08-19, and that report parks the work: no reduction is authorized until a
-ratifier adopts a successor to the retired proposal `3db9488e`. This page
+That target belongs to request `8add6909`. Its report gained ratification on
+2026-08-19, and that report parks the work: nothing authorizes a reduction until
+a ratifier adopts a successor to the retired proposal `3db9488e`. This page
 neither claims that work nor improves it. The fan-out verdict does not depend
 on it.
 
 The two targets interact in one direction worth naming. A relative limit
 tightens in milliseconds when the fixed one-base cost falls, and it loosens
-when that cost rises. At this run's denominators the 10-percent allowance is
-worth between 44.847 and 73.525 ms — on its own, at or above the entire 50 ms
+when that cost rises. At this run's denominators the 10-percent allowance comes
+to between 44.847 and 73.525 ms — on its own, at or above the entire 50 ms
 absolute budget. A regression that inflated fixed and fan-out cost together
-would leave the ratio unchanged and still pass. A passing fan-out ratio is
-therefore never a guarantee about append latency overall.
+would leave the ratio unchanged and still pass. A passing fan-out ratio
+therefore never guarantees append latency overall.
 
 ### What this run does not establish
 
 The axis measures one scale dimension independently at its contract-selected
 depth of 1,000. A pass establishes the fan-out dimension at widths 64 and 256
-at that depth. It is not an end-to-end result at depth 50,000 or 500,000, not
-a cross-product of depth and fan-out, and not an overall latency pass. Any
+at that depth. It does not give an end-to-end result at depth 50,000 or
+500,000, a cross-product of depth and fan-out, or an overall latency pass. Any
 such claim needs its own reviewed contract change and its own evidence.
 
 ## One-base append fixed cost
 
-The one-base budget is measured separately from the fan-out verdict above. A
+This lane measures the one-base budget separately from the fan-out verdict
+above. A
 full alternating comparison started at `2026-08-19T21:16:08Z` with exact base
 `12105a304e0ee0e66d9d3075a011364b40e24fc4` and measured candidate
 `e08e36e2bbdf6f3d7ba104a20654a0f5aea84684`. The candidate computes the
@@ -464,15 +467,15 @@ actor-signed payload-tree identity in memory. Kernel admission remains the sole
 durable writer and still reconstructs and checks that exact identity before
 sequencer signing, signature verification and verified-ref compare-and-swap.
 
-The comparison used the `fanout` tier so the fixed saving was checked across
+The comparison used the `fanout` tier so it could check the fixed saving across
 the whole dependency-width axis: five warmups and 100 recorded samples per
 revision at widths 1, 8, 16, 64 and 256. Base and candidate samples alternated
 within each case. Setup stayed outside the measured acknowledgement. The run
 recorded 1,000 primary samples plus five candidate diagnostics and completed
-with harness outcome `pass`. That outcome means the run was internally valid;
-it is not the verdict against the 50 ms target. Alternation limits temporal
-drift between revisions, but the samples remain separate distributions; it
-does not pair samples or cancel arbitrary machine load or interference.
+with harness outcome `pass`. That outcome means the run stayed internally valid;
+it does not give the verdict against the 50 ms target. Alternation limits
+temporal drift between revisions, but the samples remain separate distributions;
+it does not pair samples or cancel arbitrary machine load or interference.
 
 | Fan-out | Base p50 | Candidate p50 | Change |
 |---:|---:|---:|---:|
@@ -486,30 +489,29 @@ The candidate's PREVIEW-through-64 and FIRST-PRODUCTION-through-256 fan-out
 verdicts both remain `pass`; the fixed-cost change did not trade the existing
 relative fan-out result for its latency reduction.
 
-At width one, the base p95, p99 and maximum were 461.827 ms, 488.626 ms and
-495.595 ms. The candidate values were 455.927 ms, 470.668 ms and 472.557 ms.
-The candidate p50 is still 8.60 times the 50 ms budget, so the absolute target
-remains an honest **miss**. The change removes a measured fixed cost; it does
-not claim to solve the much larger cold verification and publication costs.
+At width one, the base p95, p99 and maximum came to 461.827 ms, 488.626 ms and
+495.595 ms. The candidate values came to 455.927 ms, 470.668 ms and 472.557 ms.
+The candidate p50 still comes to 8.60 times the 50 ms budget, so the absolute
+target remains an honest **miss**. The change removes a measured fixed cost; it
+does not claim to solve the much larger cold verification and publication costs.
 
 A separate same-fixture Trace2 diagnostic explains the fixed reduction without
 turning diagnostic latency into a distribution. The exact base started 21 Git
 root processes and recorded 293.938 ms of cumulative Git-process duration. The
-measured candidate started 19 and recorded 272.402 ms. The two removed
-processes are the application-side `hash-object` and `mktree`; kernel admission
+measured candidate started 19 and recorded 272.402 ms. The candidate removed the
+application-side `hash-object` and `mktree` processes; kernel admission
 still performs the one authoritative payload-tree write. The retained
 candidate diagnostics also report 19 Git root processes at every width.
 
 The comparison used contract digest
-`b0795bc71c9485210a842decce2fc932627a88072bbd3494a22098fcf66c7d45`,
-fixture head `9dc8f7ae7251183f7f1f2ea8114fd5ed84ab1db0`, fixture logical digest
-`7b3512ee2c7fb3ac95ce6dc01edec89b20194b6dd1f44eaec45a7ce1684a4159`,
-and fixture exact digest
-`24d7353240b0393d98a8da5a9b29c46bc19b75a6ff5f878d4be32c1d356d2932`.
+`b0795bc71c9485210a842decce2fc932627a88072bbd3494a22098fcf66c7d45`, fixture head
+`9dc8f7ae7251183f7f1f2ea8114fd5ed84ab1db0`, fixture logical digest
+`7b3512ee2c7fb3ac95ce6dc01edec89b20194b6dd1f44eaec45a7ce1684a4159`, and fixture
+exact digest `24d7353240b0393d98a8da5a9b29c46bc19b75a6ff5f878d4be32c1d356d2932`.
 It ran on Darwin arm64, an 18-core Apple M5 Max with 64 GiB memory, Go 1.26.5
 and Git 2.50.1, from a clean worktree. Every primary sample had equal projected
-and trusted correctness digests. The pinned `benchstat` tool was unavailable;
-the table uses the harness's retained nearest-rank distributions directly.
+and trusted correctness digests. The run could not use the pinned `benchstat`
+tool; the table uses the harness's retained nearest-rank distributions directly.
 
 | File | SHA-256 |
 |---|---|
@@ -518,9 +520,9 @@ the table uses the harness's retained nearest-rank distributions directly.
 | [`candidate.bench`](../../performance/retained/append-fixed-20260819-e08e36e2/candidate.bench) | `b1135c758bded12d0da4c2ab44e0b58a9c33568e7d52fe3027da4d0cfb058b75` |
 
 The evidence document and raw sample file retain both exact revisions; the
-benchmark-format file retains the 500 candidate primary samples. Base bench
-output, profiles and traces are not retained. The publishing head is a
-descendant of the measured candidate because this page, its precise measured
+benchmark-format file retains the 500 candidate primary samples. The lane
+retains no base bench output, profiles or traces. The publishing head descends
+from the measured candidate because this page, its precise measured
 artifact basis and the retained evidence did not exist when sampling began.
 
 ## 500,000-record resident memory
@@ -538,7 +540,7 @@ The harness outcome `pass` means the run completed with valid fixtures and
 matching correctness digests; the separate target verdict comes from comparing
 peak resident memory with the 4 GiB FIRST-PRODUCTION envelope.
 
-The measured harness and candidate were both exact commit
+The measured harness and candidate both came from exact commit
 `08b7c72c7cf32ade5288093b0a9acb3833cf7bb0`. The run started at
 `2026-08-20T05:37:06Z` on Darwin arm64, an 18-core Apple M5 Max with 64 GiB
 memory, Go 1.26.5 and Git 2.50.1, from a clean worktree.
@@ -551,11 +553,11 @@ memory, Go 1.26.5 and Git 2.50.1, from a clean worktree.
 | 100,000 | 0.607–0.630 GiB | 0.292 GiB | 27.01–27.15 s |
 | 500,000 | 2.500–2.523 GiB | 1.246 GiB | 133.97–134.17 s |
 
-The worst 500,000-record peak is 2,709,110,784 bytes. That is 36.9 percent
+The worst 500,000-record peak reached 2,709,110,784 bytes, 36.9 percent
 below 4 GiB, so the measured FIRST-PRODUCTION resident-memory target **passes**.
-The range is observed, not extrapolated. All ten primary samples and all five
-diagnostics had equal projected and independently folded trusted digests. The
-500,000-record fixture head is
+The range comes from observation, not extrapolation. All ten primary samples and
+all five diagnostics had equal projected and independently folded trusted
+digests. The 500,000-record fixture used head
 `5bdaab68803394118d82130bcfa14d15dcbc7ccf`; every sample records fixture exact
 digest `062b953f5b460861c64a08eedb02245545c8f75ab0cf8f4b22bb1a1b80265999`.
 
@@ -571,14 +573,14 @@ private folder and publishes only after complete verification and folding.
 The Workroom folder also shares repeated immutable identifiers, vocabulary and
 state strings while preserving projection-mutation isolation. The projection
 itself and the kernel's idempotency index still grow with the information they
-must answer, so this is a measured bound for the named workload, not a claim of
-constant memory.
+must answer, so this gives a measured bound for the named workload, not a claim
+of constant memory.
 
 After recording measured usage, the worker builds a separate trusted projection
-to validate the digest. That later two-projection diagnostic is deliberately
+to validate the digest. That later two-projection diagnostic deliberately stays
 outside `peak_rss_bytes` and `steady_memory_bytes`: a serving resident keeps one
 verified application projection, while the harness keeps two only to check the
-first one. The publishing commit is a descendant of the measured commit because
+first one. The publishing commit descends from the measured commit because
 this page and the retained evidence did not exist when sampling began.
 
 ## Resident wait cost
@@ -587,7 +589,7 @@ Every open long poll on the resident used to tick its own 250 ms clock and
 ask the verified snapshot on each tick: one `git rev-parse` process per tick
 for each waiter whose ticks did not coincide, while waiters ticking together
 already shared one read through the snapshot's single flight. One head clock
-per log now does that read while any wait is open, and a waiter asks the
+per log now does that read while any wait stays open, and a waiter asks the
 snapshot again only on its first pass, when the clock advances or its head
 differs from the last answer, or when its live cursor moves. The
 [measured run](../../performance/HEAD-WAIT.md) puts eight idle staggered
@@ -598,44 +600,44 @@ not a claim about deep logs.
 
 ## Artifact-heavy projection cost
 
-A workroom whose log is mostly artifacts costs far more to project than the
-envelope corpora suggested. Two real logs were measured on the machine named
-above, folding read-only and projecting the whole workroom, before and after the
-projection lane, one run after the other:
+A workroom whose log consists mostly of artifacts costs far more to project than
+the envelope corpora suggested. This lane measured two real logs on the machine
+named above, folding read-only and projecting the whole workroom, before and
+after the projection lane, one run after the other:
 
 | Log | Events | Artifacts | Before | After |
 |---|---|---|---|---|
 | Artifact-heavy workroom | 7,029 | 5,091 | 18.10 s | 2.08 s and 2.09 s |
 | This repository | 23,945 | 6,610 | 21.70 s | 12.82 s |
 
-The projection each run produced is byte-identical to the one the previous
+The projection each run produced matches, byte for byte, the one the previous
 implementation produced, compared as 25 MB and 52 MB of JSON.
 
 Four repeated reads accounted for the difference. `pathCovers` allocated a
-directory prefix on every call and was 35 percent of all samples in the
-artifact-heavy fold; it now compares the separator in place. The
-receipt-to-successor interval was walked once per successor, with the covering
-path recomputed for every record in it; it is now walked once per receipt, no
-further than its successors ask. The receipt-checkpoint staleness walk ran once
-per successor over the same closure; its answer is now reused across the
-successors of one receipt. The projection folded a second complete staleness
-pass to read commitment protection; it now uses the one it has already computed.
+directory prefix on every call and accounted for 35 percent of all samples in
+the artifact-heavy fold; it now compares the separator in place. The fold walked
+the receipt-to-successor interval once per successor, recomputing the covering
+path for every record in it; it now walks it once per receipt, no further than
+its successors ask. The receipt-checkpoint staleness walk ran once per successor
+over the same closure; the successors of one receipt now reuse its answer. The
+projection folded a second complete staleness pass to read commitment
+protection; it now uses the one it has already computed.
 
-The two logs differ in where their time went, and the table is the reason to
-measure both. The artifact-heavy log spent it in the projection, which is what a
+The two logs differ in where their time went, and the table shows the reason to
+measure both. The artifact-heavy log spent it in the projection, the part a
 reader waits for after each new act. This repository spends it in the fold, at
-one complete staleness pass per merge receipt admitted — 160 of them — which is
-a cost paid when a resident starts, not per act.
+one complete staleness pass per merge receipt admitted — 160 of them — a cost
+paid when a resident starts, not per act.
 
 `BenchmarkFoldArtifactHeavy` and `BenchmarkProjectionArtifactHeavy` in
 `internal/workroom` hold the shape: merges that publish one successor above the
 files they changed. At 160 merges of 24 files the fold went from 226 ms to
-127 ms, and the projection stayed where it was, with fewer allocations. The
-envelope corpora miss all of this because they are artifact-poor and carry no
+127 ms, and the projection held steady, with fewer allocations. The
+envelope corpora miss all of this because they hold few artifacts and carry no
 merge receipts.
 
-This is evidence from two logs and one machine. It is not a target, and nothing
-here is enforced.
+This gives evidence from two logs and one machine. It sets no target, and Gitseq
+enforces nothing here.
 
 ## Residual dimensions
 
@@ -651,33 +653,33 @@ make perf PERF_ARGS='run --contract performance/contract-v3.json --tier envelope
 
 ### How to read these results
 
-Four things hold for every dimension below, so they are stated once here and
-not repeated in each one.
+Four things hold for every dimension below, so this page states them once here
+and does not repeat them in each one.
 
 - **Two primary samples and one diagnostic rerun per case.** The diagnostic
   starts only after every primary sample and enters no range or spread on this
-  page; it is reported beside the pair so a reader can see whether the pair was
-  a fluke.
+  page; this page reports it beside the pair so a reader can see whether the
+  pair came from a fluke.
 - **No percentile.** The contract emits p95 only at 20 samples and p99 only at
-  100, so at this population **both are unavailable**. No table below has a
-  percentile column and none should be read as having one. Two samples are a
+  100, so at this population **neither can appear**. No table below has a
+  percentile column and nobody should read any as having one. Two samples make a
   pair, not a distribution.
-- **Agreement bands.** Each dimension's pair is checked against a band recorded
-  in the campaign's retained
+- **Agreement bands.** The campaign checks each dimension's pair against a band
+  recorded in its retained
   [classification rules](../../performance/retained/envelope-20260909-0b689fe2/classification-rules.md),
-  which also give each band's source. A pair outside its band is published
-  inconclusive rather than measured. Each subsection names its own band.
-- **Planning target is not commitment.** Every figure these results are held
-  against is a planning target or a historical figure, not an adopted
-  commitment, except the 256 MiB checkpoint ceiling, which is an enforced
-  limit. So a number under its figure is measured capability and not a
-  commitment met, and a number over it is a miss against that figure and not a
-  broken commitment. Adopting any of them, or changing a governed limit, needs
+  which also give each band's source. This page publishes a pair outside its
+  band as inconclusive rather than measured. Each subsection names its own band.
+- **Planning target, not commitment.** Every figure this page holds these
+  results against counts as a planning target or a historical figure, not an
+  adopted commitment, except the 256 MiB checkpoint ceiling, an enforced
+  limit. So a number under its figure shows measured capability and not a
+  commitment met, and a number over it marks a miss against that figure and not
+  a broken commitment. Adopting any of them, or changing a governed limit, needs
   a concrete ordinary proposal first, and nothing here does that.
 
-One admission rule is shared too: a sample counts only if its projected and
-trusted correctness digests were equal. That is a precondition for admitting a
-sample, not evidence that the fold is correct.
+One admission rule applies to all of them too: a sample counts only if its
+projected and trusted correctness digests matched. That serves as a precondition
+for admitting a sample, not as evidence of a correct fold.
 
 ### The measured envelope run
 
@@ -694,19 +696,19 @@ actors at depth 500,000 with exact digest
 the machine named above, from a clean worktree, as a single invocation with
 sleep inhibited.
 
-That harness head is fixed: it is what the samples were taken at, so it cannot
+That harness head stays fixed: the samples came from it, so it cannot
 change. One correction found in review therefore lands in the later publishing
 commit instead. The lane entry now refuses a tier that selects no cases under
-the contract it was given, before it creates any output, so a request for the
-envelope tier against contract v2 is an error rather than a zero-sample
-campaign reporting a pass. The guard reads the selected case list at the
-command boundary and touches no measured path, no scenario and no contract, so
-the run above stands exactly as it was measured.
+the contract it received, before it creates any output, so a request for the
+envelope tier against contract v2 fails with an error rather than running a
+zero-sample campaign that reports a pass. The guard reads the selected case list
+at the command boundary and touches no measured path, no scenario and no
+contract, so the run above stands exactly as measured.
 
-Only three fixtures were prepared, so the 50,000-record one-actor cases are
-materialized from the 500,000-record one-actor fixture at depth 50,000. They
-carry that fixture's exact digest and their own fixture head. The four fixture
-heads the samples record are
+The campaign prepared only three fixtures, so it materializes the 50,000-record
+one-actor cases from the 500,000-record one-actor fixture at depth 50,000. They
+carry that fixture's exact digest and their own fixture head. The samples record
+four fixture heads:
 `587ce2caff5718b584aa19d936e03fb860bd4a50` at 500,000 with one actor,
 `7f2a2d4f25d078a2c9ad9630a52d586648193d39` at 50,000 with one actor,
 `cddb45a0881c0c56d10374e6cb6f8acdbec9fb44` at 50,000 with 8 actors, and
@@ -715,28 +717,28 @@ heads the samples record are
 The tier ran ten cases in contract order, on the population described above.
 This section reports every raw observation and the pair.
 
-Machine load was sampled once a minute for the whole window. The 51 one-minute
-load averages ran from 2.67 to 4.40 on 18 logical CPUs, so no case window
-reached the campaign's quiet threshold of 6.00, let alone its spike threshold of
-12.00. That load was not idle: other work on the machine held the one-minute
-average between about 3 and 4 throughout, and the numbers below were taken with
-that load present. Load is disclosed rather than assumed away, for the reason
-the fan-out lane records above, and the same sibling-load caveat applies in
-kind. The fan-out lane's own quiet window broke when a sibling lane started, and
-nothing prevents that here either. What can be said is what was observed: the
-one-minute average never exceeded 4.40 during this run.
+The campaign sampled machine load once a minute for the whole window. The 51
+one-minute load averages ran from 2.67 to 4.40 on 18 logical CPUs, so no case
+window reached the campaign's quiet threshold of 6.00, let alone its spike
+threshold of 12.00. The machine did not sit idle: other work on the machine held
+the one-minute average between about 3 and 4 throughout, and the numbers below
+came with that load present. This page discloses load rather than assuming it
+away, for the reason the fan-out lane records above, and the same sibling-load
+caveat applies in kind. The fan-out lane's own quiet window broke when a sibling
+lane started, and nothing prevents that here either. This page can say only
+what it observed: the one-minute average never exceeded 4.40 during this run.
 
-One thing about the correctness check is worth stating exactly, because it is
-not the same for all ten cases. Every sample folds a second trusted projection
-after its measured window, and any sample whose trusted fold fails is an error
-rather than a slow result. The checkpoint restart and the cold verify also
+One thing about the correctness check deserves an exact statement, because it
+differs across the ten cases. Every sample folds a second trusted projection
+after its measured window, and any sample whose trusted fold fails counts as an
+error rather than a slow result. The checkpoint restart and the cold verify also
 return their own projection from the measured operation, so two digests exist
-and are compared, and a mismatch fails the sample. The cold reads and the warm
-reads return an encoded response rather than a projection, so no second digest
-exists for them and the recorded correctness digest is the trusted one. For
-those six cases the trusted fold shows that the scratch copy verifies; the
-comparison of projected against trusted is not an independent check there, and
-this page does not present it as one.
+and the harness compares them, and a mismatch fails the sample. The cold reads
+and the warm reads return an encoded response rather than a projection, so no
+second digest exists for them and the recorded correctness digest comes from the
+trusted fold. For those six cases the trusted fold shows that the scratch copy
+verifies; the comparison of projected against trusted does not act as an
+independent check there, and this page does not present it as one.
 
 | File | SHA-256 |
 |---|---|
@@ -761,19 +763,19 @@ Cases `checkpoint_restart/shape-linear/depth-050000/tail-0255` and
 Band: 15 percent. Both pairs sit well inside it.
 
 This dimension adds one admission rule of its own: a sample counts only if it
-restored from the checkpoint. The snapshot source column is that check.
+restored from the checkpoint. The snapshot source column shows that check.
 `verified_signed_checkpoint_tail` means the sample measured the restart it
 claims to measure, and any other value means it measured something else.
 
-At 50,000 records the measurement is under the historical planning figure of 10
-seconds, and improves on the 19.171-second average the earlier run recorded at
-head `b391c918`.
+At 50,000 records the measurement falls under the historical planning figure of
+10 seconds, and improves on the 19.171-second average the earlier run recorded
+at head `b391c918`.
 
-At 500,000 records the measurement is over the historical planning figure of 60
-seconds, by 15.7 and 15.5 percent, so this is a **miss** against that figure. It
-improves on the 72.986-second average the earlier run recorded at head
-`b391c918`, and the improvement does not make it a pass. A bounded
-implementation child is to be filed on this evidence.
+At 500,000 records the measurement exceeds the historical planning figure of 60
+seconds, by 15.7 and 15.5 percent, so this counts as a **miss** against that
+figure. It improves on the 72.986-second average the earlier run recorded at
+head `b391c918`, and the improvement does not make it a pass. Someone will file
+a bounded implementation child on this evidence.
 
 ### Cold verify with no checkpoint
 
@@ -788,25 +790,26 @@ Cases `honest_fallback/shape-linear/depth-050000` and
 | 500,000 | 129.259 s and 128.810 s | 129.310 s | 0.35 percent | `verified_cold_full_audit` |
 
 Band: 10 percent. Both pairs sit well inside it. The historical 5-minute and
-60-minute planning figures are far above both measurements.
+60-minute planning figures sit far above both measurements.
 
 The fixture materialization removes the checkpoint ref and the local checkpoint
 pointer for this scenario, so the sample has nothing to restore from and
-verifies the whole history. Its `checkpoint_bytes` is zero, and that zero is the
-fact itself rather than a missing reading. Like the checkpoint restart, this
-case returns its own projection, so its projected and trusted digests are
-compared against each other and a mismatch fails the sample.
+verifies the whole history. Its `checkpoint_bytes` reads zero, and that zero
+states the fact itself rather than a missing reading. Like the checkpoint
+restart, this case returns its own projection, so the harness compares its
+projected and trusted digests against each other and a mismatch fails the
+sample.
 
-This is not the same measurement as the cold read reported in the resident
-memory lane above, which folds a full history for a different scenario. The two
-are reported separately and neither is restated as the other.
+This measurement differs from the cold read reported in the resident memory lane
+above, which folds a full history for a different scenario. This page reports
+the two separately and restates neither as the other.
 
 ### Memory during full verification
 
 **Measured. Outside the scope of the adopted memory outcome. No target exists.**
 
 The checkpoint restart and the cold verify return the whole projection to the
-caller, and they are much heavier in memory than a status read at the same
+caller, and they use much more memory than a status read at the same
 depth.
 
 | Depth | Case | Peak resident, primary samples | Steady memory | Response bytes |
@@ -816,21 +819,20 @@ depth.
 | 500,000 | checkpoint restart | 16.027 GiB and 17.664 GiB | 6.863 GiB and 6.617 GiB | 3,247,800,825 |
 | 500,000 | cold verify | 15.502 GiB and 15.092 GiB | 6.617 GiB and 6.617 GiB | 3,247,800,825 |
 
-This is the same scenario shape the earlier checkpoint run recorded at
-24,161,976,320 bytes of peak resident memory. These figures are lower than that
-one, and they are still about five to six times the peak of a status read at the
-same depth.
+This matches the scenario shape the earlier checkpoint run recorded at
+24,161,976,320 bytes of peak resident memory. These figures come in lower than
+that one, and they still reach about five to six times the peak of a status read
+at the same depth.
 
-The 4 GiB figure does not reach these rows. It is scoped to resident status
-reads: that is the shape of the adopted memory outcome `a9047812`, which is
-satisfied, and it is the shape of the "500,000-record resident memory" lane
-above and of "Resident memory by sequence depth" in `performance/BASELINE.md`.
-None of those measured a full-verification restore that returns the whole
-projection to its caller. So these four rows are neither a pass nor a miss.
-They are a measured cost with no target over it, published so that the cost is
-visible. A production commitment about full-verification memory would need a
-concrete ordinary proposal and its adoption first, and this page does not make
-one.
+The 4 GiB figure does not reach these rows. Its scope covers resident status
+reads: the shape of the adopted memory outcome `a9047812`, now satisfied, and
+the shape of the "500,000-record resident memory" lane above and of "Resident
+memory by sequence depth" in `performance/BASELINE.md`. None of those measured a
+full-verification restore that returns the whole projection to its caller. So
+these four rows count as neither a pass nor a miss. They show a measured cost
+with no target over it, published so that readers can see the cost. A production
+commitment about full-verification memory would need a concrete ordinary
+proposal and its adoption first, and this page does not make one.
 
 ### Warm-status latency
 
@@ -845,20 +847,21 @@ Cases `warm_status/shape-linear/depth-050000` and
 | 500,000 | 150.307 ms and 164.122 ms | 163.103 ms | 9.19 percent | 126.656 s and 126.407 s |
 
 Band: 50 percent, the one exception to the bands' source. Both pairs sit
-inside it. It is wide because a warm read is milliseconds and fixed jitter is a
-large fraction of one, and no published pair existed for this scenario at any
-depth, so it is a judgement rather than a figure derived from evidence.
+inside it. The band runs wide because a warm read takes milliseconds and fixed
+jitter makes up a large fraction of one, and no published pair existed for this
+scenario at any depth, so it reflects a judgement rather than a figure derived
+from evidence.
 
-The setup column is the part that matters most here. One warm sample pays a full
-cold read first, inside setup and outside the measured operation, and that first
-read costs about 12.9 seconds at 50,000 records and about 126.5 seconds at
-500,000. So a warm figure of 164 milliseconds is not the cost of the first read.
-It is the cost of the reads that follow it, once the same resident has completed
-the corresponding verified read. Warm does not mean any operating-system cache
-state. The setup cost is also why this case needed a longer worker timeout in
-contract v3 than contract v2 allowed.
+The setup column matters most here. One warm sample pays a full cold read first,
+inside setup and outside the measured operation, and that first read costs about
+12.9 seconds at 50,000 records and about 126.5 seconds at 500,000. So a warm
+figure of 164 milliseconds does not measure the first read. It measures the
+reads that follow it, once the same resident has completed the corresponding
+verified read. Warm does not mean any operating-system cache state. The setup
+cost also explains why this case needed a longer worker timeout in contract v3
+than contract v2 allowed.
 
-Both depths are under the smoke-baseline planning figure of 500 milliseconds
+Both depths fall under the smoke-baseline planning figure of 500 milliseconds
 for exact-head status. `performance/BASELINE.md` still classifies exact-head
 status as not yet measurable, and two samples do not change that: they cannot
 establish an interactive latency distribution.
@@ -867,7 +870,7 @@ establish an interactive latency distribution.
 
 **Measured.**
 
-Read from the two `checkpoint_restart` cases above. This is a size, not a
+Read from the two `checkpoint_restart` cases above. It measures a size, not a
 timing, so machine load does not bear on it.
 
 | Depth | Checkpoint bytes | As MiB | Share of the 256 MiB limit |
@@ -875,13 +878,13 @@ timing, so machine load does not bear on it.
 | 50,000 | 2,161,188 | 2.06 | 0.81 percent |
 | 500,000 | 21,934,525 | 20.92 | 8.17 percent |
 
-Both samples of each case reported the same size, which is what the campaign
+Both samples of each case reported the same size, as the campaign
 required before publishing a size at all: two different sizes would mean the two
 samples restored different objects.
 
-The figure is the serialized size of the checkpoint object the sample actually
-restored, read from the object store rather than re-encoded, so nothing
-allocates it to measure it. The 256 MiB ceiling it is compared against is a
+The figure gives the serialized size of the checkpoint object the sample
+actually restored, read from the object store rather than re-encoded, so nothing
+allocates it to measure it. The 256 MiB ceiling it compares against acts as a
 governing limit on the [Limits](limits.md) page. This section measures against
 that limit and does not propose changing it.
 
@@ -902,49 +905,50 @@ Four cases, two pairs. At 50,000: `cold_status/shape-linear/depth-050000` and
 | 50,000, 8 actors | 12.746 s and 12.733 s; diagnostic 12.775 s | 12.647 s and 12.659 s; diagnostic 12.691 s | -0.087 s, or -0.68 percent |
 | 500,000, 50 actors | 126.360 s and 126.194 s; diagnostic 126.978 s | 126.148 s and 126.471 s; diagnostic 126.918 s | +0.032 s, or +0.03 percent |
 
-Band: 10 percent. Every pair spread is at or under 0.26 percent, well inside
-it. At 500,000 records the difference between the two cells
-is 0.032 s, smaller than the spread within either pair, so it is not a
-measurable cost. At 50,000 records the 8-actor cell is 0.087 s faster than the
-one-actor cell. That difference is larger than either pair's own spread, but it
-runs the wrong way for an actor-count cost.
+Band: 10 percent. Every pair spread comes in at or under 0.26 percent, well
+inside it. At 500,000 records the difference between the two cells
+comes to 0.032 s, smaller than the spread within either pair, so it does not
+amount to a measurable cost. At 50,000 records the 8-actor cell runs 0.087 s
+faster than the one-actor cell. That difference exceeds either pair's own
+spread, but it runs the wrong way for an actor-count cost.
 
 The one-actor and joint cells necessarily use different fixtures, because actor
-count is a fixture parameter. At 50,000 they also differ in preparation, because
-the one-actor cell reads the 500,000-record one-actor fixture at depth 50,000
-while the joint cell reads the fixture prepared with 8 actors at 50,000. So this
-run measures no actor-count cost on a cold status read at either envelope, and
-the 50,000 difference is not evidence of a saving either. That is a statement
-about these four cases and this workload. It is not a claim that actor count is
-free in general, and it says nothing about restart, verify or warm latency at 8
-or 50 actors.
+count serves as a fixture parameter. At 50,000 they also differ in preparation,
+because the one-actor cell reads the 500,000-record one-actor fixture at depth
+50,000 while the joint cell reads the fixture prepared with 8 actors at 50,000.
+So this run measures no actor-count cost on a cold status read at either
+envelope, and the 50,000 difference gives no evidence of a saving either. That
+states something about these four cases and this workload. It does not claim
+that actor count costs nothing in general, and it says nothing about restart,
+verify or warm latency at 8 or 50 actors.
 
-The two comparisons are not equally controlled, and the difference matters. At
-50,000 the one-actor read and the joint cell are emitted together and run
-adjacent, so little machine time separates them. At 500,000 the one-actor read
-is the ordinary depth-axis case and runs first in the tier, while the joint cell
-runs last, so the primary samples of eight other cases separate them. The
-reconstructed separation is about 13 minutes between the last one-actor primary
-sample and the first 50-actor primary sample. That reconstruction is
-approximate and shorter than the clock, because it adds each sample's setup and
-latency and neither field carries process spawn or fixture copy time: the summed
-figure for the whole run is about 32 minutes against a load log covering about
-51 minutes. An increment computed across that gap carries whatever the machine
-did in between, so the 500,000 difference is reported with its separation stated
-rather than as a controlled comparison.
+The two comparisons do not have equal control, and the difference matters. At
+50,000 the harness emits the one-actor read and the joint cell together and they
+run adjacent, so little machine time separates them. At 500,000 the one-actor
+read serves as the ordinary depth-axis case and runs first in the tier, while
+the joint cell runs last, so the primary samples of eight other cases separate
+them. The reconstructed separation comes to about 13 minutes between the last
+one-actor primary sample and the first 50-actor primary sample. That
+reconstruction gives an approximate figure, shorter than the clock, because it
+adds each sample's setup and latency and neither field carries process spawn or
+fixture copy time: the summed figure for the whole run comes to about 32 minutes
+against a load log covering about 51 minutes. An increment computed across that
+gap carries whatever the machine did in between, so this page reports the
+500,000 difference with its separation stated rather than as a controlled
+comparison.
 
-Peak resident memory for the same four cases is 0.448 and 0.454 GiB at 50,000
-with one actor, 0.369 and 0.361 GiB at 50,000 with 8 actors, 2.886 and 2.912 GiB
-at 500,000 with one actor, and 3.304 and 2.844 GiB at 500,000 with 50 actors.
-The worst 50-actor peak is 3,547,348,992 bytes, which is 17.4 percent below
-4 GiB. Those last two pairs are the first resident-memory figures on this page
-taken at an envelope actor count, so the FIRST-PRODUCTION resident-memory result
-is re-observed here at this head and at 50 actors. It is re-observed, not
-restated: the memory lane above keeps its own one-actor numbers, and neither set
-replaces the other.
+Peak resident memory for the same four cases reached 0.448 and 0.454 GiB at
+50,000 with one actor, 0.369 and 0.361 GiB at 50,000 with 8 actors, 2.886 and
+2.912 GiB at 500,000 with one actor, and 3.304 and 2.844 GiB at 500,000 with 50
+actors. The worst 50-actor peak, 3,547,348,992 bytes, sits 17.4 percent below 4
+GiB. Those last two pairs give the first resident-memory figures on this page
+taken at an envelope actor count, so this page re-observes the FIRST-PRODUCTION
+resident-memory result at this head and at 50 actors. It re-observes, and does
+not restate, that result: the memory lane above keeps its own one-actor numbers,
+and neither set replaces the other.
 
-The one-actor pair at 500,000 is worth naming on its own. Its peaks of
-3,098,345,472 and 3,126,509,568 bytes are 14.4 and 15.4 percent above the worst
+The one-actor pair at 500,000 deserves naming on its own. Its peaks of
+3,098,345,472 and 3,126,509,568 bytes sit 14.4 and 15.4 percent above the worst
 one-actor peak the memory lane published, and still 27.9 and 27.2 percent below
 4 GiB. So the one-actor peak at this head sits above the lane's published range
 and inside the planning figure.
@@ -957,18 +961,19 @@ record per sample, and
 `performance/retained/envelope-20260909-0b689fe2/evidence.json` holds the head,
 the contract digest, the environment and the harness's own summaries. The
 machine-load figures for this campaign, the 51 samples and the range across the
-window, are read from
+window, come from
 `performance/retained/envelope-20260909-0b689fe2/load.log`: one line a minute,
 carrying the one, five and fifteen minute load averages and a count of the
-build and harness processes running at that minute. The agreement bands each
-scenario is judged against, and the rules that decide measured, modeled,
-unavailable or inconclusive, are in
+build and harness processes running at that minute. The agreement bands that
+judge each scenario, and the rules that decide measured, modeled,
+unavailable or inconclusive, live in
 `performance/retained/envelope-20260909-0b689fe2/classification-rules.md`. That
 file records the bands and admission checks the author applied and where each
 band came from, so a later reader can hold the published numbers against them.
-It is not a pre-registration: it was written during the run and first committed
-with the results, and it says so in its own first lines. A nested metric in a sample row is either a plain
-number or an object with a `value` field, so a reader has to accept both:
+It does not count as a pre-registration: the author wrote it during the run and
+first committed it with the results, and it says so in its own first lines. A
+nested metric in a sample row holds either a plain number or an object with a
+`value` field, so a reader has to accept both:
 
 ```text
 jq -r 'select(.position==1) | [.case, .round, .result.latency_ns,
@@ -976,52 +981,53 @@ jq -r 'select(.position==1) | [.case, .round, .result.latency_ns,
   .result.checkpoint_bytes] | @tsv' samples.jsonl
 ```
 
-Rows with `position` 1 are the primary samples; `position` 0 is the diagnostic
-rerun that enters no range here. Seconds are `latency_ns` divided by
-1,000,000,000, and a share of the 256 MiB limit is `checkpoint_bytes` divided by
-268,435,456.
+Rows with `position` 1 hold the primary samples; `position` 0 marks the
+diagnostic rerun that enters no range here. Seconds equal `latency_ns` divided
+by 1,000,000,000, and a share of the 256 MiB limit equals `checkpoint_bytes`
+divided by 268,435,456.
 
 ### The historical checkpoint measurements
 
 Two earlier durable statements measured near-head checkpoint restart at these
-depths. Both are history here, and neither is a current-head result.
+depths. Both count as history here, and neither gives a current-head result.
 
 Artifact statement `e2b15773`, filed under request 6231, measured at exact head
 `b391c918` against `performance/contract-v1.json`. Two samples at 50,000
 recorded 19.616 and 18.727 seconds, an average of 19.171 seconds against a
 10-second target, a miss. Two at 500,000 recorded 73.761 and 72.211 seconds, an
 average of 72.986 seconds against a 60-second target, a miss by 21.6 percent.
-All four reported `verified_signed_checkpoint_tail` and matching digests. It is
-not a current-head result: the contract has moved from v1 through v2 to v3, the
-harness and scenario packages have changed many times since, and its own
-24,161,976,320-byte peak resident figure belongs to the full-verification shape
-discussed above rather than to the status reads the memory lane bounds.
+All four reported `verified_signed_checkpoint_tail` and matching digests. It
+does not give a current-head result: the contract has moved from v1 through v2
+to v3, the harness and scenario packages have changed many times since, and its
+own 24,161,976,320-byte peak resident figure belongs to the full-verification
+shape discussed above rather than to the status reads the memory lane bounds.
 
-Artifact statement `7994ba10`, filed under request 6292, measured checkpoint-tail
-batching at exact head `e5ce5aab` on `internal/kernel`, recording PREVIEW at
-5.904 to 5.976 seconds against a cold 12.442 to 12.654 seconds with equal
-digests, and a reviewer reproducing 500,000 below 60 seconds. It is not a
-current-head result either: the checkpoint chunk and cache handling in
-`internal/kernel` has been reworked since, the verification path changed again
-when causal trailers began comparing as ordered elements, and the reviewer's
-500,000 figure is a reported observation with no retained distribution behind it.
+Artifact statement `7994ba10`, filed under request 6292, measured
+checkpoint-tail batching at exact head `e5ce5aab` on `internal/kernel`,
+recording PREVIEW at 5.904 to 5.976 seconds against a cold 12.442 to 12.654
+seconds with equal digests, and a reviewer reproducing 500,000 below 60 seconds.
+It does not give a current-head result either: later work reworked the
+checkpoint chunk and cache handling in `internal/kernel`, the verification path
+changed again when causal trailers began comparing as ordered elements, and the
+reviewer's 500,000 figure remains a reported observation with no retained
+distribution behind it.
 
 A historical measurement does not become a current-head result because the idea
-it measured still exists. Both are cited for what was aimed at and what was seen
-then. The current figures in this section are the ones taken at the head named
+it measured still exists. This page cites both for what the work aimed at and
+what it saw then. The current figures in this section come from the head named
 above.
 
 ### What the joint cells prove
 
-Exactly two joint cells were measured: 50,000 records with 8 actors, and 500,000
-records with 50 actors, both as cold reads. Every other joint claim about these
-envelopes is unmeasured, and is stated here as unmeasured.
+The campaign measured exactly two joint cells: 50,000 records with 8 actors, and
+500,000 records with 50 actors, both as cold reads. Every other joint claim
+about these envelopes remains unmeasured, and this page states it as unmeasured.
 
 In particular, no measurement here combines depth with dependency fan-out. The
-fan-out lane above is measured at depth 1,000 with one actor, and it stays a
+fan-out lane above measured at depth 1,000 with one actor, and it stays a
 result about that depth. The checkpoint restart, the cold verify and the warm
-read at each envelope depth are one-actor cases; they are not joint results with
-the envelope's actor count. The two cold reads that are joint say nothing about
+read at each envelope depth use one actor; they give no joint results with
+the envelope's actor count. The two joint cold reads say nothing about
 restart, verify or warm latency at 8 or 50 actors.
 
 A claimed joint verdict needs its own joint case. Separate axes do not prove a
@@ -1042,5 +1048,5 @@ signed identity, signs and verifies the event, and advances the verified ref by
 compare-and-swap. Signature failures, bound failures and CAS failures retain
 their existing behaviour. Publication remains atomic, and the complete fold,
 idempotency, projected-versus-trusted equality and application error semantics
-are unchanged. The harness exercises that ordinary submit path and refuses a
+stay unchanged. The harness exercises that ordinary submit path and refuses a
 sample when the two correctness digests differ.

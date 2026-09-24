@@ -10,8 +10,8 @@ rests_on:
 
 # `gs merge-plan`
 
-Explains whether one ratified approval can merge its exact head and how every
-live artifact covering that merge would be accounted for. It prints JSON and
+Explains whether one ratified approval can merge its exact head and how the
+merge would account for every live artifact covering it. It prints JSON and
 makes no durable act. It does not change the governed checkout, its refs,
 index, object database, worktree registration, Git configuration, gitseq
 configuration, verified-frontier witness, or checkpoint state.
@@ -32,13 +32,14 @@ It takes no positional arguments.
 `--approval` names a durable event and takes a
 [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as
 the canonical identifier. `--candidate` names an ordinary Git commit, not an
-event, and is never resolved. This command records nothing.
+event, and the command never resolves it. This command records nothing.
 
-Structured merge authorization is outside this read-only surface. There is no
-`--authorization` flag: an allowed plan says that approval, succession, reach,
-and admission checks passed without authorization fields in the prospective
-receipt. `gs merge` evaluates `--authorization` separately and may still refuse
-the same candidate, including when the implementation request requires it.
+Structured merge authorization lies outside this read-only surface. The
+command has no `--authorization` flag: an allowed plan says that approval,
+succession, reach, and admission checks passed without authorization fields in
+the prospective receipt. `gs merge` evaluates `--authorization` separately and
+may still refuse the same candidate, including when the implementation request
+requires it.
 
 This minimal call deliberately names an unknown approval. It exits normally
 with `allowed: false` and an `approval_refused` reason, which lets automation
@@ -56,10 +57,10 @@ gs merge-plan --repo "$REPO" --as alice --checkout "$REPO" \
 
 ## Result
 
-`mode` is `fresh`, `incorporate`, `resume`, `complete`, or `used`. A fresh plan reports the exact durable
+`mode` takes one of `fresh`, `incorporate`, `resume`, `complete`, or `used`. A fresh plan reports the exact durable
 frontier, approval, candidate head, implementer, target pre-head, candidate
 artifacts, reviewed paths, canonical changed paths, and every live covering
-artifact. Each covering artifact is classified as `reviewed candidate`,
+artifact. The plan classifies each covering artifact as `reviewed candidate`,
 `in-target predecessor`, `carried`, `protected sibling`, or `abandoned`. The plan then
 lists the proposed retirements, successor paths, and stable reason codes.
 Before allowing a fresh plan, it also encodes the exact durable receipt,
@@ -69,20 +70,20 @@ local and resident admission ceilings. This proves the un-authorized shape and
 size of the suffix; it does not pre-authorize the merge.
 
 `allowed` says whether the exact preflight permits the action. A refusal stays
-a normal structured result and names the exact failed check. Results are sorted
-deterministically and bounded to 2 MiB; a larger result refuses with
+a normal structured result and names the exact failed check. The command sorts
+results deterministically and bounds them to 2 MiB; a larger result refuses with
 `plan_output_too_large` instead of silently omitting accounting.
 
 For an existing receipt, the command checks its sealed repository, ref and
 merge head against the checkout and renders its sealed succession. It does not
 replan against a newer world. `resume` means some canonical succession acts
-remain to be recorded. `complete` with `allowed: true` means all are already
-recorded: repeating the merge appends nothing. Effective acts are matched by
-merger, content and ordered citations, preserving their original staleness
-record. A retired receipt or ambiguous match refuses. A receipt already used
-in another checkout is `used` and refuses.
+remain unrecorded. `complete` with `allowed: true` means the log already
+records all of them: repeating the merge appends nothing. The command matches
+effective acts by merger, content and ordered citations, preserving their
+original staleness record. A retired receipt or ambiguous match refuses. A
+receipt already used in another checkout reports `used` and refuses.
 
-`incorporate` is the mode for an approved candidate the target already
+`incorporate` covers an approved candidate the target already
 contains. The plan reports the reason code `candidate_incorporated`, lists the
 candidate artifacts, and proposes no retirement, successor or changed path,
 because [`gs merge`](merge.md#incorporation-the-head-the-target-already-has)
@@ -90,12 +91,13 @@ would record that the head already landed and leave Git untouched. It signs
 nothing and reserves nothing, exactly like every other mode here. The plan does
 not check the request's landing target, so a checkout of the candidate's own
 branch trivially contains it and previews as `incorporate`; `gs merge` refuses
-that checkout because it is not the branch the request owes its landing to.
+that checkout because its branch differs from the one the request owes its
+landing to.
 
-The prospective Git merge is staged only in a disposable clone. The governed
-repository is read with optional locks disabled. `gs merge` consumes this same
-typed plan, then verifies that the actual staged changed-path frontier and the
-workroom frontier still equal what was planned before it moves `HEAD`.
+The command stages the prospective Git merge only in a disposable clone and
+reads the governed repository with optional locks disabled. `gs merge` consumes
+this same typed plan, then verifies that the actual staged changed-path
+frontier and the workroom frontier still equal the plan before it moves `HEAD`.
 
 ## See also
 

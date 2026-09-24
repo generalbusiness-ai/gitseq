@@ -1,6 +1,6 @@
 ---
 title: MCP presence
-summary: Show who is present and update this session's leased activity.
+summary: Show which actors have presence and update this session's leased activity.
 rests_on:
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ccfbba8ebd13ea7f0a38159275f5b87b8c396c93
   - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:cb605f5622c1aa47d1b98dddaaba4f9fb164a343
@@ -12,17 +12,17 @@ rests_on:
 
 # `presence`
 
-Lists who is in the room right now and the open conversations. It may also
+Lists everyone in the room right now and the open conversations. It may also
 update the calling adapter session's leased, advisory activity.
 
-Presence is ephemeral. It is held by the resident service, per process,
-and does not survive a restart.
+Presence stays ephemeral. The resident service holds it, per process,
+and it does not survive a restart.
 
 ## Arguments
 
 | argument | required | meaning |
 |---|---|---|
-| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter started in, or to its `--repo` when it started with one. |
 | `agent` | optional | The actor whose existing accessible key owns this leased session; defaults to startup `--actor`. |
 | `status` | optional | This session's activity: `available`, `busy`, `waiting`, or `blocked`. |
 | `focus` | optional | Up to eight durable EventIDs from this workroom that currently have this session's attention. An empty list clears focus. |
@@ -31,7 +31,7 @@ and does not survive a restart.
 Every tool takes both selectors. Naming a different repository acts in that
 workroom; naming a different agent uses that actor's distinct leased session.
 The adapter serves only repositories and actor keys the process can already
-access. Linked worktrees of one repository are one workroom, not several.
+access. Linked worktrees of one repository form one workroom, not several.
 
 ## Example
 
@@ -58,9 +58,9 @@ trap - EXIT
 
 ## What comes back
 
-Present sessions, the open conversations, and a live cursor. Each session
-is named by an **opaque minted handle** — `session:` followed by random
-hex — not by its private credential.
+Present sessions, the open conversations, and a live cursor. An **opaque
+minted handle** — `session:` followed by random hex — names each session,
+rather than its private credential.
 
 The response also includes leased activity keyed by the same opaque session
 handles. It reports each session separately; it does not combine an actor's
@@ -78,25 +78,25 @@ adapter registers that capability after announcing presence; browser sessions
 and older adapters do not, so the resident never builds an inbox they cannot
 consume. A session that arrives later receives no earlier chat.
 
-Focus is attention, not durable workflow state. It never claims a request,
+Focus marks attention, not durable workflow state. It never claims a request,
 makes a promise, reports completion, or grants authority. The adapter supplies
 the actor. On the first attachment, the resident mints a private credential
 from 256 bits of system randomness and binds it to that actor and repository.
 The adapter keeps it in process memory; callers cannot supply, read or update
 somebody else's credential through the MCP tool.
 
-That distinction is load-bearing. The private credential authorizes renewal,
+That distinction bears load. The private credential authorizes renewal,
 speech, acts, inbox access and departure for one exact lease. Public handles
-grant nothing, are not derived from the credential in either direction, and
-are stable enough to follow a renewal or notice a departure. The credential
+grant nothing, derive from the credential in neither direction, and
+stay stable enough to follow a renewal or notice a departure. The credential
 never appears in this tool's result or any other ordinary MCP result.
 
 ## It fails rather than pretends
 
-If the resident service is unreachable, `presence` returns an error. It
-does not fall back to a local answer, because there is no local presence
+If `presence` cannot reach the resident service, it returns an error. It
+does not fall back to a local answer, because no local presence exists
 to give: ephemeral state does not survive, and reporting an empty room
-would be a lie about who is listening.
+would lie about who listens.
 
 The durable tools behave differently — they keep working and report a
 `degraded` live cursor.
@@ -105,9 +105,9 @@ Leases expire, and the resident sweeps expired sessions, so a client that
 disappears without departing leaves the room on its own.
 
 Expiry or explicit departure removes that exact session's inbox and
-conversation participation. An expired, revoked, malformed, guessed,
-cross-actor or cross-repository credential is refused with the same fixed
-error. A new attachment receives a new credential and an empty inbox.
+conversation participation. The resident refuses an expired, revoked,
+malformed, guessed, cross-actor or cross-repository credential with the same
+fixed error. A new attachment receives a new credential and an empty inbox.
 The resident bounds both total live sessions and sessions per actor; see
 [`limits`](../limits.md). A resident restart changes the live generation and
 loses all presence, conversations, pending inboxes and credentials. The adapter

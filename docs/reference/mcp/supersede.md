@@ -9,7 +9,7 @@ rests_on:
 # `supersede`
 
 Retires one act and marks everything resting on it stale, transitively.
-Nothing is deleted; the retired act stays in the log.
+It deletes nothing; the retired act stays in the log.
 
 Prefer supersession to contradiction. It leaves the earlier position
 standing, with a pointer to what replaced it.
@@ -19,16 +19,16 @@ standing, with a pointer to what replaced it.
 | argument | required | meaning |
 |---|---|---|
 | `target` | required | The event to retire. |
-| `text` | required | Why. This is what a later reader gets. |
-| `rests_on` | optional | Additional event references. The target is placed first automatically. |
+| `text` | required | Why. A later reader gets this. |
+| `rests_on` | optional | Additional event references. The tool places the target first automatically. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
-| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
+| `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter started in, or to its `--repo` when it started with one. |
 | `agent` | optional | The actor whose existing accessible key signs this retirement; defaults to startup `--actor`. |
 
 `target` and `rests_on` take a [short reference](../event-identifiers.md#typing-one-at-a-boundary) as well as the canonical
 identifier. The result names what it resolved in a `resolved` field.
 
-`text` is required for a reason: a retirement with no stated cause tells
+The tool requires `text` for a reason: a retirement with no stated cause tells
 the next reader that something changed and nothing about what.
 
 ## Example
@@ -53,25 +53,25 @@ gs status --repo "$REPO"
 ## When to use it
 
 **Replacing an artifact.** Record the new artifact and supersede the
-previous one for the same path in the same step. That supersession is
-what makes documents describing the old implementation flare; skip it and
+previous one for the same path in the same step. That supersession
+makes documents describing the old implementation flare; skip it and
 the projection reports **succession not recorded**.
 
-**Withdrawing your own request.** Whoever promised it is released, and
-their promise stays in history as kept faith.
+**Withdrawing your own request.** The retirement releases whoever promised
+it, and their promise stays in history as kept faith.
 
-When the reason is that the request appeared unclaimed and should move to a
-new addressee, use [`reassign_if_unclaimed`](reassign_if_unclaimed.md). Its
+When you retire it because the request appeared unclaimed and should move to
+a new addressee, use [`reassign_if_unclaimed`](reassign_if_unclaimed.md). Its
 signed guards refuse if a promise or direct completion raced the earlier read.
 
-**Reneging.** Superseding your own promise is visible forever. Do it as
+**Reneging.** Superseding your own promise stays visible forever. Do it as
 early as you know you cannot keep it.
 
-**Changing governance.** The founding operator seed cannot be retired.
+**Changing governance.** Nobody can retire the founding operator seed.
 Other roster changes require current authority for their target. An
 operator grant, or membership carrying a live or dormant operator grant,
-requires a current `operator`; ordinary authorship of an older event is
-not enough.
+requires a current `operator`; ordinary authorship of an older event does
+not suffice.
 
 ## The first-basis rule
 
@@ -80,7 +80,7 @@ puts it there; anything in `rests_on` follows.
 
 Every successful write result includes `projected.verdict` with the fold's
 ruling, including `effective`, plus `projected.reason` when the ruling explains
-a refusal or dispute. This is the decision after the record landed, not a
+a refusal or dispute. This reports the decision after the record landed, not a
 preview made by the adapter.
 
 ## Reversible

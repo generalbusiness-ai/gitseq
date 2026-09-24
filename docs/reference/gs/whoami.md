@@ -16,7 +16,7 @@ It does not sign or append anything.
 | flag | default | meaning |
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
-| `--as` | `GITSEQ_ACTOR` | Resolve this actor for the answer. The command still lists custody when neither is set. |
+| `--as` | `GITSEQ_ACTOR` | Resolve this actor for the answer. The command still lists custody when you set neither. |
 | `--json` | `false` | Emit the identity and custody view as JSON. |
 
 It takes no positional arguments.
@@ -33,8 +33,9 @@ GITSEQ_ACTOR=bot gs whoami --repo "$REPO"
 gs whoami --repo "$REPO" --as alice --json
 ```
 
-The human view names the signing actor, how it was selected, whether the
-actor is provisioned, and whether its key is in local custody. The custody
+The human view names the signing actor, how the command selected it, whether
+the workroom has provisioned the actor, and whether local custody holds its
+key. The custody
 list also includes a surviving key for a retired actor and marks that actor
 as retired, because that mismatch needs attention rather than concealment.
 

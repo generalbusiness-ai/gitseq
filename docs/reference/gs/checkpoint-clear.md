@@ -47,10 +47,10 @@ The command cannot erase another process's already verified memory.
 
 Set `GITSEQ_CHECKPOINT=off` on a command or resident process to disable both
 checkpoint loading and checkpoint publication without changing either
-persistent selector. [`gs verify`](verify.md) is always a cold audit and does
-not need the switch.
+persistent selector. [`gs verify`](verify.md) always performs a cold audit and
+does not need the switch.
 
-The local Git ref is also the garbage-collection root for the checkpoint
-object. The JSON file is only an application-owned selector. Neither is
-authority: every selected object still passes the full checkpoint identity,
+The local Git ref also serves as the garbage-collection root for the checkpoint
+object. The JSON file serves only as an application-owned selector. Neither
+carries authority: every selected object still passes the full checkpoint identity,
 history, payload, key-rotation, and sequencer-signature checks.

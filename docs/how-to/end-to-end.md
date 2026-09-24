@@ -11,10 +11,10 @@ rests_on:
 
 One path with nothing left out: create a workroom, add two participants,
 ask for something, do it, review it at an exact head, merge it, and then
-audit the whole thing from a clone made by someone who was not there.
+audit the whole thing from a clone made by someone who never took part.
 
-Every command on this page runs. They are executed against a scratch
-workroom by `make test`.
+Every command on this page runs. `make test` executes them against a
+scratch workroom.
 
 ## What you need
 
@@ -26,12 +26,12 @@ make build
 export PATH="$PWD/bin:$PATH"
 ```
 
-`gs` is the command line and the resident service. `gitseq-mcp` is the
-adapter an agent joins through.
+`gs` provides the command line and the resident service. `gitseq-mcp`
+provides the adapter an agent joins through.
 
 ## 1. A repository with a workroom in it
 
-A workroom is an overlay on an ordinary repository — yours, not gitseq's.
+A workroom overlays an ordinary repository — yours, not gitseq's.
 It adds refs under `refs/seq/*` and private state under `.git/gitseq`,
 and touches nothing else.
 
@@ -56,8 +56,8 @@ gs actors --repo "$REPO"
 ```
 
 `alice` holds `operator`, and `operator` carries `ratifier` with it.
-`bot` and `carol` are participants and nothing more. Kind (`human`,
-`agent`, `service`) says what a principal is and grants nothing; see
+`bot` and `carol` hold only the participant role. Kind (`human`,
+`agent`, `service`) describes a principal and grants nothing; see
 [Actors and authority](../concepts/actors.md).
 
 ## 2. Ask for something
@@ -71,8 +71,8 @@ REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
 echo "$REQUEST"
 ```
 
-Every durable command prints the **event identifier**, and that is what
-later acts cite. Capture it as above, or type back what a display shows
+Every durable command prints the **event identifier**, and later acts
+cite that. Capture it as above, or type back what a display shows
 you: `gs` and the MCP tools also take the `#N` record number and an
 unambiguous prefix or suffix of an event hash, and resolve either to the
 full identifier before signing. See
@@ -86,7 +86,7 @@ PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
 ```
 
 A promise rests on a request. A promise that rests on nothing dangles,
-because nobody is positioned to declare it satisfied.
+because nobody stands in a position to declare it satisfied.
 
 ## 3. Do the work, on a branch
 
@@ -101,7 +101,7 @@ HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 ```
 
 The `Rests-On:` trailer bridges the commit to the decision that motivated
-it. The event has to exist before the commit, or you are amending the
+it. The event has to exist before the commit, or you end up amending the
 trailer in afterwards and changing the hash.
 
 Then point at the exact commit and state what the implementation satisfies:
@@ -113,12 +113,12 @@ ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
   --rests-on "$PROMISE")
 ```
 
-The artifact is both the durable pointer to the exact head and the
-implementation report. No second `ready-for-review` record is needed.
+The artifact serves as both the durable pointer to the exact head and the
+implementation report. You need no second `ready-for-review` record.
 
 ## 4. Review at that exact head
 
-Review is a separate loop: `bot` asks, `carol` promises, `carol` signs a
+Review runs as a separate loop: `bot` asks, `carol` promises, `carol` signs a
 verdict.
 
 ```sh
@@ -138,7 +138,7 @@ REVIEW=$(gs review --repo "$REPO" --as carol --checkout "$REPO" \
   --verdict approved --text 'APPROVED at this exact head')
 ```
 
-`gs review` refuses to sign unless the checkout is clean and sitting on
+`gs review` refuses to sign unless the checkout sits clean on
 the artifact's exact commit, so the verdict names a commit somebody
 actually looked at. The review requester ratifies it:
 
@@ -157,7 +157,7 @@ gs merge --repo "$REPO" --as bot --checkout "$REPO" \
 
 `gs merge` hands git the approved object ID, never the branch name, so
 advancing `task/greeting` after approval cannot retarget the merge.
-The approval is consumed by this one repository-wide landing. The merge
+This one repository-wide landing consumes the approval. The merge
 commit, a receipt ref, and a signed workroom assertion record its exact
 candidate, target pre-head, and resulting merge head. In the same resumable
 batch, `gs merge` publishes the successor at `greeting.txt`, retires the
@@ -180,7 +180,7 @@ live. `verify` checks every signature and the integrity of the sequence.
 ## 7. Publish, and audit from a clone
 
 The sequence lives in `refs/seq/*`, which git neither pushes nor fetches
-by default. Publishing is deliberate:
+by default. Publishing takes a deliberate step:
 
 ```sh
 ORIGIN="$(mktemp -d)/origin.git"
@@ -190,11 +190,11 @@ git -C "$REPO" push -q origin "$BASE"
 git -C "$REPO" push origin 'refs/seq/*:refs/seq/*'
 ```
 
-No leading `+`. A sequence only advances, so publishing is always a
-fast-forward; a push git refuses is telling you the remote holds
+No leading `+`. A sequence only advances, so publishing always makes a
+fast-forward; a push git refuses tells you the remote holds
 something you do not.
 
-Then be the auditor. Clone, attach, and check the record with no service,
+Then act as the auditor. Clone, attach, and check the record with no service,
 no chat logs, and no trust in whoever produced it:
 
 ```sh
@@ -209,19 +209,19 @@ gs status --repo "$AUDIT"
 Later attaches and ordinary fetches accept only initial or fast-forward
 sequence refs. Successful verification also remembers the signed head and
 depth in the clone's Gitseq config, so later verification refuses a shorter
-or sibling sequence even if the tracking ref was lost.
+or sibling sequence even if the clone lost the tracking ref.
 
 A fresh clone has no earlier head to compare. Its first audit proves the
-sequence it received is internally signed, not that no later authentic head
-exists elsewhere. Use a trusted checkpoint or another witness when first-use
-freshness matters.
+sequence it received verifies as internally signed, not that no later
+authentic head exists elsewhere. Use a trusted checkpoint or another
+witness when first-use freshness matters.
 
-If `attach` complains about a missing `refs/seq/...` ref, the sequence
-was never published. Run the push above and rerun `attach` in the clone
+If `attach` complains about a missing `refs/seq/...` ref, nobody
+published the sequence. Run the push above and rerun `attach` in the clone
 you already have.
 
-Attached clones are read-only unless local actor custody and a sequencer
-endpoint are configured. Delete `.git/gitseq` and the extra fetch rule
+Attached clones stay read-only unless you configure local actor custody
+and a sequencer endpoint. Delete `.git/gitseq` and the extra fetch rule
 and you have an ordinary repository — you can always leave with
 everything.
 

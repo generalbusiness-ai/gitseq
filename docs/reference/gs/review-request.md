@@ -9,7 +9,7 @@ rests_on:
 
 Files the request that asks a different actor to review one exact head.
 
-The shape it writes is the one [`gs review`](review.md) judges later. The
+It writes the shape that [`gs review`](review.md) judges later. The
 request rests on every live artifact of yours standing at that head — not
 on the promise — and names the reporting artifact, the newest artifact
 *resting on the promise*, in `body.artifact`,
@@ -23,13 +23,13 @@ cannot use it.
 |---|---|---|
 | `--repo` | `.` | The repository holding the workroom. |
 | `--as` | *(required, or `GITSEQ_ACTOR`)* | The actor asking for the review. |
-| `--head` | *(required)* | The exact full commit to be reviewed. |
-| `--to` | *(required)* | The reviewing actor: a roster name, `@name`, or fingerprint. It must be a live roster actor, and it may not be you. |
+| `--head` | *(required)* | The exact full commit to review. |
+| `--to` | *(required)* | The reviewing actor: a roster name, `@name`, or fingerprint. It must name a live roster actor, and it may not name you. |
 | `--text` | *(lists the artifacts)* | The request text. The default lists every artifact at the head, marks the reporting one, and names the promise and the governing request. |
 | `--conditions` | *(exact-head review)* | The conditions of satisfaction. The default asks for an independent exact-head review with explicit Architecture, Security and Simplification conclusions, filed with `gs review` naming the reporting artifact first and resting on the whole set. |
 | `--replace` | `false` | Supersede your live review request for this promise in the same run, resting the supersession on the new request. |
-| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; the command honours an explicit loopback URL as given. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a cold or loaded resident, or one folding a large log; the command refuses any value other than a positive duration before it signs anything. |
 
 It takes no positional arguments.
 
@@ -63,13 +63,13 @@ gs review-request --repo "$REPO" --as bot --head "$HEAD_COMMIT" --to @carol
 
 ## What it checks before signing
 
-| what is wrong | the refusal names |
+| what went wrong | the refusal names |
 |---|---|
 | no live artifact of yours stands at the head | `gs artifact`, to publish the head first |
 | the artifacts rest on two of your promises | both promises, and that one request answers one commitment |
 | the promise also carries live artifacts at another head | those artifacts and their heads, `gs artifact` for every path this head still changes, and `gs supersede` — with `--rests-on` its successor here, or `--cited-ok` where the head dropped the path — for a cited pointer publishing skips |
 | you already have a live review request for this promise | that request, and `--replace` |
-| `--to` names you | that a review is by a different actor |
+| `--to` names you | that a review comes from a different actor |
 | `--to` names nobody on the roster | the live roster actors |
 
 The mixed-head refusal saves the most work: `gs review` refuses such a set
@@ -80,48 +80,48 @@ An ordinary recut no longer reaches it.
 earlier-head artifacts when it publishes the new head, so publish and then
 ask, with no supersession of your own in between.
 
-What still reaches this refusal is a pointer that publication left alone,
-and the refusal names each repair in turn.
+A pointer that publication left alone still reaches this refusal, and the
+refusal names each repair in turn.
 
-A path this head still changes that the last run did not name is left live
-deliberately. Publish it: name every path the refusal lists that this head
-still changes.
+Publication deliberately leaves live a path this head still changes that the
+last run did not name. Publish it: name every path the refusal lists that this
+head still changes.
 
-A pointer a documentation page still cites is **skipped** with a warning —
-publication is never refused over one, and publishing again will skip it
+Publication **skips** a pointer a documentation page still cites, with a
+warning — it never refuses over one, and publishing again will skip it
 again, whether or not this head publishes that path. Repoint the page at
 the artifact for that path at this head, then retire the pointer with
 `gs supersede <artifact> --rests-on <its successor here> --text <why>`.
-Where this head no longer changes that path there is no successor to
+Where this head no longer changes that path, no successor exists to
 repoint at, and that one takes
 [`gs supersede <artifact> --cited-ok`](supersede.md).
 
 ## Refiling cancels work in flight
 
-A second review request for a lane is not additive. Staleness makes no
-difference to this: a basis moving under the first request retires
-nothing, so the reviewer's promise is still live on it. The reviewer's promise
-is on the first request, so refiling without retiring it leaves two open
+A second review request for a lane does not add to the first. Staleness makes
+no difference to this: a basis moving under the first request retires
+nothing, so the reviewer's promise stays live on it. The reviewer's promise
+rests on the first request, so refiling without retiring it leaves two open
 rows, and a verdict filed against the retired one binds to nothing.
 
-`--replace` does it in one run: the new request is filed first, then the
-old one is superseded by an act resting on the new request, so a reader
-can follow where the review went. The supersession says plainly that any
-review promised on the old request is released.
+`--replace` does it in one run: it files the new request first, then
+supersedes the old one with an act resting on the new request, so a reader
+can follow where the review went. The supersession says plainly that it
+releases any review promised on the old request.
 
-Without `--replace` a second request is refused, and the refusal names the
-request already live.
+Without `--replace` the command refuses a second request, and the refusal
+names the request already live.
 
 ## What it produces
 
 A `request` addressed to the reviewer, resting on every live artifact at
 the head, carrying `body.artifact` (the reporting artifact),
 `body.head`, `body.branch` when a single branch points at the head,
-`body.no_git_artifact=true`, and the conditions. The identifiers it
-appended are printed on standard output, the request first.
+`body.no_git_artifact=true`, and the conditions. The command prints the
+identifiers it appended on standard output, the request first.
 
-A **stale** governing request is a warning, not a refusal: its author is
-named, and asking for the review is still the right next act.
+A **stale** governing request draws a warning, not a refusal: the warning
+names its author, and asking for the review remains the right next act.
 
 ## See also
 

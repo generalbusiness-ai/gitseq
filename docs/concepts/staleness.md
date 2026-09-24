@@ -10,70 +10,70 @@ rests_on:
 ## What a flare means
 
 Retiring an act propagates staleness to everything resting on it,
-transitively. A statement or artifact whose basis has been retired is
-marked **stale**.
+transitively. The projection marks a statement or artifact whose basis
+someone has retired as **stale**.
 
-A flare means **re-check this**. It does not mean *this is wrong*. The
+A flare means **re-check this**. It does not declare *this wrong*. The
 world moved under a document; someone has to look and decide whether the
 prose still holds.
 
-## Retired is not stale
+## Retired differs from stale
 
-The projection keeps two facts apart, and it is worth holding them apart
-too. **Retired** means this act was itself superseded. **Stale** means
-something underneath it was.
+The projection keeps two facts apart, and holding them apart yourself pays
+off too. **Retired** means a later act superseded this act itself. **Stale**
+means a later act superseded something underneath it.
 
 The difference decides what happens next. A retired artifact names
-nothing anyone is proposing. A stale one still names the commit it always
+nothing anyone proposes. A stale one still names the commit it always
 named, so [`gs review`](../reference/gs/review.md) will still review it
 and will record in the verdict what had moved.
 [`gs merge`](../reference/gs/merge.md) refuses the retired one and lands
 the stale one. A withdrawn pointer proposes nothing, while the head an
-approval named is immutable and is still the commit the reviewer signed
-for, so ordinary staleness is written into the merge receipt rather than
-refused. The narrower `describes a superseded world` fact in the table
-below is the exception: `merge` refuses that, because the behaviour the
-record describes has been replaced.
+approval named stays immutable and still names the commit the reviewer
+signed for, so `merge` writes ordinary staleness into the merge receipt
+rather than refusing it. The narrower `describes a superseded world` fact
+in the table below makes the exception: `merge` refuses that, because
+something has replaced the behaviour the record describes.
 
 The write boundary makes the same distinction about what a new act may
-rest on. Resting on a retired basis is refused, because nothing stands
-there any more; the escape is explicit and signed
-(see [`gs state`](../reference/gs/state.md)). Resting on a merely stale
-basis is admitted, and the boundary writes what had moved into the act's
+rest on. The boundary refuses an act resting on a retired basis, because
+nothing stands there any more; the escape takes an explicit, signed step
+(see [`gs state`](../reference/gs/state.md)). The boundary admits an act
+resting on a merely stale basis, and writes what had moved into the act's
 `body.stale_bases`, in the same line a merge receipt would carry. The
-staleness is recorded rather than argued with, and it is still a flare:
-someone has to look. The note belongs to the boundary in both halves: it
-is written before signing, and when the act is sequenced the boundary
-computes the note again and refuses any act whose signed `stale_bases` is
-not exactly that, so nobody can sign a staleness story of their own.
+boundary records the staleness rather than arguing with it, and it still
+counts as a flare: someone has to look. The note belongs to the boundary in
+both halves: the boundary writes it before signing, and at sequencing
+computes the note again and refuses any act whose signed `stale_bases` does
+not match it exactly, so nobody can sign a staleness story of their own.
 
 The guarded [`gs reassign-if-unclaimed`](../reference/gs/reassign-if-unclaimed.md)
 reads staleness the same way. It protects one statement — nobody has
 claimed or completed this request — and a basis moving under the request
-leaves that statement as true as it was, so a stale unclaimed request can
-still be given a new owner.
+leaves that statement exactly as true as before, so a stale unclaimed
+request can still receive a new owner.
 
 `gs status` marks them separately:
 
 | Mark | Meaning |
 |---|---|
-| `succeeded` | This artifact was superseded and the act named where the behaviour went. |
-| `retired` | This act was superseded and nothing was named in its place. |
-| `stale` | Something this rests on was retired. |
-| `stale`, noted `describes a superseded world` | The retired ancestor was itself an artifact, so the implementation it described has been replaced. |
+| `succeeded` | A later act superseded this artifact and named where the behaviour went. |
+| `retired` | A later act superseded this one and named nothing in its place. |
+| `stale` | A later act retired something this rests on. |
+| `stale`, noted `describes a superseded world` | The retired ancestor itself recorded an artifact, so something has replaced the implementation it described. |
 
-The last narrows `stale`. It is the one that usually means real work. The
+The last narrows `stale`, and usually means real work. The
 full tables under `gs status --all` write these as `SUCCEEDED — replaced
 at the same path`, `RETIRED — withdrawn with no successor`, `STALE` and
 `STALE — describes a superseded world`.
 
-## Replaced is not condemned
+## Replaced does not mean condemned
 
 Every merge withdraws the artifact that stood at the branch head and
 publishes one at the same path for the head that landed. If that
 withdrawal flared, every completed loop would flare on the act that
-completed it: the approval, the report and the commitment would all be
-told to re-check reasoning that had just been acted on. A flare carrying
+completed it: the fold would tell the approval, the report and the
+commitment to re-check reasoning someone had just acted on. A flare carrying
 no information teaches people to ignore the flares that do.
 
 So the fold reads a retirement for what its own act rested on.
@@ -83,123 +83,123 @@ path, or at a directory covering it. The pointer moved and the log says
 where. Nothing resting on the retired artifact goes stale from that act.
 
 **Condemned.** The supersession names no covering artifact — a bare
-`gs supersede`. The behaviour was deleted, or the claim was never true.
+`gs supersede`. Someone deleted the behaviour, or the claim never held.
 Everything resting on it goes stale, exactly as before.
 
-The signal is what the retiring act rested on, and nothing else. The
-tempting shortcut is structural — call a retirement succeeded whenever
+The signal comes from what the retiring act rested on, and nothing else. The
+tempting shortcut looks structural — call a retirement succeeded whenever
 some later live artifact happens to stand at the same path — and it fails
-on the case that matters most: an artifact retired *because it was wrong*
-would be quietly rescued by the next unrelated publication in that tree,
-and everything resting on the false claim would stop flaring. A successor
-is something the retiring actor states and signs. A bystander cannot
+on the case that matters most: the next unrelated publication in that tree
+would quietly rescue an artifact retired *because its claim proved false*,
+and everything resting on the false claim would stop flaring. The retiring
+actor states and signs a successor. A bystander cannot
 supply one afterwards.
 
-The link is followed to its end. If the successor is itself replaced
-later, its own retirement carries the next link, and the chain still
-answers for everything that stood on the first artifact. If any successor
-in the chain is instead retired with no successor, the behaviour was
-condemned after all: everything that stood on the predecessor flares then,
-exactly as if its own basis had been withdrawn, so a finished loop cannot
-look current after its replacement has been found wrong.
+The fold follows the link to its end. If something later replaces the
+successor itself, its own retirement carries the next link, and the chain
+still answers for everything that stood on the first artifact. If an act
+instead retires any successor in the chain with no successor, the behaviour
+stands condemned after all: everything that stood on the predecessor flares
+then, exactly as if someone had withdrawn its own basis, so a finished loop
+cannot look current after someone has found its replacement wrong.
 
 ### What succession does not quiet
 
 Succession answers the reasoning that stood on the artifact. It does not
 answer a page that *describes* it. A document resting on an implementation
-artifact still flares when that artifact is superseded, and still reads
-`describes a superseded world`, because the behaviour it explains has
-changed and the prose has to be re-read against it. That is the whole
+artifact still flares when a later act supersedes that artifact, and still
+reads `describes a superseded world`, because the behaviour it explains has
+changed and someone has to re-read the prose against it. For exactly that
 reason the merge step retires the live artifacts covering what it changed.
 
-The rule is the edge, not the act: artifact-to-artifact provenance always
-carries the flare; every other `rests_on` edge is quieted by succession.
+The rule follows the edge, not the act: artifact-to-artifact provenance
+always carries the flare; succession quiets every other `rests_on` edge.
 
-### A merge is a checkpoint for what it publishes
+### A merge checkpoints what it publishes
 
 A merge receipt often stands on reasoning that had already moved. The receipt
 records that and keeps it. Its successor does not inherit it: on the one edge
-from a receipt to an artifact that same merge published, causes already active
-when the receipt sealed were settled by the merge, so the successor is not
-born stale. The receipt stays stale, and only the successor starts the new
-current epoch — which is what makes a merged implementation a basis worth
+from a receipt to an artifact that same merge published, the merge settled
+causes already active when the receipt sealed, so the successor starts
+fresh. The receipt stays stale, and only the successor starts the new
+current epoch — and that makes a merged implementation a basis worth
 resting on.
 
 The checkpoint travels one edge and no further. A record that merely cites a
 receipt keeps nothing. Nor does an artifact by another author, or one standing
 at a commit or a path the receipt never declared. A cause that arose after the
-receipt, a planned retirement whose successor was later condemned, and
+receipt, a planned retirement whose successor a later act condemned, and
 retirement of the receipt itself all still flare the successor, and
-`describes a superseded world` is untouched throughout.
+`describes a superseded world` stays untouched throughout.
 
 ## Two marks about practice
 
-Alongside staleness, the projection reports two situations that are
-warnings about how the record is being kept rather than verdicts on any
-act.
+Alongside staleness, the projection reports two situations that warn
+about how people keep the record rather than judging any act.
 
 **`unable to flare`.** An artifact that cites nothing — or cites only
-events the log does not contain — can never be made stale by anything,
-because `supersede` needs a target it can resolve. Its silence is not
+events the log does not contain — can never go stale, whatever happens,
+because `supersede` needs a target it can resolve. Its silence does not mean
 currency, and the projection says so rather than letting it pass as
-current. One resolvable basis is enough to escape: it is a handle a
-future supersession can take hold of.
+current. One resolvable basis suffices to escape: it gives a future
+supersession a handle to take hold of.
 
 **`succession not recorded`.** An artifact that follows a still-live
-artifact for the identical path is a probable forgotten supersession. The
-act stays effective; the warning is a to-do. Recording the succession
-clears it. Paths are compared as exact strings, because path is a free
-body field and guessing which spellings mean the same tree would be
-guesswork.
+artifact for the identical path probably marks a forgotten supersession.
+The act stays effective; the warning serves as a to-do. Recording the
+succession clears it. The fold compares paths as exact strings, because
+path counts as a free body field and deciding which spellings mean the same
+tree would come down to guesswork.
 
 `gs status --all` reports both the number of rows affected and the number
 of supersessions actually owed, because one forgotten retirement at a
 long-lived path repeats on every later link of that chain. The row count
-overstates how many situations there are to act on; the owed count is the
+overstates how many situations need action; the owed count measures the
 work.
 
 ## What staleness does not cover
 
-**It is not a correctness check.** Nothing verifies that a page's prose
+**It does not check correctness.** Nothing verifies that a page's prose
 matches the code it names. The record tells you when to look, not what
 you will find.
 
-**It is only as good as the anchoring.** A document that names no
-governing act never flares. That is why `unable to flare` exists, and why
+**It works only as well as the anchoring.** A document that names no
+governing act never flares. For that reason `unable to flare` exists, and
 this documentation set has a test for it.
 
-**It does not follow paths it was not told about.** Staleness travels
-along `rests_on`, not along file paths or imports. Work that never
-recorded an artifact is invisible to it.
+**It does not follow paths nobody told it about.** Staleness travels
+along `rests_on`, not along file paths or imports. It cannot see work that
+never recorded an artifact.
 
-**Ordinary commit trailers are not durable evidence.** A commitment
+**Ordinary commit trailers do not count as durable evidence.** A commitment
 associated with a checkout only through a `Rests-On:` trailer rests on
-nothing the fold can verify, because trailer text is not an actor-signed
-statement. How a reader is warned about that is a presentation question;
+nothing the fold can verify, because trailer text carries no actor
+signature. How to warn a reader about that remains a presentation question;
 see [`gs serve`](../reference/gs/serve.md).
 
 ## Ineffective bases
 
-**Staleness does not propagate through ineffective bases.** If a page is
-anchored to an act that was judged ineffective, retiring that act's own
-bases will not flare the page: the chain is broken at the ineffective
-link, so the page goes quiet rather than stale. That is the governed rule,
-and it is unchanged: a refused record carries no authority and no
-staleness, and nothing under it can reach anything above it.
+**Staleness does not propagate through ineffective bases.** If a page
+anchors to an act the fold judged ineffective, retiring that act's own
+bases will not flare the page: the chain breaks at the ineffective
+link, so the page goes quiet rather than stale. That follows the governed
+rule, and the rule has not changed: a refused record carries no authority
+and no staleness, and nothing under it can reach anything above it.
 
-What the fold does instead is say so where the citation is made. An
+Instead, the fold says so where the citation happens. An
 effective statement or artifact that rests on a refused record carries `ineffective_bases`
 in the projection, naming the refused citations directly; the artifact row
 in `gs status --all` notes `rests on ineffective support`; and filing an
 act on such a citation earns the same note the other dead bases earn, on
 standard error from `gs state` and under `dead_rests_on` from the MCP
-`state` tool, classified `ineffective`. The note is advisory: the act is
-admitted, no override is asked for, and no staleness is recorded, because
-there is none. The disclosure is direct and stops there: a record resting
-on that record sees a live basis, and reads the disclosure from its row.
+`state` tool, classified `ineffective`. The note stays advisory: the
+boundary admits the act, asks for no override, and records no staleness,
+because none exists. The disclosure applies directly and stops there: a
+record resting on that record sees a live basis, and reads the disclosure
+from its row.
 
-The practical defence is unchanged: anchor pages to acts you have confirmed
-are effective and live, which `gs status` and
+The practical defence has not changed: anchor pages to acts you have
+confirmed as effective and live, which `gs status` and
 [`gs provenance`](../reference/gs/provenance.md) both show.
 
 ## See also
