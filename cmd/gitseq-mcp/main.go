@@ -794,7 +794,7 @@ func tools() []map[string]any {
 			"idempotency_key": stringField,
 		}), "artifacts", "promise")},
 		{"name": "ratify", "description": "Attempt to confer force on a statement; authority is decided by the fold.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "idempotency_key": stringField}), "target")},
-		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "idempotency_key": stringField}), "target", "text")},
+		{"name": "supersede", "description": "Attempt to retire an act and propagate staleness.", "inputSchema": object(withSelection(map[string]any{"target": stringField, "text": stringField, "rests_on": map[string]any{"type": "array", "items": stringField}, "abandon": map[string]any{"type": "boolean"}, "idempotency_key": stringField}), "target", "text")},
 		{"name": "reassign_if_unclaimed", "description": "Retire one live, unclaimed request and publish its replacement as a guarded, resumable pair. Staleness is no bar; unrelated durable traffic is allowed; any promise or direct completion refuses. The replacement is a new request and states its own result in body: target_ref, target=inherit, or no_git_artifact=true.", "inputSchema": object(withSelection(map[string]any{
 			"old_request":     stringField,
 			"to":              stringField,
@@ -1439,7 +1439,7 @@ func (s *mcpServer) dispatchResolved(ctx context.Context, call toolCall, current
 		return s.submit(ctx, current, app.Act{Verb: app.VerbRatify, Target: target, IdempotencyKey: stringValue(call.Arguments["idempotency_key"])}, identity)
 	case "supersede":
 		target := stringValue(call.Arguments["target"])
-		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"])}, identity)
+		return s.submit(ctx, current, app.Act{Verb: app.VerbSupersede, Target: target, Text: stringValue(call.Arguments["text"]), RestsOn: stringSlice(call.Arguments["rests_on"]), IdempotencyKey: stringValue(call.Arguments["idempotency_key"]), Abandon: call.Arguments["abandon"] == true}, identity)
 	case "reassign_if_unclaimed":
 		return s.reassignIfUnclaimed(ctx, current, call, identity)
 	default:

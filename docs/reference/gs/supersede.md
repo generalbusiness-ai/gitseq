@@ -26,6 +26,7 @@ Prefer supersession to contradiction.
 | `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
 | `--idempotency-key` | *(random)* | A stable key, so a retry lands once. |
 | `--cited-ok` | `false` | Retire even though tracked documentation still names the target. Without it the retirement is refused and the pages are listed, because a page resting on a withdrawn pointer fails the documentation gate. Use it for a migration that retires first and re-anchors after. |
+| `--abandon` | `false` | Declare that the target request's approved head is deliberately dropped, not carried into a successor. Signs `workroom/supersede@1` with `body.disposition=abandoned`; `--text` is the reason. Refused before signing when the target holds no approved head. |
 | `--no-preflight` | `false` | File the act without asking the fold what it would decide first. See [Refused before signing](#refused-before-signing). |
 
 The target is a **positional argument**, and flag parsing stops at the
@@ -35,6 +36,20 @@ The target and every `--rests-on` value take a [short reference](../event-identi
 canonical identifier. The act signs the canonical identifier either way, and
 before it signs, the command says what each `--rests-on` value means here,
 exactly as [`gs state`](state.md#citing) does.
+
+## Retiring a request that holds an approved head
+
+A request whose reporting artifact has an approved head cannot be retired
+quietly. The retirement must either carry the head or declare it abandoned.
+
+- **Carry it:** file a successor request, by the same requester, that rests on
+  the approved artifact. Then `gs supersede <old> --rests-on <successor>`.
+- **Abandon it:** `gs supersede --abandon --text <why> <old>`. The row becomes
+  `abandoned`, which says the head was dropped on purpose and `cancelled` does
+  not.
+
+Without either, the fold refuses with `request holds approved head …; carry it
+in the successor or declare abandoned`.
 
 ## Example
 

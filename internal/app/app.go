@@ -631,6 +631,11 @@ type Act struct {
 	Attachments    map[string][]byte
 	IdempotencyKey string
 
+	// Abandon declares, on a supersession, that the target's approved head is
+	// deliberately dropped rather than carried into a successor. It signs
+	// workroom/supersede@1 with body.disposition=abandoned; the reason is Text.
+	Abandon bool
+
 	// CitedOK lets a caller retire a record the documentation still names.
 	// A migration legitimately retires first and re-anchors after, so the
 	// escape has to exist — but it must be asked for, and only a surface
@@ -1530,8 +1535,7 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		if err := w.RefuseCitedRetirement(ctx, act.Target, act.CitedOK); err != nil {
 			return kernel.Request{}, err
 		}
-		schema = workroom.SchemaSupersede
-		payload = workroom.Supersede{Target: act.Target, Text: act.Text}
+		schema, payload = supersedePayload(act)
 		rests = append([]string{act.Target}, rests...)
 	case VerbRetireIfUnclaimed:
 		guardedRetirement = true
@@ -2966,4 +2970,15 @@ func (w *Workspace) ActorViews(ctx context.Context) ([]ActorView, error) {
 		return views[i].Name < views[j].Name
 	})
 	return views, nil
+}
+
+// supersedePayload is the one place a supersession's schema and payload are
+// chosen, so signing and preflight cannot disagree about an abandonment.
+func supersedePayload(act Act) (string, any) {
+	if act.Abandon {
+		return workroom.SchemaSupersedeV1, workroom.SupersedeV1{
+			Target: act.Target, Text: act.Text, Body: map[string]string{"disposition": "abandoned"},
+		}
+	}
+	return workroom.SchemaSupersede, workroom.Supersede{Target: act.Target, Text: act.Text}
 }
