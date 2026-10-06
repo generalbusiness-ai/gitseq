@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"cmd/gs/preflight.go at exact 556ea6c81ce2b301cd1f7a238e8da98bf98932cc on request/supersede-abandon, under promise git:sha1…747aa1a on request git:sha1…1fb34eb","body":{"commit":"556ea6c81ce2b301cd1f7a238e8da98bf98932cc","path":"cmd/gs/preflight.go"}}
+{"kind":"artifact","text":"cmd/gs/supersede_abandon_test.go at exact 556ea6c81ce2b301cd1f7a238e8da98bf98932cc on request/supersede-abandon, under promise git:sha1…747aa1a on request git:sha1…1fb34eb","body":{"commit":"556ea6c81ce2b301cd1f7a238e8da98bf98932cc","path":"cmd/gs/supersede_abandon_test.go"}}
