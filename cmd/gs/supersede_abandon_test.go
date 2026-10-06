@@ -21,8 +21,8 @@ func TestSupersedeAbandonRetiresARequestHoldingAnApprovedHead(t *testing.T) {
 	}
 
 	err := supersedeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--text", "dropping it", lane.request})
-	if err == nil || !strings.Contains(err.Error(), "declare abandoned") {
-		t.Fatalf("plain retirement of an approved head = %v, want the carry-or-abandon refusal", err)
+	if err == nil || !strings.Contains(err.Error(), "declare abandoned") || !strings.Contains(err.Error(), "gs supersede --abandon") {
+		t.Fatalf("plain retirement of an approved head = %v, want the carry-or-abandon refusal naming --abandon", err)
 	}
 	if row := laneCommitment(t, f, lane.request); row.Status != "awaiting-landing" {
 		t.Fatalf("a refused retirement changed the row to %+v", row)

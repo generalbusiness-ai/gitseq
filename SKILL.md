@@ -169,7 +169,7 @@ incorporation receipt is recorded, no merge commit is made, and `gs land`
 still pushes and cleans up.
 
 To drop an approved head without landing it, retire the request with
-`gs supersede --abandon --text <why>`, or carry the head in a successor that
+`gs supersede --as <you> --abandon --text <why> <request>`, or carry the head in a successor that
 rests on the approved artifact.
 
 The sealed receipt closes the commitment, so no report and no ratification

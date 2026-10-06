@@ -806,3 +806,61 @@ func (m mcpAuthoring) retired(event string) bool {
 	m.t.Fatalf("statement %s is not in the projection", event)
 	return false
 }
+
+// The abandon argument must reach the signed act. A request with no approved
+// head cannot be abandoned, so the fold refuses the declaration outright; the
+// same call without the argument retires the request as supersede@0. Dropping
+// the argument at dispatch turns the first call into an ordinary retirement.
+func TestMCPSupersedeAbandonReachesTheSignedAct(t *testing.T) {
+	parallelTest(t)
+	fixture := newMCPAuthoring(t)
+	body := map[string]string{"to": "@agent", "conditions": "it lands", "target_ref": "refs/heads/main"}
+
+	refused, err := fixture.file("abandon-refused", "no head to drop", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, _, err := fixture.adapter.call(fixture.ctx, toolCall{Name: "supersede", Arguments: map[string]any{
+		"target": refused, "text": "drop it", "abandon": true, "idempotency_key": "abandon-refused-retire",
+	}})
+	if err != nil {
+		t.Fatalf("abandon supersede: %v", err)
+	}
+	attempt, ok := submissionRecord(value)
+	if !ok {
+		t.Fatalf("supersede returned no durable record: %#v", value)
+	}
+	if schema := fixture.schemaOf(attempt.ID); schema != workroom.SchemaSupersedeV1 {
+		t.Fatalf("abandonment stored schema %q, want %q", schema, workroom.SchemaSupersedeV1)
+	}
+	snapshot, err := fixture.workspace.Snapshot(fixture.ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, decision := range snapshot.Projection.Decisions {
+		if decision.Event == attempt.ID && (decision.Verdict != workroom.Ineffective || !strings.Contains(decision.Reason, "approved head")) {
+			t.Fatalf("abandonment of a request with no approved head = %+v, want the fold's refusal", decision)
+		}
+	}
+	if row := fixture.commitment(refused); row.Status == "superseded" || row.Status == "cancelled" {
+		t.Fatalf("a refused abandonment retired the request: %+v", row)
+	}
+
+	plain, err := fixture.file("abandon-plain", "retire plainly", body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value, _, err = fixture.adapter.call(fixture.ctx, toolCall{Name: "supersede", Arguments: map[string]any{
+		"target": plain, "text": "refile it", "idempotency_key": "abandon-plain-retire",
+	}})
+	if err != nil {
+		t.Fatalf("plain retirement: %v", err)
+	}
+	record, ok := submissionRecord(value)
+	if !ok {
+		t.Fatalf("supersede returned no durable record: %#v", value)
+	}
+	if schema := fixture.schemaOf(record.ID); schema != workroom.SchemaSupersede {
+		t.Fatalf("plain retirement stored schema %q, want %q", schema, workroom.SchemaSupersede)
+	}
+}

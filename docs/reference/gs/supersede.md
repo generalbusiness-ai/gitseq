@@ -43,13 +43,14 @@ A request whose reporting artifact has an approved head cannot be retired
 quietly. The retirement must either carry the head or declare it abandoned.
 
 - **Carry it:** file a successor request, by the same requester, that rests on
-  the approved artifact. Then `gs supersede <old> --rests-on <successor>`.
-- **Abandon it:** `gs supersede --abandon --text <why> <old>`. The row becomes
+  the approved artifact. Then `gs supersede --as <actor> --text <why> --rests-on <successor> <old>`.
+- **Abandon it:** `gs supersede --as <actor> --abandon --text <why> <old>`. The row becomes
   `abandoned`, which says the head was dropped on purpose and `cancelled` does
   not.
 
 Without either, the fold refuses with `request holds approved head …; carry it
-in the successor or declare abandoned`.
+in the successor or declare abandoned`, and the command adds a `fix:` line
+naming `--abandon`.
 
 ## Example
 
