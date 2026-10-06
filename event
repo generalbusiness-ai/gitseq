@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f81bb33f8e86dbf96faaeff969cbeb9c07c35902","text":"Merge retired a covered predecessor; the successor is at go.mod."}
+{"kind":"promise","text":"Accept request git:sha1…e753e38: Claude: validate the final release head after the maintenance requests and the approved request/supersede-abandon change have landed. Hugh authorized this relea…"}
