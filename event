@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f11d4069c617c4bbc47b6256dcedb015438f9e21"}
+{"kind":"artifact","text":"internal/app/preflight.go at exact 556ea6c81ce2b301cd1f7a238e8da98bf98932cc on request/supersede-abandon, under promise git:sha1…747aa1a on request git:sha1…1fb34eb","body":{"commit":"556ea6c81ce2b301cd1f7a238e8da98bf98932cc","path":"internal/app/preflight.go"}}
