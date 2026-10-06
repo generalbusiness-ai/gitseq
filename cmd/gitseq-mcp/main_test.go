@@ -3101,3 +3101,22 @@ func TestAttentionEventsRequireTokenBoundaries(t *testing.T) {
 		t.Fatalf("two adjacent identifiers produced %v", got)
 	}
 }
+
+// Retiring a request that holds an approved head needs the abandonment
+// declaration, which only this argument can write over MCP.
+func TestSupersedeToolOffersAbandon(t *testing.T) {
+	parallelTest(t)
+	for _, tool := range tools() {
+		if tool["name"] != "supersede" {
+			continue
+		}
+		schema := tool["inputSchema"].(map[string]any)
+		properties := schema["properties"].(map[string]any)
+		abandon, ok := properties["abandon"].(map[string]any)
+		if !ok || abandon["type"] != "boolean" {
+			t.Fatalf("supersede abandon property = %v, want a boolean", properties["abandon"])
+		}
+		return
+	}
+	t.Fatal("supersede tool not listed")
+}

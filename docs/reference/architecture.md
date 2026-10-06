@@ -1422,6 +1422,14 @@ states `disposition=abandoned` with its reason in the text. Any other such
 supersession is refused, which makes losing an approved head an explicit act
 rather than a side effect of refiling.
 
+The writers of that declaration are the application adapter and the surfaces
+over it. `app.Act.Abandon` selects `workroom/supersede@1` with the fixed body
+`disposition=abandoned`; one helper, `supersedePayload`, builds the schema and
+payload for both signing and preflight, so the two cannot disagree. `gs
+supersede --abandon` and the MCP `supersede` argument `abandon` set it. The
+fold's reason stays the same on every surface; `gs` adds a `fix:` line naming
+`--abandon`. A plain `supersede@0` still carries a head through a successor.
+
 An explicit `no_git_artifact=true` request owes no Git artifact, so a reporting
 artifact resting on its claim answers nothing. It is admitted like any other
 artifact and stays visible, but it is never that commitment's completion and

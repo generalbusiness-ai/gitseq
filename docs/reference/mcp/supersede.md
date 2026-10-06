@@ -21,6 +21,7 @@ standing, with a pointer to what replaced it.
 | `target` | required | The event to retire. |
 | `text` | required | Why. This is what a later reader gets. |
 | `rests_on` | optional | Additional event references. The target is placed first automatically. |
+| `abandon` | optional | `true` declares the target request's approved head deliberately dropped, not carried into a successor. Signs `workroom/supersede@1` with `body.disposition=abandoned`; `text` is the reason. |
 | `idempotency_key` | optional | A stable key, so a retry lands once. |
 | `repo` | optional | The repository whose workroom this call acts in. Defaults to the directory the adapter was started in, or to its `--repo` when one was given. |
 | `agent` | optional | The actor whose existing accessible key signs this retirement; defaults to startup `--actor`. |

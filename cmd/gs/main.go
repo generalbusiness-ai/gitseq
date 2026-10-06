@@ -1877,6 +1877,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	citedOK := set.Bool("cited-ok", false, "retire even though documentation still cites the target")
 	serverFlag := set.String("server", "", "resident sequencer URL")
 	key := set.String("idempotency-key", "", "stable retry key")
+	abandon := set.Bool("abandon", false, "declare the target request's approved head deliberately dropped; --text is the reason")
 	noPreflight := set.Bool("no-preflight", false, "file the act without asking the fold what it would decide first")
 	var rests values
 	set.Var(&rests, "rests-on", "additional causal event id")
@@ -1915,7 +1916,7 @@ func supersedeCommand(ctx context.Context, arguments []string) error {
 	}
 	showResolved(resolver)
 	discloseBases(resolver, rests)
-	act := app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK}
+	act := app.Act{Verb: app.VerbSupersede, Target: target, Text: *message, RestsOn: rests, IdempotencyKey: *key, CitedOK: *citedOK, Abandon: *abandon}
 	if err := refuseIneffectiveAct(ctx, workspace, serverURL, actor, *noPreflight, act); err != nil {
 		return err
 	}

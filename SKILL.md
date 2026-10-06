@@ -168,6 +168,10 @@ needs. If the target already has the approved head, run it anyway: one
 incorporation receipt is recorded, no merge commit is made, and `gs land`
 still pushes and cleans up.
 
+To drop an approved head without landing it, retire the request with
+`gs supersede --as <you> --abandon --text <why> <request>`, or carry the head in a successor that
+rests on the approved artifact.
+
 The sealed receipt closes the commitment, so no report and no ratification
 follow it. Work that resolves without landing closes through an explicit
 `report` and the requester's ratification, or through supersession.

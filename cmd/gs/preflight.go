@@ -113,6 +113,7 @@ var preflightFixPatterns = []string{
 	"actor lacks ",
 	"report rests on the request while promise ",
 	"undefined kind ",
+	"request holds approved head ",
 }
 
 // preflightFix is one line saying what would make this act land. The mapping is
@@ -139,6 +140,9 @@ func preflightFix(ctx context.Context, workspace *app.Workspace, act app.Act, re
 	}
 	if strings.HasPrefix(reason, "report rests on the request while promise ") {
 		return "report on that promise instead, or supersede it first"
+	}
+	if strings.HasPrefix(reason, "request holds approved head ") {
+		return "carry the head in a successor request that rests on the approved artifact, or drop it on purpose: gs supersede --abandon --text <why> <request>"
 	}
 	if strings.HasPrefix(reason, "undefined kind ") {
 		return "gs status prints the kinds this workroom defines; a new one needs a ratified kind-def"

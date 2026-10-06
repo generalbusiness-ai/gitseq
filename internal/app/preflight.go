@@ -209,8 +209,7 @@ func (w *Workspace) prospectiveRecord(ctx context.Context, snapshot Snapshot, ac
 		payload = workroom.Ratify{Target: act.Target}
 		rests = []string{act.Target}
 	case VerbSupersede:
-		schema = workroom.SchemaSupersede
-		payload = workroom.Supersede{Target: act.Target, Text: act.Text}
+		schema, payload = supersedePayload(act)
 		rests = append([]string{act.Target}, rests...)
 	default:
 		return workroom.Record{}, false
