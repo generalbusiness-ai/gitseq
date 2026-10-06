@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Accept request git:sha1…b7d7878: Claude: apply the bounded Go patch maintenance Hugh authorized for release on 2026-10-06 (the dependency audit's item #3). Audit basis go.mod@02090dc2df7d06f05c…"}
+{"kind":"promise","text":"Accept request git:sha1…ef45b21: Claude: repair the two high-severity UI dependency advisories before release. Hugh authorized this maintenance on 2026-10-06: \"ok please request these from buil…"}
