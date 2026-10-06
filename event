@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gitseq-mcp/main_test.go","body":{"commit":"e2c02d62d084e838e6a4630d2eaef2a3ae8e8859","path":"cmd/gitseq-mcp/main_test.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gitseq-mcp/request_authoring_test.go","body":{"commit":"e2c02d62d084e838e6a4630d2eaef2a3ae8e8859","path":"cmd/gitseq-mcp/request_authoring_test.go"}}
