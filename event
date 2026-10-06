@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4c9f98dba1f33f466ed27f63fac332a46fa54f38","text":"Merge retired a covered predecessor; the successor is at docs/reference/mcp/supersede.md."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:6e6a7bd721f1c2d99568d06b18d0b9bec7f04a0e","text":"Merge retired a covered predecessor; the successor is at cmd/gitseq-mcp/request_authoring_test.go."}
