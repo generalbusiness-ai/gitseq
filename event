@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/preflight.go","body":{"commit":"e2c02d62d084e838e6a4630d2eaef2a3ae8e8859","path":"cmd/gs/preflight.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/supersede_abandon_test.go","body":{"commit":"e2c02d62d084e838e6a4630d2eaef2a3ae8e8859","path":"cmd/gs/supersede_abandon_test.go"}}
