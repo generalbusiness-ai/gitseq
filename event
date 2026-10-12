@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at go.mod","body":{"commit":"1b3705920e08e839d0aab0c851a97b9edf074dfe","path":"go.mod"}}
+{"kind":"artifact","text":"Merge published the current artifact at go.sum","body":{"commit":"1b3705920e08e839d0aab0c851a97b9edf074dfe","path":"go.sum"}}
