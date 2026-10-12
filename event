@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:410bd132759fcdc01bd187677c2d8cf520ef2296","text":"Merge retired a covered predecessor; the successor is at ui/package-lock.json."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:4776c71352c18bac7b8b8abc70ceb593d5afe404","text":"Merge retired a covered predecessor; the successor is at internal/service/uidist/index.html."}
