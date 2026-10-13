@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/mergeplan/mergeplan.go","body":{"commit":"5876d2118fa3d9d223dfc923744bc0bb9ef1dfc0","path":"internal/mergeplan/mergeplan.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:23ce965a1d8888651debb15db17a3ddf790c8f78","text":"Merge retired a covered predecessor; the successor is at cmd/gs/main.go."}
