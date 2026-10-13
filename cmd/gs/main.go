@@ -1232,7 +1232,7 @@ func mergePlanCommand(ctx context.Context, arguments []string) error {
 	if err != nil {
 		return err
 	}
-	return printJSON(buildMergePlan(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
+	return printJSON(mergeplan.Build(ctx, workspace, *checkout, *candidate, *approval, resolved.Fingerprint, mergeplan.Signer{
 		Name: actor, Private: private, ResidentCeiling: residentSubmissionCeiling(serverURL),
 	}))
 }
@@ -1248,7 +1248,11 @@ func residentSubmissionCeiling(serverURL string) func(kernel.Request) error {
 	return service.ValidateSubmissionRequestSize
 }
 
-var buildMergePlan = mergeplan.Build
+// buildMergePlan is the plan a landing builds: gs merge's own, and gs land's
+// preview of it. Both go on to read the workspace snapshot, so the plan shares
+// that one fold. gs merge-plan promises to leave local state untouched and
+// calls mergeplan.Build instead.
+var buildMergePlan = mergeplan.BuildForLanding
 
 // recordIncorporationBatch is where an incorporation leaves this process. It
 // is a variable for the same reason buildMergePlan is: a test needs to hold
