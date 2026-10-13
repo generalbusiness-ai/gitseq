@@ -1419,12 +1419,28 @@ func ValidateAdmission(ctx context.Context, workspace *app.Workspace, snapshot a
 	return nil
 }
 
+const OutputLimit = 2 << 20
+
 // Build computes the same prospective plan as a fresh merge in a disposable
 // clone. Git may stage and abandon a tentative merge there; the governed
 // checkout, its refs and index, and the durable workroom remain untouched.
-const OutputLimit = 2 << 20
+// It is the diagnostic surface: it folds through the read-only snapshot, so
+// it also leaves this clone's checkpoint, verified-frontier witness and
+// in-memory caches as it found them, and pays a complete fold on every call.
+func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent, merger string, signer Signer) Result {
+	return build(ctx, workspace, workspace.ReadOnlySnapshot, checkout, candidate, approvalEvent, merger, signer)
+}
 
-func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent, merger string, signer Signer) (result Result) {
+// BuildForLanding is Build for a command that is about to land. Such a
+// command reads the workspace snapshot before and after planning anyway, so
+// the plan reads the same cached snapshot rather than folding the whole log
+// again beside it. The plan is the same; only the local acceleration state a
+// landing already maintains differs.
+func BuildForLanding(ctx context.Context, workspace *app.Workspace, checkout, candidate, approvalEvent, merger string, signer Signer) Result {
+	return build(ctx, workspace, workspace.Snapshot, checkout, candidate, approvalEvent, merger, signer)
+}
+
+func build(ctx context.Context, workspace *app.Workspace, fold func(context.Context) (app.Snapshot, error), checkout, candidate, approvalEvent, merger string, signer Signer) (result Result) {
 	result = Result{Mode: "fresh", Approval: approvalEvent, ExactHead: candidate, CandidateArtifacts: []CandidateArtifact{}, ReviewedPaths: []string{}, ChangedPaths: []string{}, CoveringArtifacts: []CoveringArtifact{}, Retirements: []Retirement{}, Successors: []string{}, Reasons: []Reason{}}
 	defer func() { result = boundResult(result) }()
 	fail := func(check string, err error) Result {
@@ -1436,12 +1452,12 @@ func Build(ctx context.Context, workspace *app.Workspace, checkout, candidate, a
 		return fail("checkout", err)
 	}
 	result.Reasons = append(result.Reasons, Reason{Code: "checkout_allowed", Check: "checkout", Allowed: true, Reason: "candidate is canonical, checkout belongs to the workroom repository, and the checkout is clean"})
-	snapshot, err := workspace.ReadOnlySnapshot(ctx)
+	snapshot, err := fold(ctx)
 	if err != nil {
 		return fail("frontier", err)
 	}
 	result.Frontier = Frontier{Genesis: snapshot.Genesis, Head: snapshot.Head, Depth: snapshot.Depth}
-	result.Reasons = append(result.Reasons, Reason{Code: "frontier_allowed", Check: "frontier", Allowed: true, Reason: "the complete signed workroom verified and folded without publishing acceleration state"})
+	result.Reasons = append(result.Reasons, Reason{Code: "frontier_allowed", Check: "frontier", Allowed: true, Reason: "the complete signed workroom verified and folded"})
 	receipt, foundReceipt, reserved, err := existingReceipt(ctx, checkout, approvalEvent)
 	if err != nil {
 		return fail("approval_use", err)

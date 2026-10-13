@@ -1739,6 +1739,14 @@ workspace's in-memory reader state. A diagnostic surface whose contract
 includes no local mutation uses that path even when a normal snapshot could
 repair useful acceleration state.
 
+The merge plan has one builder for each path. `gs merge-plan` and the MCP
+`merge_plan` tool are diagnostic surfaces and build the plan from the
+read-only snapshot, so each call pays a complete fold. `gs merge` and `gs
+land` are about to write and read the normal snapshot before and after
+planning, so their plan reads that same cached snapshot: a landing at an
+unmoved frontier folds the log once. Both builders compute the same plan from
+the same frontier.
+
 #### Staleness is held apart from lifecycle
 
 The bounded views hold a record's staleness apart from its lifecycle, and the
