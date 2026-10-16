@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Accept request git:sha1…0219001: Claude: stop TestActionablePollStillDeclinesAfterSeveralUnrelatedEvents panicking the suite under load.","body":{"branch":"request/wait-filter-test-join"}}
+{"kind":"artifact","text":"cmd/gitseq-mcp/main.go at exact 9c663be7b3e031880df8e5f3e9998214ee6f4f19 on request/succession-append-cost, under promise git:sha1…ecd1ad1 on request git:sha1…5f12606","body":{"commit":"9c663be7b3e031880df8e5f3e9998214ee6f4f19","path":"cmd/gitseq-mcp/main.go"}}
