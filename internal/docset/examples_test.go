@@ -2,6 +2,7 @@ package docset
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -15,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
 // Gate 2, examples run. Every `sh` block in the documentation is executed
@@ -46,6 +49,63 @@ func TestGateDocumentedCommandsRun(t *testing.T) {
 			runScript(t, binaries, page, script, first)
 		})
 	}
+}
+
+func TestWorkLoopExampleOutcomes(t *testing.T) {
+	requireTool(t, "git")
+	requireTool(t, "bash")
+	for _, page := range mustPages(t, mustRoot(t)) {
+		if page.Path != DocsDir+"/how-to/run-a-work-loop.md" {
+			continue
+		}
+		script, first := shellScript(page)
+		script += "\ngs status --repo \"$REPO\" --json > \"$SCRATCH/status.json\"\n"
+		scratch := runScript(t, buildBinaries(t), page, script, first)
+		data, err := os.ReadFile(filepath.Join(scratch, "status.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var status struct {
+			Projection workroom.Projection `json:"projection"`
+		}
+		if err := json.Unmarshal(data, &status); err != nil {
+			t.Fatal(err)
+		}
+		requests := make(map[string]string)
+		retired := make(map[string]bool)
+		for _, statement := range status.Projection.Statements {
+			requests[statement.Event] = statement.Text
+			retired[statement.Event] = statement.Retired
+		}
+		seen := make(map[string]bool)
+		for _, commitment := range status.Projection.Commitments {
+			name := requests[commitment.Request]
+			switch name {
+			case "Add a changelog":
+				if commitment.Status != "satisfied" || commitment.Terminal != "landed" || commitment.Approval == "" || commitment.LandingReceipt == "" {
+					t.Errorf("changelog must be approved and landed: %+v", commitment)
+				}
+			case "Rewrite the parser":
+				if commitment.Status != "reneged" || retired[commitment.Request] || !retired[commitment.Promise] || commitment.Report != "" {
+					t.Errorf("parser promise must be withdrawn without retiring or completing its request: %+v", commitment)
+				}
+			case "The changelog needs a release-date convention":
+				if commitment.Status != "open" || commitment.Promise != "" || commitment.TargetRef != "refs/heads/main" {
+					t.Errorf("separate child must remain open on the inherited target: %+v", commitment)
+				}
+			default:
+				continue
+			}
+			seen[name] = true
+		}
+		for _, name := range []string{"Add a changelog", "Rewrite the parser", "The changelog needs a release-date convention"} {
+			if !seen[name] {
+				t.Errorf("walkthrough omitted request %q", name)
+			}
+		}
+		return
+	}
+	t.Fatal("work-loop guide missing")
 }
 
 func TestGateEveryReferenceAndRecipePageRunsSomething(t *testing.T) {
@@ -99,7 +159,7 @@ func shellScript(page Page) (string, int) {
 	return script.String(), first
 }
 
-func runScript(t *testing.T, binaries string, page Page, script string, line int) {
+func runScript(t *testing.T, binaries string, page Page, script string, line int) string {
 	t.Helper()
 	scratch := t.TempDir()
 	home := filepath.Join(scratch, "home")
@@ -133,6 +193,7 @@ func runScript(t *testing.T, binaries string, page Page, script string, line int
 	if err != nil {
 		t.Fatalf("%s:%d: documented commands failed: %v\n--- output ---\n%s", page.Path, line, err, output)
 	}
+	return scratch
 }
 
 var (
