@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/kernel/kernel.go","body":{"commit":"5b6b27530a080594a3c143373137793be6831696","path":"internal/kernel/kernel.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/kernel/kernel_test.go","body":{"commit":"5b6b27530a080594a3c143373137793be6831696","path":"internal/kernel/kernel_test.go"}}
