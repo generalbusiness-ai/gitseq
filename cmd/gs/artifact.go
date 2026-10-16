@@ -380,9 +380,15 @@ func noteDeferredRetirements(head string, deferred []workroom.Artifact) {
 // is retired, and the log does not take it back.
 func refuseRetiredReplay(session *stepSession, head string, paths []string, elsewhere []workroom.Artifact) error {
 	filer := app.Filer{Name: session.actor, Fingerprint: session.fingerprint}
-	for _, path := range paths {
-		accepted, held := session.workspace.AcceptedUnderKey(session.ctx, filer, artifactKey(session.fingerprint, head, path))
-		if !held {
+	keys := make([]string, len(paths))
+	for index, path := range paths {
+		keys[index] = artifactKey(session.fingerprint, head, path)
+	}
+	// One verified read of the log answers every path's key.
+	held := session.workspace.AcceptedUnderKeys(session.ctx, filer, keys)
+	for index, path := range paths {
+		accepted, found := held[keys[index]]
+		if !found {
 			continue
 		}
 		if statement, found := session.statement(accepted); !found || !statement.Retired {

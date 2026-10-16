@@ -1154,9 +1154,8 @@ func recordMergeIncorporation(ctx context.Context, workspace *app.Workspace, che
 	if len(acts) != 1 {
 		return errors.New("an incorporation is exactly one durable receipt act")
 	}
-	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
-		return fmt.Errorf("merge incorporation admission preflight: %w", err)
-	}
+	// Nothing is written to Git first, so the batch's own admission preflight,
+	// run before its one append, is the only one this needs.
 	if _, err := recordIncorporationBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("record merge incorporation: %w", err)
 	}
@@ -2329,6 +2328,17 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		}
 	}
 	return report, nil
+}
+
+// failedPosition is the position of the act a batch stopped at. Every refusal
+// runBatch returns marks exactly one act failed.
+func failedPosition(report batchReport) int {
+	for _, act := range report.Acts {
+		if act.Outcome == "failed" {
+			return act.Position
+		}
+	}
+	return 0
 }
 
 // skippedBatchReport is what a chain reports before any of it has run: every

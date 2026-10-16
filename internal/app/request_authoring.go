@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
-	"maps"
 	"slices"
 	"strings"
 
@@ -218,32 +217,13 @@ func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed2
 // already names in this log, found by the identity the kernel indexes —
 // target log, actor key, namespace and key — which needs nothing measured.
 func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (kernel.Event, bool) {
-	prior, held := w.priorActsUnderKeys(ctx, private, actorName, []string{key})[key]
+	prior, held := w.priorActsFor(ctx, signingFiler(private, actorName), []string{key})[key]
 	return prior, held
 }
 
-// priorActsUnderKeys is the same lookup for many of one actor's keys, answered
-// from one verified read of the log. An empty key names nothing and is skipped.
-func (w *Workspace) priorActsUnderKeys(ctx context.Context, private ed25519.PrivateKey, actorName string, keys []string) map[string]kernel.Event {
-	identities := make(map[string]string, len(keys))
-	for _, key := range keys {
-		if key != "" {
-			identities[intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
-				w.idempotencyNamespace(actorName), key)] = key
-		}
-	}
-	if len(identities) == 0 {
-		return nil
-	}
-	held, err := kernel.PriorActs(ctx, w.Store, w.workroomID(), slices.Collect(maps.Keys(identities)))
-	if err != nil {
-		return nil
-	}
-	prior := make(map[string]kernel.Event, len(held))
-	for identity, event := range held {
-		prior[identities[identity]] = event
-	}
-	return prior
+// signingFiler names the filer a signing key files as.
+func signingFiler(private ed25519.PrivateKey, actorName string) Filer {
+	return Filer{Name: actorName, Fingerprint: intent.ActorFingerprint(private.Public().(ed25519.PublicKey))}
 }
 
 // AcceptedActUnderKey reports the event identifier this actor's key already
@@ -260,12 +240,7 @@ func (w *Workspace) AcceptedActUnderKey(ctx context.Context, private ed25519.Pri
 // as the retry it is. Every key is answered from one verified read of the log,
 // so the batch pays for that read once, however many acts it labels.
 func (w *Workspace) AcceptedActsUnderKeys(ctx context.Context, private ed25519.PrivateKey, actorName string, keys []string) map[string]string {
-	prior := w.priorActsUnderKeys(ctx, private, actorName, keys)
-	accepted := make(map[string]string, len(prior))
-	for key, event := range prior {
-		accepted[key] = w.EventID(event.Commit)
-	}
-	return accepted
+	return w.AcceptedUnderKeys(ctx, signingFiler(private, actorName), keys)
 }
 
 // requestRetry is what the log says about an act filed under a key: nothing

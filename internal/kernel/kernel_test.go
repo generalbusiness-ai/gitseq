@@ -1046,48 +1046,54 @@ func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) 
 	}
 }
 
-// PriorActs answers many keys from one scan, and each answer is the one PriorAct
-// gives for that key alone: the same event, payload included, and nothing for
-// a key the log does not hold.
-func TestPriorActsAnswersEachKeyAsPriorActDoes(t *testing.T) {
+// PriorActs answers many keys from one scan. Each answer is checked against
+// what the test itself appended — the commit Submit returned and the payload it
+// sent — not against PriorAct, which is PriorActs for one key. A key the log
+// does not hold has no answer.
+func TestPriorActsAnswersEachKeyWithTheActAppendedUnderIt(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, "sha1")
 	private := actor(t)
+	target := "git:" + f.format + ":" + f.genesis
+	type appended struct{ commit, payload string }
+	want := make(map[string]appended)
 	var keys []string
-	for index, payload := range []string{"first", "second"} {
+	for index, payload := range []string{"first", "second", "third"} {
 		request := f.request(t, private, "prior-"+strconv.Itoa(index), []byte(payload), nil)
-		if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err != nil {
+		result, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
+		if err != nil {
 			t.Fatal(err)
 		}
 		key, err := request.Signed.DedupKey()
 		if err != nil {
 			t.Fatal(err)
 		}
+		want[key] = appended{commit: result.Commit, payload: payload}
 		keys = append(keys, key)
 	}
 	absent, err := f.request(t, private, "prior-absent", []byte("never sent"), nil).Signed.DedupKey()
 	if err != nil {
 		t.Fatal(err)
 	}
-	prior, err := PriorActs(f.ctx, f.store, "git:"+f.format+":"+f.genesis, append(keys, absent))
+	prior, err := PriorActs(f.ctx, f.store, target, append(keys, absent))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prior) != len(keys) {
-		t.Fatalf("PriorActs held %d keys, want %d", len(prior), len(keys))
+	if len(prior) != len(want) {
+		t.Fatalf("PriorActs answered %d keys, want %d: %v", len(prior), len(want), prior)
 	}
-	for _, key := range append(keys, absent) {
-		one, held, err := PriorAct(f.ctx, f.store, "git:"+f.format+":"+f.genesis, key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		many, heldMany := prior[key]
-		if held != heldMany || one.Commit != many.Commit || !bytes.Equal(one.Payload, many.Payload) {
-			t.Fatalf("key %s: PriorAct = %v %s %q, PriorActs = %v %s %q", key, held, one.Commit, one.Payload, heldMany, many.Commit, many.Payload)
+	for key, expected := range want {
+		event, held := prior[key]
+		if !held || event.Commit != expected.commit || string(event.Payload) != expected.payload {
+			t.Fatalf("key %q: PriorActs = %v %s %q, want the appended %s %q", key, held, event.Commit, event.Payload, expected.commit, expected.payload)
 		}
 	}
-	if len(prior[keys[1]].Payload) == 0 || string(prior[keys[1]].Payload) != "second" {
-		t.Fatalf("PriorActs dropped the payload: %q", prior[keys[1]].Payload)
+	if _, held := prior[absent]; held {
+		t.Fatalf("PriorActs answered a key nothing was appended under")
+	}
+	// PriorAct is the same lookup for one key, so it must give the same answer.
+	if event, held, err := PriorAct(f.ctx, f.store, target, keys[1]); err != nil || !held || event.Commit != want[keys[1]].commit {
+		t.Fatalf("PriorAct = %v %s %v, want %s", held, event.Commit, err, want[keys[1]].commit)
 	}
 }
 

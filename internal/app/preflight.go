@@ -3,6 +3,8 @@ package app
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/generalbusiness-ai/gitseq/internal/intent"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
@@ -156,15 +158,49 @@ func (w *Workspace) ProspectiveEventID(index int) string {
 // local configuration holds. An error is answered as nothing held, because this
 // only decides whether to put a question, never whether to admit an act.
 func (w *Workspace) AcceptedUnderKey(ctx context.Context, filer Filer, key string) (string, bool) {
-	if key == "" || filer.Fingerprint == "" {
-		return "", false
+	accepted, held := w.AcceptedUnderKeys(ctx, filer, []string{key})[key]
+	return accepted, held
+}
+
+// AcceptedUnderKeys is AcceptedUnderKey for many of one filer's keys, answered
+// from one verified read of the log. A key that holds nothing is absent from
+// the result.
+func (w *Workspace) AcceptedUnderKeys(ctx context.Context, filer Filer, keys []string) map[string]string {
+	prior := w.priorActsFor(ctx, filer, keys)
+	accepted := make(map[string]string, len(prior))
+	for key, event := range prior {
+		accepted[key] = w.EventID(event.Commit)
 	}
-	dedup := intent.DedupIdentityFor(w.workroomID(), filer.Fingerprint, w.idempotencyNamespace(filer.Name), key)
-	prior, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !held {
-		return "", false
+	return accepted
+}
+
+// priorActsFor is the retry lookup for many of one filer's keys: the act each
+// key already names in this log, found by the identity the kernel indexes —
+// target log, actor fingerprint, namespace and key — and answered from one
+// verified read of the log however many keys there are. An empty key names
+// nothing and is skipped.
+func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string) map[string]kernel.Event {
+	if filer.Fingerprint == "" {
+		return nil
 	}
-	return w.EventID(prior.Commit), true
+	identities := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if key != "" {
+			identities[intent.DedupIdentityFor(w.workroomID(), filer.Fingerprint, w.idempotencyNamespace(filer.Name), key)] = key
+		}
+	}
+	if len(identities) == 0 {
+		return nil
+	}
+	held, err := kernel.PriorActs(ctx, w.Store, w.workroomID(), slices.Collect(maps.Keys(identities)))
+	if err != nil {
+		return nil
+	}
+	prior := make(map[string]kernel.Event, len(held))
+	for identity, event := range held {
+		prior[identities[identity]] = event
+	}
+	return prior
 }
 
 // prospectiveRecord builds the record this act would become, by the same schema
