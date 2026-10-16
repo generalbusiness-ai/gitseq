@@ -392,9 +392,10 @@ func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, chec
 			return Snapshot{}, fmt.Errorf("admission verified the log: %w", err)
 		}
 	}
-	if loaded.Verification.Head != head {
-		return Snapshot{}, fmt.Errorf("the workroom moved under admission: the event would extend %s while the log stands at %s; resubmit", head, loaded.Verification.Head)
-	}
+	// The fold takes every event the reader advanced over before anything is
+	// judged. The reader does not hand those events out again, so a refusal
+	// that returned first would leave the fold short of them for good, under
+	// the label of the head that holds them.
 	folder := w.admissionFolder
 	if folder == nil || loaded.Full {
 		folder = workroom.NewFolder(nil)
@@ -403,13 +404,26 @@ func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, chec
 	for _, event := range loaded.Events {
 		folder.Append(w.record(event))
 	}
+	if loaded.Verification.Head != head {
+		return Snapshot{}, fmt.Errorf("the workroom moved under admission: the event would extend %s while the log stands at %s; resubmit", head, loaded.Verification.Head)
+	}
 	if check != nil {
 		if err := check(folder); err != nil {
 			return Snapshot{}, err
 		}
 	}
-	return Snapshot{
+	// A head is a commit, and so names the whole verified history under it:
+	// any fold of the log at that head renders this same projection.
+	if world := w.admissionWorldAt; world != nil && world.Head == loaded.Verification.Head {
+		return *world, nil
+	}
+	if w.renderTestHook != nil {
+		w.renderTestHook("admission")
+	}
+	world := Snapshot{
 		Genesis: w.config.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth,
 		Projection: folder.Projection(), Vocabulary: folder.Vocabulary(),
-	}, nil
+	}
+	w.admissionWorldAt = &world
+	return world, nil
 }

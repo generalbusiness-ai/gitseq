@@ -1154,9 +1154,8 @@ func recordMergeIncorporation(ctx context.Context, workspace *app.Workspace, che
 	if len(acts) != 1 {
 		return errors.New("an incorporation is exactly one durable receipt act")
 	}
-	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
-		return fmt.Errorf("merge incorporation admission preflight: %w", err)
-	}
+	// Nothing is written to Git first, so the batch's own admission preflight,
+	// run before its one append, is the only one this needs.
 	if _, err := recordIncorporationBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("record merge incorporation: %w", err)
 	}
@@ -2305,7 +2304,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 	// boundary submission uses: an undefined kind, a verdict shape, a spoofed
 	// reserved field, or a dead basis stops the batch before anything lands.
 	// The authoritative re-judgement still happens per act at sequencing.
-	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+	if position, failure := admissionPreflight(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
 		report.Acts[position].Outcome = "failed"
 		report.Error = failure
 		return report, failure
@@ -2336,6 +2335,17 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 	return report, nil
 }
 
+// failedPosition is the position of the act a batch stopped at. Every refusal
+// runBatch returns marks exactly one act failed.
+func failedPosition(report batchReport) int {
+	for _, act := range report.Acts {
+		if act.Outcome == "failed" {
+			return act.Position
+		}
+	}
+	return 0
+}
+
 // skippedBatchReport is what a chain reports before any of it has run: every
 // act named, in order, and none of it done.
 func skippedBatchReport(acts []batchAct) batchReport {
@@ -2355,11 +2365,16 @@ func preflightBatchAdmission(ctx context.Context, workspace *app.Workspace, serv
 	if position, failure := checkBatch(acts); failure != nil {
 		return fmt.Errorf("act %d: %w", position, failure)
 	}
-	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+	if position, failure := admissionPreflight(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
 		return fmt.Errorf("act %d: %w", position, failure)
 	}
 	return nil
 }
+
+// admissionPreflight is the preflight every batch runs before it appends. It is
+// a variable so a test can count how many a landing pays for: each one reads
+// the whole log.
+var admissionPreflight = preflightAdmission
 
 // preflightAdmission builds every act through the application boundary and
 // checks the kernel and optional resident byte ceilings without appending. It
@@ -2372,6 +2387,19 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 	}
 	view := workspace.View()
 	syntheticEvent := workspace.EventID(strings.Repeat("0", len(view.Genesis)))
+	// A label names the event its act will mint. Until then it stands for a
+	// placeholder, except when the log already holds that act under its key:
+	// then the label names the real event, so a later act citing it — a
+	// replacement naming its retirement — is rebuilt as it was accepted and
+	// recognised as a retry instead of a conflict. Every label's key is asked
+	// about at once, so the whole batch costs one verified read of the log.
+	var labelled []string
+	for _, entry := range acts {
+		if entry.Label != "" {
+			labelled = append(labelled, entry.IdempotencyKey)
+		}
+	}
+	accepted := workspace.AcceptedActsUnderKeys(ctx, private, actorName, labelled)
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
 		act := resolveBatchAct(entry, minted, citedOK)
@@ -2392,15 +2420,10 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 				return position, batchFail("admission", "%v", err)
 			}
 		}
-		// A label names the event its act will mint. Until then it stands
-		// for a placeholder, except when the log already holds that act
-		// under its key: then the label names the real event, so a later act
-		// citing it — a replacement naming its retirement — is rebuilt as
-		// it was accepted and recognised as a retry instead of a conflict.
 		if entry.Label != "" {
 			minted[entry.Label] = syntheticEvent
-			if accepted, held := workspace.AcceptedActUnderKey(ctx, private, actorName, entry.IdempotencyKey); held {
-				minted[entry.Label] = accepted
+			if event, held := accepted[entry.IdempotencyKey]; held {
+				minted[entry.Label] = event
 			}
 		}
 	}
@@ -2560,7 +2583,9 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 // of acts therefore reads the actor key once, and a local submission reuses the
 // workspace's resident verified frontier instead of scanning the log again.
 // Every command that writes for an author comes through here, so this is where
-// an author is told that the kind they wrote means nothing here.
+// an author whose act replayed is told that its kind means nothing here. A
+// freshly sequenced act needs no such telling: admission refused it unless its
+// kind is defined at the head it joined.
 func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, act app.Act) (app.Submission, error) {
 	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
@@ -2570,7 +2595,11 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 	if err != nil {
 		return app.Submission{}, explainLifecycleRefusal(err)
 	}
-	if act.Verb == app.VerbState {
+	// A state act sequenced now passed admission at the head it joined, and
+	// admission refuses a kind that head does not define, so only a replay —
+	// an act accepted before that refusal existed — can be one to warn about.
+	// Asking anyway cost a whole projection per act, read or folded here.
+	if act.Verb == app.VerbState && submission.Result.Replay {
 		warnUndefinedKind(ctx, workspace, serverURL, act.Kind)
 	}
 	return submission, nil
@@ -2597,9 +2626,10 @@ func explainLifecycleRefusal(err error) error {
 }
 
 // warnUndefinedKind tells an author, on the stream they are already reading,
-// that the act which just landed carries a kind no rule in this workroom
-// reads. The act stays: warning is the whole of the change, and refusing it
-// would hide the attempt. The vocabulary comes from the projection this
+// that the act they replayed carries a kind no rule in this workroom reads.
+// It is asked only for a replay, which was judged when first accepted and
+// perhaps before admission refused undefined kinds. The act stays: warning is
+// the whole of the change. The vocabulary comes from the projection this
 // session reads, which after a resident submission is the resident's own
 // answer at the head the act just made, so the warning costs a read rather
 // than a second fold of the log.

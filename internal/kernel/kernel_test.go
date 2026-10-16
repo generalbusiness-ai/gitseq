@@ -1046,6 +1046,57 @@ func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) 
 	}
 }
 
+// PriorActs answers many keys from one scan. Each answer is checked against
+// what the test itself appended — the commit Submit returned and the payload it
+// sent — not against PriorAct, which is PriorActs for one key. A key the log
+// does not hold has no answer.
+func TestPriorActsAnswersEachKeyWithTheActAppendedUnderIt(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	target := "git:" + f.format + ":" + f.genesis
+	type appended struct{ commit, payload string }
+	want := make(map[string]appended)
+	var keys []string
+	for index, payload := range []string{"first", "second", "third"} {
+		request := f.request(t, private, "prior-"+strconv.Itoa(index), []byte(payload), nil)
+		result, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey})
+		if err != nil {
+			t.Fatal(err)
+		}
+		key, err := request.Signed.DedupKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[key] = appended{commit: result.Commit, payload: payload}
+		keys = append(keys, key)
+	}
+	absent, err := f.request(t, private, "prior-absent", []byte("never sent"), nil).Signed.DedupKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := PriorActs(f.ctx, f.store, target, append(keys, absent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prior) != len(want) {
+		t.Fatalf("PriorActs answered %d keys, want %d: %v", len(prior), len(want), prior)
+	}
+	for key, expected := range want {
+		event, held := prior[key]
+		if !held || event.Commit != expected.commit || string(event.Payload) != expected.payload {
+			t.Fatalf("key %q: PriorActs = %v %s %q, want the appended %s %q", key, held, event.Commit, event.Payload, expected.commit, expected.payload)
+		}
+	}
+	if _, held := prior[absent]; held {
+		t.Fatalf("PriorActs answered a key nothing was appended under")
+	}
+	// PriorAct is the same lookup for one key, so it must give the same answer.
+	if event, held, err := PriorAct(f.ctx, f.store, target, keys[1]); err != nil || !held || event.Commit != want[keys[1]].commit {
+		t.Fatalf("PriorAct = %v %s %v, want %s", held, event.Commit, err, want[keys[1]].commit)
+	}
+}
+
 // The hook runs inside the compare-and-swap loop, so a log that moved between
 // the head read and the ref update makes it judge the newer world before the
 // retried commit is written against it.

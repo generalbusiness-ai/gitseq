@@ -84,14 +84,14 @@ func withMergeSuccessionDeadline(ctx context.Context) context.Context {
 // sent may already have landed, and nothing about a batch file applies: the
 // merge resumes from the receipt sealed in Git. Any other failure is reported
 // as it came.
-func mergeSuccessionRefusal(err error, receipt mergeReceipt) error {
+func mergeSuccessionRefusal(err error, receipt mergeReceipt, position int) error {
 	var failure *batchError
 	if !errors.As(err, &failure) || failure.cause == nil || !answerLost(failure.cause) {
-		return fmt.Errorf("record merge succession: %w", err)
+		return fmt.Errorf("record merge succession: act %d: %w", position, err)
 	}
-	return fmt.Errorf("record merge succession: the target already carries merge %s, but the resident's answer was lost, "+
+	return fmt.Errorf("record merge succession: act %d: the target already carries merge %s, but the resident's answer was lost, "+
 		"so the act it was sent may already have landed (%w). Run the same gs merge or gs land again: it finds the "+
-		"receipt sealed in Git and appends only what is still missing", receipt.MergeHead, failure.cause)
+		"receipt sealed in Git and appends only what is still missing", position, receipt.MergeHead, failure.cause)
 }
 
 // answerLost reports whether a submission failed without a definite answer:
