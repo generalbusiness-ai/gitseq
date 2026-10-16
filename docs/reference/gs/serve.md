@@ -209,14 +209,19 @@ for the complete request, forty seconds for a response, and sixty seconds for
 an idle connection. Request headers are capped at 64 KiB. Resident JSON
 decoding also stops after 2 MiB.
 
-The resident's `/v0/status` route is the one response exception. A cold status
-request can start or join a full verified rebuild, whose duration depends on
-the durable log and can exceed forty seconds. That route clears the response
-deadline so the connection remains attached to the shared rebuild instead of
-failing while the same work continues in the resident. The read, header-size,
-and idle bounds still apply. Every other resident route keeps the forty-second
-response deadline, including the bounded long poll, whose accepted timeout is
-at most thirty seconds. Profiler routes have no exception.
+The resident's `/v0/status` and `/v0/submit` routes are the two response
+exceptions. A cold status request can start or join a full verified rebuild,
+whose duration depends on the durable log and can exceed forty seconds. That
+route clears the response deadline so the connection remains attached to the
+shared rebuild instead of failing while the same work continues in the
+resident. A submission can need the same full fold before it is judged, and
+its client already states how long it will wait: a merge's receipt waits up to
+ten minutes (see [`gs merge`](merge.md#the-receipt-waits-for-the-resident)).
+Cutting that answer off at forty seconds would report an append that landed
+as a failure. The read, header-size, and idle bounds still apply to both.
+Every other resident route keeps the forty-second response deadline,
+including the bounded long poll, whose accepted timeout is at most thirty
+seconds. Profiler routes have no exception.
 
 ## One per repository
 

@@ -30,7 +30,7 @@ resumable batch.
 | `--authorization` | | A ratified merge-authorization report carrying the exact structured bindings described below. For a held state@3 request, this is the hold owner's exact release; an unheld state@3 request refuses it. Legacy lanes retain optional phase-one authorization. See the held-landing compatibility window below. |
 | `--text` | *(required)* | A plain-language description of the change and its impact. This begins the merge commit message, or — when the target already contains the candidate — is the text of the incorporation receipt. |
 | `--server` | | Submit the durable merge receipt through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. After the target has moved, each act of the durable receipt waits at least ten minutes; see [The receipt waits for the resident](#the-receipt-waits-for-the-resident). |
 
 It takes no positional arguments.
 
@@ -108,6 +108,26 @@ gs merge --repo "$REPO" --as bot --checkout "$REPO" \
 ```
 
 It prints the resulting merge commit.
+
+## The receipt waits for the resident
+
+The durable receipt is written after the target has moved: the receipt
+assertion first, then each retirement and successor of its succession. A
+merge that stopped there would leave the target carrying a merge with no
+durable receipt until somebody ran it again.
+
+So from the moment the target moves, each of those submissions waits up to
+**ten minutes** for the resident to answer, or `--deadline` when that is
+longer. A shorter `--deadline` still governs everything before the move,
+where giving up changes nothing. Ten minutes is far above what a resident
+needs: a resident started cold on a log 43,744 events deep, on a busy
+machine, answered the receipt in about 20 seconds. Most of that time went on
+reading and folding the whole log once, which a resident does before it
+judges its first submission. Each later act took less than two seconds.
+
+If the resident still has not answered at the bound, the merge stops and
+says the act may already have landed. Run the same `gs merge` again: it
+finds the sealed receipt in Git and appends only what is missing.
 
 ## When the world moved
 

@@ -3402,14 +3402,18 @@ func residentHTTPServer(handler http.Handler) *http.Server {
 }
 
 // residentHTTPHandler removes the connection-wide response deadline only for
-// /v0/status. A cold verified rebuild can legitimately take longer than the
-// ordinary response budget, and abandoning the client response does not stop
-// that shared rebuild. Every other route keeps the server's write deadline.
+// /v0/status and /v0/submit. A cold verified rebuild can legitimately take
+// longer than the ordinary response budget, and abandoning the client response
+// does not stop that shared rebuild. A submission can need the same rebuild
+// before it is judged, and its client already says how long it will wait: a
+// merge's receipt waits up to mergeSuccessionDeadline. Cutting that answer off
+// at the server's budget would turn an append that landed into an error that
+// reads as a refusal. Every other route keeps the server's write deadline.
 func residentHTTPHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/v0/status" {
+		if request.URL.Path == "/v0/status" || request.URL.Path == "/v0/submit" {
 			if err := http.NewResponseController(writer).SetWriteDeadline(time.Time{}); err != nil {
-				http.Error(writer, "status response deadline could not be cleared", http.StatusInternalServerError)
+				http.Error(writer, "response deadline could not be cleared", http.StatusInternalServerError)
 				return
 			}
 		}

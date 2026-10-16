@@ -318,3 +318,62 @@ func TestPublicationDecisionReadsUnderThisInvocationsDeadline(t *testing.T) {
 		t.Fatalf("the read waited %s under a 200ms deadline: it kept its own literal", waited)
 	}
 }
+
+// A merge's durable suffix waits at least mergeSuccessionDeadline for each
+// answer, whatever shorter deadline the invocation was given, and a longer one
+// is kept.
+func TestMergeSuccessionWaitsAtLeastItsOwnBound(t *testing.T) {
+	for _, given := range []time.Duration{time.Millisecond, residentclient.DefaultSubmitDeadline, mergeSuccessionDeadline - time.Second} {
+		ctx := context.WithValue(context.Background(), submitDeadlineKey{}, given)
+		if got := submitDeadline(withMergeSuccessionDeadline(ctx)); got != mergeSuccessionDeadline {
+			t.Fatalf("merge succession under a %s deadline waits %s, want %s", given, got, mergeSuccessionDeadline)
+		}
+	}
+	if got := submitDeadline(withMergeSuccessionDeadline(context.Background())); got != mergeSuccessionDeadline {
+		t.Fatalf("merge succession with no deadline set waits %s, want %s", got, mergeSuccessionDeadline)
+	}
+	longer := mergeSuccessionDeadline + time.Hour
+	ctx := context.WithValue(context.Background(), submitDeadlineKey{}, longer)
+	if got := submitDeadline(withMergeSuccessionDeadline(ctx)); got != longer {
+		t.Fatalf("merge succession under a %s deadline waits %s: a longer --deadline must win", longer, got)
+	}
+}
+
+// Once a merge has moved its target, a resident slower than --deadline must not
+// leave that merge without its receipt. Every submission here is answered well
+// after the invocation's deadline. The receipt and its whole succession must
+// still land: verifySuccession refuses an incomplete suffix, so success from
+// the command is the proof, and the depth says the acts are really there.
+func TestMergeRecordsItsReceiptFromAResidentSlowerThanTheDeadline(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	approval := f.review(t)
+	f.ratify(t, approval)
+	resident, err := service.New(f.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const deadline = 100 * time.Millisecond
+	var submitted atomic.Int64
+	slow := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/submit" {
+			submitted.Add(1)
+			time.Sleep(5 * deadline)
+		}
+		resident.Handler().ServeHTTP(writer, request)
+	}))
+	t.Cleanup(slow.Close)
+
+	before := f.snapshot(t)
+	if err := mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+		"--candidate", f.candidate, "--approval", approval, "--text", "Land the approved feature.",
+		"--server", slow.URL, "--deadline", deadline.String()}); err != nil {
+		t.Fatalf("merge under a %s deadline against a slower resident: %v", deadline, err)
+	}
+	if submitted.Load() == 0 {
+		t.Fatal("the merge never submitted through the slow resident, so this proves nothing")
+	}
+	if after := f.snapshot(t); after.Depth <= before.Depth {
+		t.Fatalf("merge returned without its durable suffix: depth %d -> %d", before.Depth, after.Depth)
+	}
+}

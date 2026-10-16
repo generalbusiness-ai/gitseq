@@ -55,3 +55,22 @@ func submitDeadline(ctx context.Context) time.Duration {
 	}
 	return residentclient.DefaultSubmitDeadline
 }
+
+// mergeSuccessionDeadline is how long the resident has to answer each
+// submission that records a merge whose target has already moved: the receipt
+// assertion, its retirements and its successors. Before the move, a slow
+// resident costs nothing, because the merge refuses and nothing has changed.
+// After the move, giving up early leaves the target carrying a merge that has
+// no durable receipt until somebody resumes it by hand. So this path waits for
+// the resident to finish the work it was given, and stops only at this bound,
+// which is far above what a cold resident needs to fold a large log.
+const mergeSuccessionDeadline = 10 * time.Minute
+
+// withMergeSuccessionDeadline gives a merge's durable suffix at least
+// mergeSuccessionDeadline per submission. A longer --deadline still wins.
+func withMergeSuccessionDeadline(ctx context.Context) context.Context {
+	if submitDeadline(ctx) >= mergeSuccessionDeadline {
+		return ctx
+	}
+	return context.WithValue(ctx, submitDeadlineKey{}, mergeSuccessionDeadline)
+}
