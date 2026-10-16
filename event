@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/fold_test.go","body":{"commit":"89d80be0087be25875c84d8eb617f835041c4c76","path":"internal/workroom/fold_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:06f18228d1872ae7e58a9cd6841ba248af60e109","text":"Merge retired a covered predecessor; the successor is at internal/app/admission_test.go."}
