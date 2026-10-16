@@ -2701,14 +2701,9 @@ func completeStatus(snapshot app.Snapshot) completeJSON {
 
 const (
 	summaryResponseLimit = 64 << 10
-	// The complete status answer grows with the log, so its ceiling does too:
-	// fullResponseFloor, plus fullResponseBytesPerRecord for every record of
-	// this checkout's own sequence. A fixed 64 MiB ceiling was crossed as the
-	// artroom log grew, and past it every resident-sourced command fell back
-	// to the local audit. The allowance is about four times the largest
-	// average measured, 2.2 KiB a record at gitseq's depth 24,756 on
-	// 2026-10-16, so growth in depth does not reach it, while what the client
-	// reads stays linear in the records it can count for itself.
+	// The complete status answer grows with the log, so its ceiling does too;
+	// see fullResponseLimit, and docs/reference/architecture.md, layer 7, for
+	// the measurements the allowance was chosen from.
 	fullResponseFloor          = 64 << 20
 	fullResponseBytesPerRecord = 8 << 10
 )
@@ -2761,24 +2756,39 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 	return summary, nil
 }
 
-// fetchFullStatus reads the resident's complete projection, bounded by
-// fullResponseLimit at head: the sequence ref this checkout read before
-// asking.
-func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw, head string) (service.Status, error) {
-	limit, err := fullResponseLimit(ctx, workspace, head)
+// fetchFullStatus reads the resident's complete projection and admits it only
+// at this checkout's own frontier: the sequence ref is read before the request
+// and again after it, so the answer names this workroom's genesis and a head
+// that is this checkout's and did not move under the read. The answer is
+// bounded by fullResponseLimit at the head read before asking.
+func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw string) (service.Status, error) {
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
+	if err != nil {
+		return service.Status{}, err
+	}
+	limit, err := fullResponseLimit(ctx, workspace, before)
 	if err != nil {
 		return service.Status{}, err
 	}
 	var status service.Status
-	err = residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", limit, &status)
-	return status, err
+	if err := residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", limit, &status); err != nil {
+		return service.Status{}, err
+	}
+	if err := validateRemoteFrontierAt(ctx, workspace, before, status.Durable.Genesis, status.Durable.Head); err != nil {
+		return service.Status{}, err
+	}
+	return status, nil
 }
 
 // fullResponseLimit is the ceiling on a complete status answer about the log
-// up to head. The records are counted in this checkout's own Git history, not
-// taken from the resident, so a resident cannot raise the ceiling it is read
-// under: any answer it gives about a deeper log fails the frontier check that
-// follows the read.
+// up to head. The records are counted in this checkout's Git history at that
+// ref, not taken from the answer, so a listener that cannot write this
+// repository cannot raise the ceiling it is read under: an answer about any
+// other head fails the frontier check that follows the read. The history is
+// counted, not verified, so a process that can move the sequence ref, such as
+// a sequencer sharing the repository, can raise it. That process is already
+// trusted to write the log, and what it gains is only the memory this client
+// spends reading.
 func fullResponseLimit(ctx context.Context, workspace *app.Workspace, head string) (int64, error) {
 	records, err := workspace.Store.Count(ctx, head)
 	if err != nil {

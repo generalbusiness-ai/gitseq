@@ -1889,14 +1889,21 @@ resident's word for what the log says, and nothing local re-derives them. Two
 limits are worth naming with them. The complete answer grows with the log, so
 its ceiling does too: 64 MiB plus 8 KiB for every record of this checkout's own
 sequence, counted in local Git history before the request rather than taken
-from the resident, so a resident cannot raise the ceiling it is read under. A
-fixed 64 MiB ceiling was crossed on 2026-10-16 at depth 43,744, where the
-artroom answer is 71 MB, about 1.6 KiB a record; gitseq's is 2.2 KiB a record
-at depth 24,756. An answer past the ceiling falls back to the local audit, with
-one line on standard error and no other sign. The client holds the answer and
-its decoded projection at once, so its memory is a few times the answer's
-size: 370 MB at peak for the 71 MB artroom answer. And the profile is a hash
-of the application name
+from the answer. A listener that cannot write this repository therefore cannot
+raise the ceiling it is read under, because an answer about any other head
+fails the frontier check. The count is taken over the history at the ref
+without verifying it, so a process that can move the sequence ref, such as a
+sequencer sharing the repository, can raise the ceiling. That process is
+already trusted to write the log, and what it gains is memory in this client,
+nothing more. A fixed 64 MiB ceiling was crossed on 2026-10-16 at depth
+43,744, where the artroom answer is 71 MB, about 1.6 KiB a record; gitseq's is
+2.2 KiB a record at depth 24,756. An answer past the ceiling falls back to the
+local audit, with one line on standard error and no other sign. The client
+holds the answer and its decoded projection at once. For the real 71 MB
+artroom answer that peaks at 370 MB. The worst case is an answer exactly at
+the ceiling: at depth 43,744 that is 425,467,904 bytes (406 MiB), and
+`gs work --next` reading it peaked at 1.87 GB. The worst case grows linearly
+with the record count. And the profile is a hash of the application name
 and the `workroom.ProfileVersion` constant, which is advanced by hand when the
 fold changes, so two builds that share the constant compare equal however
 their folds behave; it catches a declared change of interpreter, not an
