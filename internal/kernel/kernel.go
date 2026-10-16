@@ -458,39 +458,55 @@ func CheckReplay(ctx context.Context, store gitstore.Store, request Request) (bo
 // what it rebuilt against this event and use it only when the two are equal;
 // anything else is a new act and is judged as one.
 func PriorAct(ctx context.Context, store gitstore.Store, target, dedupKey string) (Event, bool, error) {
-	targetFormat, targetOID, err := gitstore.ParseTypedOID(target)
+	prior, err := PriorActs(ctx, store, target, []string{dedupKey})
 	if err != nil {
 		return Event{}, false, err
+	}
+	event, held := prior[dedupKey]
+	return event, held, nil
+}
+
+// PriorActs is PriorAct for many keys at once. Every key is answered from one
+// verified scan of the log, so a caller checking a batch pays for one read
+// however many keys it asks about. A key the log does not hold is absent from
+// the result.
+func PriorActs(ctx context.Context, store gitstore.Store, target string, dedupKeys []string) (map[string]Event, error) {
+	targetFormat, targetOID, err := gitstore.ParseTypedOID(target)
+	if err != nil {
+		return nil, err
 	}
 	storeFormat, err := store.ObjectFormat(ctx)
 	if err != nil {
-		return Event{}, false, err
+		return nil, err
 	}
 	if targetFormat != storeFormat {
-		return Event{}, false, errors.New("target object format differs from repository")
+		return nil, errors.New("target object format differs from repository")
 	}
 	head, err := store.Head(ctx, Ref(targetOID))
 	if err != nil {
-		// No log here yet, so there is nothing this key could have accepted.
-		return Event{}, false, nil
+		// No log here yet, so there is nothing any key could have accepted.
+		return nil, nil
 	}
 	log, err := scanHead(ctx, store, targetOID, head, true, nil)
 	if err != nil {
-		return Event{}, false, err
+		return nil, err
 	}
-	prior, exists := log.Dedup[dedupKey]
-	if !exists {
-		return Event{}, false, nil
+	keys := make(map[string]string, len(dedupKeys))
+	for _, key := range dedupKeys {
+		if prior, exists := log.Dedup[key]; exists {
+			keys[prior.Commit] = key
+		}
 	}
 	// The dedup index drops payload bytes, so the verified event carrying them
 	// is found by the commit the index named. Both come from this one scan, so
 	// no second read can disagree with the first.
+	prior := make(map[string]Event, len(keys))
 	for _, event := range log.Events {
-		if event.Commit == prior.Commit {
-			return event, true, nil
+		if key, held := keys[event.Commit]; held {
+			prior[key] = event
 		}
 	}
-	return Event{}, false, nil
+	return prior, nil
 }
 
 func validateRequestSize(request Request, decoded intent.Intent, ceiling uint64) error {
