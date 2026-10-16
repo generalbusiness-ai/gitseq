@@ -1909,7 +1909,7 @@ The client holds the decoder's copy of the answer and the decoded projection
 at once, and decoded memory is not bounded by the answer's size. A long string
 costs about its own bytes; a list of small objects can cost far more than its
 JSON, as when 20,000 empty artifact objects, 60 KB of JSON, decode into a
-4.2 MB array. Measured peaks: 370 MB for the real 71 MB artroom answer, and
+4.2 MB array. Measured peaks: 335 MB for the real 71 MB artroom answer, and
 1.87 GB in review for a 406 MiB answer padded with one long string. A larger
 log costs proportionally more. The read is admitted only from the address this
 checkout was given or advertises, and only once the listener there has named
