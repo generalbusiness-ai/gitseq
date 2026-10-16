@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
+	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
 )
 
@@ -153,5 +155,62 @@ func TestAdmissionRendersItsWorldOncePerHead(t *testing.T) {
 	}
 	if !bytes.Equal(encodedSnapshot(t, world), encodedSnapshot(t, audited)) {
 		t.Fatal("the admission world at the moved head differs from a read-only audit of the same log")
+	}
+}
+
+// snapshotTimings keeps the duration of every snapshot measurement by path.
+type snapshotTimings struct {
+	mu       sync.Mutex
+	recorded map[observe.Path][]time.Duration
+}
+
+func (o *snapshotTimings) Record(_ context.Context, measurement observe.Measurement) {
+	if measurement.Operation != observe.OperationSnapshot {
+		return
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.recorded[measurement.Path] = append(o.recorded[measurement.Path], measurement.Duration)
+}
+
+// A read that renders the projection a submission deferred is timed with the
+// render inside it. Recording first would report a whole-log render as a
+// near-instant cache hit.
+func TestADeferredRenderIsTimedByTheReadThatPaysForIt(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	initialised, seed, err := Init(ctx, testRepo(t), "human", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	timings := &snapshotTimings{recorded: make(map[observe.Path][]time.Duration)}
+	workspace, err := OpenObserved(ctx, initialised.Repo, timings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "deferred",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "deferred-render",
+	})
+	const render = 200 * time.Millisecond
+	workspace.renderTestHook = func(world string) {
+		if world == "snapshot" {
+			time.Sleep(render)
+		}
+	}
+	if _, err := workspace.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	timings.mu.Lock()
+	defer timings.mu.Unlock()
+	cached := timings.recorded[observe.PathCache]
+	if len(cached) == 0 {
+		t.Fatal("the read that rendered the deferred projection recorded no cache measurement")
+	}
+	if got := cached[len(cached)-1]; got < render {
+		t.Fatalf("the read that rendered the deferred projection was recorded as %v, less than the %v render inside it", got, render)
 	}
 }

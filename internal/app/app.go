@@ -2746,8 +2746,11 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		}); err != nil {
 			return SourcedSnapshot{}, err
 		}
-		w.recordSnapshot(ctx, observe.PathCache, started, w.snapshotCache.Depth, nil)
-		return SourcedSnapshot{Snapshot: w.renderedSnapshotCache(), Source: w.snapshotSource}, nil
+		// Rendered before it is recorded: a cache hit may carry the render a
+		// submission deferred, and that time belongs to this read.
+		snapshot := w.renderedSnapshotCache()
+		w.recordSnapshot(ctx, observe.PathCache, started, snapshot.Depth, nil)
+		return SourcedSnapshot{Snapshot: snapshot, Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
 		w.reader = w.newReader()
@@ -2794,7 +2797,9 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == loaded.Verification.Head {
-		return SourcedSnapshot{Snapshot: w.renderedSnapshotCache(), Source: w.snapshotSource}, nil
+		snapshot := w.renderedSnapshotCache()
+		w.recordSnapshot(ctx, observe.PathCache, started, snapshot.Depth, nil)
+		return SourcedSnapshot{Snapshot: snapshot, Source: w.snapshotSource}, nil
 	}
 	start := 0
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotProfile == profile && w.snapshotCache.Head != loaded.BaseHead {
