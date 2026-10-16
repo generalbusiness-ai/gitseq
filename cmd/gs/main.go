@@ -2555,7 +2555,9 @@ func submitAct(ctx context.Context, workspace *app.Workspace, serverURL, actorNa
 // of acts therefore reads the actor key once, and a local submission reuses the
 // workspace's resident verified frontier instead of scanning the log again.
 // Every command that writes for an author comes through here, so this is where
-// an author is told that the kind they wrote means nothing here.
+// an author whose act replayed is told that its kind means nothing here. A
+// freshly sequenced act needs no such telling: admission refused it unless its
+// kind is defined at the head it joined.
 func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, actorName string, private ed25519.PrivateKey, act app.Act) (app.Submission, error) {
 	request, err := workspace.BuildActRequest(ctx, private, actorName, act)
 	if err != nil {
@@ -2565,7 +2567,11 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 	if err != nil {
 		return app.Submission{}, explainLifecycleRefusal(err)
 	}
-	if act.Verb == app.VerbState {
+	// A state act sequenced now passed admission at the head it joined, and
+	// admission refuses a kind that head does not define, so only a replay —
+	// an act accepted before that refusal existed — can be one to warn about.
+	// Asking anyway cost a whole projection per act, read or folded here.
+	if act.Verb == app.VerbState && submission.Result.Replay {
 		warnUndefinedKind(ctx, workspace, serverURL, act.Kind)
 	}
 	return submission, nil
@@ -2592,9 +2598,10 @@ func explainLifecycleRefusal(err error) error {
 }
 
 // warnUndefinedKind tells an author, on the stream they are already reading,
-// that the act which just landed carries a kind no rule in this workroom
-// reads. The act stays: warning is the whole of the change, and refusing it
-// would hide the attempt. The vocabulary comes from the projection this
+// that the act they replayed carries a kind no rule in this workroom reads.
+// It is asked only for a replay, which was judged when first accepted and
+// perhaps before admission refused undefined kinds. The act stays: warning is
+// the whole of the change. The vocabulary comes from the projection this
 // session reads, which after a resident submission is the resident's own
 // answer at the head the act just made, so the warning costs a read rather
 // than a second fold of the log.
