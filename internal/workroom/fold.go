@@ -342,6 +342,11 @@ type parsedRecord struct {
 	definition *KindDefinition
 	declared   *KindDefinition
 	mergePlan  map[string]string
+	// publishedPaths is the receipt's declared successor paths, read once
+	// when its plan is sealed. publishedByMerge asks it of every artifact
+	// resting on the receipt in every staleness pass, and decoding the
+	// signed list each time was most of what one pass cost.
+	publishedPaths map[string]bool
 	// mergeArtifacts freezes the eligible exact-head review set at receipt
 	// admission. Delivery is independent of which predecessors may retire.
 	mergeArtifacts map[string]string
@@ -674,6 +679,9 @@ func (f *foldState) append(index int, record Record) {
 	if state, ok := body.(*State); ok && state.Kind == KindAssert && decision.Verdict == Effective {
 		parsed.decision = decision
 		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
+		if parsed.mergePlan != nil {
+			parsed.publishedPaths = publishedPathSet(state.Body["merge_successors"])
+		}
 		_, leftPresent := state.Body["merge_left_live"]
 		_, changedPresent := state.Body["merge_changed_paths"]
 		if parsed.mergePlan != nil && (leftPresent || changedPresent) {
@@ -2678,6 +2686,10 @@ func (s *stalenessScope) computeStaleness(targets []string, successors map[strin
 	// cannot change once the pass has reached a successor. The memo is per pass
 	// because the narrowed plan depends on this pass's successors.
 	settled := make(map[string]bool)
+	// narrowed memoizes each receipt's narrowed plan for this pass. The plan
+	// and the retirements and successors it is narrowed by are fixed for the
+	// pass, so every record that borrows a receipt's plan reads the same map.
+	narrowed := make(map[string]map[string]string)
 	for _, index := range s.closure(targets) {
 		record := &f.records[index]
 		// A record past the scope's position cannot carry a fact the question
@@ -2697,7 +2709,7 @@ func (s *stalenessScope) computeStaleness(targets []string, successors map[strin
 		// retirement of its approval, request, or any other basis still
 		// propagates normally. The plan is a property of the record, not of the
 		// basis being examined, so it is read once.
-		plan := s.withoutCondemnedSuccessions(s.mergeSuccessionPlan(record), successors)
+		plan := s.mergeSuccessionPlan(record, successors, narrowed)
 		for _, basis := range record.record.RestsOn {
 			if plan != nil {
 				if _, intended := plan[basis]; intended && s.retired(basis) {
@@ -2884,25 +2896,33 @@ func (f *foldState) activeRetirements() map[string]int {
 // merge actually published — resting on the receipt, standing at its merge
 // head, at one of its declared successor paths. Everything else inherits
 // staleness from a current successor in the ordinary way.
-func (s *stalenessScope) mergeSuccessionPlan(record *parsedRecord) map[string]string {
-	own := s.receiptPlan(record)
-	var carried []map[string]string
+//
+// The plan returned is already narrowed by withoutCondemnedSuccessions.
+// Narrowing drops entries by key alone, so narrowing each receipt's plan once
+// and combining the results is the same map as combining first and narrowing
+// after; memo holds each receipt's narrowed plan for the pass. The result may
+// be a map held in memo, so callers read it and never write to it.
+func (s *stalenessScope) mergeSuccessionPlan(record *parsedRecord, successors map[string]string, memo map[string]map[string]string) map[string]string {
+	own := s.narrowedReceiptPlan(record, successors, memo)
+	var plans []map[string]string
+	if own != nil {
+		plans = append(plans, own)
+	}
 	for _, basis := range record.record.RestsOn {
 		receipt := s.f.byID[basis]
-		plan := s.receiptPlan(receipt)
-		if len(plan) == 0 || !s.f.publishedByMerge(record, receipt) {
+		if len(s.receiptPlan(receipt)) == 0 || !s.f.publishedByMerge(record, receipt) {
 			continue
 		}
-		carried = append(carried, plan)
+		plans = append(plans, s.narrowedReceiptPlan(receipt, successors, memo))
 	}
-	if len(carried) == 0 {
-		return own
+	switch len(plans) {
+	case 0:
+		return nil
+	case 1:
+		return plans[0]
 	}
-	combined := make(map[string]string, len(own))
-	for target, successor := range own {
-		combined[target] = successor
-	}
-	for _, plan := range carried {
+	combined := make(map[string]string)
+	for _, plan := range plans {
 		for target, successor := range plan {
 			combined[target] = successor
 		}
@@ -2910,10 +2930,27 @@ func (s *stalenessScope) mergeSuccessionPlan(record *parsedRecord) map[string]st
 	return combined
 }
 
+// narrowedReceiptPlan is receiptPlan narrowed by withoutCondemnedSuccessions,
+// computed once per receipt per pass.
+func (s *stalenessScope) narrowedReceiptPlan(receipt *parsedRecord, successors map[string]string, memo map[string]map[string]string) map[string]string {
+	plan := s.receiptPlan(receipt)
+	if plan == nil {
+		return nil
+	}
+	if narrowed, known := memo[receipt.record.ID]; known {
+		return narrowed
+	}
+	narrowed := s.withoutCondemnedSuccessions(plan, successors)
+	memo[receipt.record.ID] = narrowed
+	return narrowed
+}
+
 // publishedByMerge reports whether a record is one of the artifacts a receipt's
 // own merge stood up: at that merge's head, at a path the receipt declared it
 // would publish. Both facts come from the receipt, which is signed, and from
-// the artifact itself, so neither can be claimed by a bystander.
+// the artifact itself, so neither can be claimed by a bystander. The declared
+// paths are read once, when the receipt's plan is sealed, so a receipt without
+// a sealed plan published nothing here; every caller asks only of one with.
 func (f *foldState) publishedByMerge(record, receipt *parsedRecord) bool {
 	if record.definition == nil || record.definition.Render != RenderArtifact {
 		return false
@@ -2926,16 +2963,23 @@ func (f *foldState) publishedByMerge(record, receipt *parsedRecord) bool {
 	if !ok || signed.Body["merge_head"] == "" || published.Body["commit"] != signed.Body["merge_head"] {
 		return false
 	}
+	return receipt.publishedPaths[published.Body["path"]]
+}
+
+// publishedPathSet is the set of non-empty paths in a receipt's signed
+// merge_successors list, or nil when the list does not decode.
+func publishedPathSet(raw string) map[string]bool {
 	var successors []string
-	if err := json.Unmarshal([]byte(signed.Body["merge_successors"]), &successors); err != nil {
-		return false
+	if err := json.Unmarshal([]byte(raw), &successors); err != nil {
+		return nil
 	}
+	paths := make(map[string]bool, len(successors))
 	for _, path := range successors {
-		if path != "" && path == published.Body["path"] {
-			return true
+		if path != "" {
+			paths[path] = true
 		}
 	}
-	return false
+	return paths
 }
 
 func (s *stalenessScope) stalenessCoveredByMergePlan(event string, plan map[string]string, stale map[string]bool, visiting map[string]bool) bool {
