@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review preflight scan reuse at exact 0367d247ca5fc5f1e884c917bc319a1fce554c30, checking the one-frontier key lookup, resume preflights and named failure-position controls."}
+{"kind":"promise","text":"I will independently review the bounded resident-status read at exact a440adaeea6b9037fc37856fb23ff341172018dc, checking local-count bounds, before-and-after frontier identity, fallback behavior and documentation of memory costs."}
