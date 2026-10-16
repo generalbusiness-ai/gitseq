@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
+	"syscall"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
@@ -73,4 +76,33 @@ func withMergeSuccessionDeadline(ctx context.Context) context.Context {
 		return ctx
 	}
 	return context.WithValue(ctx, submitDeadlineKey{}, mergeSuccessionDeadline)
+}
+
+// mergeSuccessionRefusal says how to recover when a merge's durable suffix
+// stops after the target has moved. When the resident's answer was lost — the
+// wait ran out, or the connection closed before a response — the act it was
+// sent may already have landed, and nothing about a batch file applies: the
+// merge resumes from the receipt sealed in Git. Any other failure is reported
+// as it came.
+func mergeSuccessionRefusal(err error, receipt mergeReceipt) error {
+	var failure *batchError
+	if !errors.As(err, &failure) || failure.cause == nil || !answerLost(failure.cause) {
+		return fmt.Errorf("record merge succession: %w", err)
+	}
+	return fmt.Errorf("record merge succession: the target already carries merge %s, but the resident's answer was lost, "+
+		"so the act it was sent may already have landed (%w). Run the same gs merge or gs land again: it finds the "+
+		"receipt sealed in Git and appends only what is still missing", receipt.MergeHead, failure.cause)
+}
+
+// answerLost reports whether a submission failed without a definite answer:
+// the deadline expired, or the exchange broke after the request was sent. A
+// refused dial reached no resident, and a complete refusal is an answer.
+func answerLost(err error) bool {
+	if residentclient.TimedOut(err) {
+		return true
+	}
+	if errors.Is(err, syscall.ECONNREFUSED) {
+		return false
+	}
+	return residentclient.IsTransportError(err) || residentclient.IsReadError(err)
 }

@@ -101,7 +101,12 @@ error. The landed head is printed on standard output.
    anything is staged or reserved. A refusal prints every reason it gave.
 6. **Merge.** `gs merge`'s locked path. If the workroom frontier moved
    between planning and landing, that refusal leaves nothing behind, so
-   the merge is planned and run once more.
+   the merge is planned and run once more. Once the target has moved, the
+   receipt and its succession wait for the resident as
+   [`gs merge`](merge.md#the-receipt-waits-for-the-resident) describes. If
+   the resident's answer is still lost, the target already carries the
+   merge: run the same `gs land` again, and it resumes from the receipt
+   sealed in Git and appends only what is still missing.
 7. **Push.** `git push origin <target ref>`. A repository with no origin
    is an ordinary arrangement and is reported, not failed. A push that
    fails with an origin present *is* an error: the next step would delete

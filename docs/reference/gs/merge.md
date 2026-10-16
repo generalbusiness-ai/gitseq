@@ -119,15 +119,22 @@ durable receipt until somebody ran it again.
 So from the moment the target moves, each of those submissions waits up to
 **ten minutes** for the resident to answer, or `--deadline` when that is
 longer. A shorter `--deadline` still governs everything before the move,
-where giving up changes nothing. Ten minutes is far above what a resident
-needs: a resident started cold on a log 43,744 events deep, on a busy
-machine, answered the receipt in about 20 seconds. Most of that time went on
-reading and folding the whole log once, which a resident does before it
-judges its first submission. Each later act took less than two seconds.
+where giving up changes nothing. The first submission a resident receives
+after it starts is the slow one: the resident reads and folds the whole log
+before it can judge it. Ten minutes leaves wide room for that on a large log.
 
-If the resident still has not answered at the bound, the merge stops and
-says the act may already have landed. Run the same `gs merge` again: it
-finds the sealed receipt in Git and appends only what is missing.
+The bound is per submission, not per landing. A landing submits one receipt
+and then one act for each retirement and successor its
+[merge plan](merge-plan.md) lists, so in the worst case it waits that many
+acts times ten minutes. A resident that answers at all answers far sooner,
+and a run that is stopped or interrupted loses nothing it already recorded.
+
+If an answer is lost — the wait runs out, or the connection closes before a
+response — the merge stops and says that the target already carries the
+merge and the act may already have landed. Run the same `gs merge`, or the
+same [`gs land`](land.md), again: it finds the receipt sealed in Git and
+appends only what is still missing. An act that already landed is
+recognised and is not appended twice.
 
 ## When the world moved
 

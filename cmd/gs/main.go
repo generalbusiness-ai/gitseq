@@ -2062,9 +2062,13 @@ type batchAct struct {
 type batchError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
+	// cause is the submission failure behind a "submit" error, kept so a
+	// caller can tell a lost answer from a refusal.
+	cause error
 }
 
 func (e *batchError) Error() string { return "batch " + e.Code + ": " + e.Message }
+func (e *batchError) Unwrap() error { return e.cause }
 
 func batchFail(code, format string, arguments ...any) *batchError {
 	return &batchError{Code: code, Message: fmt.Sprintf(format, arguments...)}
@@ -2312,6 +2316,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 		submission, err := submitSigned(ctx, workspace, serverURL, actorName, private, act)
 		if err != nil {
 			failure := batchFail("submit", "%v", batchSubmitRefusal(err, position, acts, submitDeadline(ctx)))
+			failure.cause = err
 			report.Acts[position].Outcome = "failed"
 			report.Error = failure
 			return report, failure
@@ -3402,16 +3407,17 @@ func residentHTTPServer(handler http.Handler) *http.Server {
 }
 
 // residentHTTPHandler removes the connection-wide response deadline only for
-// /v0/status and /v0/submit. A cold verified rebuild can legitimately take
-// longer than the ordinary response budget, and abandoning the client response
-// does not stop that shared rebuild. A submission can need the same rebuild
-// before it is judged, and its client already says how long it will wait: a
-// merge's receipt waits up to mergeSuccessionDeadline. Cutting that answer off
-// at the server's budget would turn an append that landed into an error that
-// reads as a refusal. Every other route keeps the server's write deadline.
+// /v0/status and the two routes that append, /v0/submit and the browser's
+// /v0/act. A cold verified rebuild can legitimately take longer than the
+// ordinary response budget, and abandoning the client response does not stop
+// that shared rebuild. An append can need the same rebuild before it is
+// judged, and its client already says how long it will wait: a merge's receipt
+// waits up to mergeSuccessionDeadline. Cutting that answer off at the server's
+// budget would turn an append that landed into an error that reads as a
+// refusal. Every other route keeps the server's write deadline.
 func residentHTTPHandler(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.URL.Path == "/v0/status" || request.URL.Path == "/v0/submit" {
+		if request.URL.Path == "/v0/status" || request.URL.Path == "/v0/submit" || request.URL.Path == "/v0/act" {
 			if err := http.NewResponseController(writer).SetWriteDeadline(time.Time{}); err != nil {
 				http.Error(writer, "response deadline could not be cleared", http.StatusInternalServerError)
 				return

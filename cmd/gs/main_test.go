@@ -175,7 +175,7 @@ func TestResidentHTTPServerBoundsSlowRequestBodies(t *testing.T) {
 	}
 }
 
-func TestResidentHTTPServerLetsColdStatusAndSubmitOutliveWriteTimeout(t *testing.T) {
+func TestResidentHTTPServerLetsColdStatusAndAppendsOutliveWriteTimeout(t *testing.T) {
 	t.Parallel()
 	const writeTimeout = 50 * time.Millisecond
 	handler := residentHTTPHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -202,9 +202,10 @@ func TestResidentHTTPServerLetsColdStatusAndSubmitOutliveWriteTimeout(t *testing
 			DisableKeepAlives: true,
 		},
 	}
-	// A submission is the other exception: its client says how long it will
-	// wait, and a merge's receipt waits far longer than the server's budget.
-	for _, route := range []string{"/v0/status", "/v0/submit"} {
+	// The two routes that append are the other exceptions: a client says how
+	// long it will wait, and a merge's receipt waits far longer than the
+	// server's budget.
+	for _, route := range []string{"/v0/status", "/v0/submit", "/v0/act"} {
 		response, err := client.Get("http://" + listener.Addr().String() + route)
 		if err != nil {
 			t.Fatalf("slow %s was cut by the ordinary write deadline: %v", route, err)

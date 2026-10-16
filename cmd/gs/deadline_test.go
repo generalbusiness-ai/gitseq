@@ -3,14 +3,19 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/residentclient"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -375,5 +380,192 @@ func TestMergeRecordsItsReceiptFromAResidentSlowerThanTheDeadline(t *testing.T) 
 	}
 	if after := f.snapshot(t); after.Depth <= before.Depth {
 		t.Fatalf("merge returned without its durable suffix: depth %d -> %d", before.Depth, after.Depth)
+	}
+}
+
+// slowResident answers every submission only after delay, through a real
+// resident, and counts what it was sent.
+func slowResident(t *testing.T, workspace *app.Workspace, delay time.Duration) (string, *atomic.Int64) {
+	t.Helper()
+	resident, err := service.New(workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var submitted atomic.Int64
+	slow := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/submit" {
+			submitted.Add(1)
+			time.Sleep(delay)
+		}
+		resident.Handler().ServeHTTP(writer, request)
+	}))
+	t.Cleanup(slow.Close)
+	return slow.URL, &submitted
+}
+
+// requireSuccessionComplete asks the shared merge planner whether anything of
+// the landing is still owed.
+func requireSuccessionComplete(t *testing.T, f workflowFixture, approval string) {
+	t.Helper()
+	actor, private, err := f.workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := mergeplan.Build(f.ctx, f.workspace, f.repo, f.candidate, approval,
+		actor.Fingerprint, mergeplan.Signer{Name: "operator", Private: private})
+	if !plan.Allowed || plan.Mode != "complete" {
+		t.Fatalf("the merge still owes durable work: %+v", plan)
+	}
+}
+
+// The resume path reaches the durable suffix without moving anything: the
+// receipt is already sealed in Git. It must wait for a slow resident exactly as
+// the fresh path does, because its target moved on the earlier run.
+func TestResumedMergeRecordsItsReceiptFromAResidentSlowerThanTheDeadline(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	approval := f.review(t)
+	f.ratify(t, approval)
+	target := mergeplan.Target{Repo: mergeplan.WorkroomRepo(f.workspace), Ref: "refs/heads/main",
+		PreHead: testGit(t, f.repo, "rev-parse", "HEAD")}
+	sealReceipt(t, f, approval, target, false)
+
+	const deadline = 100 * time.Millisecond
+	server, submitted := slowResident(t, f.workspace, 5*deadline)
+	if err := mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+		"--candidate", f.candidate, "--approval", approval, "--text", "Land the approved feature.",
+		"--server", server, "--deadline", deadline.String()}); err != nil {
+		t.Fatalf("resumed merge under a %s deadline against a slower resident: %v", deadline, err)
+	}
+	if submitted.Load() == 0 {
+		t.Fatal("the resumed merge never submitted through the slow resident, so this proves nothing")
+	}
+	requireSuccessionComplete(t, f, approval)
+}
+
+// Before the target moves, giving up costs nothing, so the ordinary deadline
+// still governs. gs land's own ratification is the act it files first: against
+// a resident that never answers in time it must stop at --deadline, not wait
+// out the merge's bound, and leave the target where it was.
+func TestLandRatifiesUnderTheOrdinaryDeadlineBeforeTheMove(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	approval := f.review(t)
+	resident, err := service.New(f.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A stalled submission is answered with a refusal after a few seconds, so
+	// a land that waited longer than its deadline says so instead of hanging.
+	const answerAfter = 4 * time.Second
+	stalled := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/submit" {
+			resident.Handler().ServeHTTP(writer, request)
+			return
+		}
+		select {
+		case <-request.Context().Done():
+		case <-time.After(answerAfter):
+			http.Error(writer, `{"error":"answered late"}`, http.StatusServiceUnavailable)
+		}
+	}))
+	t.Cleanup(stalled.Close)
+
+	before := testGit(t, f.repo, "rev-parse", "HEAD")
+	started := time.Now()
+	err = landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+		"--checkout", f.repo, "--text", "Land the approved feature.",
+		"--server", stalled.URL, "--deadline", "200ms"})
+	waited := time.Since(started)
+	if err == nil || !strings.Contains(err.Error(), "ratify approval") || !residentclient.TimedOut(err) {
+		t.Fatalf("land against a stalled resident = %v, want its ratification to time out", err)
+	}
+	if waited >= answerAfter {
+		t.Fatalf("land waited %s for a ratification under a 200ms deadline", waited)
+	}
+	if after := testGit(t, f.repo, "rev-parse", "HEAD"); after != before {
+		t.Fatalf("a land whose ratification timed out moved the target: %s -> %s", before, after)
+	}
+}
+
+// A lost answer after the move must say how to finish, and what it says must
+// work. Here the resident sequences the receipt and then drops the connection
+// without answering, so the act has landed and the merge cannot know it. The
+// refusal has to name the rerun, not a batch file the author never wrote, and
+// a plain rerun of gs land must then finish the whole succession.
+func TestMergeSaysHowToResumeWhenTheReceiptsAnswerIsLost(t *testing.T) {
+	t.Parallel()
+	f := newWorkflowFixture(t)
+	approval := f.review(t)
+	f.ratify(t, approval)
+	resident, err := service.New(f.workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dropped atomic.Int64
+	lossy := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/submit" || dropped.Load() > 0 {
+			resident.Handler().ServeHTTP(writer, request)
+			return
+		}
+		dropped.Add(1)
+		resident.Handler().ServeHTTP(httptest.NewRecorder(), request)
+		connection, _, err := http.NewResponseController(writer).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		connection.Close()
+	}))
+	t.Cleanup(lossy.Close)
+
+	before := testGit(t, f.repo, "rev-parse", "HEAD")
+	err = mergeCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--checkout", f.repo,
+		"--candidate", f.candidate, "--approval", approval, "--text", "Land the approved feature.",
+		"--server", lossy.URL})
+	if err == nil {
+		t.Fatal("a merge whose receipt answer was lost reported success")
+	}
+	for _, want := range []string{"the target already carries merge", "may already have landed",
+		"Run the same gs merge or gs land again"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("lost-answer refusal does not say %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "Run the same file again") {
+		t.Fatalf("a merge was told to rerun a batch file: %v", err)
+	}
+	if after := testGit(t, f.repo, "rev-parse", "HEAD"); after == before {
+		t.Fatal("the merge never moved its target, so this is not the case under test")
+	}
+
+	healthy := httptest.NewServer(resident.Handler())
+	t.Cleanup(healthy.Close)
+	if err := landCommand(f.ctx, []string{"--repo", f.repo, "--as", "operator", "--approval", approval,
+		"--checkout", f.repo, "--text", "Land the approved feature.", "--server", healthy.URL}); err != nil {
+		t.Fatalf("rerunning gs land after a lost receipt answer: %v", err)
+	}
+	requireSuccessionComplete(t, f, approval)
+}
+
+// Only a submission whose answer never arrived is a lost answer. A refused
+// dial reached no resident, and a resident's refusal is a definite answer.
+func TestAnswerLostSeparatesALostAnswerFromAnAnswer(t *testing.T) {
+	timeout := &url.Error{Op: "Post", URL: "http://127.0.0.1/v0/submit", Err: context.DeadlineExceeded}
+	eof := &residentclient.TransportError{Err: &url.Error{Op: "Post", URL: "http://127.0.0.1/v0/submit", Err: io.EOF}}
+	truncated := &residentclient.ReadError{Err: io.ErrUnexpectedEOF}
+	refused := &residentclient.TransportError{Err: &url.Error{Op: "Post", URL: "http://127.0.0.1/v0/submit",
+		Err: &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}}}
+	answered := &residentclient.HTTPError{StatusCode: http.StatusConflict, Status: "409 Conflict", Message: "refused"}
+	for name, test := range map[string]struct {
+		err  error
+		want bool
+	}{
+		"timeout": {timeout, true}, "connection closed": {eof, true}, "body cut short": {truncated, true},
+		"refused dial": {refused, false}, "refusal": {answered, false}, "plain error": {errors.New("x"), false},
+	} {
+		if got := answerLost(test.err); got != test.want {
+			t.Errorf("%s: answerLost = %v, want %v", name, got, test.want)
+		}
 	}
 }
