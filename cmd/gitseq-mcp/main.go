@@ -1778,8 +1778,10 @@ func (s *mcpServer) withKindWarning(ctx context.Context, current *room, act app.
 	// One snapshot serves both answers. This call site needs one anyway for the
 	// projection notes, and a snapshot can be a cold fold, so reading a second
 	// one for the undefined-kind warning would pay for that twice on every
-	// act. Every authoring surface derives the warning from the projection it
-	// already holds, which is what cmd/gs does too.
+	// act. This surface derives the warning from the projection it already
+	// holds for every state act. cmd/gs holds no such projection after a
+	// freshly admitted act, whose kind admission has just found defined, so it
+	// asks only for a replay.
 	snapshot, err := current.workspace.Snapshot(ctx)
 	if err != nil {
 		if act.Verb == app.VerbState {
