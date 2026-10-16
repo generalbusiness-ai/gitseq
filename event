@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"cmd/gs/succession.go at exact 8db845ec1a9c030cd0f14f04b3362d2d31c72bfa on request/receipt-deadline, under promise git:sha1…b3f7aea on request git:sha1…469f7f2","body":{"commit":"8db845ec1a9c030cd0f14f04b3362d2d31c72bfa","path":"cmd/gs/succession.go"}}
+{"kind":"artifact","text":"docs/reference/gs/land.md at exact 8db845ec1a9c030cd0f14f04b3362d2d31c72bfa on request/receipt-deadline, under promise git:sha1…b3f7aea on request git:sha1…469f7f2","body":{"commit":"8db845ec1a9c030cd0f14f04b3362d2d31c72bfa","path":"docs/reference/gs/land.md"}}
