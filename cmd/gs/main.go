@@ -2732,8 +2732,9 @@ func completeStatus(snapshot app.Snapshot) completeJSON {
 const (
 	summaryResponseLimit = 64 << 10
 	// fullResponseIdle is how long the complete status read waits with no
-	// byte arriving. It is not a deadline on the whole read, which grows with
-	// the log; see fetchFullStatus.
+	// byte arriving, and how long the summary read that identifies the
+	// resident before it may take. It is not a deadline on the whole complete
+	// read, which grows with the log; see fetchFullStatus.
 	fullResponseIdle = 10 * time.Second
 )
 
@@ -2768,12 +2769,19 @@ func requireLocalAuthorityWrite(workspace *app.Workspace, explicit, command stri
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
+	return fetchSummaryWithin(ctx, workspace, raw, 2*time.Second)
+}
+
+// fetchSummaryWithin is fetchSummary with its deadline named, so the identity
+// read before the complete status keeps the ten seconds that read always had
+// rather than the two the summary display is given.
+func fetchSummaryWithin(ctx context.Context, workspace *app.Workspace, raw string, timeout time.Duration) (service.SummaryStatus, error) {
 	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return service.SummaryStatus{}, err
 	}
 	var summary service.SummaryStatus
-	if err := residentclient.New(2*time.Second).GetJSON(ctx, raw, "/v0/status-summary", summaryResponseLimit, &summary); err != nil {
+	if err := residentclient.New(timeout).GetJSON(ctx, raw, "/v0/status-summary", summaryResponseLimit, &summary); err != nil {
 		return service.SummaryStatus{}, err
 	}
 	if err := validateRemoteFrontierAt(ctx, workspace, before, summary.Durable.Genesis, summary.Durable.Head); err != nil {
@@ -2800,7 +2808,7 @@ func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw string) 
 	if err != nil {
 		return service.Status{}, err
 	}
-	if _, err := fetchSummary(ctx, workspace, raw); err != nil {
+	if _, err := fetchSummaryWithin(ctx, workspace, raw, fullResponseIdle); err != nil {
 		return service.Status{}, err
 	}
 	var status service.Status

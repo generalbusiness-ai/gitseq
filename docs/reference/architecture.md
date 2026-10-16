@@ -1889,8 +1889,9 @@ resident's word for what the log says, and nothing local re-derives them. Two
 limits are worth naming with them. The complete answer is as large as the log,
 so it has no byte ceiling; who is answering is settled before it is read
 instead. The command first reads the resident's bounded summary, under the
-64 KiB and two-second limits `gs status` uses, and goes on only if that names
-this workroom's genesis and this checkout's head, unmoved across the read. A
+64 KiB limit `gs status` uses and a ten-second deadline, and goes on only if
+that names this workroom's genesis and this checkout's head, unmoved across the
+read. A
 listener serving another workroom, or a resident behind this checkout, is
 refused there, before anything large is read. The complete answer is then
 decoded as it streams, with no deadline on the whole read: it is abandoned only

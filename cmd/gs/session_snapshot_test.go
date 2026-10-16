@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
 	"github.com/generalbusiness-ai/gitseq/internal/kernel"
@@ -633,5 +634,32 @@ func TestResidentStatusRefusesAHeadThatMovedDuringTheRead(t *testing.T) {
 	})
 	if _, err := residentStatus(ctx, workspace, url); err == nil || !strings.Contains(err.Error(), "moved while resident status was read") {
 		t.Fatalf("an answer read across a moving ref was accepted or refused for another reason: %v", err)
+	}
+}
+
+// The identity read before the complete status is given the ten seconds the
+// complete read always had, not the two the summary display is given, so a
+// loaded resident that answers its summary slowly still answers the session.
+func TestSessionSnapshotGivesTheIdentityReadTheCompleteReadsDeadline(t *testing.T) {
+	ctx := context.Background()
+	workspace, summary := statusSummaryFixture(t)
+	server, err := service.NewObserved(workspace, nopObserver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int64
+	listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/status-summary" {
+			time.Sleep(3 * time.Second)
+		}
+		server.Handler().ServeHTTP(writer, request)
+	}))
+	var progress strings.Builder
+	snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, listener.URL, refusedLocalLoad(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Head != summary.Durable.Head {
+		t.Fatalf("session head = %s, want %s; stderr %q", snapshot.Head, summary.Durable.Head, progress.String())
 	}
 }
