@@ -109,27 +109,45 @@ type Workspace struct {
 	snapshotCache  *Snapshot
 	snapshotSource SnapshotSource
 	snapshotFolder *workroom.Folder
+	// snapshotUnrendered says snapshotCache names the head snapshotFolder has
+	// reached but does not yet hold its projection. A submission this
+	// workspace sequenced advances the fold by one event and stops there:
+	// rendering the whole projection is work proportional to the log, and a
+	// chain of acts with no reader between them would otherwise pay it once
+	// per act for answers nobody reads. The first reader renders it, under
+	// snapshotMu, from exactly the fold an eager render would have used.
+	snapshotUnrendered bool
 	// snapshotProfile gates application-derived state independently of the
 	// kernel's profile-independent verified-event checkpoint.
 	snapshotProfile string
 	// admissionReader and admissionFolder hold the private verified world the
 	// admission guards judge against, on both the signing path and the
 	// sequencing path. They deliberately share nothing with the reader-side
-	// snapshot: no rollback witness, no checkpoint writes, and no
-	// cached-projection reuse, because admission must judge the exact position
+	// snapshot: no rollback witness, no checkpoint writes, and no reuse of its
+	// cached projection, because admission must judge the exact position
 	// an event would extend even when a reader would refuse the journey there.
 	// Every use takes admissionMu, which nests inside the sequencer lock the
 	// post-dedup hook runs under and is free-standing on the signing path.
-	admissionMu        sync.Mutex
-	admissionReader    *kernel.Reader
-	admissionFolder    *workroom.Folder
+	admissionMu     sync.Mutex
+	admissionReader *kernel.Reader
+	admissionFolder *workroom.Folder
+	// admissionWorldAt is admissionFolder's own projection at the head it
+	// was last rendered for. Nothing else ever fills it, so it is the same
+	// private world, rendered once per position: judging several acts
+	// against one unmoved head, as a batch preflight does, reads it again
+	// instead of rendering the whole projection anew for each act.
+	admissionWorldAt   *Snapshot
 	flightMu           sync.Mutex
 	flight             atomic.Pointer[snapshotFlight]
 	rebuildTestGate    func(kernel.Progress)
 	projectionTestGate func(int)
-	reader             *kernel.Reader
-	submitterOnce      sync.Once
-	submitter          *kernel.Submitter
+	// renderTestHook, when a test sets it, is told each time this workspace
+	// renders a whole projection, and which world it rendered: "snapshot" or
+	// "admission".
+	renderTestHook func(string)
+	reader         *kernel.Reader
+	submitterOnce  sync.Once
+	submitter      *kernel.Submitter
 
 	worktreesMu       sync.Mutex
 	worktreesCached   []WorktreeView
@@ -2502,12 +2520,34 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 		return
 	}
 	w.snapshotFolder.Append(record)
+	w.snapshotCache = &Snapshot{Genesis: w.snapshotCache.Genesis, Head: result.Head, Depth: w.snapshotCache.Depth + 1}
+	w.snapshotUnrendered = true
+	w.snapshotSource = SnapshotSourceIncrementalTail
+}
+
+// renderedSnapshotCache is the cached snapshot with its projection rendered,
+// rendering it first if acceptSnapshot left it unrendered. The caller holds
+// snapshotMu and has checked that snapshotCache is present.
+func (w *Workspace) renderedSnapshotCache() Snapshot {
+	if w.snapshotUnrendered {
+		w.renderSnapshot(w.snapshotCache.Genesis, w.snapshotCache.Head, w.snapshotCache.Depth)
+	}
+	return *w.snapshotCache
+}
+
+// renderSnapshot publishes the projection of snapshotFolder at the given
+// frontier as the cached snapshot. The caller holds snapshotMu.
+func (w *Workspace) renderSnapshot(genesis, head string, depth int) Snapshot {
+	if w.renderTestHook != nil {
+		w.renderTestHook("snapshot")
+	}
 	snapshot := Snapshot{
-		Genesis: w.snapshotCache.Genesis, Head: result.Head, Depth: w.snapshotCache.Depth + 1,
+		Genesis: genesis, Head: head, Depth: depth,
 		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
 	}
 	w.snapshotCache = &snapshot
-	w.snapshotSource = SnapshotSourceIncrementalTail
+	w.snapshotUnrendered = false
+	return snapshot
 }
 
 func cloneAttachments(input map[string][]byte) map[string][]byte {
@@ -2707,7 +2747,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 			return SourcedSnapshot{}, err
 		}
 		w.recordSnapshot(ctx, observe.PathCache, started, w.snapshotCache.Depth, nil)
-		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
+		return SourcedSnapshot{Snapshot: w.renderedSnapshotCache(), Source: w.snapshotSource}, nil
 	}
 	if w.reader == nil {
 		w.reader = w.newReader()
@@ -2754,7 +2794,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == loaded.Verification.Head {
-		return SourcedSnapshot{Snapshot: *w.snapshotCache, Source: w.snapshotSource}, nil
+		return SourcedSnapshot{Snapshot: w.renderedSnapshotCache(), Source: w.snapshotSource}, nil
 	}
 	start := 0
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotFolder != nil && w.snapshotProfile == profile && w.snapshotCache.Head != loaded.BaseHead {
@@ -2821,11 +2861,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(loaded.Events[start:]))})
 		}
 	}
-	snapshot := Snapshot{
-		Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth,
-		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
-	}
-	w.snapshotCache = &snapshot
+	snapshot := w.renderSnapshot(loaded.Verification.Genesis, loaded.Verification.Head, loaded.Verification.Depth)
 	w.snapshotProfile = profile
 	w.snapshotSource = source
 	w.recordSnapshot(ctx, path, started, snapshot.Depth, nil)

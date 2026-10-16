@@ -408,8 +408,18 @@ func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, chec
 			return Snapshot{}, err
 		}
 	}
-	return Snapshot{
+	// A head is a commit, and so names the whole verified history under it:
+	// any fold of the log at that head renders this same projection.
+	if world := w.admissionWorldAt; world != nil && world.Head == loaded.Verification.Head {
+		return *world, nil
+	}
+	if w.renderTestHook != nil {
+		w.renderTestHook("admission")
+	}
+	world := Snapshot{
 		Genesis: w.config.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth,
 		Projection: folder.Projection(), Vocabulary: folder.Vocabulary(),
-	}, nil
+	}
+	w.admissionWorldAt = &world
+	return world, nil
 }
