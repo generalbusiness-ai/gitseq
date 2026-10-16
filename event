@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently review the bounded resident-status read at exact a440adaeea6b9037fc37856fb23ff341172018dc, checking local-count bounds, before-and-after frontier identity, fallback behavior and documentation of memory costs."}
+{"kind":"promise","text":"I will independently review receipt deadline handling at exact 7ce77670f3f0a2f750863dd7d8a021823da24b9c, including post-move timeout recovery, unchanged pre-move deadlines and actionable resume instructions."}
