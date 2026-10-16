@@ -348,7 +348,8 @@ That read is deliberately narrow: no redirects are followed, the response
 is limited to 64 KiB and the request to two seconds, and the returned
 genesis, head, depth and cursor must still match the workroom selected
 here. `--all` and `--json` use the resident's full response instead, with
-a larger limit and a longer deadline.
+a ten-second deadline and a limit that grows with the log: 64 MiB plus
+8 KiB for every record of this checkout's own sequence, counted locally.
 
 A refusal, a timeout, an oversized response, a stale head, or a head that
 moves while the answer is being read is **named on standard error** and

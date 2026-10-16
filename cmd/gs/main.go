@@ -2701,7 +2701,16 @@ func completeStatus(snapshot app.Snapshot) completeJSON {
 
 const (
 	summaryResponseLimit = 64 << 10
-	fullResponseLimit    = 64 << 20
+	// The complete status answer grows with the log, so its ceiling does too:
+	// fullResponseFloor, plus fullResponseBytesPerRecord for every record of
+	// this checkout's own sequence. A fixed 64 MiB ceiling was crossed as the
+	// artroom log grew, and past it every resident-sourced command fell back
+	// to the local audit. The allowance is about four times the largest
+	// average measured, 2.2 KiB a record at gitseq's depth 24,756 on
+	// 2026-10-16, so growth in depth does not reach it, while what the client
+	// reads stays linear in the records it can count for itself.
+	fullResponseFloor          = 64 << 20
+	fullResponseBytesPerRecord = 8 << 10
 )
 
 // localFold is the --server value that forces the local verified fold; the
@@ -2752,10 +2761,30 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 	return summary, nil
 }
 
-func fetchFullStatus(ctx context.Context, raw string) (service.Status, error) {
+// fetchFullStatus reads the resident's complete projection, bounded by
+// fullResponseLimit at head: the sequence ref this checkout read before
+// asking.
+func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw, head string) (service.Status, error) {
+	limit, err := fullResponseLimit(ctx, workspace, head)
+	if err != nil {
+		return service.Status{}, err
+	}
 	var status service.Status
-	err := residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", fullResponseLimit, &status)
+	err = residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", limit, &status)
 	return status, err
+}
+
+// fullResponseLimit is the ceiling on a complete status answer about the log
+// up to head. The records are counted in this checkout's own Git history, not
+// taken from the resident, so a resident cannot raise the ceiling it is read
+// under: any answer it gives about a deeper log fails the frontier check that
+// follows the read.
+func fullResponseLimit(ctx context.Context, workspace *app.Workspace, head string) (int64, error) {
+	records, err := workspace.Store.Count(ctx, head)
+	if err != nil {
+		return 0, err
+	}
+	return fullResponseFloor + int64(records)*fullResponseBytesPerRecord, nil
 }
 
 func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genesis, head string) error {

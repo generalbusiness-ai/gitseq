@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -365,5 +368,161 @@ func TestWorkNextDialsARefusedResidentOnce(t *testing.T) {
 	}
 	if said := strings.Count(stderr, "unavailable"); said != 1 {
 		t.Fatalf("the refusal was reported %d times: %q", said, stderr)
+	}
+}
+
+// paddingToken marks the one string field paddedResidentStub grows.
+const paddingToken = "padding-token-5d26227f"
+
+// paddedResidentStub is residentStub with the complete status answer grown to
+// exactly size bytes. tamper puts paddingToken into one string field, and the
+// padding is written in its place as the answer streams, so a test that needs
+// an answer of tens of megabytes holds it once, on the reading side, as the
+// command does.
+func paddedResidentStub(t *testing.T, workspace *app.Workspace, size int64, tamper func(*service.Status)) (string, *atomic.Int64) {
+	t.Helper()
+	server, err := service.NewObserved(workspace, nopObserver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int64
+	listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/status" {
+			server.Handler().ServeHTTP(writer, request)
+			return
+		}
+		recorded := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorded, request)
+		var status service.Status
+		if err := json.Unmarshal(recorded.Body.Bytes(), &status); err != nil {
+			t.Errorf("resident status was not JSON: %v", err)
+			return
+		}
+		tamper(&status)
+		encoded, err := json.Marshal(status)
+		if err != nil {
+			t.Errorf("encoding the tampered status: %v", err)
+			return
+		}
+		head, tail, found := bytes.Cut(encoded, []byte(paddingToken))
+		padding := size - int64(len(head)+len(tail))
+		if !found || padding < 0 {
+			t.Errorf("cannot pad a %d-byte answer to %d bytes (token found %v)", len(encoded), size, found)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write(head)
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		for padding > 0 {
+			step := min(padding, int64(len(chunk)))
+			if _, err := writer.Write(chunk[:step]); err != nil {
+				return
+			}
+			padding -= step
+		}
+		_, _ = writer.Write(tail)
+	}))
+	return listener.URL, &hits
+}
+
+// The complete answer grows with the log, so its ceiling grows with this
+// checkout's own count of records. An answer past the 64 MiB that was once the
+// whole ceiling is read like any other; an answer past the allowance for this
+// depth is still refused, and the command says so and audits locally.
+func TestSessionSnapshotCeilingGrowsWithTheLocalLog(t *testing.T) {
+	ctx := context.Background()
+	workspace, summary := statusSummaryFixture(t)
+	limit, err := fullResponseLimit(ctx, workspace, summary.Durable.Head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := int64(64<<20) + int64(summary.Durable.Depth+1)*(8<<10); limit != want {
+		t.Fatalf("ceiling at depth %d = %d bytes, want %d", summary.Durable.Depth, limit, want)
+	}
+	cases := []struct {
+		name      string
+		size      int64
+		fallsBack bool
+	}{
+		{"past the old fixed ceiling", 64<<20 + 1, false},
+		{"exactly at this depth's ceiling", limit, false},
+		{"past this depth's ceiling", limit + 1, true},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			url, hits := paddedResidentStub(t, workspace, test.size, func(status *service.Status) {
+				status.TrustBoundary = paddingToken
+			})
+			var progress strings.Builder
+			called := false
+			snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, url, sentinelLocalLoad(&called))
+			if err != nil {
+				t.Fatalf("session: %v", err)
+			}
+			if hits.Load() == 0 {
+				t.Fatal("the resident was never dialed")
+			}
+			if called != test.fallsBack {
+				t.Fatalf("local audit called = %v, want %v; stderr %q", called, test.fallsBack, progress.String())
+			}
+			if test.fallsBack && !strings.Contains(progress.String(), fmt.Sprintf("resident response exceeds %d bytes", limit)) {
+				t.Fatalf("the fallback did not name the ceiling: %q", progress.String())
+			}
+			if !test.fallsBack && snapshot.Head != summary.Durable.Head {
+				t.Fatalf("session head = %s, want the resident's %s", snapshot.Head, summary.Durable.Head)
+			}
+		})
+	}
+}
+
+// And a step command reads such an answer end to end: the promise quotes text
+// only the resident's projection holds, and nothing is audited locally.
+func TestStepCommandReadsAResidentAnswerPastTheOldCeiling(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	lane := fixture.buildStepLane(t, "large-lane", "reviewer", "operator", "docs/lane.md")
+	marker := "only the large resident answer says this"
+	url, hits := paddedResidentStub(t, fixture.workspace, 64<<20+1, func(status *service.Status) {
+		for index := range status.Durable.Projection.Statements {
+			if status.Durable.Projection.Statements[index].Event == lane.request {
+				status.Durable.Projection.Statements[index].Text = marker
+			}
+		}
+		status.TrustBoundary = paddingToken
+	})
+	commandErr, _, stderr := runPiped(t, func() error {
+		return promiseCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "operator",
+			"--server", url, lane.request})
+	})
+	if commandErr != nil {
+		t.Fatalf("promise against a large resident answer: %v", commandErr)
+	}
+	if hits.Load() == 0 {
+		t.Fatal("the resident was never dialed")
+	}
+	if strings.Contains(stderr, "verifying the durable log locally") {
+		t.Fatalf("the command fell back to the local audit: %q", stderr)
+	}
+	if promise := fixture.latestStatement(t); !strings.Contains(promise.Text, marker) {
+		t.Fatalf("the promise text %q was not composed from the resident's projection", promise.Text)
+	}
+}
+
+// gs status --all and --json, gs artifacts and gs reviews read the complete
+// answer through residentStatus, which documents a head unmoved while the
+// answer was read. Here the answer is truthful about the head the ref moved to
+// during the read, so only the read taken before the request refuses it.
+func TestResidentStatusRefusesAHeadThatMovedDuringTheRead(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := statusSummaryFixture(t)
+	url, _ := residentStub(t, workspace, func(status *service.Status) {
+		moveTheRef(t, workspace)
+		moved, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
+		if err != nil {
+			t.Errorf("reading the moved ref: %v", err)
+		}
+		status.Durable.Head = moved
+	})
+	if _, err := residentStatus(ctx, workspace, url); err == nil || !strings.Contains(err.Error(), "moved while resident status was read") {
+		t.Fatalf("an answer read across a moving ref was accepted or refused for another reason: %v", err)
 	}
 }

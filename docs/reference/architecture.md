@@ -1886,10 +1886,17 @@ path that survives a resident restart.
 Those checks bind the frontier, and only the frontier. The head is proved
 against this checkout's own ref; the rows folded at that head are the
 resident's word for what the log says, and nothing local re-derives them. Two
-limits are worth naming with them. The complete answer is bounded at 64 MiB,
-which at depth 23,600 it fills to about 52 MiB: past that ceiling every one of
-these commands falls back to the local audit, with one line on standard error
-and no other sign. And the profile is a hash of the application name
+limits are worth naming with them. The complete answer grows with the log, so
+its ceiling does too: 64 MiB plus 8 KiB for every record of this checkout's own
+sequence, counted in local Git history before the request rather than taken
+from the resident, so a resident cannot raise the ceiling it is read under. A
+fixed 64 MiB ceiling was crossed on 2026-10-16 at depth 43,744, where the
+artroom answer is 71 MB, about 1.6 KiB a record; gitseq's is 2.2 KiB a record
+at depth 24,756. An answer past the ceiling falls back to the local audit, with
+one line on standard error and no other sign. The client holds the answer and
+its decoded projection at once, so its memory is a few times the answer's
+size: 370 MB at peak for the 71 MB artroom answer. And the profile is a hash
+of the application name
 and the `workroom.ProfileVersion` constant, which is advanced by hand when the
 fold changes, so two builds that share the constant compare equal however
 their folds behave; it catches a declared change of interpreter, not an

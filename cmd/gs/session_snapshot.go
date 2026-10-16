@@ -94,11 +94,15 @@ func loadSessionSnapshot(ctx context.Context, progress io.Writer, workspace *app
 // above: a page rendered for a reader states the frontier it was taken at, and
 // what a command signs against is judged by more than that.
 func residentStatus(ctx context.Context, workspace *app.Workspace, serverURL string) (app.Snapshot, error) {
-	status, err := fetchFullStatus(ctx, serverURL)
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return app.Snapshot{}, err
 	}
-	if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err != nil {
+	status, err := fetchFullStatus(ctx, workspace, serverURL, before)
+	if err != nil {
+		return app.Snapshot{}, err
+	}
+	if err := validateRemoteFrontierAt(ctx, workspace, before, status.Durable.Genesis, status.Durable.Head); err != nil {
 		return app.Snapshot{}, err
 	}
 	return status.Durable, nil
@@ -117,7 +121,7 @@ func residentSnapshot(ctx context.Context, workspace *app.Workspace, serverURL s
 	if err != nil {
 		return app.Snapshot{}, err
 	}
-	status, err := fetchFullStatus(ctx, serverURL)
+	status, err := fetchFullStatus(ctx, workspace, serverURL, before)
 	if err != nil {
 		return app.Snapshot{}, err
 	}

@@ -28,7 +28,7 @@ const (
 	// caps in statusview already make these responses independent of workroom
 	// depth; this is the ceiling for a resident that answers with something
 	// else entirely.
-	queryResponseLimit = fullResponseLimit
+	queryResponseLimit = 64 << 20
 	queryTimeout       = 10 * time.Second
 )
 
