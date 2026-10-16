@@ -245,8 +245,15 @@ func refuseIneffectiveBatch(ctx context.Context, workspace *app.Workspace, serve
 func prospectiveChain(ctx context.Context, workspace *app.Workspace, filer app.Filer, acts []batchAct) ([]app.ChainAct, bool) {
 	chain := make([]app.ChainAct, len(acts))
 	minted := make(map[string]string, len(acts))
+	// Every key is asked about at once, so the chain costs one verified read
+	// of the log however many acts it carries.
+	keys := make([]string, len(acts))
 	for position, entry := range acts {
-		event, replayed := workspace.AcceptedUnderKey(ctx, filer, entry.IdempotencyKey)
+		keys[position] = entry.IdempotencyKey
+	}
+	accepted := workspace.AcceptedUnderKeys(ctx, filer, keys)
+	for position, entry := range acts {
+		event, replayed := accepted[entry.IdempotencyKey]
 		if !replayed {
 			event = workspace.ProspectiveEventID(position)
 		}

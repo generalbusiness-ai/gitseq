@@ -217,29 +217,30 @@ func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed2
 // already names in this log, found by the identity the kernel indexes —
 // target log, actor key, namespace and key — which needs nothing measured.
 func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (kernel.Event, bool) {
-	if key == "" {
-		return kernel.Event{}, false
-	}
-	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
-		w.idempotencyNamespace(actorName), key)
-	prior, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !held {
-		return kernel.Event{}, false
-	}
-	return prior, true
+	prior, held := w.priorActsFor(ctx, signingFiler(private, actorName), []string{key})[key]
+	return prior, held
+}
+
+// signingFiler names the filer a signing key files as.
+func signingFiler(private ed25519.PrivateKey, actorName string) Filer {
+	return Filer{Name: actorName, Fingerprint: intent.ActorFingerprint(private.Public().(ed25519.PublicKey))}
 }
 
 // AcceptedActUnderKey reports the event identifier this actor's key already
-// names in the log. A batch uses it to let a label of an act the log already
-// holds name that act rather than a placeholder, so a later act in the same
-// batch that cites the label is rebuilt exactly and recognised as the retry it
-// is.
+// names in the log.
 func (w *Workspace) AcceptedActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (string, bool) {
-	prior, held := w.priorActUnderKey(ctx, private, actorName, key)
-	if !held {
-		return "", false
-	}
-	return w.EventID(prior.Commit), true
+	accepted, held := w.AcceptedActsUnderKeys(ctx, private, actorName, []string{key})[key]
+	return accepted, held
+}
+
+// AcceptedActsUnderKeys reports, for each of this actor's keys the log already
+// holds, the event identifier it names. A batch uses it to let a label of an
+// act the log already holds name that act rather than a placeholder, so a later
+// act in the same batch that cites the label is rebuilt exactly and recognised
+// as the retry it is. Every key is answered from one verified read of the log,
+// so the batch pays for that read once, however many acts it labels.
+func (w *Workspace) AcceptedActsUnderKeys(ctx context.Context, private ed25519.PrivateKey, actorName string, keys []string) map[string]string {
+	return w.AcceptedUnderKeys(ctx, signingFiler(private, actorName), keys)
 }
 
 // requestRetry is what the log says about an act filed under a key: nothing
