@@ -189,18 +189,33 @@ func TestActionablePollStillDeclinesAfterSeveralUnrelatedEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		for i := 0; i < 3; i++ {
-			time.Sleep(300 * time.Millisecond)
-			appendUnrelated(t, workspace, fmt.Sprintf("declined-%d", i))
-		}
-	}()
-	_, _, changed, err := server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 2000, Session: credential},
-		statusview.UntilActionable)
-	if err != nil {
-		t.Fatal(err)
+	type answer struct {
+		changed bool
+		err     error
 	}
-	if changed {
+	done := make(chan answer, 1)
+	go func() {
+		_, _, changed, err := server.wait(ctx, WaitRequest{Cursor: initial.Cursor, TimeoutMS: 6000, Session: credential},
+			statusview.UntilActionable)
+		done <- answer{changed: changed, err: err}
+	}()
+	// The appends run here, on the test goroutine, so a failure can never be
+	// reported after the test has returned. A poll that answers before all
+	// three have arrived has judged fewer than three events, and proves nothing.
+	for i := 0; i < 3; i++ {
+		time.Sleep(300 * time.Millisecond)
+		appendUnrelated(t, workspace, fmt.Sprintf("declined-%d", i))
+		select {
+		case result := <-done:
+			t.Fatalf("the poll answered (changed=%v, err=%v) before unrelated event %d of 3 arrived", result.changed, result.err, i+1)
+		default:
+		}
+	}
+	result := <-done
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if result.changed {
 		t.Fatal("an actionable poll woke on three events none of which were this actor's")
 	}
 }
