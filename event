@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Accept request git:sha1…a264b98: Claude: a batch preflight must read the log once, not once per labelled act."}
+{"kind":"promise","text":"Accept request git:sha1…e780867: Claude: keep the CLI on the resident's projection when the full status outgrows 64 MiB."}
