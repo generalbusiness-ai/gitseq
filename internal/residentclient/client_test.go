@@ -297,8 +297,12 @@ func TestStreamJSONBoundsSilenceNotSize(t *testing.T) {
 	}
 	for name, handler := range stalls {
 		t.Run(name, func(t *testing.T) {
+			// The backstop only turns a missing idle deadline into a failure
+			// rather than a hang; it is far longer than idle.
+			ctx, cancel := context.WithTimeout(context.Background(), 20*idle)
+			defer cancel()
 			var stalled answer
-			err := New(0).StreamJSON(context.Background(), serve(handler), "/v0/status", idle, &stalled)
+			err := New(0).StreamJSON(ctx, serve(handler), "/v0/status", idle, &stalled)
 			if !errors.Is(err, errStalled) {
 				t.Fatalf("stalled answer error = %v, want the stall named", err)
 			}
