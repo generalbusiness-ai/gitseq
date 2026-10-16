@@ -2,10 +2,9 @@
 title: Run a work loop
 summary: Claim work, publish its exact artifact, get it reviewed, and close it by merge or explicit report.
 rests_on:
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c429ad207e7341afababd58e65d542547e43fb35
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:829bcd4d9952d4beb5ee8e3667a3f2aa9a1fab42
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:49d2d3d82ebba3ffec1a0c343d3ecba17f96c3f2
-  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:1a5bb9becc97d3ae601879a02b19923a2194811e
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:9635b67a3b4d7a4d31ff9c7b099214cea9cef7fd
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:ade22d9c1efeb7dc0121631b32d38484a71cb7ba
+  - git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:8f5434f1c274cda75b68d3e272a1c50877c63734
 ---
 
 # Run a work loop
@@ -48,16 +47,18 @@ satisfaction cannot be satisfied, so the fold refuses it.
 Implement on a named branch, never on the integration branch:
 
 ```sh
-git -C "$REPO" switch -q -c task/changelog
+git -C "$REPO" switch -q -c request/changelog
 printf '# Changelog\n' > "$REPO/CHANGELOG.md"
 git -C "$REPO" add CHANGELOG.md
 git -C "$REPO" commit -q -m "Add a changelog
 
 Rests-On: $REQUEST"
 HEAD_COMMIT=$(git -C "$REPO" rev-parse HEAD)
+test -s "$REPO/CHANGELOG.md"
+git -C "$REPO" diff --check HEAD^
 
 ARTIFACT=$(gs state --repo "$REPO" --as bot --kind artifact \
-  --text 'Changelog implementation; make test and make vet pass' \
+  --text 'CHANGELOG.md is nonempty; git diff --check HEAD^ passes' \
   --body path=CHANGELOG.md --body commit="$HEAD_COMMIT" \
   --rests-on "$PROMISE")
 ```
@@ -66,11 +67,34 @@ State the tests and conditions **actually** met in the artifact. It is both
 the durable pointer to the exact head and the implementation report. A second
 `ready-for-review` report would repeat those same facts.
 
+## Work discovered halfway through
+
+Do not quietly widen the job. Work that adds a separate outcome, or changes
+the conditions, authority or performer, gets a child request resting on the
+current request or promise. Implement that outcome separately. A review finding
+that shows an existing condition unmet is a correction, covered below.
+
+While adding this changelog, bot discovers that release dates need a convention
+and asks alice to add it:
+
+```sh
+CHILD=$(gs state --repo "$REPO" --as bot --kind request \
+  --text 'The changelog needs a release-date convention' \
+  --body to=@alice --body conditions='a stated convention, in the changelog' \
+  --body target=inherit --rests-on "$REQUEST")
+gs state --repo "$REPO" --as bot --kind assert \
+  --text 'Found while adding the changelog: no convention for release dates' \
+  --rests-on "$CHILD" >/dev/null
+```
+
+The child inherits the target branch and remains open for alice. An `assert`
+can preserve the evidence, but cannot assign the follow-up work by itself.
+
 ## Review, and what happens when changes are requested
 
 ```sh
 REVIEW_REQUEST=$(gs state --repo "$REPO" --as bot --kind request \
-  --text 'Review task/changelog at its exact head' --body to=@carol \
+  --text 'Review request/changelog at its exact head' --body to=@carol \
   --body conditions='confirm the changelog at the named head' \
   --body head="$HEAD_COMMIT" --body artifact="$ARTIFACT" \
   --body no_git_artifact=true --rests-on "$ARTIFACT")
@@ -133,44 +157,35 @@ before merge; no implementation report or ratification follows it.
 
 ## Work you cannot finish
 
-Supersede your own promise, and say why:
+In a separate assignment, alice asks bot to rewrite a parser. Bot accepts,
+then discovers that the rewrite needs a decision bot cannot make. Supersede
+your own unfinished promise, and say why:
 
 ```sh
-ABANDONED=$(gs state --repo "$REPO" --as bot --kind promise \
-  --text 'I will also rewrite the parser' --rests-on "$REQUEST")
+PARSER_REQUEST=$(gs state --repo "$REPO" --as alice --kind request \
+  --text 'Rewrite the parser' --body to=@bot \
+  --body conditions='the parser rewrite passes its existing tests' \
+  --body target_ref=refs/heads/main)
+PARSER_PROMISE=$(gs state --repo "$REPO" --as bot --kind promise \
+  --text 'I will rewrite the parser' --rests-on "$PARSER_REQUEST")
 gs supersede --repo "$REPO" --as bot \
-  --text 'reneging: the parser rewrite needs a decision I cannot make' "$ABANDONED"
+  --text 'reneging: the parser rewrite needs a decision I cannot make' "$PARSER_PROMISE"
 ```
 
 This is **reneging**, and it is visible forever. Do it as early as you
-know. Early reneging is honourable; late reneging is not.
-
-## Work discovered halfway through
-
-Do not quietly widen the job. Work that adds a separate outcome, or changes
-the conditions, authority or performer, gets a child request resting on the
-current request or promise, and is implemented separately (a review finding
-that only shows an existing condition unmet is a correction, above, not new
-work):
-
-```sh
-CHILD=$(gs state --repo "$REPO" --as bot --kind request \
-  --text 'The changelog needs a release-date convention' \
-  --body to=@alice --body conditions='a stated convention, in the changelog' \
-  --body target=inherit --rests-on "$REQUEST")
-gs state --repo "$REPO" --as bot --kind assert \
-  --text 'Found while adding the changelog: no convention for release dates' \
-  --rests-on "$CHILD" >/dev/null
-```
-
-An `assert` can preserve the evidence for a breakdown, but it is not a
-substitute for the request that assigns the follow-up work.
+know. Early reneging is honourable; late reneging is not. The request remains
+unfinished and available for a fresh promise. Only alice or a ratifier may
+retire it. Withdrawing this promise leaves the completed changelog intact.
 
 ## Check the loop
 
 ```sh
 gs status --repo "$REPO"
 ```
+
+The changelog request is satisfied by its sealed landing. The parser request
+shows `reneged`, with no live promise and no retirement of the request. The
+release-date child is open for alice and still targets `refs/heads/main`.
 
 ## See also
 
