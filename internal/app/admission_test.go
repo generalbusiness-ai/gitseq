@@ -596,3 +596,41 @@ func TestDeadBasisVerdictKeepsIneffectiveCitationsAdvisory(t *testing.T) {
 		t.Fatalf("a refused basis earned a staleness note %q", note)
 	}
 }
+
+// A refusal at a head the log has already left must not cost the admission
+// fold the events its private reader advanced over. The reader hands each
+// event out once, so a fold that refused before taking them would judge every
+// later act without them, under the label of the head that holds them: an act
+// of a kind one of those events withdrew would then be admitted.
+func TestAdmissionWorldKeepsTheEventsARefusalAdvancedOver(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+	old := workspace.mustSnapshot(t, ctx).Head
+	if _, err := workspace.admissionWorld(ctx, old); err != nil {
+		t.Fatal(err)
+	}
+	other, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	landed := actRecord(t, ctx, other, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "from another process",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "other-process",
+	})
+	if _, err := workspace.admissionWorld(ctx, old); err == nil || !strings.Contains(err.Error(), "moved under admission") {
+		t.Fatalf("admission at a head the log has left = %v, want the moved-head refusal", err)
+	}
+	moved := other.mustSnapshot(t, ctx).Head
+	world, err := workspace.admissionWorld(ctx, moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := false
+	for _, decision := range world.Projection.Decisions {
+		held = held || decision.Event == landed.ID
+	}
+	if !held {
+		t.Fatalf("admission world labelled %s does not hold %s, the event that moved the head", world.Head, landed.ID)
+	}
+}
