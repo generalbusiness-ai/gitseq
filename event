@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/kernel/kernel_test.go","body":{"commit":"5b6b27530a080594a3c143373137793be6831696","path":"internal/kernel/kernel_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:0220c180473da2e5959d3337b85621e6aec2c260","text":"Merge retired a covered predecessor; the successor is at cmd/gs/landing_fold_test.go."}
