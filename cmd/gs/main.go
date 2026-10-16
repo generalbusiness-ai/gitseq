@@ -2565,7 +2565,11 @@ func submitSigned(ctx context.Context, workspace *app.Workspace, serverURL, acto
 	if err != nil {
 		return app.Submission{}, explainLifecycleRefusal(err)
 	}
-	if act.Verb == app.VerbState {
+	// A state act sequenced now passed admission at the head it joined, and
+	// admission refuses a kind that head does not define, so only a replay —
+	// an act accepted before that refusal existed — can be one to warn about.
+	// Asking anyway cost a whole projection per act, read or folded here.
+	if act.Verb == app.VerbState && submission.Result.Replay {
 		warnUndefinedKind(ctx, workspace, serverURL, act.Kind)
 	}
 	return submission, nil
