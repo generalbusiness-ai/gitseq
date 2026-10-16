@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c5bf94a560677616509eeed49ad45319d946c45a","text":"Republished at 3ceb9466fc225468cca8aa659b33559443b5d229, which no longer changes internal/gitstore/gitstore.go: the pointer is withdrawn with no successor."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f90789918962692d3cf5fc9ea1800a7cbc176709","text":"Republished at 3ceb9466fc225468cca8aa659b33559443b5d229, which no longer changes internal/gitstore/gitstore_test.go: the pointer is withdrawn with no successor."}
