@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:37c1075bbb9b0cd75b6e2d997bb03ee8115d6b33","text":"Merge retired a covered predecessor; the successor is at internal/workroom/fold.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:45c4c15b6ea753741ef635a40fc4afab549337d4","text":"Merge retired a covered predecessor; the successor is at internal/app/admission.go."}
