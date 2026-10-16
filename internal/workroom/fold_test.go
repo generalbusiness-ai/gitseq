@@ -2281,6 +2281,83 @@ func TestMergeSuccessorRestingOnThePredecessorItRetiresStaysCurrent(t *testing.T
 	}
 }
 
+// Two merges in one log each hide only the retirement their own plan names.
+// A staleness pass reads each receipt's narrowed plan once and reuses it for
+// every successor resting on that receipt, so the reuse must be keyed by the
+// receipt: a second merge's successor reading the first merge's plan would see
+// its own predecessor's retirement as news and go stale at birth.
+func TestTwoMergesEachLendOnlyTheirOwnPlan(t *testing.T) {
+	merge := func(id, head, predecessor, path string) Record {
+		return event(t, id, agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": head,
+			"merge_retirements": `{"` + predecessor + `":"` + path + `"}`, "merge_successors": `["` + path + `"]`,
+		}}, "approval")
+	}
+	records := reviewRecords(t,
+		event(t, "predecessor1", operator, SchemaState, State{Kind: KindArtifact, Text: "first basis", Body: map[string]string{"path": "spike/one", "commit": "base"}}, "r0"),
+		event(t, "predecessor2", operator, SchemaState, State{Kind: KindArtifact, Text: "second basis", Body: map[string]string{"path": "spike/two", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		merge("merge1", "merged1", "predecessor1", "spike/one"),
+		event(t, "successor1", agent, SchemaState, State{Kind: KindArtifact, Text: "first current", Body: map[string]string{"path": "spike/one", "commit": "merged1"}}, "merge1", "predecessor1"),
+		event(t, "retire1", agent, SchemaSupersede, Supersede{Target: "predecessor1", Text: "merge succession"}, "predecessor1", "merge1", "successor1"),
+		merge("merge2", "merged2", "predecessor2", "spike/two"),
+		event(t, "successor2", agent, SchemaState, State{Kind: KindArtifact, Text: "second current", Body: map[string]string{"path": "spike/two", "commit": "merged2"}}, "merge2", "predecessor2"),
+		event(t, "retire2", agent, SchemaSupersede, Supersede{Target: "predecessor2", Text: "merge succession"}, "predecessor2", "merge2", "successor2"),
+	)
+	projection := Fold(records)
+	for _, retirement := range []string{"retire1", "retire2"} {
+		if decision, _ := projection.Decision(retirement); decision.Verdict != Effective {
+			t.Fatalf("%s = %+v, want effective", retirement, decision)
+		}
+	}
+	for _, id := range []string{"successor1", "successor2"} {
+		successor := artifactByEvent(t, projection, id)
+		if successor.Retired || successor.Stale || successor.DescribesSupersededWorld {
+			t.Errorf("%s: retired=%v stale=%v world=%v, want a current successor",
+				id, successor.Retired, successor.Stale, successor.DescribesSupersededWorld)
+		}
+	}
+}
+
+// An empty path is never one a merge published, even when the receipt's own
+// list carries one. A kind may render as an artifact without requiring a path,
+// and such a pointer standing at the merge head must not borrow the plan.
+func TestAnEmptyPathDoesNotBorrowTheMergePlan(t *testing.T) {
+	bundle := KindDefinition{
+		Name: "bundle", Fields: present("commit"), Basis: []BasisConstraint{},
+		Satisfier: SatisfierNone, Render: RenderArtifact, Staleness: StalenessPropagates,
+		Lifecycle: LifecycleNone, Guidance: "Point to a bundle.",
+	}
+	records := reviewRecords(t,
+		event(t, "define", operator, SchemaState, kindDefinitionState(t, bundle), "r0"),
+		event(t, "define-ratified", operator, SchemaRatify, Ratify{Target: "define"}, "define"),
+		event(t, "predecessor", operator, SchemaState, State{Kind: KindArtifact, Text: "the basis", Body: map[string]string{"path": "spike", "commit": "base"}}, "r0"),
+		event(t, "approval", other, SchemaState, State{Kind: KindReport, Text: "approved", Body: map[string]string{"verdict": "approved", "head": "head1", "artifact": "r5"}}, "reviewer-promise", "r5"),
+		event(t, "approval-ratified", operator, SchemaRatify, Ratify{Target: "approval"}, "approval"),
+		event(t, "merge", agent, SchemaState, State{Kind: KindAssert, Text: "approved candidate merged", Body: map[string]string{
+			"merge_approval": "approval", "merge_candidate": "head1", "merge_target_pre_head": "base", "merge_head": "merged",
+			"merge_retirements": `{"predecessor":"spike"}`, "merge_successors": `["","spike"]`,
+		}}, "approval"),
+		event(t, "pathless", agent, SchemaState, State{Kind: "bundle", Text: "no path", Body: map[string]string{"commit": "merged"}}, "merge", "predecessor"),
+		event(t, "successor", agent, SchemaState, State{Kind: KindArtifact, Text: "current", Body: map[string]string{"path": "spike", "commit": "merged"}}, "merge", "predecessor"),
+		event(t, "retire", agent, SchemaSupersede, Supersede{Target: "predecessor", Text: "merge succession"}, "predecessor", "merge", "successor"),
+	)
+	projection := Fold(records)
+	if decision, _ := projection.Decision("pathless"); decision.Verdict != Effective {
+		t.Fatalf("pathless bundle = %+v, want effective", decision)
+	}
+	if decision, _ := projection.Decision("retire"); decision.Verdict != Effective {
+		t.Fatalf("retire = %+v, want effective", decision)
+	}
+	if successor := artifactByEvent(t, projection, "successor"); successor.Stale {
+		t.Fatal("the published successor went stale")
+	}
+	if pathless := artifactByEvent(t, projection, "pathless"); !pathless.Stale {
+		t.Fatal("a pathless pointer at the merge head borrowed the plan and hid its retired basis")
+	}
+}
+
 // Assigned work commonly reaches the behavior it replaces through an
 // intermediate pointer rather than citing the predecessor directly. The
 // merge's successor still owns the retirement news in that shape: the

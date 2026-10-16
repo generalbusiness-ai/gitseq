@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -344,6 +345,62 @@ func TestUndefinedKindWarningReadsTheResidentVocabulary(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "promise") || !strings.Contains(stderr, "warning") {
 		t.Fatalf("the warning did not read the resident's vocabulary: %q", stderr)
+	}
+}
+
+// An act sequenced now was admitted at the head it joined, and admission
+// refuses a kind that head does not define, so it is not asked again: at depth
+// that question cost a whole projection per act of a merge succession. A replay
+// was judged when it was first accepted, perhaps before that refusal existed,
+// so a replay still asks.
+func TestOnlyAReplayAsksWhetherItsKindIsDefined(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	repo := filepath.Join(t.TempDir(), "repo")
+	testGit(t, "", "init", "-q", repo)
+	workspace, seed, err := app.Init(ctx, repo, "operator", 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := service.NewObserved(workspace, nopObserver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statuses atomic.Int64
+	listener := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/status" {
+			statuses.Add(1)
+		}
+		server.Handler().ServeHTTP(writer, request)
+	}))
+	t.Cleanup(listener.Close)
+	_, private, err := workspace.Actor("operator")
+	if err != nil {
+		t.Fatal(err)
+	}
+	act := app.Act{
+		Verb: app.VerbState, Kind: workroom.KindAssert, Text: "asked once at most",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "kind-question",
+	}
+	fresh, err := submitSigned(ctx, workspace, listener.URL, "operator", private, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Result.Replay {
+		t.Fatal("the first submission replayed")
+	}
+	if asked := statuses.Load(); asked != 0 {
+		t.Fatalf("a freshly admitted act read the resident status %d times to ask whether its kind is defined, want 0", asked)
+	}
+	replayed, err := submitSigned(ctx, workspace, listener.URL, "operator", private, act)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !replayed.Result.Replay {
+		t.Fatal("the second submission was not a replay")
+	}
+	if statuses.Load() == 0 {
+		t.Fatal("a replay did not ask whether its kind is defined")
 	}
 }
 
