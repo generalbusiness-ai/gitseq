@@ -482,51 +482,103 @@ func paddedResidentStub(t *testing.T, workspace *app.Workspace, size int64, tamp
 	return listener.URL, &hits
 }
 
-// The complete answer grows with the log, so its ceiling grows with this
-// checkout's own count of records. An answer past the 64 MiB that was once the
-// whole ceiling is read like any other; an answer past the allowance for this
-// depth is still refused, and the command says so and audits locally.
-func TestSessionSnapshotCeilingGrowsWithTheLocalLog(t *testing.T) {
+// A legal history this machine can fold is answered by the resident however
+// large its projection is. Every record here is individually signed and
+// admitted under the default 1 MiB event ceiling, and together their
+// projection is past the 64 MiB that was once the whole ceiling on the
+// answer. The case is codex's counterexample to a ceiling scaled by depth:
+// large records at a shallow depth.
+func TestSessionSnapshotReadsAFoldableHistoryPastTheOldCeiling(t *testing.T) {
 	ctx := context.Background()
-	workspace, summary := statusSummaryFixture(t)
-	limit, err := fullResponseLimit(ctx, workspace, summary.Durable.Head)
+	workspace, _ := statusSummaryFixture(t)
+	text := strings.Repeat("x", 900<<10)
+	for index := 0; index < 80; index++ {
+		if _, err := workspace.Act(ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+			IdempotencyKey: fmt.Sprintf("large-record-%d", index)}); err != nil {
+			t.Fatalf("act %d: %v", index, err)
+		}
+	}
+	local, err := workspace.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := int64(64<<20) + int64(summary.Durable.Depth+1)*(8<<10); limit != want {
-		t.Fatalf("ceiling at depth %d = %d bytes, want %d", summary.Durable.Depth, limit, want)
+	encoded, err := json.Marshal(local)
+	if err != nil {
+		t.Fatal(err)
 	}
+	if len(encoded) <= 64<<20 {
+		t.Fatalf("the folded projection is %d bytes, not past the old 64 MiB ceiling", len(encoded))
+	}
+	url, _ := residentStub(t, workspace, nil)
+	var progress strings.Builder
+	snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, url, refusedLocalLoad(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Head != local.Head || snapshot.Depth != local.Depth {
+		t.Fatalf("session at %s depth %d, want the resident's %s depth %d; stderr %q", snapshot.Head, snapshot.Depth, local.Head, local.Depth, progress.String())
+	}
+}
+
+// Who is answering is settled by the bounded summary before the complete
+// projection is read, so a listener that is not this workroom's resident at
+// this head is never read without a ceiling: the command falls back, and the
+// complete status is never requested.
+func TestSessionSnapshotIdentifiesTheResidentBeforeTheLargeRead(t *testing.T) {
 	cases := []struct {
-		name      string
-		size      int64
-		fallsBack bool
+		name   string
+		tamper func(*service.SummaryStatus)
+		reason string
 	}{
-		{"past the old fixed ceiling", 64<<20 + 1, false},
-		{"exactly at this depth's ceiling", limit, false},
-		{"past this depth's ceiling", limit + 1, true},
+		{"another workroom", func(summary *service.SummaryStatus) {
+			summary.Durable.Genesis = strings.Repeat("1", len(summary.Durable.Genesis))
+		}, "genesis does not match"},
+		{"a resident behind this checkout", func(summary *service.SummaryStatus) {
+			summary.Durable.Head = strings.Repeat("0", len(summary.Durable.Head))
+		}, "head is not current"},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			url, hits := paddedResidentStub(t, workspace, test.size, func(status *service.Status) {
-				status.TrustBoundary = paddingToken
-			})
+			ctx := context.Background()
+			workspace, _ := statusSummaryFixture(t)
+			server, err := service.NewObserved(workspace, nopObserver{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var hits, complete atomic.Int64
+			listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/v0/status":
+					complete.Add(1)
+					server.Handler().ServeHTTP(writer, request)
+				case "/v0/status-summary":
+					recorded := httptest.NewRecorder()
+					server.Handler().ServeHTTP(recorded, request)
+					var summary service.SummaryStatus
+					if err := json.Unmarshal(recorded.Body.Bytes(), &summary); err != nil {
+						t.Errorf("resident summary was not JSON: %v", err)
+						return
+					}
+					test.tamper(&summary)
+					writer.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(writer).Encode(summary)
+				default:
+					server.Handler().ServeHTTP(writer, request)
+				}
+			}))
 			var progress strings.Builder
 			called := false
-			snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, url, sentinelLocalLoad(&called))
-			if err != nil {
+			if _, err := loadSessionSnapshot(ctx, &progress, workspace, listener.URL, sentinelLocalLoad(&called)); err != nil {
 				t.Fatalf("session: %v", err)
 			}
 			if hits.Load() == 0 {
 				t.Fatal("the resident was never dialed")
 			}
-			if called != test.fallsBack {
-				t.Fatalf("local audit called = %v, want %v; stderr %q", called, test.fallsBack, progress.String())
+			if complete.Load() != 0 {
+				t.Fatalf("the complete status was requested %d times from a listener the summary did not identify", complete.Load())
 			}
-			if test.fallsBack && !strings.Contains(progress.String(), fmt.Sprintf("resident response exceeds %d bytes", limit)) {
-				t.Fatalf("the fallback did not name the ceiling: %q", progress.String())
-			}
-			if !test.fallsBack && snapshot.Head != summary.Durable.Head {
-				t.Fatalf("session head = %s, want the resident's %s", snapshot.Head, summary.Durable.Head)
+			if !called || !strings.Contains(progress.String(), test.reason) {
+				t.Fatalf("local audit called = %v; stderr %q does not name %q", called, progress.String(), test.reason)
 			}
 		})
 	}

@@ -114,11 +114,6 @@ func TestRevListMetadataReturnsOrderedCommitIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for head, want := range map[string]int{string(first): 1, string(second): 2} {
-		if count, err := store.Count(ctx, head); err != nil || count != want {
-			t.Fatalf("count at %s = %d, %v; want %d", head, count, err, want)
-		}
-	}
 	if len(metadata) != 2 {
 		t.Fatalf("metadata count = %d, want 2", len(metadata))
 	}

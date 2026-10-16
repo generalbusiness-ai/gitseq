@@ -251,3 +251,90 @@ func TestProbeResidentRefusesToDialAnythingButLoopback(t *testing.T) {
 		}
 	}
 }
+
+// The complete projection is read with no ceiling on its size or on how long
+// the whole read takes, only on silence. An answer that keeps arriving is read
+// to the end however long it takes; one that stops is abandoned, whether it
+// stops before its headers or part way through its body.
+func TestStreamJSONBoundsSilenceNotSize(t *testing.T) {
+	const idle = 500 * time.Millisecond
+	type answer struct {
+		Text string `json:"text"`
+	}
+	serve := func(handler http.HandlerFunc) string {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
+		return server.URL
+	}
+	steady := serve(func(writer http.ResponseWriter, _ *http.Request) {
+		flusher := writer.(http.Flusher)
+		_, _ = writer.Write([]byte(`{"text":"`))
+		for range 12 {
+			time.Sleep(idle / 5)
+			_, _ = writer.Write([]byte("x"))
+			flusher.Flush()
+		}
+		_, _ = writer.Write([]byte(`"}`))
+	})
+	var got answer
+	started := time.Now()
+	if err := New(0).StreamJSON(context.Background(), steady, "/v0/status", idle, &got); err != nil || got.Text != strings.Repeat("x", 12) {
+		t.Fatalf("steady answer = %q, %v", got.Text, err)
+	}
+	if elapsed := time.Since(started); elapsed < 2*idle {
+		t.Fatalf("the steady answer took %s, too short to prove the read outlasts its idle deadline", elapsed)
+	}
+	stalls := map[string]http.HandlerFunc{
+		"before the headers": func(_ http.ResponseWriter, request *http.Request) {
+			<-request.Context().Done()
+		},
+		"inside the body": func(writer http.ResponseWriter, request *http.Request) {
+			_, _ = writer.Write([]byte(`{"text":"`))
+			writer.(http.Flusher).Flush()
+			<-request.Context().Done()
+		},
+	}
+	for name, handler := range stalls {
+		t.Run(name, func(t *testing.T) {
+			var stalled answer
+			err := New(0).StreamJSON(context.Background(), serve(handler), "/v0/status", idle, &stalled)
+			if !errors.Is(err, errStalled) {
+				t.Fatalf("stalled answer error = %v, want the stall named", err)
+			}
+		})
+	}
+}
+
+// Streaming changes how much is read, not what is accepted: one strict JSON
+// value, and a refusal's message, as GetJSON reads them.
+func TestStreamJSONRequiresOneStrictJSONValue(t *testing.T) {
+	answers := map[string]string{
+		"unknown field": `{"text":"x","extra":1}`,
+		"trailing JSON": `{"text":"x"} {}`,
+	}
+	for name, body := range answers {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = writer.Write([]byte(body))
+			}))
+			defer server.Close()
+			var target struct {
+				Text string `json:"text"`
+			}
+			if err := New(0).StreamJSON(context.Background(), server.URL, "/v0/status", time.Second, &target); err == nil {
+				t.Fatalf("%s was accepted", name)
+			}
+		})
+	}
+	refusal := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = writer.Write([]byte(`{"error":"rebuilding"}`))
+	}))
+	defer refusal.Close()
+	var target struct{}
+	var refused *HTTPError
+	if err := New(0).StreamJSON(context.Background(), refusal.URL, "/v0/status", time.Second, &target); !errors.As(err, &refused) || refused.Message != "rebuilding" {
+		t.Fatalf("refusal = %v, want the resident's message", err)
+	}
+}

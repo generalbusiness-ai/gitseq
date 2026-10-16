@@ -87,7 +87,7 @@ func loadSessionSnapshot(ctx context.Context, progress io.Writer, workspace *app
 }
 
 // residentStatus is the complete resident projection as the display commands
-// have always read it: one fetch, and the frontier check gs status documents —
+// read it: fetchFullStatus, and so the frontier check gs status documents —
 // this workroom's genesis, and a head equal to the local sequence ref and
 // unmoved while the answer was read. It is deliberately not the session check
 // above: a page rendered for a reader states the frontier it was taken at, and

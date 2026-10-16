@@ -2708,11 +2708,10 @@ func completeStatus(snapshot app.Snapshot) completeJSON {
 
 const (
 	summaryResponseLimit = 64 << 10
-	// The complete status answer grows with the log, so its ceiling does too;
-	// see fullResponseLimit, and docs/reference/architecture.md, layer 7, for
-	// the measurements the allowance was chosen from.
-	fullResponseFloor          = 64 << 20
-	fullResponseBytesPerRecord = 8 << 10
+	// fullResponseIdle is how long the complete status read waits with no
+	// byte arriving. It is not a deadline on the whole read, which grows with
+	// the log; see fetchFullStatus.
+	fullResponseIdle = 10 * time.Second
 )
 
 // localFold is the --server value that forces the local verified fold; the
@@ -2764,44 +2763,31 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 }
 
 // fetchFullStatus reads the resident's complete projection and admits it only
-// at this checkout's own frontier: the sequence ref is read before the request
-// and again after it, so the answer names this workroom's genesis and a head
-// that is this checkout's and did not move under the read. The answer is
-// bounded by fullResponseLimit at the head read before asking.
+// at this checkout's own frontier. Who is answering is settled first, by the
+// bounded summary read: this workroom's genesis and this checkout's head,
+// unmoved across that read, so another workroom's resident or one that is
+// behind is refused before anything large is read. The complete answer is as
+// large as the log, so it is then read with no byte ceiling and no deadline on
+// the whole read, only on silence; docs/reference/architecture.md, layer 7,
+// states what that costs. The sequence ref is read again after it, so the
+// answer names the head this checkout held before asking, and that head did
+// not move under the read.
 func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw string) (service.Status, error) {
 	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return service.Status{}, err
 	}
-	limit, err := fullResponseLimit(ctx, workspace, before)
-	if err != nil {
+	if _, err := fetchSummary(ctx, workspace, raw); err != nil {
 		return service.Status{}, err
 	}
 	var status service.Status
-	if err := residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", limit, &status); err != nil {
+	if err := residentclient.New(0).StreamJSON(ctx, raw, "/v0/status", fullResponseIdle, &status); err != nil {
 		return service.Status{}, err
 	}
 	if err := validateRemoteFrontierAt(ctx, workspace, before, status.Durable.Genesis, status.Durable.Head); err != nil {
 		return service.Status{}, err
 	}
 	return status, nil
-}
-
-// fullResponseLimit is the ceiling on a complete status answer about the log
-// up to head. The records are counted in this checkout's Git history at that
-// ref, not taken from the answer, so a listener that cannot write this
-// repository cannot raise the ceiling it is read under: an answer about any
-// other head fails the frontier check that follows the read. The history is
-// counted, not verified, so a process that can move the sequence ref, such as
-// a sequencer sharing the repository, can raise it. That process is already
-// trusted to write the log, and what it gains is only the memory this client
-// spends reading.
-func fullResponseLimit(ctx context.Context, workspace *app.Workspace, head string) (int64, error) {
-	records, err := workspace.Store.Count(ctx, head)
-	if err != nil {
-		return 0, err
-	}
-	return fullResponseFloor + int64(records)*fullResponseBytesPerRecord, nil
 }
 
 func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genesis, head string) error {

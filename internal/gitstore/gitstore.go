@@ -438,20 +438,6 @@ func (s Store) RevList(ctx context.Context, ref string) ([]string, error) {
 	return strings.Fields(string(output)), nil
 }
 
-// Count is the length of the first-parent history RevList would return,
-// without listing it.
-func (s Store) Count(ctx context.Context, ref string) (int, error) {
-	output, err := s.run(ctx, nil, nil, "rev-list", "--count", "--first-parent", ref)
-	if err != nil {
-		return 0, err
-	}
-	count, err := strconv.Atoi(strings.TrimSpace(string(output)))
-	if err != nil {
-		return 0, fmt.Errorf("parse commit count: %w", err)
-	}
-	return count, nil
-}
-
 // RevListMetadata returns the first-parent history oldest first, including the
 // tree and complete message for each commit, from one local Git enumeration.
 // Git commit messages cannot contain NUL, so -z plus NUL field separators do
