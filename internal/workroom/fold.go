@@ -343,7 +343,7 @@ type parsedRecord struct {
 	declared   *KindDefinition
 	mergePlan  map[string]string
 	// publishedPaths is the receipt's declared successor paths, read once
-	// when its plan is sealed. publishedByMerge asks it of every artifact
+	// when the receipt is folded. publishedByMerge asks it of every artifact
 	// resting on the receipt in every staleness pass, and decoding the
 	// signed list each time was most of what one pass cost.
 	publishedPaths map[string]bool
@@ -679,9 +679,7 @@ func (f *foldState) append(index int, record Record) {
 	if state, ok := body.(*State); ok && state.Kind == KindAssert && decision.Verdict == Effective {
 		parsed.decision = decision
 		parsed.mergePlan = f.validateMergeReceiptNow(parsed)
-		if parsed.mergePlan != nil {
-			parsed.publishedPaths = publishedPathSet(state.Body["merge_successors"])
-		}
+		parsed.publishedPaths = publishedPathSet(state.Body["merge_successors"])
 		_, leftPresent := state.Body["merge_left_live"]
 		_, changedPresent := state.Body["merge_changed_paths"]
 		if parsed.mergePlan != nil && (leftPresent || changedPresent) {
@@ -2949,8 +2947,7 @@ func (s *stalenessScope) narrowedReceiptPlan(receipt *parsedRecord, successors m
 // own merge stood up: at that merge's head, at a path the receipt declared it
 // would publish. Both facts come from the receipt, which is signed, and from
 // the artifact itself, so neither can be claimed by a bystander. The declared
-// paths are read once, when the receipt's plan is sealed, so a receipt without
-// a sealed plan published nothing here; every caller asks only of one with.
+// paths are read once, when the receipt is folded.
 func (f *foldState) publishedByMerge(record, receipt *parsedRecord) bool {
 	if record.definition == nil || record.definition.Render != RenderArtifact {
 		return false
