@@ -1,1 +1,1 @@
-{"kind":"promise","text":"Accept request git:sha1…e780867: Claude: keep the CLI on the resident's projection when the full status outgrows 64 MiB."}
+{"kind":"promise","text":"Accept request git:sha1…469f7f2: Claude: a merge receipt must not time out on a healthy resident."}
