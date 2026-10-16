@@ -1046,6 +1046,51 @@ func TestCheckReplayDistinguishesAbsentExactAndConflictingIntents(t *testing.T) 
 	}
 }
 
+// PriorActs answers many keys from one scan, and each answer is the one PriorAct
+// gives for that key alone: the same event, payload included, and nothing for
+// a key the log does not hold.
+func TestPriorActsAnswersEachKeyAsPriorActDoes(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "sha1")
+	private := actor(t)
+	var keys []string
+	for index, payload := range []string{"first", "second"} {
+		request := f.request(t, private, "prior-"+strconv.Itoa(index), []byte(payload), nil)
+		if _, err := Submit(f.ctx, f.store, request, Options{SigningKey: f.signingKey}); err != nil {
+			t.Fatal(err)
+		}
+		key, err := request.Signed.DedupKey()
+		if err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, key)
+	}
+	absent, err := f.request(t, private, "prior-absent", []byte("never sent"), nil).Signed.DedupKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prior, err := PriorActs(f.ctx, f.store, "git:"+f.format+":"+f.genesis, append(keys, absent))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prior) != len(keys) {
+		t.Fatalf("PriorActs held %d keys, want %d", len(prior), len(keys))
+	}
+	for _, key := range append(keys, absent) {
+		one, held, err := PriorAct(f.ctx, f.store, "git:"+f.format+":"+f.genesis, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		many, heldMany := prior[key]
+		if held != heldMany || one.Commit != many.Commit || !bytes.Equal(one.Payload, many.Payload) {
+			t.Fatalf("key %s: PriorAct = %v %s %q, PriorActs = %v %s %q", key, held, one.Commit, one.Payload, heldMany, many.Commit, many.Payload)
+		}
+	}
+	if len(prior[keys[1]].Payload) == 0 || string(prior[keys[1]].Payload) != "second" {
+		t.Fatalf("PriorActs dropped the payload: %q", prior[keys[1]].Payload)
+	}
+}
+
 // The hook runs inside the compare-and-swap loop, so a log that moved between
 // the head read and the ref update makes it judge the newer world before the
 // retried commit is written against it.

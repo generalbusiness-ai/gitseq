@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -217,29 +218,54 @@ func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed2
 // already names in this log, found by the identity the kernel indexes —
 // target log, actor key, namespace and key — which needs nothing measured.
 func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (kernel.Event, bool) {
-	if key == "" {
-		return kernel.Event{}, false
+	prior, held := w.priorActsUnderKeys(ctx, private, actorName, []string{key})[key]
+	return prior, held
+}
+
+// priorActsUnderKeys is the same lookup for many of one actor's keys, answered
+// from one verified read of the log. An empty key names nothing and is skipped.
+func (w *Workspace) priorActsUnderKeys(ctx context.Context, private ed25519.PrivateKey, actorName string, keys []string) map[string]kernel.Event {
+	identities := make(map[string]string, len(keys))
+	for _, key := range keys {
+		if key != "" {
+			identities[intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
+				w.idempotencyNamespace(actorName), key)] = key
+		}
 	}
-	dedup := intent.DedupIdentity(w.workroomID(), private.Public().(ed25519.PublicKey),
-		w.idempotencyNamespace(actorName), key)
-	prior, held, err := kernel.PriorAct(ctx, w.Store, w.workroomID(), dedup)
-	if err != nil || !held {
-		return kernel.Event{}, false
+	if len(identities) == 0 {
+		return nil
 	}
-	return prior, true
+	held, err := kernel.PriorActs(ctx, w.Store, w.workroomID(), slices.Collect(maps.Keys(identities)))
+	if err != nil {
+		return nil
+	}
+	prior := make(map[string]kernel.Event, len(held))
+	for identity, event := range held {
+		prior[identities[identity]] = event
+	}
+	return prior
 }
 
 // AcceptedActUnderKey reports the event identifier this actor's key already
-// names in the log. A batch uses it to let a label of an act the log already
-// holds name that act rather than a placeholder, so a later act in the same
-// batch that cites the label is rebuilt exactly and recognised as the retry it
-// is.
+// names in the log.
 func (w *Workspace) AcceptedActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (string, bool) {
-	prior, held := w.priorActUnderKey(ctx, private, actorName, key)
-	if !held {
-		return "", false
+	accepted, held := w.AcceptedActsUnderKeys(ctx, private, actorName, []string{key})[key]
+	return accepted, held
+}
+
+// AcceptedActsUnderKeys reports, for each of this actor's keys the log already
+// holds, the event identifier it names. A batch uses it to let a label of an
+// act the log already holds name that act rather than a placeholder, so a later
+// act in the same batch that cites the label is rebuilt exactly and recognised
+// as the retry it is. Every key is answered from one verified read of the log,
+// so the batch pays for that read once, however many acts it labels.
+func (w *Workspace) AcceptedActsUnderKeys(ctx context.Context, private ed25519.PrivateKey, actorName string, keys []string) map[string]string {
+	prior := w.priorActsUnderKeys(ctx, private, actorName, keys)
+	accepted := make(map[string]string, len(prior))
+	for key, event := range prior {
+		accepted[key] = w.EventID(event.Commit)
 	}
-	return w.EventID(prior.Commit), true
+	return accepted
 }
 
 // requestRetry is what the log says about an act filed under a key: nothing

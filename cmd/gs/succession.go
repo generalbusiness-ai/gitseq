@@ -167,11 +167,10 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 		return nil
 	}
 	acts := batchSuccessionActs(pending)
-	if err := preflightBatchAdmission(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
-		return fmt.Errorf("merge succession admission preflight: %w", err)
-	}
 	// The exact checkout preflight above is the deliberate authorization for
-	// bypassing Workspace's repository-default citation guard here.
+	// bypassing Workspace's repository-default citation guard here. runBatch
+	// runs the admission preflight itself before its first append, so the
+	// succession is preflighted once after the target moves, not twice.
 	if _, err := runBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
 		return fmt.Errorf("record merge succession: %w", err)
 	}

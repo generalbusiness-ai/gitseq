@@ -2301,7 +2301,7 @@ func runBatch(ctx context.Context, workspace *app.Workspace, serverURL, actorNam
 	// boundary submission uses: an undefined kind, a verdict shape, a spoofed
 	// reserved field, or a dead basis stops the batch before anything lands.
 	// The authoritative re-judgement still happens per act at sequencing.
-	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+	if position, failure := admissionPreflight(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
 		report.Acts[position].Outcome = "failed"
 		report.Error = failure
 		return report, failure
@@ -2350,11 +2350,16 @@ func preflightBatchAdmission(ctx context.Context, workspace *app.Workspace, serv
 	if position, failure := checkBatch(acts); failure != nil {
 		return fmt.Errorf("act %d: %w", position, failure)
 	}
-	if position, failure := preflightAdmission(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
+	if position, failure := admissionPreflight(ctx, workspace, serverURL, actorName, private, acts, citedOK); failure != nil {
 		return fmt.Errorf("act %d: %w", position, failure)
 	}
 	return nil
 }
+
+// admissionPreflight is the preflight every batch runs before it appends. It is
+// a variable so a test can count how many a landing pays for: each one reads
+// the whole log.
+var admissionPreflight = preflightAdmission
 
 // preflightAdmission builds every act through the application boundary and
 // checks the kernel and optional resident byte ceilings without appending. It
@@ -2367,6 +2372,19 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 	}
 	view := workspace.View()
 	syntheticEvent := workspace.EventID(strings.Repeat("0", len(view.Genesis)))
+	// A label names the event its act will mint. Until then it stands for a
+	// placeholder, except when the log already holds that act under its key:
+	// then the label names the real event, so a later act citing it — a
+	// replacement naming its retirement — is rebuilt as it was accepted and
+	// recognised as a retry instead of a conflict. Every label's key is asked
+	// about at once, so the whole batch costs one verified read of the log.
+	var labelled []string
+	for _, entry := range acts {
+		if entry.Label != "" {
+			labelled = append(labelled, entry.IdempotencyKey)
+		}
+	}
+	accepted := workspace.AcceptedActsUnderKeys(ctx, private, actorName, labelled)
 	minted := make(map[string]string, len(acts))
 	for position, entry := range acts {
 		act := resolveBatchAct(entry, minted, citedOK)
@@ -2387,15 +2405,10 @@ func preflightAdmission(ctx context.Context, workspace *app.Workspace, serverURL
 				return position, batchFail("admission", "%v", err)
 			}
 		}
-		// A label names the event its act will mint. Until then it stands
-		// for a placeholder, except when the log already holds that act
-		// under its key: then the label names the real event, so a later act
-		// citing it — a replacement naming its retirement — is rebuilt as
-		// it was accepted and recognised as a retry instead of a conflict.
 		if entry.Label != "" {
 			minted[entry.Label] = syntheticEvent
-			if accepted, held := workspace.AcceptedActUnderKey(ctx, private, actorName, entry.IdempotencyKey); held {
-				minted[entry.Label] = accepted
+			if event, held := accepted[entry.IdempotencyKey]; held {
+				minted[entry.Label] = event
 			}
 		}
 	}
