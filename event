@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"cmd/gs/query.go at exact a440adaeea6b9037fc37856fb23ff341172018dc on request/status-size-cliff, under promise git:sha1…e8d5213 on request git:sha1…e780867","body":{"commit":"a440adaeea6b9037fc37856fb23ff341172018dc","path":"cmd/gs/query.go"}}
+{"kind":"artifact","text":"cmd/gs/session_snapshot_test.go at exact a440adaeea6b9037fc37856fb23ff341172018dc on request/status-size-cliff, under promise git:sha1…e8d5213 on request git:sha1…e780867","body":{"commit":"a440adaeea6b9037fc37856fb23ff341172018dc","path":"cmd/gs/session_snapshot_test.go"}}
