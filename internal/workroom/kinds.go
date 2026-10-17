@@ -425,9 +425,18 @@ func matchesType(valueType ValueType, value string) bool {
 
 func sortedDefinitions(catalog map[Kind]KindDefinition) []KindDefinition {
 	definitions := make([]KindDefinition, 0, len(catalog))
+	// Every slice is copied, nested ones included: a rendered vocabulary is
+	// handed to readers, and none of it may share storage with the catalog the
+	// fold goes on judging against.
 	for _, definition := range catalog {
 		definition.Fields = append([]FieldConstraint(nil), definition.Fields...)
+		for index := range definition.Fields {
+			definition.Fields[index].Values = append([]string(nil), definition.Fields[index].Values...)
+		}
 		definition.Basis = append([]BasisConstraint(nil), definition.Basis...)
+		for index := range definition.Basis {
+			definition.Basis[index].Kinds = append([]Kind(nil), definition.Basis[index].Kinds...)
+		}
 		definitions = append(definitions, definition)
 	}
 	sort.Slice(definitions, func(i, j int) bool { return definitions[i].Name < definitions[j].Name })

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"testing"
 
@@ -530,5 +531,142 @@ func TestASnapshotAfterAnUnrenderedFirstReadHoldsTheWholeLog(t *testing.T) {
 	}
 	if !bytes.Equal(encodedSnapshot(t, snapshot), encodedSnapshot(t, audited)) {
 		t.Fatal("the snapshot after an unrendered first read differs from a read-only audit of the same log")
+	}
+}
+
+// constrainedKindWorkspace is a workroom whose vocabulary holds a ratified
+// custom kind with both nested constraint lists: allowed field values and a
+// basis kind list.
+func constrainedKindWorkspace(t *testing.T, ctx context.Context) (*Workspace, workroom.Record) {
+	t.Helper()
+	workspace, seed := admissionWorkspace(t, ctx)
+	definition := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindKindDef, Text: "declare a constrained custom kind",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "constrained-kind",
+		Body: map[string]string{
+			"name": "constrained-note", "fields": `[{"op":"one-of","name":"priority","values":["high","low"]}]`,
+			"basis": `[{"kinds":["assert"],"min":0,"max":1}]`, "satisfier": "none", "render": "note",
+			"staleness": "propagates", "lifecycle": "none", "guidance": "Constrain a field and a basis.",
+		},
+	})
+	actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbRatify, Target: definition.ID, RestsOn: []string{definition.ID}, IdempotencyKey: "constrained-kind-adopt",
+	})
+	return workspace, seed
+}
+
+// admissionAfterEdit edits a snapshot this process handed out, then asks
+// admission for its world at the same head and compares it with a read-only
+// audit. Admission renders its own copy of the session fold, so no edit to
+// what a reader was handed may reach it.
+func admissionAfterEdit(t *testing.T, edit func(*Snapshot) bool) {
+	t.Helper()
+	ctx := context.Background()
+	fixture, _ := constrainedKindWorkspace(t, ctx)
+	workspace, err := Open(ctx, fixture.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := snapshot.Head
+	if !edit(&snapshot) {
+		t.Fatal("the edit found nothing to change")
+	}
+	world, err := workspace.admissionWorld(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	audited, err := workspace.ReadOnlySnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encodedSnapshot(t, world), encodedSnapshot(t, audited)) {
+		t.Fatal("admission's world inherited an edit to a snapshot a reader was handed")
+	}
+}
+
+// A field constraint's allowed values are the reader's own copy.
+func TestAdmissionDoesNotInheritEditsToFieldValues(t *testing.T) {
+	t.Parallel()
+	admissionAfterEdit(t, func(snapshot *Snapshot) bool {
+		for _, definition := range snapshot.Vocabulary.Definitions {
+			for _, field := range definition.Fields {
+				if len(field.Values) > 0 {
+					field.Values[0] = "edited-value"
+					return true
+				}
+			}
+		}
+		return false
+	})
+}
+
+// A basis constraint's kind list is the reader's own copy.
+func TestAdmissionDoesNotInheritEditsToBasisKinds(t *testing.T) {
+	t.Parallel()
+	admissionAfterEdit(t, func(snapshot *Snapshot) bool {
+		for _, definition := range snapshot.Vocabulary.Definitions {
+			for _, basis := range definition.Basis {
+				if len(basis.Kinds) > 0 {
+					basis.Kinds[0] = workroom.Kind("edited-kind")
+					return true
+				}
+			}
+		}
+		return false
+	})
+}
+
+// Nothing a reader is handed shares storage with the fold admission renders
+// from: every string, number and flag reachable from the snapshot, through
+// every slice, map and pointer, is overwritten, and admission's world at the
+// same head is still byte for byte a read-only audit.
+func TestAdmissionOwnsEveryPartOfTheWorldItRenders(t *testing.T) {
+	t.Parallel()
+	admissionAfterEdit(t, func(snapshot *Snapshot) bool {
+		overwrite(reflect.ValueOf(snapshot).Elem())
+		return true
+	})
+}
+
+// overwrite changes every settable scalar reachable from value, in place.
+func overwrite(value reflect.Value) {
+	switch value.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if !value.IsNil() {
+			overwrite(value.Elem())
+		}
+	case reflect.Struct:
+		for index := 0; index < value.NumField(); index++ {
+			if value.Field(index).CanSet() {
+				overwrite(value.Field(index))
+			}
+		}
+	case reflect.Slice, reflect.Array:
+		for index := 0; index < value.Len(); index++ {
+			overwrite(value.Index(index))
+		}
+	case reflect.Map:
+		for _, key := range value.MapKeys() {
+			element := reflect.New(value.Type().Elem()).Elem()
+			element.Set(value.MapIndex(key))
+			overwrite(element)
+			value.SetMapIndex(key, element)
+		}
+	case reflect.String:
+		if value.CanSet() {
+			value.SetString("overwritten")
+		}
+	case reflect.Int, reflect.Int64:
+		if value.CanSet() {
+			value.SetInt(value.Int() + 7)
+		}
+	case reflect.Bool:
+		if value.CanSet() {
+			value.SetBool(!value.Bool())
+		}
 	}
 }

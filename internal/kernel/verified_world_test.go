@@ -391,3 +391,65 @@ func short(commit string) string {
 	}
 	return commit
 }
+
+// The verified dedup index owns its signed bytes. A caller that edits what a
+// read handed it — the events Load returns, or the events a lookup returns —
+// into another valid intent under the same key changes nothing the index
+// judges: the edited intent is still the conflict it was, for the reader and
+// for a submitter seeded from it.
+func TestTheVerifiedIndexOwnsItsSignedBytes(t *testing.T) {
+	t.Parallel()
+	edit := func(t *testing.T, lent intent.Signed, into Request) {
+		t.Helper()
+		if len(into.Signed.Intent) != len(lent.Intent) || len(into.Signed.Signature) != len(lent.Signature) {
+			t.Fatal("the edit would not fit in place")
+		}
+		copy(lent.Intent, into.Signed.Intent)
+		copy(lent.Signature, into.Signed.Signature)
+	}
+	t.Run("events a load returns", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "sha1")
+		alice := actor(t)
+		submitAll(t, f, f.request(t, alice, "held", []byte("first"), nil))
+		reader := NewReader(f.store)
+		loaded, err := reader.Load(f.ctx, f.genesis)
+		if err != nil || len(loaded.Events) != 1 {
+			t.Fatalf("load = %d events, %v", len(loaded.Events), err)
+		}
+		changed := f.request(t, alice, "held", []byte("other"), nil)
+		edit(t, loaded.Events[0].Signed, changed)
+		if replay, held, err := reader.ReplayAt(loaded.Verification.Head, changed); replay || !held || !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("after editing a loaded event the reader answered replay=%v held=%v err=%v; want the conflict", replay, held, err)
+		}
+		submitter := NewSubmitterFrom(f.store, Options{SigningKey: f.signingKey}, reader)
+		if result, err := submitter.Submit(f.ctx, changed); !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("after editing a loaded event the seeded submitter answered %+v %v; want the conflict", result, err)
+		}
+	})
+	t.Run("events a lookup returns", func(t *testing.T) {
+		t.Parallel()
+		f := newFixture(t, "sha1")
+		alice := actor(t)
+		accepted := f.request(t, alice, "held", []byte("first"), []string{"opaque-basis"})
+		submitAll(t, f, accepted)
+		reader := loadedReader(t, f)
+		head := mustHead(t, f.store, Ref(f.genesis))
+		key := identityOf(f, alice, "test", "held")
+		prior, held, err := reader.PriorActsAt(f.ctx, f.genesis, head, []string{key})
+		if err != nil || !held {
+			t.Fatal(held, err)
+		}
+		changed := f.request(t, alice, "held", []byte("other"), []string{"opaque-basis"})
+		lent := prior[key]
+		edit(t, lent.Signed, changed)
+		lent.Intent.RestsOn[0] = "edited-basis"
+		if replay, held, err := reader.ReplayAt(head, changed); replay || !held || !errors.Is(err, ErrIdempotencyConflict) {
+			t.Fatalf("after editing a looked-up event the reader answered replay=%v held=%v err=%v; want the conflict", replay, held, err)
+		}
+		again, _, err := reader.PriorActsAt(f.ctx, f.genesis, head, []string{key})
+		if err != nil || !again[key].Signed.Equal(accepted.Signed) || again[key].Intent.RestsOn[0] != "opaque-basis" {
+			t.Fatalf("a second lookup returned the edited event: %v", err)
+		}
+	})
+}

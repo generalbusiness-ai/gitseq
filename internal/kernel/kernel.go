@@ -170,8 +170,10 @@ func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 // this same repository already holds, so a process that has just read the log
 // does not read it again to append to it. Only the reader's verified frontier,
 // dedup index and causal positions are copied, under the reader's lock, into
-// maps the submitter owns; nothing is shared afterwards. The copy is the
-// cache's starting point and nothing more: every submission still asks the
+// maps the submitter owns. The signed bytes the entries hold are shared by the
+// two indexes and written by neither: an index takes its own copy of them when
+// an event enters it, and hands out copies. The copied index is the cache's
+// starting point and nothing more: every submission still asks the
 // ref for its head, reuses the copy only while the ref names exactly the head
 // it was verified at, verifies any descendant delta before judging, and
 // re-reads the whole log for anything else, exactly as a cache it had built
@@ -1146,6 +1148,10 @@ func (r *Reader) PriorActsAt(ctx context.Context, genesis, head string, dedupKey
 		if decoded.PayloadTree != event.PayloadTree {
 			return nil, true, fmt.Errorf("event %s: indexed payload tree differs from the one its signature names", event.Commit)
 		}
+		// The caller gets copies: the signed bytes, and the intent decoded
+		// afresh from them, so nothing it changes reaches the index.
+		event.Signed = cloneSigned(event.Signed)
+		event.Intent = decoded
 		_, tree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
 		if err != nil {
 			return nil, true, err
@@ -1864,9 +1870,14 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
 	return event, "", false, nil
 }
 
+// eventWithoutPayload is an event as the verified dedup index keeps it: no
+// payload, and signed bytes of its own. The index outlives the read that
+// filled it, and the same event is handed to the caller of that read, so the
+// index must not share the caller's buffers.
 func eventWithoutPayload(event Event) Event {
 	event.Payload = nil
 	event.Attachments = nil
+	event.Signed = cloneSigned(event.Signed)
 	return event
 }
 
