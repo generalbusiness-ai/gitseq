@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:96656414d47ba2208b5478bd4e03d6be6259267f","text":"Republished at 134dee2dbc34c3176502283bacfafda2136911af; the successor stands at notes/2026-10-16-signing-fold-once.md."}
+{"kind":"artifact","text":"cmd/gs/main.go at exact 84cf40acd458917300393d6bd5fa678d6dc52cca on request/status-size-cliff, under promise git:sha1…e8d5213 on request git:sha1…e780867","body":{"commit":"84cf40acd458917300393d6bd5fa678d6dc52cca","path":"cmd/gs/main.go"}}
