@@ -1,1 +1,1 @@
-{"kind":"promise","text":"I will independently re-review the streaming resident-status repair at exact 3ceb9466fc225468cca8aa659b33559443b5d229, replaying the legal-large-record counterexample and checking identity, frontier, idle-read and decoding guards."}
+{"kind":"promise","text":"I will review the signing-fold design at exact 519385d88751665c15727747cd840f3e76accaf0, including head-pinned reuse, checkpoint authentication, rollback isolation and implementation scope."}
