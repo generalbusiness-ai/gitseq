@@ -28,7 +28,7 @@ and a lease on every deletion.
 | `--text` | *(required)* | A plain-language description of the change and its impact, for a reader who will never see an event id. |
 | `--cleanup` | `false` | After the candidate is provably in the target, remove its worktree and delete its branch here and on origin. |
 | `--server` | | Submit through a resident sequencer instead of writing locally. Default: the resident URL this repository publishes (see `gs serve`); `-` forces the local fold; an explicit loopback URL is honoured as given. |
-| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. |
+| `--deadline` | `10s`, or `GITSEQ_SUBMIT_DEADLINE` | How long the resident has to answer each submission. Raise it for a resident that is cold, loaded, or folding a large log; a value that is not a positive duration is refused before anything is signed. After the merge has moved the target, each act of its durable receipt waits at least ten minutes, as [`gs merge`](merge.md#the-receipt-waits-for-the-resident) describes. |
 
 It takes no positional arguments. `--approval` accepts a
 [short reference](../event-identifiers.md#typing-one-at-a-boundary).
@@ -101,7 +101,12 @@ error. The landed head is printed on standard output.
    anything is staged or reserved. A refusal prints every reason it gave.
 6. **Merge.** `gs merge`'s locked path. If the workroom frontier moved
    between planning and landing, that refusal leaves nothing behind, so
-   the merge is planned and run once more.
+   the merge is planned and run once more. Once the target has moved, the
+   receipt and its succession wait for the resident as
+   [`gs merge`](merge.md#the-receipt-waits-for-the-resident) describes. If
+   the resident's answer is still lost, the target already carries the
+   merge: run the same `gs land` again, and it resumes from the receipt
+   sealed in Git and appends only what is still missing.
 7. **Push.** `git push origin <target ref>`. A repository with no origin
    is an ordinary arrangement and is reported, not failed. A push that
    fails with an origin present *is* an error: the next step would delete
