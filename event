@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:881671ae85f4f7cf4c39019189477f3228a37961","text":"Merge retired a covered predecessor; the successor is at cmd/gs/verified_world_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3a0f7157e71c17e94962252d7a5e6edc57a94ee","text":"Merge retired a covered predecessor; the successor is at internal/app/verified_world_test.go."}
