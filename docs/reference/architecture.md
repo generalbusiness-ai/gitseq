@@ -245,10 +245,15 @@ verifies every actor signature in what it reads.
   verified at, verifies any descendant delta, re-reads the whole log for
   anything else, and keeps the compare-and-swap and the post-dedup callback.
   The checkpoint material stays with the reader. When a checkpoint falls
-  due on a seeded submitter, it drops the copy, and its next submission makes
-  one full read — from the checkpoint when one verifies — that rebuilds the
-  material and publishes, so a process that only appends keeps the ordinary
-  checkpoint cadence.
+  due on a seeded submitter, it drops the copy and at once makes one full
+  read — from the checkpoint when one verifies — that rebuilds the material
+  and publishes at that position, so a process that only appends keeps the
+  ordinary checkpoint cadence.
+- A reader verifying commits its own process sequenced uses `CatchUp`: the
+  same verified delta, publishing no checkpoint, because the submitter that
+  appended those commits publishes for them. A process that signs its own
+  acts and reads each back before the next therefore writes one checkpoint
+  per interval, not one from each cache.
 - A consume-only reader authenticates and uses a signed checkpoint like any
   other, and writes nothing: no checkpoint, even with the signing key, and no
   repair of the checkpoint ref or the host pointer.

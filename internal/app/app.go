@@ -2790,10 +2790,19 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		streamedEvents       int
 		streamedFoldDuration time.Duration
 	)
+	// The cache stands at the head while the reader does not only when this
+	// workspace sequenced the commits between them. Reading those back
+	// verifies them and publishes nothing: their checkpoint cadence belongs to
+	// the submitter that appended them.
+	catchUp := w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == head
 	load := func(reader *kernel.Reader) (kernel.LoadResult, error) {
 		streamedFolder = nil
 		streamedEvents = 0
 		streamedFoldDuration = 0
+		if catchUp {
+			catchUp = false
+			return reader.CatchUp(ctx, w.config.Genesis)
+		}
 		if refusal != nil {
 			return reader.LoadWithProgress(ctx, w.config.Genesis, progress)
 		}

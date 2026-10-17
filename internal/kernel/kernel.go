@@ -173,9 +173,9 @@ func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 // re-reads the whole log for anything else, exactly as a cache it had built
 // itself. The checkpoint material stays with the reader. So that a process
 // that only appends still publishes checkpoints at the ordinary cadence, the
-// first append at which a checkpoint falls due drops the copy, and the next
-// submission makes one full read — from the checkpoint when one verifies —
-// that rebuilds the material and publishes. A reader that holds no verified
+// first append at which a checkpoint falls due drops the copy and makes one
+// full read — from the checkpoint when one verifies — that rebuilds the
+// material and publishes at that position. A reader that holds no verified
 // log, or reads another repository, seeds nothing.
 func NewSubmitterFrom(store gitstore.Store, options Options, reader *Reader) *Submitter {
 	submitter := NewSubmitter(store, options)
@@ -1051,11 +1051,25 @@ func (r *Reader) LoadWithProgressStream(ctx context.Context, genesis string, rep
 	return r.load(ctx, genesis, report, accept)
 }
 
+// CatchUp is Load for a host verifying commits it sequenced itself. The read
+// is the same — a descendant delta is verified commit by commit, anything
+// else is a full read — but a delta publishes no checkpoint. The checkpoint
+// cadence of those commits belongs to the submitter that appended them, so a
+// process that both appends and reads back its own appends publishes once per
+// interval rather than once from each cache.
+func (r *Reader) CatchUp(ctx context.Context, genesis string) (LoadResult, error) {
+	return r.loadMode(ctx, genesis, nil, nil, false)
+}
+
 func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress, accept func(Event) error) (LoadResult, error) {
+	return r.loadMode(ctx, genesis, report, accept, true)
+}
+
+func (r *Reader) loadMode(ctx context.Context, genesis string, report *AuditProgress, accept func(Event) error, publishDelta bool) (LoadResult, error) {
 	started := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	advance, err := r.logCache.advance(ctx, r.store, genesis, true, true, report, accept)
+	advance, err := r.logCache.advance(ctx, r.store, genesis, true, publishDelta, report, accept)
 	if err != nil {
 		recordVerify(ctx, observe.PathOther, started, 0, err)
 		return LoadResult{}, err
@@ -1365,10 +1379,14 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	if c.checkpointEvents.err == nil && c.checkpointEvents.count != c.log.Verification.Events-1 {
 		// A cache seeded from a reader holds no checkpoint material for the
 		// log it started from, so it cannot publish one. When one falls due,
-		// forget the log: the next advance is a full read, which rebuilds the
-		// material and publishes at the ordinary cadence.
+		// it forgets that log and reads the whole of it again at once — from
+		// the checkpoint, when one verifies — which rebuilds the material and
+		// publishes at this same position, the ordinary cadence. Should that
+		// read fail, the next submission makes it instead.
 		if checkpointDue(c.log.Verification.Depth, c.checkpointAttempt) {
+			target := c.target
 			c.target, c.head = "", ""
+			_, _ = c.advance(ctx, store, target, true, false, nil, nil)
 		}
 		return
 	}

@@ -272,66 +272,110 @@ func TestAdmissionNeverReusesAFoldFromAFailedAudit(t *testing.T) {
 	}
 }
 
-// A process that only appends — a resident accepting acts other processes
-// built and signed — publishes checkpoints at the ordinary cadence. Its
-// submitter starts from the session reader's verified log, which holds no
-// checkpoint material, and nothing else in such a process reads the log
-// again; without the cadence the checkpoint suffix every later reader must
-// verify one commit at a time would grow without bound.
+// checkpointInterval is the kernel's checkpoint cadence, in events.
+const checkpointInterval = 256
+
+// checkpointMoves runs acts appends and reports after which of them the
+// checkpoint ref moved.
+func checkpointMoves(t *testing.T, ctx context.Context, workspace *Workspace, acts int, appendOne func(int)) []int {
+	t.Helper()
+	ref := kernel.CheckpointRef(workspace.config.Genesis)
+	last, err := workspace.Store.Head(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var moves []int
+	for index := range acts {
+		appendOne(index)
+		if now, _ := workspace.Store.Head(ctx, ref); now != last {
+			moves = append(moves, index)
+			last = now
+		}
+	}
+	return moves
+}
+
+// requireCadence holds a run of appends to exactly one checkpoint write per
+// interval: the first within one interval, each later one exactly one
+// interval after the one before.
+func requireCadence(t *testing.T, shape string, moves []int, acts int) {
+	t.Helper()
+	want := acts / checkpointInterval
+	ok := len(moves) == want && len(moves) > 0 && moves[0] < checkpointInterval
+	for index := 1; ok && index < len(moves); index++ {
+		ok = moves[index]-moves[index-1] == checkpointInterval
+	}
+	if !ok {
+		t.Fatalf("%s: the checkpoint moved after acts %v over %d appends; want %d moves, %d acts apart", shape, moves, acts, want, checkpointInterval)
+	}
+}
+
+// A process that appends publishes one checkpoint per interval, as it always
+// has: never none, which would let the suffix every later reader verifies
+// grow without bound, and never two, one from each cache it holds.
+//
+// Two process shapes reach it differently. A resident accepts acts other
+// processes built and signed; its submitter starts from the session reader's
+// verified log, which holds no checkpoint material, and nothing else in it
+// reads the log again. A process that signs its own acts also reads each one
+// back, verifying it, before it judges the next; that read must not publish
+// a second checkpoint beside the submitter's.
 func TestAnAppendingProcessKeepsTheCheckpointCadence(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	initialized, seed := admissionWorkspace(t, ctx)
-	// A resident starts on a log it did not write: its first submission seeds
-	// the submitter from the session reader's verified log.
-	resident, err := Open(ctx, initialized.Repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	readAt := resident.mustSnapshot(t, ctx).Head
-	ref := kernel.CheckpointRef(resident.config.Genesis)
-	initial, err := resident.Store.Head(ctx, ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The acts are built elsewhere, from one read-only world, so no read in
-	// either process publishes a checkpoint on the resident's behalf.
-	client, err := Open(ctx, resident.Repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	world, err := client.ReadOnlySnapshot(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, private, err := client.Actor("human")
-	if err != nil {
-		t.Fatal(err)
-	}
-	const acts = 300
-	moved := -1
-	for index := range acts {
-		request, err := client.BuildActRequestReadOnly(ctx, world, private, "human", Act{
-			Verb: VerbState, Kind: workroom.KindAssert, Text: "appended by the resident",
-			RestsOn: []string{seed.ID}, IdempotencyKey: "cadence-" + strconv.Itoa(index),
-		})
+	const acts = 2*checkpointInterval + 4
+	t.Run("resident", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		initialized, seed := admissionWorkspace(t, ctx)
+		resident, err := Open(ctx, initialized.Repo)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := resident.AcceptSubmission(ctx, request); err != nil {
+		readAt := resident.mustSnapshot(t, ctx).Head
+		// The acts are built elsewhere, from one read-only world, so no read in
+		// either process publishes a checkpoint on the resident's behalf.
+		client, err := Open(ctx, resident.Repo)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if now, _ := resident.Store.Head(ctx, ref); now != initial {
-			moved = index
-			break
+		world, err := client.ReadOnlySnapshot(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if moved < 0 {
-		t.Fatalf("the checkpoint never advanced over %d acts one process appended", acts)
-	}
-	if !resident.reader.StandsAt(resident.config.Genesis, readAt) || client.snapshotCache != nil {
-		t.Fatal("a snapshot read published the checkpoint, not the appending submitter")
-	}
+		_, private, err := client.Actor("human")
+		if err != nil {
+			t.Fatal(err)
+		}
+		moves := checkpointMoves(t, ctx, resident, acts, func(index int) {
+			request, err := client.BuildActRequestReadOnly(ctx, world, private, "human", Act{
+				Verb: VerbState, Kind: workroom.KindAssert, Text: "appended by the resident",
+				RestsOn: []string{seed.ID}, IdempotencyKey: "cadence-" + strconv.Itoa(index),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := resident.AcceptSubmission(ctx, request); err != nil {
+				t.Fatal(err)
+			}
+		})
+		requireCadence(t, "resident", moves, acts)
+		if !resident.reader.StandsAt(resident.config.Genesis, readAt) || client.snapshotCache != nil {
+			t.Fatal("a snapshot read published the checkpoint, not the appending submitter")
+		}
+	})
+	t.Run("signer", func(t *testing.T) {
+		t.Parallel()
+		ctx := context.Background()
+		workspace, seed := admissionWorkspace(t, ctx)
+		workspace.mustSnapshot(t, ctx)
+		moves := checkpointMoves(t, ctx, workspace, acts, func(index int) {
+			actRecord(t, ctx, workspace, "human", Act{
+				Verb: VerbState, Kind: workroom.KindAssert, Text: "signed and appended here",
+				RestsOn: []string{seed.ID}, IdempotencyKey: "signed-" + strconv.Itoa(index),
+			})
+		})
+		requireCadence(t, "signer", moves, acts)
+	})
 }
 
 // A fold this workspace advanced over its own submission stands at the new
