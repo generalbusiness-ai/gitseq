@@ -2095,16 +2095,17 @@ func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
 // a commitment row which still expects an actor to move. The projection is
 // evaluated at the caller's frontier: receipt admission captures the incoming
 // set once; current cleanup accounting asks again after later acts take effect.
+//
+// The rows are projected without staleness. Which rows exist, and which
+// request, promise, and report events each one carries, never depend on
+// staleness; only a row's Stale flag and its status do. Staleness changes the
+// status in one way only: an open or promised row with nothing reported
+// becomes stale. All three statuses are unsettled, so the set is the same
+// whatever the graph's staleness is. Folding that graph again for every merge
+// receipt was most of the time a cold fold took on a deep log.
 func (f *foldState) unsettledCommitmentEvents() map[string]bool {
-	return f.unsettledCommitmentsIn(f.stalenessNow().staleness(f.succeededRetirements()).stale)
-}
-
-// unsettledCommitmentsIn is unsettledCommitmentEvents against a staleness set
-// the caller already holds. The set is the one stalenessNow answers with, so a
-// caller mid-projection passes its own rather than folding the graph twice.
-func (f *foldState) unsettledCommitmentsIn(stale map[string]bool) map[string]bool {
 	active := make(map[string]bool)
-	for _, commitment := range f.projectCommitments(stale) {
+	for _, commitment := range f.projectCommitments(nil) {
 		switch commitment.Status {
 		case "open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale":
 			active[commitment.Request] = true
@@ -3435,12 +3436,7 @@ func (f *foldState) project() Projection {
 						switch entry.Class {
 						case "sibling":
 							if currentUnsettled == nil {
-								// The staleness this projection already computed
-								// is the same set the commitment rows are read
-								// against. Folding it again here was a second
-								// complete pass over the whole graph for an
-								// answer already in hand.
-								currentUnsettled = f.unsettledCommitmentsIn(result.stale)
+								currentUnsettled = f.unsettledCommitmentEvents()
 							}
 							artifact := f.byID[entry.Artifact]
 							if currentUnsettled[entry.Commitment] && artifact != nil && f.commitmentProtectsArtifact(entry.Commitment, artifact) && !f.hasPostReceiptLiveArtifact(liveArtifacts, receipt, artifact, &record) {
