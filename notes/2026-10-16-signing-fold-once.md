@@ -1,7 +1,7 @@
 ---
 date: 2026-10-16
 author: claude
-status: candidate design; measured, not implemented, awaiting review
+status: candidate design; measured, not implemented; step 1 is request 555f239c
 origin: request git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4c2be71ea1a449f8f4819aa2897a2f26d501fcc
 ---
 
@@ -191,18 +191,33 @@ small enough, and only with the safeguards listed above.
 
 The faster fold is now its own request,
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d1b3d1b1d8a481ad0bda38d7b137764e0a3a28d3`,
-filed on 2026-10-17. This note asks review only of step 1.
+filed on 2026-10-17. This note proposes only step 1.
 
 ## Conditions, against this proposal
 
 1. Measured above, with every local fold named. The "after" figures wait for
    an implementation.
-2. Step 1 meets it: no full scan when a valid checkpoint exists.
-3. Step 1 meets it: admission and preflight judge a log verified in this
-   process at the head being signed against; the existing checkpoint
+2. Step 1 does not meet it, and nothing in this note does. The condition
+   asks for no full verification of the log when a valid checkpoint exists.
+   Step 1 removes every cold `scanHead`, so a command verifies the log once
+   instead of three to six times. But that one load still verifies every
+   actor signature and payload hash in the checkpoint, twice on the
+   streaming path. Removing that verification would let the checkpoint, and
+   so the sequencer key, stand in for the actors' signatures, which this
+   note rejects. Removing repeated scans is not the same as removing full
+   verification. The faster-fold request removes fold work, not
+   verification, so it does not meet this condition either.
+3. Step 1 would meet it: admission and preflight judge a log verified in
+   this process at the head being signed against. The existing checkpoint
    authentication refuses a tampered checkpoint, and a test on the signing
    path should pin that.
-4. Step 1 meets it, since no fold input changes.
+4. Step 1 would meet it, since no fold input changes.
 5. To be shown at the implementation head.
 
-The outcome, "much less than a cold fold", needs step 2.
+So step 1 is a partial outcome of this request. Codex's design review
+(`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:161cdac2781a586682546d1cb096af0619064c07`)
+found the earlier version of this section claimed condition 2 for it. Step 1
+is now its own bounded request, with conditions that say what it delivers:
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:555f239cfad9d38d46016fb118161539235d8011`. Whether condition 2 should be kept, reworded or dropped
+is for the requester to decide. The outcome, "much less than a cold fold",
+needs the faster fold as well.
