@@ -2096,11 +2096,13 @@ func (f *foldState) mergeSuccessorPaths(receipt *parsedRecord) []string {
 // evaluated at the caller's frontier: receipt admission captures the incoming
 // set once; current cleanup accounting asks again after later acts take effect.
 //
-// The rows are projected without staleness. Staleness changes a row's status
-// in one way only: an open or promised row with nothing reported becomes
-// stale. All three statuses are unsettled, so the set is the same whatever
-// the graph's staleness is. Folding that graph again for every merge receipt
-// was most of the time a cold fold took on a deep log.
+// The rows are projected without staleness. Which rows exist, and which
+// request, promise, and report events each one carries, never depend on
+// staleness; only a row's Stale flag and its status do. Staleness changes the
+// status in one way only: an open or promised row with nothing reported
+// becomes stale. All three statuses are unsettled, so the set is the same
+// whatever the graph's staleness is. Folding that graph again for every merge
+// receipt was most of the time a cold fold took on a deep log.
 func (f *foldState) unsettledCommitmentEvents() map[string]bool {
 	active := make(map[string]bool)
 	for _, commitment := range f.projectCommitments(nil) {

@@ -151,20 +151,33 @@ func unsettledWithStaleness(f *foldState) map[string]bool {
 }
 
 // The set a receipt captures is read without staleness, on the argument that
-// staleness only ever turns an open or promised row into a stale one. This
-// fixture makes that argument carry weight: a request and a promise go stale
-// when the artifact they rest on is retired without a successor, three
-// receipts land with left-live testimony, review promises are withdrawn before
-// and after their merges, and protecting commitments settle afterwards. Before
-// every record, and so at every receipt's incoming frontier, the captured set
-// must equal the reference that folds staleness.
+// staleness never decides which rows exist or which events they carry, and
+// only ever turns an open or promised row into a stale one. This fixture makes
+// that argument carry weight. Every commitment resting on scratch goes stale
+// when scratch is retired without a successor: an open request, a promise with
+// nothing reported, a request answered by a direct report, a promise whose
+// report waits on its requester, and a promise whose report was ratified.
+// Three receipts land with left-live testimony, review promises are withdrawn
+// before and after their merges, and protecting commitments settle afterwards.
+// Before every record, and so at every receipt's incoming frontier, the
+// captured set must equal the reference that folds staleness.
 func TestReceiptUnsettledCaptureMatchesTheStalenessAwareAnswer(t *testing.T) {
+	done := map[string]string{"verdict": "done"}
 	records := receiptProtectionRecords(t, false)
 	records = append(records,
 		event(t, "scratch", agent, SchemaState, State{Kind: KindArtifact, Text: "scratch", Body: map[string]string{"path": "notes", "commit": "scratch-head"}}, "r0"),
 		event(t, "drift-request", operator, SchemaState, State{Kind: KindRequest, Text: "use scratch", Body: map[string]string{"to": agent, "conditions": "scratch"}}, "scratch"),
 		event(t, "drift-review", operator, SchemaState, State{Kind: KindRequest, Text: "review scratch", Body: map[string]string{"to": other, "conditions": "scratch"}}, "scratch"),
 		event(t, "drift-promise", other, SchemaState, State{Kind: KindPromise, Text: "will review scratch"}, "drift-review"),
+		event(t, "direct-request", operator, SchemaState, State{Kind: KindRequest, Text: "answer from scratch", Body: map[string]string{"to": agent, "conditions": "scratch"}}, "scratch"),
+		event(t, "direct-report", agent, SchemaState, State{Kind: KindReport, Text: "answered", Body: done}, "direct-request"),
+		event(t, "reported-request", operator, SchemaState, State{Kind: KindRequest, Text: "measure scratch", Body: map[string]string{"to": other, "conditions": "scratch"}}, "scratch"),
+		event(t, "reported-promise", other, SchemaState, State{Kind: KindPromise, Text: "will measure"}, "reported-request"),
+		event(t, "reported-report", other, SchemaState, State{Kind: KindReport, Text: "measured", Body: done}, "reported-promise"),
+		event(t, "satisfied-request", operator, SchemaState, State{Kind: KindRequest, Text: "summarise scratch", Body: map[string]string{"to": other, "conditions": "scratch"}}, "scratch"),
+		event(t, "satisfied-promise", other, SchemaState, State{Kind: KindPromise, Text: "will summarise"}, "satisfied-request"),
+		event(t, "satisfied-report", other, SchemaState, State{Kind: KindReport, Text: "summarised", Body: done}, "satisfied-promise"),
+		event(t, "satisfied-ratified", operator, SchemaRatify, Ratify{Target: "satisfied-report"}, "satisfied-report"),
 		event(t, "retire-scratch", agent, SchemaSupersede, Supersede{Target: "scratch", Text: "abandoned without a successor"}, "scratch"),
 		protectionReceipt(t, "sibling", "side-promise"),
 	)
@@ -175,9 +188,19 @@ func TestReceiptUnsettledCaptureMatchesTheStalenessAwareAnswer(t *testing.T) {
 		event(t, "settle-side", agent, SchemaSupersede, Supersede{Target: "side-promise", Text: "withdrawn"}, "side-promise"),
 		event(t, "retire-older", agent, SchemaSupersede, Supersede{Target: "older", Text: "cleanup"}, "older"),
 	)
+	// The stale rows each receipt's frontier must show, by the request that
+	// opens the row and the status the staleness-aware projection gives it.
+	wantStale := map[string]string{
+		"drift-request":     "stale",
+		"drift-review":      "stale",
+		"direct-request":    "reported",
+		"reported-request":  "reported",
+		"satisfied-request": "satisfied",
+	}
 
 	folder := NewFolder(nil)
-	receipts, staleRows := 0, 0
+	receipts := 0
+	seenStale := make(map[string]int)
 	var previous map[string]bool
 	changed := false
 	for _, record := range records {
@@ -189,21 +212,33 @@ func TestReceiptUnsettledCaptureMatchesTheStalenessAwareAnswer(t *testing.T) {
 			changed = true
 		}
 		previous = got
-		for _, commitment := range folder.state.projectCommitments(folder.state.stalenessNow().staleness(folder.state.succeededRetirements()).stale) {
-			if commitment.Status == "stale" {
-				staleRows++
-			}
-		}
+		frontier := folder.state.projectCommitments(folder.state.stalenessNow().staleness(folder.state.succeededRetirements()).stale)
 		folder.Append(record)
-		if folder.state.byID[record.ID].mergeAccountingPresent {
-			receipts++
+		if !folder.state.byID[record.ID].mergeAccountingPresent {
+			continue
+		}
+		receipts++
+		for _, commitment := range frontier {
+			status, named := wantStale[commitment.Request]
+			if !named || !commitment.Stale || commitment.Status != status {
+				continue
+			}
+			// A row that reached its status through a completion must still
+			// carry that completion when stale; that is the half of the row a
+			// staleness-dependent projection could drop.
+			if status != "stale" && commitment.Report == "" {
+				continue
+			}
+			seenStale[commitment.Request]++
 		}
 	}
 	if receipts != 3 {
 		t.Fatalf("inert fixture: %d receipts captured an unsettled set, want 3", receipts)
 	}
-	if staleRows == 0 {
-		t.Fatal("inert fixture: no commitment row was stale, so staleness decided nothing")
+	for request, status := range wantStale {
+		if seenStale[request] != receipts {
+			t.Fatalf("inert fixture: %s was a stale %s row at %d of %d receipt frontiers", request, status, seenStale[request], receipts)
+		}
 	}
 	if !changed {
 		t.Fatal("inert fixture: the unsettled set never changed")
