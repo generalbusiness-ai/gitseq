@@ -81,6 +81,9 @@ func mergeChangedPaths(changes []mergeChange) []string {
 // every act below still crosses the fold's own unchanged rule at admission,
 // signature checks, citation preflight, and admission bounds all still run.
 func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checkout, serverURL, actor string, private ed25519.PrivateKey, receipt mergeReceipt) error {
+	// Every caller has already moved the target, so a client deadline alone
+	// must not strand the receipt.
+	ctx = withMergeSuccessionDeadline(ctx)
 	snapshot, err := workspace.Snapshot(ctx)
 	if err != nil {
 		return err
@@ -172,7 +175,7 @@ func recordMergeSuccession(ctx context.Context, workspace *app.Workspace, checko
 	// runs the admission preflight itself before its first append, so the
 	// succession is preflighted once after the target moves, not twice.
 	if report, err := runBatch(ctx, workspace, serverURL, actor, private, acts, true); err != nil {
-		return fmt.Errorf("record merge succession: act %d: %w", failedPosition(report), err)
+		return mergeSuccessionRefusal(err, receipt, failedPosition(report))
 	}
 	return verifySuccession(ctx, workspace, receipt, plan)
 }

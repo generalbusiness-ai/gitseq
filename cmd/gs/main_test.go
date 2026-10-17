@@ -175,7 +175,7 @@ func TestResidentHTTPServerBoundsSlowRequestBodies(t *testing.T) {
 	}
 }
 
-func TestResidentHTTPServerLetsColdStatusOutliveWriteTimeout(t *testing.T) {
+func TestResidentHTTPServerLetsColdStatusAndAppendsOutliveWriteTimeout(t *testing.T) {
 	t.Parallel()
 	const writeTimeout = 50 * time.Millisecond
 	handler := residentHTTPHandler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
@@ -202,16 +202,21 @@ func TestResidentHTTPServerLetsColdStatusOutliveWriteTimeout(t *testing.T) {
 			DisableKeepAlives: true,
 		},
 	}
-	response, err := client.Get("http://" + listener.Addr().String() + "/v0/status")
-	if err != nil {
-		t.Fatalf("slow status was cut by the ordinary write deadline: %v", err)
-	}
-	response.Body.Close()
-	if response.StatusCode != http.StatusNoContent {
-		t.Fatalf("slow status returned %d", response.StatusCode)
+	// The two routes that append are the other exceptions: a client says how
+	// long it will wait, and a merge's receipt waits far longer than the
+	// server's budget.
+	for _, route := range []string{"/v0/status", "/v0/submit", "/v0/act"} {
+		response, err := client.Get("http://" + listener.Addr().String() + route)
+		if err != nil {
+			t.Fatalf("slow %s was cut by the ordinary write deadline: %v", route, err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusNoContent {
+			t.Fatalf("slow %s returned %d", route, response.StatusCode)
+		}
 	}
 
-	response, err = client.Get("http://" + listener.Addr().String() + "/ordinary")
+	response, err := client.Get("http://" + listener.Addr().String() + "/ordinary")
 	if err == nil {
 		response.Body.Close()
 		t.Fatalf("ordinary response survived the %s write deadline with status %d", writeTimeout, response.StatusCode)
