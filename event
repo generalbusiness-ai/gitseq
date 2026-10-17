@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/kernel/checkpoint.go","body":{"commit":"0e3b02a1030b4772aec3e4cfff7b8e5e3ac664e9","path":"internal/kernel/checkpoint.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at internal/kernel/kernel.go","body":{"commit":"0e3b02a1030b4772aec3e4cfff7b8e5e3ac664e9","path":"internal/kernel/kernel.go"}}
