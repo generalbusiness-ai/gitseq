@@ -51,8 +51,10 @@ lanes that landed as main `b81a80cf`), on 2026-10-16. The load average was
 8–10.
 
 **After.** Binary `0e3b02a1` (`vcs.modified=false`), on 2026-10-17. Each value
-is the median of three runs, and the spread within a row is at most 5 %. The
-load average was 1.7–3.6.
+is the median of three runs. In the new `0e3b02a1` runs, wall times within a
+row are within 5 % of each other. The reused step 1 lane runs spread a little
+more (the frozen `ratify` wall times are 7.15, 7.28 and 7.68 s), and peak
+memory spreads by more than 5 % in some rows. The load average was 1.7–3.6.
 
 The frozen local and frozen resident rows come from the step 1 lane's own
 runs, of binary `8803f894`. Its tree is identical to `0e3b02a1`, and a
@@ -83,8 +85,11 @@ are counted.
 
 **Acts** (each was refused or accepted the same way before and after):
 
-- `ratify` names a retired artifact and is refused before signing ("retired
-  statement cannot be ratified").
+- `ratify` is refused before signing, in two ways:
+  - on the real clone it names a retired artifact ("retired statement cannot
+    be ratified");
+  - on the frozen copy, with and without a checkpoint, it names a statement
+    of a kind that cannot be ratified ("statement kind is not ratifiable").
 - `state` is a promise with no request:
   - on the local route the preflight refuses it;
   - on the resident route it is sent with `--no-preflight` and recorded as an
