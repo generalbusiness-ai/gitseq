@@ -1,6 +1,0 @@
-=== RUN   TestReviewReaderKeepsVerifiedSignedBytesPrivate
---- PASS: TestReviewReaderKeepsVerifiedSignedBytesPrivate (0.45s)
-=== RUN   TestReviewSeededWorldIgnoresEditsToReturnedLoadEvents
---- PASS: TestReviewSeededWorldIgnoresEditsToReturnedLoadEvents (0.43s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/kernel	2.086s

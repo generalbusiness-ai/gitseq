@@ -1,4 +1,0 @@
-=== RUN   TestReviewAdmissionDoesNotInheritCallerVocabularyEdits
---- PASS: TestReviewAdmissionDoesNotInheritCallerVocabularyEdits (0.65s)
-PASS
-ok  	github.com/generalbusiness-ai/gitseq/internal/app	1.850s
