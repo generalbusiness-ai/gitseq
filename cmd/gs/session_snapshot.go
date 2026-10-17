@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
-	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 )
 
 // sessionSnapshot is the one projection a command judges against, and the one
@@ -88,17 +87,14 @@ func loadSessionSnapshot(ctx context.Context, progress io.Writer, workspace *app
 }
 
 // residentStatus is the complete resident projection as the display commands
-// have always read it: one fetch, and the frontier check gs status documents —
+// read it: fetchFullStatus, and so the frontier check gs status documents —
 // this workroom's genesis, and a head equal to the local sequence ref and
 // unmoved while the answer was read. It is deliberately not the session check
 // above: a page rendered for a reader states the frontier it was taken at, and
 // what a command signs against is judged by more than that.
 func residentStatus(ctx context.Context, workspace *app.Workspace, serverURL string) (app.Snapshot, error) {
-	status, err := fetchFullStatus(ctx, serverURL)
+	status, err := fetchFullStatus(ctx, workspace, serverURL)
 	if err != nil {
-		return app.Snapshot{}, err
-	}
-	if err := validateRemoteFrontier(ctx, workspace, status.Durable.Genesis, status.Durable.Head); err != nil {
 		return app.Snapshot{}, err
 	}
 	return status.Durable, nil
@@ -113,15 +109,8 @@ func residentStatus(ctx context.Context, workspace *app.Workspace, serverURL str
 // What that check covers, and what it does not, is the trust boundary this
 // command sits on: see docs/reference/architecture.md, layer 7.
 func residentSnapshot(ctx context.Context, workspace *app.Workspace, serverURL string) (app.Snapshot, error) {
-	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
+	status, err := fetchFullStatus(ctx, workspace, serverURL)
 	if err != nil {
-		return app.Snapshot{}, err
-	}
-	status, err := fetchFullStatus(ctx, serverURL)
-	if err != nil {
-		return app.Snapshot{}, err
-	}
-	if err := validateRemoteFrontierAt(ctx, workspace, before, status.Durable.Genesis, status.Durable.Head); err != nil {
 		return app.Snapshot{}, err
 	}
 	// A frontier says which records the projection was folded from; the profile

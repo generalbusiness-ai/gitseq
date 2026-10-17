@@ -2736,7 +2736,11 @@ func completeStatus(snapshot app.Snapshot) completeJSON {
 
 const (
 	summaryResponseLimit = 64 << 10
-	fullResponseLimit    = 64 << 20
+	// fullResponseIdle is how long the complete status read waits with no
+	// byte arriving, and how long the summary read that identifies the
+	// resident before it may take. It is not a deadline on the whole complete
+	// read, which grows with the log; see fetchFullStatus.
+	fullResponseIdle = 10 * time.Second
 )
 
 // localFold is the --server value that forces the local verified fold; the
@@ -2770,12 +2774,19 @@ func requireLocalAuthorityWrite(workspace *app.Workspace, explicit, command stri
 }
 
 func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (service.SummaryStatus, error) {
+	return fetchSummaryWithin(ctx, workspace, raw, 2*time.Second)
+}
+
+// fetchSummaryWithin is fetchSummary with its deadline named, so the identity
+// read before the complete status keeps the ten seconds that read always had
+// rather than the two the summary display is given.
+func fetchSummaryWithin(ctx context.Context, workspace *app.Workspace, raw string, timeout time.Duration) (service.SummaryStatus, error) {
 	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
 	if err != nil {
 		return service.SummaryStatus{}, err
 	}
 	var summary service.SummaryStatus
-	if err := residentclient.New(2*time.Second).GetJSON(ctx, raw, "/v0/status-summary", summaryResponseLimit, &summary); err != nil {
+	if err := residentclient.New(timeout).GetJSON(ctx, raw, "/v0/status-summary", summaryResponseLimit, &summary); err != nil {
 		return service.SummaryStatus{}, err
 	}
 	if err := validateRemoteFrontierAt(ctx, workspace, before, summary.Durable.Genesis, summary.Durable.Head); err != nil {
@@ -2787,10 +2798,32 @@ func fetchSummary(ctx context.Context, workspace *app.Workspace, raw string) (se
 	return summary, nil
 }
 
-func fetchFullStatus(ctx context.Context, raw string) (service.Status, error) {
+// fetchFullStatus reads the resident's complete projection and admits it only
+// at this checkout's own frontier. Who is answering is settled first, by the
+// bounded summary read: this workroom's genesis and this checkout's head,
+// unmoved across that read, so another workroom's resident or one that is
+// behind is refused before anything large is read. The complete answer is as
+// large as the log, so it is then read with no byte ceiling and no deadline on
+// the whole read, only on silence; docs/reference/architecture.md, layer 7,
+// states what that costs. The sequence ref is read again after it, so the
+// answer names the head this checkout held before asking, and that head did
+// not move under the read.
+func fetchFullStatus(ctx context.Context, workspace *app.Workspace, raw string) (service.Status, error) {
+	before, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
+	if err != nil {
+		return service.Status{}, err
+	}
+	if _, err := fetchSummaryWithin(ctx, workspace, raw, fullResponseIdle); err != nil {
+		return service.Status{}, err
+	}
 	var status service.Status
-	err := residentclient.New(10*time.Second).GetJSON(ctx, raw, "/v0/status", fullResponseLimit, &status)
-	return status, err
+	if err := residentclient.New(0).StreamJSON(ctx, raw, "/v0/status", fullResponseIdle, &status); err != nil {
+		return service.Status{}, err
+	}
+	if err := validateRemoteFrontierAt(ctx, workspace, before, status.Durable.Genesis, status.Durable.Head); err != nil {
+		return service.Status{}, err
+	}
+	return status, nil
 }
 
 func validateRemoteFrontier(ctx context.Context, workspace *app.Workspace, genesis, head string) error {

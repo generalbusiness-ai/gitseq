@@ -347,8 +347,10 @@ The default view is read from the resident's bounded summary endpoint.
 That read is deliberately narrow: no redirects are followed, the response
 is limited to 64 KiB and the request to two seconds, and the returned
 genesis, head, depth and cursor must still match the workroom selected
-here. `--all` and `--json` use the resident's full response instead, with
-a larger limit and a longer deadline.
+here. `--all` and `--json` use the resident's full response instead. They
+read it only after the same summary, given ten seconds, has matched, and with
+no size limit, because the full response is as large as the log; the read is
+abandoned when ten seconds pass with nothing arriving.
 
 A refusal, a timeout, an oversized response, a stale head, or a head that
 moves while the answer is being read is **named on standard error** and
