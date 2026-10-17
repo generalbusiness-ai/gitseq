@@ -1,6 +1,9 @@
 package workroom
 
-import "testing"
+import (
+	"maps"
+	"testing"
+)
 
 func receiptProtectionRecords(t *testing.T, same bool) []Record {
 	t.Helper()
@@ -123,4 +126,86 @@ func TestReceiptCannotCallItsOwnProtectedDraftAbandoned(t *testing.T) {
 	records := append(receiptProtectionRecords(t, true), protectionReceipt(t, "abandoned", ""))
 	records = append(records, protectionSuccessors(t)...)
 	requireProtection(t, Fold(records), false, 1)
+}
+
+// unsettledWithStaleness is the receipt capture as the fold computed it before
+// it stopped folding staleness for this question: every commitment row
+// projected against the whole graph's staleness, then read for the statuses
+// that still expect a move. It is kept here, verbatim, as the reference the
+// cheaper capture must equal.
+func unsettledWithStaleness(f *foldState) map[string]bool {
+	active := make(map[string]bool)
+	for _, commitment := range f.projectCommitments(f.stalenessNow().staleness(f.succeededRetirements()).stale) {
+		switch commitment.Status {
+		case "open", "promised", "reported", "awaiting-review", "awaiting-authorization", "awaiting-landing", "stale":
+			active[commitment.Request] = true
+			if commitment.Promise != "" {
+				active[commitment.Promise] = true
+			}
+			if commitment.Report != "" {
+				active[commitment.Report] = true
+			}
+		}
+	}
+	return active
+}
+
+// The set a receipt captures is read without staleness, on the argument that
+// staleness only ever turns an open or promised row into a stale one. This
+// fixture makes that argument carry weight: a request and a promise go stale
+// when the artifact they rest on is retired without a successor, three
+// receipts land with left-live testimony, review promises are withdrawn before
+// and after their merges, and protecting commitments settle afterwards. Before
+// every record, and so at every receipt's incoming frontier, the captured set
+// must equal the reference that folds staleness.
+func TestReceiptUnsettledCaptureMatchesTheStalenessAwareAnswer(t *testing.T) {
+	records := receiptProtectionRecords(t, false)
+	records = append(records,
+		event(t, "scratch", agent, SchemaState, State{Kind: KindArtifact, Text: "scratch", Body: map[string]string{"path": "notes", "commit": "scratch-head"}}, "r0"),
+		event(t, "drift-request", operator, SchemaState, State{Kind: KindRequest, Text: "use scratch", Body: map[string]string{"to": agent, "conditions": "scratch"}}, "scratch"),
+		event(t, "drift-review", operator, SchemaState, State{Kind: KindRequest, Text: "review scratch", Body: map[string]string{"to": other, "conditions": "scratch"}}, "scratch"),
+		event(t, "drift-promise", other, SchemaState, State{Kind: KindPromise, Text: "will review scratch"}, "drift-review"),
+		event(t, "retire-scratch", agent, SchemaSupersede, Supersede{Target: "scratch", Text: "abandoned without a successor"}, "scratch"),
+		protectionReceipt(t, "sibling", "side-promise"),
+	)
+	records = append(records, protectionSuccessors(t)...)
+	records = append(records, costRound(t, 0, true)...)
+	records = append(records, costRound(t, 1, false)...)
+	records = append(records,
+		event(t, "settle-side", agent, SchemaSupersede, Supersede{Target: "side-promise", Text: "withdrawn"}, "side-promise"),
+		event(t, "retire-older", agent, SchemaSupersede, Supersede{Target: "older", Text: "cleanup"}, "older"),
+	)
+
+	folder := NewFolder(nil)
+	receipts, staleRows := 0, 0
+	var previous map[string]bool
+	changed := false
+	for _, record := range records {
+		got, want := folder.state.unsettledCommitmentEvents(), unsettledWithStaleness(folder.state)
+		if !maps.Equal(got, want) {
+			t.Fatalf("before %s: captured unsettled set = %v, staleness-aware answer = %v", record.ID, got, want)
+		}
+		if previous != nil && !maps.Equal(previous, got) {
+			changed = true
+		}
+		previous = got
+		for _, commitment := range folder.state.projectCommitments(folder.state.stalenessNow().staleness(folder.state.succeededRetirements()).stale) {
+			if commitment.Status == "stale" {
+				staleRows++
+			}
+		}
+		folder.Append(record)
+		if folder.state.byID[record.ID].mergeAccountingPresent {
+			receipts++
+		}
+	}
+	if receipts != 3 {
+		t.Fatalf("inert fixture: %d receipts captured an unsettled set, want 3", receipts)
+	}
+	if staleRows == 0 {
+		t.Fatal("inert fixture: no commitment row was stale, so staleness decided nothing")
+	}
+	if !changed {
+		t.Fatal("inert fixture: the unsettled set never changed")
+	}
 }
