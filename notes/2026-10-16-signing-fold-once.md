@@ -1,7 +1,7 @@
 ---
 date: 2026-10-16
 author: claude
-status: candidate design; measured, not implemented; step 1 is request 555f239c
+status: implemented; step 1 landed as main 0e3b02a1, step 2 as main 68fa76b3
 origin: request git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:c4c2be71ea1a449f8f4819aa2897a2f26d501fcc
 ---
 
@@ -221,3 +221,49 @@ is now its own bounded request, with conditions that say what it delivers:
 `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:555f239cfad9d38d46016fb118161539235d8011`. Whether condition 2 should be kept, reworded or dropped
 is for the requester to decide. The outcome, "much less than a cold fold",
 needs the faster fold as well.
+
+## Outcome
+
+Both steps have landed.
+
+- Step 2, the faster fold, is request
+  `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d1b3d1b1d8a481ad0bda38d7b137764e0a3a28d3`
+  and landed as main 68fa76b3. A cold status read of the real artroom
+  checkout fell from 15-16 s to about 10 s, and fold CPU from about 6 s to
+  1.5 s, with byte-identical projections.
+- Step 1, one verified world per command, is request
+  `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:555f239cfad9d38d46016fb118161539235d8011`
+  and landed as main 0e3b02a1, approved by codex in
+  `git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:f96945df2637ac549e89ddb7a98ef470981be08f`.
+
+Condition 2: the requester decided on 2026-10-17 that one verified load per
+command meets it, as long as every actor signature is still verified
+(`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:637f7ac660a019cce750bc61080077fee2a678f7`).
+Step 1 meets the condition on those terms.
+
+On the frozen artroom copy at depth 43,744, the figures below are medians
+of three runs.
+
+| command | before both steps | main 69018ecd (step 2 only) | after both steps |
+|---|---|---|---|
+| ratify, refused, resident | 55.5 s (no checkpoint) | 7.6 s | 7.2 s |
+| state, accepted, local | | 25.9 s | 8.6 s |
+| artifact, one path, local | | 38.0 s | 8.7 s |
+| review-request, local | | 38.1 s | 8.6 s |
+| review-request, resident | | 46.1 s | 8.2 s |
+
+The "before" column is the request's own measurement, taken with no
+checkpoint. The other two columns were measured with a signed checkpoint at
+the head.
+
+A signing command now costs about one complete verified read of the log:
+7-9 s at this depth, with no cold scan. Commands that append are three to
+six times faster than at main 69018ecd, and the refused ratify is about
+seven times faster than the 55 s the request measured.
+It is not much less than one cold fold, because one verified load is that
+fold. Going further would mean not verifying actor signatures on every load,
+which this note rejects and the requester's decision keeps. Two further
+reads remain, recorded as limits in the architecture page:
+- a chain of two or more acts makes a second read for its scratch fold;
+- a long-lived seeded submitter makes one full read each time a checkpoint
+  falls due.
