@@ -189,6 +189,10 @@ needs no new trust, and it helps the resident's cold start and every reader
 too. A persisted cache should be considered only if the fold cannot be made
 small enough, and only with the safeguards listed above.
 
+The faster fold is now its own request,
+`git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:d1b3d1b1d8a481ad0bda38d7b137764e0a3a28d3`,
+filed on 2026-10-17. This note asks review only of step 1.
+
 ## Conditions, against this proposal
 
 1. Measured above, with every local fold named. The "after" figures wait for
