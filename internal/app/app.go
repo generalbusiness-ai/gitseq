@@ -2515,9 +2515,11 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 
 // acceptSnapshot applies a commit just authenticated, sequenced, and CASed by
 // this workspace without making the reader audit it a second time before the
-// local notice. If the projection is absent or its frontier differs (for
-// example after a concurrent external append), Snapshot performs the normal
-// verified catch-up instead.
+// local notice. The next snapshot read still has the reader verify that
+// commit as a delta before it answers, so the fold and the reader stand at one
+// head again without the fold being rebuilt. If the projection is absent or
+// its frontier differs (for example after a concurrent external append),
+// Snapshot performs the normal verified catch-up instead.
 func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record) {
 	if result.Replay {
 		return
@@ -2540,6 +2542,16 @@ func (w *Workspace) acceptSnapshot(result kernel.Result, record workroom.Record)
 func (w *Workspace) renderedSnapshotCache() Snapshot {
 	if w.snapshotUnrendered {
 		w.renderSnapshot(w.snapshotCache.Genesis, w.snapshotCache.Head, w.snapshotCache.Depth)
+	}
+	return *w.snapshotCache
+}
+
+// cachedSnapshot is the cached snapshot, rendered first only when the caller
+// reads the projection. The caller holds snapshotMu and has checked that
+// snapshotCache is present.
+func (w *Workspace) cachedSnapshot(render bool) Snapshot {
+	if render {
+		return w.renderedSnapshotCache()
 	}
 	return *w.snapshotCache
 }
@@ -2724,7 +2736,7 @@ func (w *Workspace) snapshotFlight() *snapshotFlight {
 	w.flight.Store(flight)
 	go func() {
 		ctx := observe.WithObserver(context.Background(), w.observer)
-		flight.result, flight.err = w.snapshotWithSource(ctx, &flight.progress)
+		flight.result, flight.err = w.snapshotWithSource(ctx, &flight.progress, true)
 		close(flight.done)
 		w.flightMu.Lock()
 		if w.flight.Load() == flight {
@@ -2739,7 +2751,11 @@ func (w *Workspace) newReader() *kernel.Reader {
 	return kernel.NewReader(w.Store, w.checkpointOptions())
 }
 
-func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress) (SourcedSnapshot, error) {
+// snapshotWithSource is the one verified session read. render false is for a
+// caller that needs the session reader and fold to stand at the head and does
+// not read the projection: it leaves the projection for the first reader to
+// render, as a sequenced submission does, and returns a snapshot without one.
+func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.AuditProgress, render bool) (SourcedSnapshot, error) {
 	started := time.Now()
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
@@ -2749,7 +2765,12 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 	if err != nil {
 		return SourcedSnapshot{}, err
 	}
-	if w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == head {
+	// The cache answers only while the reader stands at the same head. A
+	// submission this workspace sequenced advances the cache without the
+	// reader, and the read that follows verifies that delta, so the reader
+	// never stands behind the world it is asked to vouch for.
+	if w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == head &&
+		w.reader != nil && w.reader.StandsAt(w.config.Genesis, head) {
 		if err := w.rememberVerifiedFrontier(ctx, kernel.Verification{
 			Genesis: w.snapshotCache.Genesis, Head: w.snapshotCache.Head, Depth: w.snapshotCache.Depth,
 		}); err != nil {
@@ -2757,7 +2778,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		}
 		// Rendered before it is recorded: a cache hit may carry the render a
 		// submission deferred, and that time belongs to this read.
-		snapshot := w.renderedSnapshotCache()
+		snapshot := w.cachedSnapshot(render)
 		w.recordSnapshot(ctx, observe.PathCache, started, snapshot.Depth, nil)
 		return SourcedSnapshot{Snapshot: snapshot, Source: w.snapshotSource}, nil
 	}
@@ -2806,7 +2827,7 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 		return SourcedSnapshot{}, err
 	}
 	if !loaded.Full && w.snapshotCache != nil && w.snapshotProfile == profile && w.snapshotCache.Head == loaded.Verification.Head {
-		snapshot := w.renderedSnapshotCache()
+		snapshot := w.cachedSnapshot(render)
 		w.recordSnapshot(ctx, observe.PathCache, started, snapshot.Depth, nil)
 		return SourcedSnapshot{Snapshot: snapshot, Source: w.snapshotSource}, nil
 	}
@@ -2875,7 +2896,14 @@ func (w *Workspace) snapshotWithSource(ctx context.Context, progress *kernel.Aud
 			w.observer.Record(ctx, observe.Measurement{Operation: observe.OperationFold, Path: path, Outcome: observe.OutcomeOK, Duration: time.Since(foldStarted), Items: int64(len(loaded.Events[start:]))})
 		}
 	}
-	snapshot := w.renderSnapshot(loaded.Verification.Genesis, loaded.Verification.Head, loaded.Verification.Depth)
+	var snapshot Snapshot
+	if render {
+		snapshot = w.renderSnapshot(loaded.Verification.Genesis, loaded.Verification.Head, loaded.Verification.Depth)
+	} else {
+		w.snapshotCache = &Snapshot{Genesis: loaded.Verification.Genesis, Head: loaded.Verification.Head, Depth: loaded.Verification.Depth}
+		w.snapshotUnrendered = true
+		snapshot = *w.snapshotCache
+	}
 	w.snapshotProfile = profile
 	w.snapshotSource = source
 	w.recordSnapshot(ctx, path, started, snapshot.Depth, nil)

@@ -80,10 +80,6 @@ const (
 var (
 	ErrNoUsableCheckpoint = errors.New("no usable checkpoint")
 	errCheckpointTooLarge = errors.New("checkpoint exceeds byte limit")
-	// errCheckpointMaterialUnheld marks the checkpoint material of a cache
-	// seeded from another reader's verified log: the reader kept it, so this
-	// cache cannot write a checkpoint until a full read rebuilds its own.
-	errCheckpointMaterialUnheld = errors.New("checkpoint material is held by the reader this cache was seeded from")
 )
 
 // checkpointStreamError marks a failure after a valid checkpoint has begun

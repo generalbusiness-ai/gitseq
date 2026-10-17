@@ -244,8 +244,11 @@ verifies every actor signature in what it reads.
   still reads the ref, reuses the copy only at exactly the head it was
   verified at, verifies any descendant delta, re-reads the whole log for
   anything else, and keeps the compare-and-swap and the post-dedup callback.
-  The checkpoint material stays with the reader, so a seeded submitter
-  publishes no checkpoint until a full read of its own rebuilds it.
+  The checkpoint material stays with the reader. When a checkpoint falls
+  due on a seeded submitter, it drops the copy, and its next submission makes
+  one full read — from the checkpoint when one verifies — that rebuilds the
+  material and publishes, so a process that only appends keeps the ordinary
+  checkpoint cadence.
 - A consume-only reader authenticates and uses a signed checkpoint like any
   other, and writes nothing: no checkpoint, even with the signing key, and no
   repair of the checkpoint ref or the host pointer.
@@ -1332,8 +1335,11 @@ the exact pre-sequence frontier. Both halves judge a verified fold at exactly
 the head they judge. A head names its whole verified history, so every fold
 there renders the same projection, and admission uses whichever this process
 already holds: the projection it last rendered at that head, or the session
-snapshot's own fold when that fold stands at exactly that head, rendered into
-a copy admission owns. Failing both, it reads its private verified world. That
+snapshot's own fold when both that fold and the session reader stand at
+exactly that head, rendered into a copy admission owns. A fold this process
+advanced over its own submission stands at the new head before its reader
+does, and is reused only once a snapshot read has verified that delta.
+Failing both, it reads its private verified world. That
 reader starts from a signed checkpoint when one verifies, but publishes none,
 repairs neither checkpoint selector, and never touches the rollback witness.
 The authoritative half never takes or waits for a reader snapshot, so it never
@@ -1345,13 +1351,15 @@ verified reads, never from a resident's response or a caller's projection.
 Guarded retirement and reassignment, whose checks need a fold of their own,
 always read the private world.
 
-Two further whole-log reads remain on signing paths, and are recorded limits
-rather than oversights. A chain of two or more acts is judged before signing
-in a scratch fold that `PreflightChain` builds from a read of its own, because
-the session fold backs every reader's projection and cannot yet be copied. And
-a process that appends an act itself does not read it back, so its session
-reader then stands behind the head it sequenced; a retry lookup or replay
-check made after that is the kernel's own fresh scan.
+One further whole-log read remains on signing paths, as a recorded limit. A
+chain of two or more acts is judged before signing in a scratch fold that
+`PreflightChain` builds from a read of its own. The session fold backs every
+reader's projection and has no copy operation, and neither the reader nor the
+fold keeps the verified payloads once they are folded, so a second fold in
+memory would need either a deep copy of the fold state or every payload held
+for the life of the session. A read-only caller that never takes the session
+snapshot also still asks the kernel's own fresh scan when the session reader
+does not stand at the head.
 
 An undefined state kind refuses before signing with no override:
 command-shaped kinds point at their dedicated commands and tools, and any

@@ -171,10 +171,12 @@ func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 // ref for its head, reuses the copy only while the ref names exactly the head
 // it was verified at, verifies any descendant delta before judging, and
 // re-reads the whole log for anything else, exactly as a cache it had built
-// itself. The checkpoint material stays with the reader, so the seeded
-// submitter publishes no checkpoint until a full read of its own rebuilds it.
-// A reader that holds no verified log, or reads another repository, seeds
-// nothing.
+// itself. The checkpoint material stays with the reader. So that a process
+// that only appends still publishes checkpoints at the ordinary cadence, the
+// first append at which a checkpoint falls due drops the copy, and the next
+// submission makes one full read — from the checkpoint when one verifies —
+// that rebuilds the material and publishes. A reader that holds no verified
+// log, or reads another repository, seeds nothing.
 func NewSubmitterFrom(store gitstore.Store, options Options, reader *Reader) *Submitter {
 	submitter := NewSubmitter(store, options)
 	if reader == nil || reader.store.Repo != store.Repo {
@@ -195,8 +197,7 @@ func NewSubmitterFrom(store gitstore.Store, options Options, reader *Reader) *Su
 		Positions:          maps.Clone(verified.log.Positions),
 		sequencerPublicKey: verified.log.sequencerPublicKey,
 	}
-	cache.checkpointEvents.fail(errCheckpointMaterialUnheld)
-	cache.checkpointAttempt = verified.log.Verification.Depth
+	cache.checkpointAttempt = verified.checkpointAttempt
 	return submitter
 }
 
@@ -1166,6 +1167,14 @@ func (r *Reader) ReplayAt(head string, request Request) (replay, held bool, err 
 	return replay, true, err
 }
 
+// StandsAt reports whether this reader holds a verified log of genesis at
+// exactly head.
+func (r *Reader) StandsAt(genesis, head string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return head != "" && r.logCache.target == genesis && r.logCache.head == head
+}
+
 // verifiedReads counts every complete verified read of a log this process
 // begins: a cold scan from genesis, or the authentication of one checkpoint
 // candidate together with its suffix. coldScans counts the cold scans alone.
@@ -1351,6 +1360,16 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	c.log.Verification.Events++
 	c.head = event.Commit
 	if !c.checkpointWritable() || c.checkpointOversized {
+		return
+	}
+	if c.checkpointEvents.err == nil && c.checkpointEvents.count != c.log.Verification.Events-1 {
+		// A cache seeded from a reader holds no checkpoint material for the
+		// log it started from, so it cannot publish one. When one falls due,
+		// forget the log: the next advance is a full read, which rebuilds the
+		// material and publishes at the ordinary cadence.
+		if checkpointDue(c.log.Verification.Depth, c.checkpointAttempt) {
+			c.target, c.head = "", ""
+		}
 		return
 	}
 	c.checkpointEvents.append(event)

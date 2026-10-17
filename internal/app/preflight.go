@@ -211,10 +211,10 @@ func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string
 // names now, so a signing command reads the log once rather than once per
 // question. Unless readOnly, it first takes the session snapshot if the
 // session does not stand there, which is the one verified read the command
-// would otherwise make anyway. When the session reader still does not stand
-// at that head — the snapshot was refused, the log moved, or this process
-// appended an act itself and its reader has not read it back — the lookup is
-// the kernel's own fresh scan, as it always was.
+// would otherwise make anyway; after this process's own append that read
+// verifies only the delta. When the session reader still does not stand at
+// that head — the snapshot was refused, the log moved, or the caller is
+// read-only — the lookup is the kernel's own fresh scan, as it always was.
 func (w *Workspace) verifiedPriorActs(ctx context.Context, identities []string, readOnly bool) (map[string]kernel.Event, error) {
 	reader, head, err := w.sessionReaderAt(ctx, readOnly)
 	if err != nil {

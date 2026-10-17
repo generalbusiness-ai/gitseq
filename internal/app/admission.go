@@ -390,13 +390,16 @@ func (w *Workspace) admissionWorld(ctx context.Context, head string) (Snapshot, 
 // holds a verified fold there, and never reads the log. It renders from the
 // session fold only, never takes or waits for a session snapshot, and never
 // asks the rollback witness anything: the fold it renders was published only
-// after its whole audit succeeded, and the head it stands at is the one asked
-// about. If a snapshot read holds the session lock, the session fold is busy
-// and the private path answers instead.
+// after its whole audit succeeded, and both it and the session reader stand at
+// exactly the head asked about, so the reader has verified every commit under
+// it. If a snapshot read holds the session lock, the session fold is busy and
+// the private path answers instead.
 //
 // Lock order: admissionMu and snapshotMu are never held together. This takes
 // each alone, so it may run inside the sequencer lock, as the post-dedup hook
-// does, without ordering against a snapshot read in flight.
+// does, without ordering against a snapshot read in flight. Under snapshotMu
+// it asks the session reader, whose own mutex nests inside snapshotMu, as it
+// does on every snapshot read.
 func (w *Workspace) heldWorldAt(head string) (Snapshot, bool) {
 	w.admissionMu.Lock()
 	if world := w.admissionWorldAt; world != nil && world.Head == head {
@@ -415,8 +418,8 @@ func (w *Workspace) heldWorldAt(head string) (Snapshot, bool) {
 }
 
 // sessionFoldAt renders a projection of the session snapshot's verified fold
-// when that fold stands at exactly head under the interpreter this workspace
-// selected. The render is admission's own copy: the cached snapshot's
+// when that fold and the session reader stand at exactly head under the
+// interpreter this workspace selected. The render is admission's own copy: the cached snapshot's
 // projection is handed to every reader and is not used.
 func (w *Workspace) sessionFoldAt(head string) (Snapshot, bool) {
 	if !w.snapshotMu.TryLock() {
@@ -436,23 +439,28 @@ func (w *Workspace) sessionFoldAt(head string) (Snapshot, bool) {
 }
 
 // sessionStandsAtLocked reports whether the session fold stands at exactly
-// head under the selected interpreter. The caller holds snapshotMu.
+// head under the selected interpreter, and the session reader has itself
+// verified the log at exactly that head. A fold this workspace advanced over
+// its own submission stands there before its reader does, and does not count
+// until a read has verified the delta. The caller holds snapshotMu.
 func (w *Workspace) sessionStandsAtLocked(head string) bool {
 	selected, err := w.interpreter()
 	return err == nil && w.snapshotCache != nil && w.snapshotFolder != nil &&
-		w.snapshotProfile == selected.projectionProfile() && w.snapshotCache.Head == head
+		w.snapshotProfile == selected.projectionProfile() && w.snapshotCache.Head == head &&
+		w.reader != nil && w.reader.StandsAt(w.config.Genesis, head)
 }
 
-// takeSessionWorld takes the session snapshot when the session fold does not
-// already stand at head, for a signing path that may read on its own account.
-// A refusal is not this caller's answer: whoever asked then judges from a
-// world that does stand there, or from the private path.
+// takeSessionWorld brings the session reader and fold to the head the log
+// names now when they do not already stand at head, for a signing path that
+// may read on its own account. It renders no projection: whoever judges
+// renders its own copy. A refusal is not this caller's answer: whoever asked
+// then judges from a world that does stand there, or from the private path.
 func (w *Workspace) takeSessionWorld(ctx context.Context, head string) {
 	w.snapshotMu.Lock()
 	standing := w.sessionStandsAtLocked(head)
 	w.snapshotMu.Unlock()
 	if !standing {
-		_, _ = w.Snapshot(ctx)
+		_, _ = w.snapshotWithSource(ctx, nil, false)
 	}
 }
 

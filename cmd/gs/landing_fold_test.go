@@ -224,17 +224,21 @@ func keyedChain(t *testing.T) (context.Context, string, *app.Workspace, ed25519.
 	return ctx, repo, workspace, private, acts
 }
 
-// One preflight of a batch answers every label's key from one verified read
-// of the log. It used to read the whole log once per labelled act, which on a
-// large landing was most of its wall time.
+// One preflight of a batch answers every label's key from the verified read
+// the workspace already holds, and so scans the log not at all. It used to
+// read the whole log once per labelled act, which on a large landing was most
+// of its wall time, and then once per preflight.
 func TestABatchPreflightReadsTheLogOnce(t *testing.T) {
 	ctx, _, workspace, private, acts := keyedChain(t)
 	scans := fullLogScans(t)
+	completeBefore, _ := kernel.VerifiedReads()
 	if position, failure := preflightAdmission(ctx, workspace, "", "operator", private, acts, false); failure != nil {
 		t.Fatalf("act %d: %v", position, failure)
 	}
-	if got := scans(); got != 1 {
-		t.Fatalf("a preflight of %d labelled acts read the whole log %d times, want once", len(acts), got)
+	completeAfter, _ := kernel.VerifiedReads()
+	if got := scans(); got != 0 || completeAfter != completeBefore {
+		t.Fatalf("a preflight of %d labelled acts scanned the log cold %d times and made %d complete reads, want none of either",
+			len(acts), got, completeAfter-completeBefore)
 	}
 	report, err := runBatch(ctx, workspace, "", "operator", private, acts, false)
 	if err != nil {

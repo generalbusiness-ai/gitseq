@@ -3,9 +3,11 @@ package app
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/gitstore"
@@ -267,5 +269,140 @@ func TestAdmissionNeverReusesAFoldFromAFailedAudit(t *testing.T) {
 	}
 	if world, err := reader.admissionWorld(ctx, forged); err == nil {
 		t.Fatalf("admission judged a world at %s, the head whose audit failed: depth %d", forged, world.Depth)
+	}
+}
+
+// A process that only appends — a resident accepting acts other processes
+// built and signed — publishes checkpoints at the ordinary cadence. Its
+// submitter starts from the session reader's verified log, which holds no
+// checkpoint material, and nothing else in such a process reads the log
+// again; without the cadence the checkpoint suffix every later reader must
+// verify one commit at a time would grow without bound.
+func TestAnAppendingProcessKeepsTheCheckpointCadence(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	resident, seed := admissionWorkspace(t, ctx)
+	resident.mustSnapshot(t, ctx)
+	ref := kernel.CheckpointRef(resident.config.Genesis)
+	initial, err := resident.Store.Head(ctx, ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The acts are built elsewhere, from one read-only world, so no read in
+	// either process publishes a checkpoint on the resident's behalf.
+	client, err := Open(ctx, resident.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	world, err := client.ReadOnlySnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := client.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const acts = 300
+	moved := -1
+	for index := range acts {
+		request, err := client.BuildActRequestReadOnly(ctx, world, private, "human", Act{
+			Verb: VerbState, Kind: workroom.KindAssert, Text: "appended by the resident",
+			RestsOn: []string{seed.ID}, IdempotencyKey: "cadence-" + strconv.Itoa(index),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := resident.AcceptSubmission(ctx, request); err != nil {
+			t.Fatal(err)
+		}
+		if now, _ := resident.Store.Head(ctx, ref); now != initial {
+			moved = index
+			break
+		}
+	}
+	if moved < 0 {
+		t.Fatalf("the checkpoint never advanced over %d acts one process appended", acts)
+	}
+	if resident.snapshotCache == nil || client.snapshotCache != nil {
+		t.Fatal("a snapshot read published the checkpoint, not the appending submitter")
+	}
+}
+
+// A fold this workspace advanced over its own submission stands at the new
+// head before the session reader does. Admission does not reuse it there, and
+// the session reader does not answer there, until a snapshot read has
+// verified that one-commit delta; after it, both do, without a complete read.
+//
+// Not parallel: it counts process-wide verified reads.
+func TestTheSessionWorldCountsOnlyWhereItsReaderVerified(t *testing.T) {
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+	workspace.mustSnapshot(t, ctx)
+	landed := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "appended by this workspace",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "own-append",
+	})
+	head := eventCommit(t, workspace.config.ObjectFormat, landed.ID)
+	identity := intent.DedupIdentityFor(workspace.workroomID(), intent.ActorFingerprint(mustPublicKey(t, workspace, "human")),
+		workspace.idempotencyNamespace("human"), "own-append")
+	if _, held, _ := workspace.reader.PriorActsAt(ctx, workspace.config.Genesis, head, []string{identity}); held {
+		t.Fatal("the session reader answered at a head it has not verified")
+	}
+	privateAt := func() bool {
+		return workspace.admissionReader != nil && workspace.admissionReader.StandsAt(workspace.config.Genesis, head)
+	}
+	if privateAt() {
+		t.Fatal("the fixture's private reader already stands at the new head")
+	}
+	world, err := workspace.admissionWorld(ctx, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !privateAt() || !holdsEvent(world.Projection, landed.ID) {
+		t.Fatal("admission reused a fold at a head the session reader had not verified, instead of verifying it privately")
+	}
+	complete, _ := readsDuring(t, func() { workspace.mustSnapshot(t, ctx) })
+	if complete != 0 || !workspace.reader.StandsAt(workspace.config.Genesis, head) {
+		t.Fatalf("the snapshot read after an own append made %d complete reads and left the reader at another head; want a delta to %s", complete, head)
+	}
+	prior, held, err := workspace.reader.PriorActsAt(ctx, workspace.config.Genesis, head, []string{identity})
+	if err != nil || !held || workspace.EventID(prior[identity].Commit) != landed.ID {
+		t.Fatalf("after the delta read the session reader answered %v %v %v, want %s", prior, held, err, landed.ID)
+	}
+}
+
+func mustPublicKey(t *testing.T, workspace *Workspace, actor string) []byte {
+	t.Helper()
+	_, private, err := workspace.Actor(actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return private.Public().(ed25519.PublicKey)
+}
+
+// A read-only build takes no session snapshot of its own, including on the
+// guarded replacement path, which judges its body through AdmitState.
+func TestAReadOnlyBuildTakesNoSessionSnapshot(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	f := newReassignFixture(t)
+	retirement := actRecord(t, ctx, f.workspace, "human", f.retireAct())
+	judge, err := Open(ctx, f.workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	world, err := judge.ReadOnlySnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, private, err := judge.Actor("human")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := judge.BuildActRequestReadOnly(ctx, world, private, "human", f.replacementAct(retirement.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if judge.snapshotCache != nil || judge.reader != nil {
+		t.Fatal("a read-only build took the session snapshot")
 	}
 }
