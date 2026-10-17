@@ -281,8 +281,14 @@ func TestAdmissionNeverReusesAFoldFromAFailedAudit(t *testing.T) {
 func TestAnAppendingProcessKeepsTheCheckpointCadence(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	resident, seed := admissionWorkspace(t, ctx)
-	resident.mustSnapshot(t, ctx)
+	initialized, seed := admissionWorkspace(t, ctx)
+	// A resident starts on a log it did not write: its first submission seeds
+	// the submitter from the session reader's verified log.
+	resident, err := Open(ctx, initialized.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readAt := resident.mustSnapshot(t, ctx).Head
 	ref := kernel.CheckpointRef(resident.config.Genesis)
 	initial, err := resident.Store.Head(ctx, ref)
 	if err != nil {
@@ -323,7 +329,7 @@ func TestAnAppendingProcessKeepsTheCheckpointCadence(t *testing.T) {
 	if moved < 0 {
 		t.Fatalf("the checkpoint never advanced over %d acts one process appended", acts)
 	}
-	if resident.snapshotCache == nil || client.snapshotCache != nil {
+	if !resident.reader.StandsAt(resident.config.Genesis, readAt) || client.snapshotCache != nil {
 		t.Fatal("a snapshot read published the checkpoint, not the appending submitter")
 	}
 }
@@ -404,5 +410,45 @@ func TestAReadOnlyBuildTakesNoSessionSnapshot(t *testing.T) {
 	}
 	if judge.snapshotCache != nil || judge.reader != nil {
 		t.Fatal("a read-only build took the session snapshot")
+	}
+}
+
+// A snapshot read whose kernel audit succeeds but whose rollback witness
+// cannot advance leaves the session reader at the new head and the published
+// fold where it was. Admission there judges its private world, which holds
+// the event the session fold does not; it neither reuses the stale fold under
+// the new label nor inherits the snapshot's refusal.
+func TestAdmissionDoesNotReuseAFoldTheWitnessKeptBehind(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+	workspace.mustSnapshot(t, ctx)
+	other, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	landed := actRecord(t, ctx, other, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "read while the witness is unavailable",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "witness-kept-behind",
+	})
+	head := eventCommit(t, workspace.config.ObjectFormat, landed.ID)
+	// A path occupied by a file cannot hold the configuration's lock sidecar.
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("occupied"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	workspace.MetaDir = blocked
+	if _, err := workspace.Snapshot(ctx); err == nil {
+		t.Fatal("a snapshot advanced without a durable witness")
+	}
+	if !workspace.reader.StandsAt(workspace.config.Genesis, head) || workspace.snapshotCache.Head == head {
+		t.Fatal("the fixture did not leave the reader ahead of the published fold")
+	}
+	world, err := workspace.admissionWorld(ctx, head)
+	if err != nil {
+		t.Fatalf("admission inherited the snapshot's refusal: %v", err)
+	}
+	if world.Head != head || !holdsEvent(world.Projection, landed.ID) {
+		t.Fatalf("admission at %s judged a fold without %s", head, landed.ID)
 	}
 }
