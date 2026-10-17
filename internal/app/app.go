@@ -122,20 +122,23 @@ type Workspace struct {
 	snapshotProfile string
 	// admissionReader and admissionFolder hold the private verified world the
 	// admission guards judge against, on both the signing path and the
-	// sequencing path. They deliberately share nothing with the reader-side
-	// snapshot: no rollback witness, no checkpoint writes, and no reuse of its
-	// cached projection, because admission must judge the exact position
-	// an event would extend even when a reader would refuse the journey there.
+	// sequencing path, whenever no verified fold this process already holds
+	// stands at exactly the head being judged. The private reader consumes a
+	// signed checkpoint but writes none, repairs no selector and never asks
+	// the rollback witness, because admission must judge the exact position an
+	// event would extend even when a reader would refuse the journey there.
 	// Every use takes admissionMu, which nests inside the sequencer lock the
-	// post-dedup hook runs under and is free-standing on the signing path.
+	// post-dedup hook runs under and is free-standing on the signing path. It
+	// is never held together with snapshotMu.
 	admissionMu     sync.Mutex
 	admissionReader *kernel.Reader
 	admissionFolder *workroom.Folder
-	// admissionWorldAt is admissionFolder's own projection at the head it
-	// was last rendered for. Nothing else ever fills it, so it is the same
-	// private world, rendered once per position: judging several acts
-	// against one unmoved head, as a batch preflight does, reads it again
-	// instead of rendering the whole projection anew for each act.
+	// admissionWorldAt is admission's own projection at the head it was last
+	// rendered for, from admissionFolder or from the session fold at that same
+	// head. A head names its whole verified history, so either renders the
+	// same projection there, and judging several acts against one unmoved
+	// head, as a batch preflight does, reads it again instead of rendering the
+	// whole projection anew for each act.
 	admissionWorldAt   *Snapshot
 	flightMu           sync.Mutex
 	flight             atomic.Pointer[snapshotFlight]
@@ -1519,7 +1522,7 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 			AllowDeadBasis: act.AllowDeadBasis || act.GuardedReview,
 		}
 		if snapshot == nil {
-			body, err = w.AdmitState(ctx, admission)
+			body, err = w.AdmitState(ctx, admission, false)
 		} else {
 			body, err = w.admitState(*snapshot, admission, snapshot.Head)
 		}
@@ -1581,7 +1584,7 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		// sequencing for not carrying one.
 		body, err = w.AdmitState(ctx, stateAdmission{
 			Kind: workroom.KindRequest, Body: body, RestsOn: rests,
-		})
+		}, snapshot != nil)
 		if err != nil {
 			return kernel.Request{}, err
 		}
@@ -1601,11 +1604,11 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 		return kernel.Request{}, err
 	}
 	if guardedRetirement {
-		if err := w.RefuseCitedGuardedRetirement(ctx, act.Target, act.CitedOK, request); err != nil {
+		if err := w.RefuseCitedGuardedRetirement(ctx, act.Target, act.CitedOK, request, snapshot != nil); err != nil {
 			return kernel.Request{}, err
 		}
 	}
-	if err := w.refuseNewSubmission(ctx, act.NewSubmission, request); err != nil {
+	if err := w.refuseNewSubmission(ctx, act.NewSubmission, request, snapshot != nil); err != nil {
 		return kernel.Request{}, err
 	}
 	return request, nil
@@ -1624,11 +1627,11 @@ func (w *Workspace) buildAct(ctx context.Context, private ed25519.PrivateKey, ac
 // A resident that has sequenced the retry the local checkout has not yet seen
 // still looks new here, which refuses a recovery instead of admitting a bad
 // act, and fetching the workroom repairs it.
-func (w *Workspace) refuseNewSubmission(ctx context.Context, precondition func(context.Context) error, request kernel.Request) error {
+func (w *Workspace) refuseNewSubmission(ctx context.Context, precondition func(context.Context) error, request kernel.Request, readOnly bool) error {
 	if precondition == nil {
 		return nil
 	}
-	replay, err := kernel.CheckReplay(ctx, w.Store, request)
+	replay, err := w.checkReplay(ctx, request, readOnly)
 	if err != nil {
 		return fmt.Errorf("check submission replay: %w", err)
 	}
@@ -2039,11 +2042,11 @@ func (w *Workspace) RefuseCitedRetirement(ctx context.Context, target string, al
 // may be an exact retry; the kernel must see it before any checkout drift is
 // re-judged. Genuinely new acts against that retired request still fail the
 // signed workroom guard at post-dedup admission.
-func (w *Workspace) RefuseCitedGuardedRetirement(ctx context.Context, target string, allowed bool, request kernel.Request) error {
+func (w *Workspace) RefuseCitedGuardedRetirement(ctx context.Context, target string, allowed bool, request kernel.Request, readOnly bool) error {
 	if allowed {
 		return nil
 	}
-	replay, err := kernel.CheckReplay(ctx, w.Store, request)
+	replay, err := w.checkReplay(ctx, request, readOnly)
 	if err != nil {
 		return fmt.Errorf("check guarded retirement replay: %w", err)
 	}
@@ -2481,11 +2484,17 @@ func (w *Workspace) AcceptSubmission(ctx context.Context, request kernel.Request
 	}
 	w.submitterOnce.Do(func() {
 		checkpoint := w.checkpointOptions()
-		w.submitter = kernel.NewSubmitter(w.Store, kernel.Options{
+		// The submitter starts from the session reader's verified log when
+		// there is one, so a process that has just read the log does not read
+		// it a second time to append to it.
+		w.snapshotMu.Lock()
+		reader := w.reader
+		w.snapshotMu.Unlock()
+		w.submitter = kernel.NewSubmitterFrom(w.Store, kernel.Options{
 			SigningKey: w.config.SequencerKey, CheckpointEnabled: checkpoint.Enabled, CheckpointPointer: checkpoint.Pointer, PreAppend: w.allowlist,
 			PostDedup:     w.admitApplication,
 			MaxQueueDepth: ResidentQueueDepth,
-		})
+		}, reader)
 	})
 	result, err := w.submitter.Submit(ctx, request)
 	if err != nil {

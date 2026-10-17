@@ -42,15 +42,20 @@ type stateAdmission struct {
 // returns the body to sign, amended only by the escapes admission itself
 // records. Every surface that files a state passes through here once before
 // signing, and once more at sequencing against the exact world the event
-// would join. The signing path reads the same private verified world the
-// sequencing path does — never the reader-side snapshot, whose checkpoint
-// cadence and rollback witness are reader business — and a workroom this
-// process cannot verify right now is skipped rather than refused: the
-// judgement that gates the append is the one made at sequencing.
-func (w *Workspace) AdmitState(ctx context.Context, admission stateAdmission) (map[string]string, error) {
+// would join. Both halves judge the world admissionWorld returns at exactly
+// the head they judge. This half may first take the session snapshot, so that
+// the one verified read a signing command makes is also the one it is judged
+// against; readOnly says the caller's contract forbids that, and then only a
+// session world this process already holds is used. A workroom this process
+// cannot verify right now is skipped rather than refused: the judgement that
+// gates the append is the one made at sequencing.
+func (w *Workspace) AdmitState(ctx context.Context, admission stateAdmission, readOnly bool) (map[string]string, error) {
 	head, err := w.Store.Head(ctx, kernel.Ref(w.config.Genesis))
 	if err != nil {
 		return cloneBody(admission.Body), nil
+	}
+	if !readOnly {
+		w.takeSessionWorld(ctx, head)
 	}
 	snapshot, err := w.admissionWorld(ctx, head)
 	if err != nil {
@@ -364,20 +369,109 @@ func (w *Workspace) admitApplication(ctx context.Context, application kernel.App
 	}
 }
 
-// admissionWorld returns the verified workroom exactly at head, judged from
-// its own reader rather than the shared projection. The reader-side snapshot
-// refuses a rewound or sibling world and persists a rollback witness; admission
-// must instead judge the position the event would actually extend, whatever a
-// reader would say about the journey there.
+// admissionWorld returns the verified workroom exactly at head. A head is a
+// commit, and so names the whole verified history under it: any fold of the
+// log at that head renders this same projection. So admission's world is
+// whichever verified fold this process already holds at exactly that head,
+// rendered into a projection admission owns: the one it last rendered, or the
+// session snapshot's fold. Failing both, it is judged from admission's own
+// private reader. That private path is what judges a rewound or sibling world,
+// which the reader-side snapshot refuses through its rollback witness:
+// admission must judge the position the event would actually extend, whatever
+// a reader would say about the journey there.
 func (w *Workspace) admissionWorld(ctx context.Context, head string) (Snapshot, error) {
+	if world, ok := w.heldWorldAt(head); ok {
+		return world, nil
+	}
 	return w.admissionWorldChecked(ctx, head, nil)
+}
+
+// heldWorldAt is admission's world at exactly head when this process already
+// holds a verified fold there, and never reads the log. It renders from the
+// session fold only, never takes or waits for a session snapshot, and never
+// asks the rollback witness anything: the fold it renders was published only
+// after its whole audit succeeded, and the head it stands at is the one asked
+// about. If a snapshot read holds the session lock, the session fold is busy
+// and the private path answers instead.
+//
+// Lock order: admissionMu and snapshotMu are never held together. This takes
+// each alone, so it may run inside the sequencer lock, as the post-dedup hook
+// does, without ordering against a snapshot read in flight.
+func (w *Workspace) heldWorldAt(head string) (Snapshot, bool) {
+	w.admissionMu.Lock()
+	if world := w.admissionWorldAt; world != nil && world.Head == head {
+		w.admissionMu.Unlock()
+		return *world, true
+	}
+	w.admissionMu.Unlock()
+	world, ok := w.sessionFoldAt(head)
+	if !ok {
+		return Snapshot{}, false
+	}
+	w.admissionMu.Lock()
+	w.admissionWorldAt = &world
+	w.admissionMu.Unlock()
+	return world, true
+}
+
+// sessionFoldAt renders a projection of the session snapshot's verified fold
+// when that fold stands at exactly head under the interpreter this workspace
+// selected. The render is admission's own copy: the cached snapshot's
+// projection is handed to every reader and is not used.
+func (w *Workspace) sessionFoldAt(head string) (Snapshot, bool) {
+	if !w.snapshotMu.TryLock() {
+		return Snapshot{}, false
+	}
+	defer w.snapshotMu.Unlock()
+	if !w.sessionStandsAtLocked(head) {
+		return Snapshot{}, false
+	}
+	if w.renderTestHook != nil {
+		w.renderTestHook("admission")
+	}
+	return Snapshot{
+		Genesis: w.snapshotCache.Genesis, Head: head, Depth: w.snapshotCache.Depth,
+		Projection: w.snapshotFolder.Projection(), Vocabulary: w.snapshotFolder.Vocabulary(),
+	}, true
+}
+
+// sessionStandsAtLocked reports whether the session fold stands at exactly
+// head under the selected interpreter. The caller holds snapshotMu.
+func (w *Workspace) sessionStandsAtLocked(head string) bool {
+	selected, err := w.interpreter()
+	return err == nil && w.snapshotCache != nil && w.snapshotFolder != nil &&
+		w.snapshotProfile == selected.projectionProfile() && w.snapshotCache.Head == head
+}
+
+// takeSessionWorld takes the session snapshot when the session fold does not
+// already stand at head, for a signing path that may read on its own account.
+// A refusal is not this caller's answer: whoever asked then judges from a
+// world that does stand there, or from the private path.
+func (w *Workspace) takeSessionWorld(ctx context.Context, head string) {
+	w.snapshotMu.Lock()
+	standing := w.sessionStandsAtLocked(head)
+	w.snapshotMu.Unlock()
+	if !standing {
+		_, _ = w.Snapshot(ctx)
+	}
+}
+
+// newAdmissionReader is admission's private reader. It may start from a
+// signed checkpoint, which it authenticates like any other reader, but it
+// consumes one only: it publishes none, repairs neither selector, and never
+// touches the rollback witness, so judging a world changes nothing any other
+// reader starts from.
+func (w *Workspace) newAdmissionReader() *kernel.Reader {
+	options := w.checkpointOptions()
+	options.ConsumeOnly = true
+	return kernel.NewReader(w.Store, options)
 }
 
 func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, check func(*workroom.Folder) error) (Snapshot, error) {
 	w.admissionMu.Lock()
 	defer w.admissionMu.Unlock()
 	if w.admissionReader == nil {
-		w.admissionReader = kernel.NewReader(w.Store)
+		w.admissionReader = w.newAdmissionReader()
 	}
 	loaded, err := w.admissionReader.Load(ctx, w.config.Genesis)
 	if err != nil {
@@ -386,7 +480,7 @@ func (w *Workspace) admissionWorldChecked(ctx context.Context, head string, chec
 	if !loaded.Full && w.admissionFolder == nil {
 		// The reader advanced incrementally but this workspace has no fold to
 		// advance with it. A fresh reader forces a full authenticated load.
-		w.admissionReader = kernel.NewReader(w.Store)
+		w.admissionReader = w.newAdmissionReader()
 		loaded, err = w.admissionReader.Load(ctx, w.config.Genesis)
 		if err != nil {
 			return Snapshot{}, fmt.Errorf("admission verified the log: %w", err)
