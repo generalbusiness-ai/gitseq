@@ -1,0 +1,6 @@
+=== RUN   TestReviewAdmissionDoesNotInheritCallerVocabularyEdits
+    zz_review_vocabulary_ownership_test.go:12: admission's supposedly private verified world inherited a caller's vocabulary edit
+--- FAIL: TestReviewAdmissionDoesNotInheritCallerVocabularyEdits (1.05s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/app	1.183s
+FAIL

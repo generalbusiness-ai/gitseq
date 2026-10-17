@@ -1,0 +1,6 @@
+=== RUN   TestReviewSeededWorldIgnoresEditsToReturnedLoadEvents
+    zz_review_lent_buffers_test.go:25: editing load result changed seeded submission history: result={Commit:7620611ae38a5d32c80d82f483eb331b58b23b22 Head:7620611ae38a5d32c80d82f483eb331b58b23b22 Replay:true CASRetries:0 BaseHead:7620611ae38a5d32c80d82f483eb331b58b23b22 Timestamp:1792245498} err=<nil>; want conflict
+--- FAIL: TestReviewSeededWorldIgnoresEditsToReturnedLoadEvents (0.41s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.535s
+FAIL

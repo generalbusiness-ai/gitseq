@@ -1,0 +1,6 @@
+=== RUN   TestReviewReaderKeepsVerifiedSignedBytesPrivate
+    zz_review_lent_buffers_test.go:13: editing lookup result changed verified replay history: replay=true held=true err=<nil>; want conflict
+--- FAIL: TestReviewReaderKeepsVerifiedSignedBytesPrivate (0.28s)
+FAIL
+FAIL	github.com/generalbusiness-ai/gitseq/internal/kernel	0.482s
+FAIL
