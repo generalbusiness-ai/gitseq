@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/receipt_protection_test.go","body":{"commit":"68fa76b35a284f5ce73db511b9b89f68b65f32dc","path":"internal/workroom/receipt_protection_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:29bcad2a246aba53700da759de2e54fcb2f7cf15","text":"Merge retired a covered predecessor; the successor is at internal/workroom/receipt_protection_test.go."}
