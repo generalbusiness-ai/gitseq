@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,8 +12,10 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/service"
 	"github.com/generalbusiness-ai/gitseq/internal/statusview"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -422,5 +426,240 @@ func TestWorkNextDialsARefusedResidentOnce(t *testing.T) {
 	}
 	if said := strings.Count(stderr, "unavailable"); said != 1 {
 		t.Fatalf("the refusal was reported %d times: %q", said, stderr)
+	}
+}
+
+// paddingToken marks the one string field paddedResidentStub grows.
+const paddingToken = "padding-token-5d26227f"
+
+// paddedResidentStub is residentStub with the complete status answer grown to
+// exactly size bytes. tamper puts paddingToken into one string field, and the
+// padding is written in its place as the answer streams, so a test that needs
+// an answer of tens of megabytes holds it once, on the reading side, as the
+// command does.
+func paddedResidentStub(t *testing.T, workspace *app.Workspace, size int64, tamper func(*service.Status)) (string, *atomic.Int64) {
+	t.Helper()
+	server, err := service.NewObserved(workspace, nopObserver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int64
+	listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v0/status" {
+			server.Handler().ServeHTTP(writer, request)
+			return
+		}
+		recorded := httptest.NewRecorder()
+		server.Handler().ServeHTTP(recorded, request)
+		var status service.Status
+		if err := json.Unmarshal(recorded.Body.Bytes(), &status); err != nil {
+			t.Errorf("resident status was not JSON: %v", err)
+			return
+		}
+		tamper(&status)
+		encoded, err := json.Marshal(status)
+		if err != nil {
+			t.Errorf("encoding the tampered status: %v", err)
+			return
+		}
+		head, tail, found := bytes.Cut(encoded, []byte(paddingToken))
+		padding := size - int64(len(head)+len(tail))
+		if !found || padding < 0 {
+			t.Errorf("cannot pad a %d-byte answer to %d bytes (token found %v)", len(encoded), size, found)
+			return
+		}
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write(head)
+		chunk := bytes.Repeat([]byte("x"), 1<<20)
+		for padding > 0 {
+			step := min(padding, int64(len(chunk)))
+			if _, err := writer.Write(chunk[:step]); err != nil {
+				return
+			}
+			padding -= step
+		}
+		_, _ = writer.Write(tail)
+	}))
+	return listener.URL, &hits
+}
+
+// A legal history this machine can fold is answered by the resident however
+// large its projection is. Every record here is individually signed and
+// admitted under the default 1 MiB event ceiling, and together their
+// projection is past the 64 MiB that was once the whole ceiling on the
+// answer. The case is codex's counterexample to a ceiling scaled by depth:
+// large records at a shallow depth.
+func TestSessionSnapshotReadsAFoldableHistoryPastTheOldCeiling(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := statusSummaryFixture(t)
+	text := strings.Repeat("x", 900<<10)
+	for index := 0; index < 80; index++ {
+		if _, err := workspace.Act(ctx, "operator", app.Act{Verb: app.VerbState, Kind: workroom.KindAssert, Text: text,
+			IdempotencyKey: fmt.Sprintf("large-record-%d", index)}); err != nil {
+			t.Fatalf("act %d: %v", index, err)
+		}
+	}
+	local, err := workspace.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(encoded) <= 64<<20 {
+		t.Fatalf("the folded projection is %d bytes, not past the old 64 MiB ceiling", len(encoded))
+	}
+	url, _ := residentStub(t, workspace, nil)
+	var progress strings.Builder
+	snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, url, refusedLocalLoad(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Head != local.Head || snapshot.Depth != local.Depth {
+		t.Fatalf("session at %s depth %d, want the resident's %s depth %d; stderr %q", snapshot.Head, snapshot.Depth, local.Head, local.Depth, progress.String())
+	}
+}
+
+// Who is answering is settled by the bounded summary before the complete
+// projection is read, so a listener that is not this workroom's resident at
+// this head is never read without a ceiling: the command falls back, and the
+// complete status is never requested.
+func TestSessionSnapshotIdentifiesTheResidentBeforeTheLargeRead(t *testing.T) {
+	cases := []struct {
+		name   string
+		tamper func(*service.SummaryStatus)
+		reason string
+	}{
+		{"another workroom", func(summary *service.SummaryStatus) {
+			summary.Durable.Genesis = strings.Repeat("1", len(summary.Durable.Genesis))
+		}, "genesis does not match"},
+		{"a resident behind this checkout", func(summary *service.SummaryStatus) {
+			summary.Durable.Head = strings.Repeat("0", len(summary.Durable.Head))
+		}, "head is not current"},
+	}
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := context.Background()
+			workspace, _ := statusSummaryFixture(t)
+			server, err := service.NewObserved(workspace, nopObserver{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var hits, complete atomic.Int64
+			listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				switch request.URL.Path {
+				case "/v0/status":
+					complete.Add(1)
+					server.Handler().ServeHTTP(writer, request)
+				case "/v0/status-summary":
+					recorded := httptest.NewRecorder()
+					server.Handler().ServeHTTP(recorded, request)
+					var summary service.SummaryStatus
+					if err := json.Unmarshal(recorded.Body.Bytes(), &summary); err != nil {
+						t.Errorf("resident summary was not JSON: %v", err)
+						return
+					}
+					test.tamper(&summary)
+					writer.Header().Set("Content-Type", "application/json")
+					_ = json.NewEncoder(writer).Encode(summary)
+				default:
+					server.Handler().ServeHTTP(writer, request)
+				}
+			}))
+			var progress strings.Builder
+			called := false
+			if _, err := loadSessionSnapshot(ctx, &progress, workspace, listener.URL, sentinelLocalLoad(&called)); err != nil {
+				t.Fatalf("session: %v", err)
+			}
+			if hits.Load() == 0 {
+				t.Fatal("the resident was never dialed")
+			}
+			if complete.Load() != 0 {
+				t.Fatalf("the complete status was requested %d times from a listener the summary did not identify", complete.Load())
+			}
+			if !called || !strings.Contains(progress.String(), test.reason) {
+				t.Fatalf("local audit called = %v; stderr %q does not name %q", called, progress.String(), test.reason)
+			}
+		})
+	}
+}
+
+// And a step command reads such an answer end to end: the promise quotes text
+// only the resident's projection holds, and nothing is audited locally.
+func TestStepCommandReadsAResidentAnswerPastTheOldCeiling(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	lane := fixture.buildStepLane(t, "large-lane", "reviewer", "operator", "docs/lane.md")
+	marker := "only the large resident answer says this"
+	url, hits := paddedResidentStub(t, fixture.workspace, 64<<20+1, func(status *service.Status) {
+		for index := range status.Durable.Projection.Statements {
+			if status.Durable.Projection.Statements[index].Event == lane.request {
+				status.Durable.Projection.Statements[index].Text = marker
+			}
+		}
+		status.TrustBoundary = paddingToken
+	})
+	commandErr, _, stderr := runPiped(t, func() error {
+		return promiseCommand(fixture.ctx, []string{"--repo", fixture.repo, "--as", "operator",
+			"--server", url, lane.request})
+	})
+	if commandErr != nil {
+		t.Fatalf("promise against a large resident answer: %v", commandErr)
+	}
+	if hits.Load() == 0 {
+		t.Fatal("the resident was never dialed")
+	}
+	if strings.Contains(stderr, "verifying the durable log locally") {
+		t.Fatalf("the command fell back to the local audit: %q", stderr)
+	}
+	if promise := fixture.latestStatement(t); !strings.Contains(promise.Text, marker) {
+		t.Fatalf("the promise text %q was not composed from the resident's projection", promise.Text)
+	}
+}
+
+// gs status --all and --json, gs artifacts and gs reviews read the complete
+// answer through residentStatus, which documents a head unmoved while the
+// answer was read. Here the answer is truthful about the head the ref moved to
+// during the read, so only the read taken before the request refuses it.
+func TestResidentStatusRefusesAHeadThatMovedDuringTheRead(t *testing.T) {
+	ctx := context.Background()
+	workspace, _ := statusSummaryFixture(t)
+	url, _ := residentStub(t, workspace, func(status *service.Status) {
+		moveTheRef(t, workspace)
+		moved, err := workspace.Store.Head(ctx, kernel.Ref(workspace.View().Genesis))
+		if err != nil {
+			t.Errorf("reading the moved ref: %v", err)
+		}
+		status.Durable.Head = moved
+	})
+	if _, err := residentStatus(ctx, workspace, url); err == nil || !strings.Contains(err.Error(), "moved while resident status was read") {
+		t.Fatalf("an answer read across a moving ref was accepted or refused for another reason: %v", err)
+	}
+}
+
+// The identity read before the complete status is given the ten seconds the
+// complete read always had, not the two the summary display is given, so a
+// loaded resident that answers its summary slowly still answers the session.
+func TestSessionSnapshotGivesTheIdentityReadTheCompleteReadsDeadline(t *testing.T) {
+	ctx := context.Background()
+	workspace, summary := statusSummaryFixture(t)
+	server, err := service.NewObserved(workspace, nopObserver{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int64
+	listener := countingServer(t, &hits, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path == "/v0/status-summary" {
+			time.Sleep(3 * time.Second)
+		}
+		server.Handler().ServeHTTP(writer, request)
+	}))
+	var progress strings.Builder
+	snapshot, err := loadSessionSnapshot(ctx, &progress, workspace, listener.URL, refusedLocalLoad(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.Head != summary.Durable.Head {
+		t.Fatalf("session head = %s, want %s; stderr %q", snapshot.Head, summary.Durable.Head, progress.String())
 	}
 }

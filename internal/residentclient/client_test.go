@@ -251,3 +251,120 @@ func TestProbeResidentRefusesToDialAnythingButLoopback(t *testing.T) {
 		}
 	}
 }
+
+// The complete projection is read with no ceiling on its size or on how long
+// the whole read takes, only on silence. An answer that keeps arriving is read
+// to the end however long it takes; one that stops is abandoned, whether it
+// stops before its headers or part way through its body.
+func TestStreamJSONBoundsSilenceNotSize(t *testing.T) {
+	const idle = 500 * time.Millisecond
+	type answer struct {
+		Text string `json:"text"`
+	}
+	serve := func(handler http.HandlerFunc) string {
+		t.Helper()
+		server := httptest.NewServer(handler)
+		t.Cleanup(server.Close)
+		return server.URL
+	}
+	steady := serve(func(writer http.ResponseWriter, _ *http.Request) {
+		flusher := writer.(http.Flusher)
+		_, _ = writer.Write([]byte(`{"text":"`))
+		for range 12 {
+			time.Sleep(idle / 5)
+			_, _ = writer.Write([]byte("x"))
+			flusher.Flush()
+		}
+		_, _ = writer.Write([]byte(`"}`))
+	})
+	var got answer
+	started := time.Now()
+	if err := New(0).StreamJSON(context.Background(), steady, "/v0/status", idle, &got); err != nil || got.Text != strings.Repeat("x", 12) {
+		t.Fatalf("steady answer = %q, %v", got.Text, err)
+	}
+	if elapsed := time.Since(started); elapsed < 2*idle {
+		t.Fatalf("the steady answer took %s, too short to prove the read outlasts its idle deadline", elapsed)
+	}
+	stalls := map[string]http.HandlerFunc{
+		"before the headers": func(_ http.ResponseWriter, request *http.Request) {
+			<-request.Context().Done()
+		},
+		"inside the body": func(writer http.ResponseWriter, request *http.Request) {
+			_, _ = writer.Write([]byte(`{"text":"`))
+			writer.(http.Flusher).Flush()
+			<-request.Context().Done()
+		},
+	}
+	for name, handler := range stalls {
+		t.Run(name, func(t *testing.T) {
+			// The backstop only turns a missing idle deadline into a failure
+			// rather than a hang; it is far longer than idle.
+			ctx, cancel := context.WithTimeout(context.Background(), 20*idle)
+			defer cancel()
+			var stalled answer
+			err := New(0).StreamJSON(ctx, serve(handler), "/v0/status", idle, &stalled)
+			if !errors.Is(err, errStalled) {
+				t.Fatalf("stalled answer error = %v, want the stall named", err)
+			}
+		})
+	}
+}
+
+// The headers are progress. A resident that sends its headers, then its body,
+// each within the idle deadline, is never silent for longer than that deadline,
+// even when the two waits together exceed it.
+func TestStreamJSONCountsHeadersAsProgress(t *testing.T) {
+	const idle = time.Second
+	const gap = 600 * time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		time.Sleep(gap)
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		time.Sleep(gap)
+		_, _ = writer.Write([]byte(`{"text":"ready"}`))
+	}))
+	defer server.Close()
+	var got struct {
+		Text string `json:"text"`
+	}
+	started := time.Now()
+	if err := New(0).StreamJSON(context.Background(), server.URL, "/v0/status", idle, &got); err != nil || got.Text != "ready" {
+		t.Fatalf("headers and body each arrived within %s, but the read gave %q, %v", idle, got.Text, err)
+	}
+	if elapsed := time.Since(started); elapsed <= idle {
+		t.Fatalf("the answer took %s, too short to prove the headers renewed the idle deadline", elapsed)
+	}
+}
+
+// Streaming changes how much is read, not what is accepted: one strict JSON
+// value, and a refusal's message, as GetJSON reads them.
+func TestStreamJSONRequiresOneStrictJSONValue(t *testing.T) {
+	answers := map[string]string{
+		"unknown field": `{"text":"x","extra":1}`,
+		"trailing JSON": `{"text":"x"} {}`,
+	}
+	for name, body := range answers {
+		t.Run(name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				_, _ = writer.Write([]byte(body))
+			}))
+			defer server.Close()
+			var target struct {
+				Text string `json:"text"`
+			}
+			if err := New(0).StreamJSON(context.Background(), server.URL, "/v0/status", time.Second, &target); err == nil {
+				t.Fatalf("%s was accepted", name)
+			}
+		})
+	}
+	refusal := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = writer.Write([]byte(`{"error":"rebuilding"}`))
+	}))
+	defer refusal.Close()
+	var target struct{}
+	var refused *HTTPError
+	if err := New(0).StreamJSON(context.Background(), refusal.URL, "/v0/status", time.Second, &target); !errors.As(err, &refused) || refused.Message != "rebuilding" {
+		t.Fatalf("refusal = %v, want the resident's message", err)
+	}
+}

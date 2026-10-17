@@ -288,6 +288,79 @@ func (c *Client) PostValue(ctx context.Context, baseURL, path string, value any,
 	return c.doValue(ctx, http.MethodPost, baseURL, path, value, limit)
 }
 
+// errStalled is why StreamJSON gives up on an answer.
+var errStalled = errors.New("resident answer stalled")
+
+// StreamJSON decodes one answer straight from the response body with no byte
+// ceiling and no deadline on the whole read. It exists for the one answer
+// whose size is the size of the log itself, the complete projection, and only
+// for a caller that has already identified the resident through a bounded
+// read. The read still ends: it is abandoned when idle passes with no byte
+// arriving, before the headers or during the body. Unknown fields and
+// trailing JSON are refused, as GetJSON refuses them, and a refusal's body is
+// read under ErrorBodyLimit.
+//
+// The client must be built with no timeout of its own, New(0), because a
+// whole-request timeout is exactly the ceiling this read does without.
+func (c *Client) StreamJSON(ctx context.Context, baseURL, path string, idle time.Duration, target any) error {
+	if idle <= 0 {
+		return errors.New("resident idle deadline must be positive")
+	}
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	timer := time.AfterFunc(idle, func() { cancel(errStalled) })
+	defer timer.Stop()
+	stalled := func(err error) error {
+		if errors.Is(context.Cause(ctx), errStalled) {
+			return &ReadError{Err: fmt.Errorf("%w: nothing arrived for %s", errStalled, idle)}
+		}
+		return err
+	}
+	response, err := c.roundTrip(ctx, http.MethodGet, baseURL, path, nil)
+	if err != nil {
+		return stalled(err)
+	}
+	defer response.Body.Close()
+	// The headers are progress too: the first body byte has a full idle
+	// deadline from when they arrived, not what was left of the first one.
+	timer.Reset(idle)
+	body := &idleReader{reader: response.Body, timer: timer, idle: idle}
+	if response.StatusCode >= http.StatusBadRequest {
+		data, err := io.ReadAll(io.LimitReader(body, ErrorBodyLimit))
+		if err != nil {
+			return stalled(&ReadError{Err: err})
+		}
+		return responseError(response, data)
+	}
+	decoder := json.NewDecoder(body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return stalled(err)
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return stalled(errors.New("resident returned trailing JSON"))
+	}
+	return nil
+}
+
+// ErrorBodyLimit bounds the body of a refusal StreamJSON reads.
+const ErrorBodyLimit = 64 << 10
+
+// idleReader restarts the idle deadline every time bytes arrive.
+type idleReader struct {
+	reader io.Reader
+	timer  *time.Timer
+	idle   time.Duration
+}
+
+func (r *idleReader) Read(buffer []byte) (int, error) {
+	n, err := r.reader.Read(buffer)
+	if n > 0 {
+		r.timer.Reset(r.idle)
+	}
+	return n, err
+}
+
 // Delete performs the bounded departure request. Its response body has no
 // meaning, but it is still closed and redirects are still refused.
 func (c *Client) Delete(ctx context.Context, baseURL, path string) error {

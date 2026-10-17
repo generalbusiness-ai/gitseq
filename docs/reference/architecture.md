@@ -1946,14 +1946,38 @@ path that survives a resident restart.
 Those checks bind the frontier, and only the frontier. The head is proved
 against this checkout's own ref; the rows folded at that head are the
 resident's word for what the log says, and nothing local re-derives them. Two
-limits are worth naming with them. The complete answer is bounded at 64 MiB,
-which at depth 23,600 it fills to about 52 MiB: past that ceiling every one of
-these commands falls back to the local audit, with one line on standard error
-and no other sign. And the profile is a hash of the application name
-and the `workroom.ProfileVersion` constant, which is advanced by hand when the
-fold changes, so two builds that share the constant compare equal however
-their folds behave; it catches a declared change of interpreter, not an
-undeclared one.
+limits are worth naming with them. The complete answer is as large as the log,
+so it has no byte ceiling; who is answering is settled before it is read
+instead. The command first reads the resident's bounded summary, under the
+64 KiB limit `gs status` uses and a ten-second deadline, and goes on only if
+that names this workroom's genesis and this checkout's head, unmoved across the
+read. A
+listener serving another workroom, or a resident behind this checkout, is
+refused there, before anything large is read. The complete answer is then
+decoded as it streams, with no deadline on the whole read: it is abandoned only
+when ten seconds pass with no byte arriving. The frontier is checked again
+after it. A fixed 64 MiB ceiling was crossed on 2026-10-16 by the artroom
+answer, 71 MB at depth 43,744; a ceiling scaled by depth was refused in review
+by a legal history of large records at shallow depth, 79 MB at depth 151. And
+the profile is a hash of the application name and the
+`workroom.ProfileVersion` constant, which is advanced by hand when the fold
+changes, so two builds that share the constant compare equal however their
+folds behave; it catches a declared change of interpreter, not an undeclared
+one.
+
+What reading without a ceiling costs is memory, and it is stated, not bounded.
+The client holds the decoder's copy of the answer and the decoded projection
+at once, and decoded memory is not bounded by the answer's size. A long string
+costs about its own bytes; a list of small objects can cost far more than its
+JSON, as when 20,000 empty artifact objects, 60 KB of JSON, decode into a
+4.2 MB array. The measured peak for the real 71 MB artroom answer was 335 MB. A larger
+log costs proportionally more. The read is admitted only from the address this
+checkout was given or advertises, and only once the listener there has named
+this workroom's current frontier: that is the trusted-process boundary layer 3
+and [`gs serve`](gs/serve.md) describe. A process outside it that can read
+this repository and take that address can make this client spend memory and
+time, and nothing more, because the frontier, profile and decision checks still
+decide what is accepted.
 
 Two things do not move with it. The fold preview reads the local verified log,
 and so do the admission that builds the act and the custody that signs it: the
