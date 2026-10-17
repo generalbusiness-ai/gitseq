@@ -310,6 +310,32 @@ func TestStreamJSONBoundsSilenceNotSize(t *testing.T) {
 	}
 }
 
+// The headers are progress. A resident that sends its headers, then its body,
+// each within the idle deadline, is never silent for longer than that deadline,
+// even when the two waits together exceed it.
+func TestStreamJSONCountsHeadersAsProgress(t *testing.T) {
+	const idle = time.Second
+	const gap = 600 * time.Millisecond
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		time.Sleep(gap)
+		writer.WriteHeader(http.StatusOK)
+		writer.(http.Flusher).Flush()
+		time.Sleep(gap)
+		_, _ = writer.Write([]byte(`{"text":"ready"}`))
+	}))
+	defer server.Close()
+	var got struct {
+		Text string `json:"text"`
+	}
+	started := time.Now()
+	if err := New(0).StreamJSON(context.Background(), server.URL, "/v0/status", idle, &got); err != nil || got.Text != "ready" {
+		t.Fatalf("headers and body each arrived within %s, but the read gave %q, %v", idle, got.Text, err)
+	}
+	if elapsed := time.Since(started); elapsed <= idle {
+		t.Fatalf("the answer took %s, too short to prove the headers renewed the idle deadline", elapsed)
+	}
+}
+
 // Streaming changes how much is read, not what is accepted: one strict JSON
 // value, and a refusal's message, as GetJSON reads them.
 func TestStreamJSONRequiresOneStrictJSONValue(t *testing.T) {

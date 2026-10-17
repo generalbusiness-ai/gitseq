@@ -321,6 +321,9 @@ func (c *Client) StreamJSON(ctx context.Context, baseURL, path string, idle time
 		return stalled(err)
 	}
 	defer response.Body.Close()
+	// The headers are progress too: the first body byte has a full idle
+	// deadline from when they arrived, not what was left of the first one.
+	timer.Reset(idle)
 	body := &idleReader{reader: response.Body, timer: timer, idle: idle}
 	if response.StatusCode >= http.StatusBadRequest {
 		data, err := io.ReadAll(io.LimitReader(body, ErrorBodyLimit))
