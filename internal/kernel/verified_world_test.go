@@ -346,6 +346,31 @@ func TestSeededSubmitterRetriesAfterCASLoss(t *testing.T) {
 	}
 }
 
+// A seeded submitter holds none of the checkpoint material for the log it
+// started from, so it can publish no checkpoint from it, and it collects none
+// for what it verifies or appends afterwards either: material it could never
+// publish would only be held until its next full read.
+func TestSeededSubmitterCollectsNoCheckpointMaterial(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, "sha1")
+	alice := actor(t)
+	submitAll(t, f, f.request(t, alice, "before", []byte("before"), nil))
+	reader := loadedReader(t, f, CheckpointOptions{Enabled: true, SigningKey: f.signingKey})
+	submitter := NewSubmitterFrom(f.store, Options{SigningKey: f.signingKey, CheckpointEnabled: true}, reader)
+	// One act appended elsewhere, so the submitter verifies a delta first.
+	submitAll(t, f, f.request(t, alice, "external", []byte("external"), nil))
+	if _, err := submitter.Submit(f.ctx, f.request(t, alice, "seeded", []byte("seeded"), nil)); err != nil {
+		t.Fatal(err)
+	}
+	if cache := submitter.cache.checkpointEvents; cache.count != 0 || len(cache.tail) != 0 || cache.chunks.count != 0 {
+		t.Fatalf("a seeded submitter collected checkpoint material for %d events", cache.count)
+	}
+	if submitter.cache.deltaScans != 1 || submitter.cache.fullScans != 0 || !submitter.cache.seeded {
+		t.Fatalf("the fixture did not verify a delta on a seeded cache: delta=%d full=%d seeded=%v",
+			submitter.cache.deltaScans, submitter.cache.fullScans, submitter.cache.seeded)
+	}
+}
+
 // A reader of another repository, or one that has verified nothing, seeds
 // nothing.
 func TestSubmitterSeedsOnlyFromAVerifiedReaderOfTheSameRepository(t *testing.T) {

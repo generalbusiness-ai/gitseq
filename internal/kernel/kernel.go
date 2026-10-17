@@ -153,6 +153,10 @@ type logCache struct {
 	checkpointEvents    checkpointEventCache
 	checkpointOversized bool
 	checkpointAttempt   int
+	// seeded says this cache started from another reader's verified log and
+	// holds none of its checkpoint material. It collects none, and so
+	// publishes none, until a full read of its own rebuilds the material.
+	seeded bool
 }
 
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
@@ -198,6 +202,7 @@ func NewSubmitterFrom(store gitstore.Store, options Options, reader *Reader) *Su
 		sequencerPublicKey: verified.log.sequencerPublicKey,
 	}
 	cache.checkpointAttempt = verified.checkpointAttempt
+	cache.seeded = true
 	return submitter
 }
 
@@ -1235,7 +1240,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 		log, deltaErr := scanAfter(ctx, store, c.log, head, loadPayload)
 		if deltaErr == nil {
 			events := log.Events
-			if c.checkpointWritable() && !c.checkpointOversized {
+			if c.checkpointWritable() && !c.checkpointOversized && !c.seeded {
 				c.checkpointEvents.appendEvents(events)
 			}
 			if writeCheckpointOnAdvance {
@@ -1297,6 +1302,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	// the named history may have changed, so one fresh publication attempt is
 	// warranted. Ordinary appends cannot make an oversized history smaller.
 	c.checkpointOversized = false
+	c.seeded = false
 	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
 	if c.checkpointWritable() && !checkpointCurrent {
 		var checkpointErr error
@@ -1376,7 +1382,7 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	if !c.checkpointWritable() || c.checkpointOversized {
 		return
 	}
-	if c.checkpointEvents.err == nil && c.checkpointEvents.count != c.log.Verification.Events-1 {
+	if c.seeded {
 		// A cache seeded from a reader holds no checkpoint material for the
 		// log it started from, so it cannot publish one. When one falls due,
 		// it forgets that log and reads the whole of it again at once — from

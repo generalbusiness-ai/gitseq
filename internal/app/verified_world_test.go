@@ -496,3 +496,39 @@ func TestAdmissionDoesNotReuseAFoldTheWitnessKeptBehind(t *testing.T) {
 		t.Fatalf("admission at %s judged a fold without %s", head, landed.ID)
 	}
 }
+
+// A fresh process whose first verified read is a signing path's catch-up,
+// which renders nothing, still hands the next reader the whole projection:
+// the first Snapshot renders the fold that read built.
+func TestASnapshotAfterAnUnrenderedFirstReadHoldsTheWholeLog(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	workspace, seed := admissionWorkspace(t, ctx)
+	landed := actRecord(t, ctx, workspace, "human", Act{
+		Verb: VerbState, Kind: workroom.KindAssert, Text: "read first without a render",
+		RestsOn: []string{seed.ID}, IdempotencyKey: "unrendered-first-read",
+	})
+	fresh, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head, err := fresh.Store.Head(ctx, kernel.Ref(fresh.config.Genesis))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fresh.takeSessionWorld(ctx, head)
+	snapshot, err := fresh.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !holdsEvent(snapshot.Projection, landed.ID) {
+		t.Fatalf("the snapshot after an unrendered first read holds %d decisions, without %s", len(snapshot.Projection.Decisions), landed.ID)
+	}
+	audited, err := fresh.ReadOnlySnapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(encodedSnapshot(t, snapshot), encodedSnapshot(t, audited)) {
+		t.Fatal("the snapshot after an unrendered first read differs from a read-only audit of the same log")
+	}
+}

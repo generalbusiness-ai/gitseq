@@ -244,11 +244,12 @@ verifies every actor signature in what it reads.
   still reads the ref, reuses the copy only at exactly the head it was
   verified at, verifies any descendant delta, re-reads the whole log for
   anything else, and keeps the compare-and-swap and the post-dedup callback.
-  The checkpoint material stays with the reader. When a checkpoint falls
-  due on a seeded submitter, it drops the copy and at once makes one full
-  read — from the checkpoint when one verifies — that rebuilds the material
-  and publishes at that position, so a process that only appends keeps the
-  ordinary checkpoint cadence.
+  The checkpoint material stays with the reader, and a seeded submitter
+  collects none of its own until a full read. When a checkpoint falls due on
+  it, it drops the copy and at once makes that full read — from the
+  checkpoint when one verifies — which rebuilds the material and publishes at
+  that position, so a process that only appends keeps the ordinary
+  checkpoint cadence.
 - A reader verifying commits its own process sequenced uses `CatchUp`: the
   same verified delta, publishing no checkpoint, because the submitter that
   appended those commits publishes for them. A process that signs its own
@@ -1356,15 +1357,20 @@ verified reads, never from a resident's response or a caller's projection.
 Guarded retirement and reassignment, whose checks need a fold of their own,
 always read the private world.
 
-One further whole-log read remains on signing paths, as a recorded limit. A
-chain of two or more acts is judged before signing in a scratch fold that
-`PreflightChain` builds from a read of its own. The session fold backs every
-reader's projection and has no copy operation, and neither the reader nor the
-fold keeps the verified payloads once they are folded, so a second fold in
-memory would need either a deep copy of the fold state or every payload held
-for the life of the session. A read-only caller that never takes the session
-snapshot also still asks the kernel's own fresh scan when the session reader
-does not stand at the head.
+Two further whole-log reads remain, as recorded limits. A chain of two or
+more acts is judged before signing in a scratch fold that `PreflightChain`
+builds from a read of its own. The session fold backs every reader's
+projection and has no copy operation, and a second fold cannot be built from
+what the session already holds: the fold keeps no transport records, and the
+checkpoint material a reader with the sequencer key retains holds payloads
+and attachments but not the signed intent — actor, `rests_on`, schema — that
+a record is folded from. Building it in memory would need either a deep copy
+of the fold state or every verified event held for the life of the session.
+And a seeded submitter in a long-lived process makes one full read, from the
+checkpoint when one verifies, each time a checkpoint falls due, to rebuild the
+material it publishes from (layer 2). A read-only caller that never takes the
+session snapshot also still asks the kernel's own fresh scan when the session
+reader does not stand at the head.
 
 An undefined state kind refuses before signing with no override:
 command-shaped kinds point at their dedicated commands and tools, and any
