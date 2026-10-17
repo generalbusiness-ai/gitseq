@@ -198,8 +198,8 @@ func reproducibleRequestSchemas(verb Verb) []string {
 // does not write — comes back held with a nil reproduction: the kernel would
 // refuse the reuse, and the caller is told so before anything is appended.
 func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed25519.PrivateKey,
-	actorName, key string, verb Verb) (reproduction *requestReproduction, prior kernel.Event, held bool) {
-	prior, held = w.priorActUnderKey(ctx, private, actorName, key)
+	actorName, key string, verb Verb, readOnly bool) (reproduction *requestReproduction, prior kernel.Event, held bool) {
+	prior, held = w.priorActUnderKey(ctx, private, actorName, key, readOnly)
 	if !held {
 		return nil, kernel.Event{}, false
 	}
@@ -216,8 +216,8 @@ func (w *Workspace) acceptedRequestReproduction(ctx context.Context, private ed2
 // priorActUnderKey is the retry lookup itself: the act this actor's key
 // already names in this log, found by the identity the kernel indexes —
 // target log, actor key, namespace and key — which needs nothing measured.
-func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string) (kernel.Event, bool) {
-	prior, held := w.priorActsFor(ctx, signingFiler(private, actorName), []string{key})[key]
+func (w *Workspace) priorActUnderKey(ctx context.Context, private ed25519.PrivateKey, actorName, key string, readOnly bool) (kernel.Event, bool) {
+	prior, held := w.priorActsFor(ctx, signingFiler(private, actorName), []string{key}, readOnly)[key]
 	return prior, held
 }
 
@@ -280,7 +280,7 @@ func (w *Workspace) acceptedRequestReplay(ctx context.Context, private ed25519.P
 	if !w.mayReproduceAcceptedRequest(ctx, snapshot, act) {
 		return kernel.Request{}, freshRequest, nil
 	}
-	reproduction, prior, held := w.acceptedRequestReproduction(ctx, private, actorName, act.IdempotencyKey, act.Verb)
+	reproduction, prior, held := w.acceptedRequestReproduction(ctx, private, actorName, act.IdempotencyKey, act.Verb, snapshot != nil)
 	if !held {
 		return kernel.Request{}, freshRequest, nil
 	}

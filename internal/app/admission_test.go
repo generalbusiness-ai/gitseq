@@ -602,12 +602,15 @@ func TestDeadBasisVerdictKeepsIneffectiveCitationsAdvisory(t *testing.T) {
 // event out once, so a fold that refused before taking them would judge every
 // later act without them, under the label of the head that holds them: an act
 // of a kind one of those events withdrew would then be admitted.
+//
+// It asks the private path by name: a world this process already holds at
+// old would answer old without reading the log at all.
 func TestAdmissionWorldKeepsTheEventsARefusalAdvancedOver(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	workspace, seed := admissionWorkspace(t, ctx)
 	old := workspace.mustSnapshot(t, ctx).Head
-	if _, err := workspace.admissionWorld(ctx, old); err != nil {
+	if _, err := workspace.admissionWorldChecked(ctx, old, nil); err != nil {
 		t.Fatal(err)
 	}
 	other, err := Open(ctx, workspace.Repo)
@@ -618,7 +621,7 @@ func TestAdmissionWorldKeepsTheEventsARefusalAdvancedOver(t *testing.T) {
 		Verb: VerbState, Kind: workroom.KindAssert, Text: "from another process",
 		RestsOn: []string{seed.ID}, IdempotencyKey: "other-process",
 	})
-	if _, err := workspace.admissionWorld(ctx, old); err == nil || !strings.Contains(err.Error(), "moved under admission") {
+	if _, err := workspace.admissionWorldChecked(ctx, old, nil); err == nil || !strings.Contains(err.Error(), "moved under admission") {
 		t.Fatalf("admission at a head the log has left = %v, want the moved-head refusal", err)
 	}
 	moved := other.mustSnapshot(t, ctx).Head

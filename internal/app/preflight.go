@@ -50,11 +50,13 @@ type Filer struct {
 // submitted to a resident joins that resident's frontier, which may have moved.
 // The fold at sequencing remains the authority.
 func (w *Workspace) PreflightAct(ctx context.Context, filer Filer, act Act) (workroom.Decision, bool) {
-	if _, held := w.AcceptedUnderKey(ctx, filer, act.IdempotencyKey); held {
-		return workroom.Decision{}, false
-	}
+	// The snapshot is taken first so the retry lookup reads the index that
+	// same verified read built, rather than reading the log on its own.
 	snapshot, err := w.Snapshot(ctx)
 	if err != nil {
+		return workroom.Decision{}, false
+	}
+	if _, held := w.AcceptedUnderKey(ctx, filer, act.IdempotencyKey); held {
 		return workroom.Decision{}, false
 	}
 	record, ok := w.prospectiveRecord(ctx, snapshot, filer.Fingerprint, act)
@@ -166,7 +168,7 @@ func (w *Workspace) AcceptedUnderKey(ctx context.Context, filer Filer, key strin
 // from one verified read of the log. A key that holds nothing is absent from
 // the result.
 func (w *Workspace) AcceptedUnderKeys(ctx context.Context, filer Filer, keys []string) map[string]string {
-	prior := w.priorActsFor(ctx, filer, keys)
+	prior := w.priorActsFor(ctx, filer, keys, false)
 	accepted := make(map[string]string, len(prior))
 	for key, event := range prior {
 		accepted[key] = w.EventID(event.Commit)
@@ -178,8 +180,9 @@ func (w *Workspace) AcceptedUnderKeys(ctx context.Context, filer Filer, keys []s
 // key already names in this log, found by the identity the kernel indexes —
 // target log, actor fingerprint, namespace and key — and answered from one
 // verified read of the log however many keys there are. An empty key names
-// nothing and is skipped.
-func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string) map[string]kernel.Event {
+// nothing and is skipped. readOnly is the caller's promise that this lookup
+// takes no session snapshot of its own; see verifiedPriorActs.
+func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string, readOnly bool) map[string]kernel.Event {
 	if filer.Fingerprint == "" {
 		return nil
 	}
@@ -192,7 +195,7 @@ func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string
 	if len(identities) == 0 {
 		return nil
 	}
-	held, err := kernel.PriorActs(ctx, w.Store, w.workroomID(), slices.Collect(maps.Keys(identities)))
+	held, err := w.verifiedPriorActs(ctx, slices.Collect(maps.Keys(identities)), readOnly)
 	if err != nil {
 		return nil
 	}
@@ -201,6 +204,58 @@ func (w *Workspace) priorActsFor(ctx context.Context, filer Filer, keys []string
 		prior[identities[identity]] = event
 	}
 	return prior
+}
+
+// verifiedPriorActs answers the retry lookup from the session reader's
+// verified dedup index when that reader stands at exactly the head the log
+// names now, so a signing command reads the log once rather than once per
+// question. Unless readOnly, it first takes the session snapshot if the
+// session does not stand there, which is the one verified read the command
+// would otherwise make anyway; after this process's own append that read
+// verifies only the delta. When the session reader still does not stand at
+// that head — the snapshot was refused, the log moved, or the caller is
+// read-only — the lookup is the kernel's own fresh scan, as it always was.
+func (w *Workspace) verifiedPriorActs(ctx context.Context, identities []string, readOnly bool) (map[string]kernel.Event, error) {
+	reader, head, err := w.sessionReaderAt(ctx, readOnly)
+	if err != nil {
+		// No log here yet, so there is nothing any key could have accepted.
+		return nil, nil
+	}
+	if reader != nil {
+		if prior, held, err := reader.PriorActsAt(ctx, w.config.Genesis, head, identities); held {
+			return prior, err
+		}
+	}
+	return kernel.PriorActs(ctx, w.Store, w.workroomID(), identities)
+}
+
+// checkReplay is kernel.CheckReplay answered the same way: from the session
+// reader's verified dedup index when it stands at exactly the current head,
+// and from the kernel's own fresh scan otherwise.
+func (w *Workspace) checkReplay(ctx context.Context, request kernel.Request, readOnly bool) (bool, error) {
+	if reader, head, err := w.sessionReaderAt(ctx, readOnly); err == nil && reader != nil {
+		if replay, held, err := reader.ReplayAt(head, request); held {
+			return replay, err
+		}
+	}
+	return kernel.CheckReplay(ctx, w.Store, request)
+}
+
+// sessionReaderAt is the session's verified reader and the head the log names
+// now. Unless readOnly, the session snapshot is taken first when the session
+// does not already stand at that head. The reader is returned as it stands;
+// whoever asks it a question also names the head it must stand at.
+func (w *Workspace) sessionReaderAt(ctx context.Context, readOnly bool) (*kernel.Reader, string, error) {
+	head, err := w.Store.Head(ctx, kernel.Ref(w.config.Genesis))
+	if err != nil {
+		return nil, "", err
+	}
+	if !readOnly {
+		w.takeSessionWorld(ctx, head)
+	}
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
+	return w.reader, head, nil
 }
 
 // prospectiveRecord builds the record this act would become, by the same schema
@@ -280,7 +335,8 @@ func (w *Workspace) previewDecision(snapshot Snapshot, record workroom.Record) (
 // It is built from its own verified read rather than copied from the published
 // fold, because that fold backs the projection every reader in this process
 // holds and nothing prospective may reach it. The read is the accelerated one,
-// so it costs about what the snapshot this command already took cost.
+// so it costs about what the snapshot this command already took cost. That
+// second read is a recorded limit, kept until a fold can be copied.
 func (w *Workspace) scratchFold(ctx context.Context, head string) (*workroom.Folder, bool) {
 	selected, refusal := w.interpreter()
 	if refusal != nil {

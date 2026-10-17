@@ -102,9 +102,21 @@ type CheckpointOptions struct {
 	// signed Git checkpoint object. The kernel assigns it no authority: every
 	// selected object still passes the complete checkpoint verification path.
 	Pointer CheckpointPointer
+	// ConsumeOnly lets a reader use a checkpoint while changing nothing: it
+	// publishes no checkpoint even when SigningKey is set, and it repairs
+	// neither the checkpoint ref nor the pointer after it selects one. A
+	// private reader that judges a world for someone else uses it, so that
+	// judging never moves the selectors every other reader starts from.
+	ConsumeOnly bool
 }
 
 func (o CheckpointOptions) enabled() bool { return o.Enabled }
+
+// publishable reports whether these options may write a checkpoint. Every
+// write path asks this one question.
+func (o CheckpointOptions) publishable() bool {
+	return o.Enabled && o.SigningKey != "" && !o.ConsumeOnly
+}
 
 // CheckpointPointer is the host seam for local checkpoint selection. It keeps
 // filesystem policy outside the kernel; implementations store only an opaque
@@ -563,11 +575,12 @@ func loadCheckpointInto(ctx context.Context, store gitstore.Store, genesis, head
 		}
 		// Repair the Git reachability anchor before the host selector. Each is
 		// only a hint, so a repair failure cannot invalidate an authenticated
-		// checkpoint or block the other repair.
-		if refCommit != candidate.commit {
+		// checkpoint or block the other repair. A consume-only reader repairs
+		// neither.
+		if !options.ConsumeOnly && refCommit != candidate.commit {
 			_ = store.UpdateRef(ctx, CheckpointRef(genesis), candidate.commit, refCommit)
 		}
-		if options.Pointer != nil && pointerCommit != candidate.commit {
+		if !options.ConsumeOnly && options.Pointer != nil && pointerCommit != candidate.commit {
 			_ = options.Pointer.Store(candidate.commit)
 		}
 		return log, advanced, nil
@@ -636,6 +649,7 @@ func authenticateCheckpointCandidate(ctx context.Context, store gitstore.Store, 
 }
 
 func authenticateCheckpointCandidateInto(ctx context.Context, store gitstore.Store, candidate checkpointCandidate, desc GenesisDescriptor, commits []gitstore.CommitMetadata, retainEvents bool) (scannedLog, error) {
+	verifiedReads.Add(1)
 	stored := candidate.stored
 	eventPositions, err := checkpointEventPositions(stored, checkpointEventCount(stored), desc, commits)
 	if err != nil {
@@ -904,7 +918,7 @@ func verifyCheckpointRotations(ctx context.Context, store gitstore.Store, stored
 }
 
 func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, options CheckpointOptions) error {
-	if !options.enabled() || options.SigningKey == "" || len(log.Events) != log.Verification.Events {
+	if !options.publishable() || len(log.Events) != log.Verification.Events {
 		return ErrNoUsableCheckpoint
 	}
 	events := make([]checkpointEvent, 0, len(log.Events))
@@ -915,7 +929,7 @@ func writeCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog, 
 }
 
 func writeCheckpointEvents(ctx context.Context, store gitstore.Store, log scannedLog, events []checkpointEvent, options CheckpointOptions) error {
-	if !options.enabled() || options.SigningKey == "" || len(events) != log.Verification.Events {
+	if !options.publishable() || len(events) != log.Verification.Events {
 		return ErrNoUsableCheckpoint
 	}
 	format, err := store.ObjectFormat(ctx)
@@ -931,7 +945,7 @@ func writeCheckpointEvents(ctx context.Context, store gitstore.Store, log scanne
 }
 
 func writeCheckpointCache(ctx context.Context, store gitstore.Store, log scannedLog, cache checkpointEventCache, options CheckpointOptions) error {
-	if !options.enabled() || options.SigningKey == "" {
+	if !options.publishable() {
 		return ErrNoUsableCheckpoint
 	}
 	// Surface the cache's own failure so a byte-bound overflow reaches the

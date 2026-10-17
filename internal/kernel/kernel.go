@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 	"sync"
@@ -152,6 +153,10 @@ type logCache struct {
 	checkpointEvents    checkpointEventCache
 	checkpointOversized bool
 	checkpointAttempt   int
+	// seeded says this cache started from another reader's verified log and
+	// holds none of its checkpoint material. It collects none, and so
+	// publishes none, until a full read of its own rebuilds the material.
+	seeded bool
 }
 
 func NewSubmitter(store gitstore.Store, options Options) *Submitter {
@@ -159,6 +164,48 @@ func NewSubmitter(store gitstore.Store, options Options) *Submitter {
 		store: store, options: options,
 		cache: logCache{checkpoint: CheckpointOptions{Enabled: options.CheckpointEnabled, SigningKey: options.SigningKey, Pointer: options.CheckpointPointer}},
 	}
+}
+
+// NewSubmitterFrom is NewSubmitter starting from the verified log a reader of
+// this same repository already holds, so a process that has just read the log
+// does not read it again to append to it. Only the reader's verified frontier,
+// dedup index and causal positions are copied, under the reader's lock, into
+// maps the submitter owns. The signed bytes the entries hold are shared by the
+// two indexes and written by neither: an index takes its own copy of them when
+// an event enters it, and hands out copies. The copied index is the cache's
+// starting point and nothing more: every submission still asks the
+// ref for its head, reuses the copy only while the ref names exactly the head
+// it was verified at, verifies any descendant delta before judging, and
+// re-reads the whole log for anything else, exactly as a cache it had built
+// itself. The checkpoint material stays with the reader. So that a process
+// that only appends still publishes checkpoints at the ordinary cadence, the
+// first append at which a checkpoint falls due drops the copy and makes one
+// full read — from the checkpoint when one verifies — that rebuilds the
+// material and publishes at that position. A reader that holds no verified
+// log, or reads another repository, seeds nothing.
+func NewSubmitterFrom(store gitstore.Store, options Options, reader *Reader) *Submitter {
+	submitter := NewSubmitter(store, options)
+	if reader == nil || reader.store.Repo != store.Repo {
+		return submitter
+	}
+	reader.mu.Lock()
+	defer reader.mu.Unlock()
+	verified := reader.logCache
+	if verified.target == "" || verified.head == "" || verified.log.Verification.Head != verified.head ||
+		verified.log.Dedup == nil || verified.log.Positions == nil {
+		return submitter
+	}
+	cache := &submitter.cache
+	cache.target, cache.head = verified.target, verified.head
+	cache.log = scannedLog{
+		Verification:       verified.log.Verification,
+		Dedup:              maps.Clone(verified.log.Dedup),
+		Positions:          maps.Clone(verified.log.Positions),
+		sequencerPublicKey: verified.log.sequencerPublicKey,
+	}
+	cache.checkpointAttempt = verified.checkpointAttempt
+	cache.seeded = true
+	return submitter
 }
 
 // Submit refuses at capacity before it chains anything. The check is one atomic
@@ -1011,11 +1058,25 @@ func (r *Reader) LoadWithProgressStream(ctx context.Context, genesis string, rep
 	return r.load(ctx, genesis, report, accept)
 }
 
+// CatchUp is Load for a host verifying commits it sequenced itself. The read
+// is the same — a descendant delta is verified commit by commit, anything
+// else is a full read — but a delta publishes no checkpoint. The checkpoint
+// cadence of those commits belongs to the submitter that appended them, so a
+// process that both appends and reads back its own appends publishes once per
+// interval rather than once from each cache.
+func (r *Reader) CatchUp(ctx context.Context, genesis string) (LoadResult, error) {
+	return r.loadMode(ctx, genesis, nil, nil, false)
+}
+
 func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress, accept func(Event) error) (LoadResult, error) {
+	return r.loadMode(ctx, genesis, report, accept, true)
+}
+
+func (r *Reader) loadMode(ctx context.Context, genesis string, report *AuditProgress, accept func(Event) error, publishDelta bool) (LoadResult, error) {
 	started := time.Now()
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	advance, err := r.logCache.advance(ctx, r.store, genesis, true, true, report, accept)
+	advance, err := r.logCache.advance(ctx, r.store, genesis, true, publishDelta, report, accept)
 	if err != nil {
 		recordVerify(ctx, observe.PathOther, started, 0, err)
 		return LoadResult{}, err
@@ -1038,6 +1099,119 @@ func (r *Reader) load(ctx context.Context, genesis string, report *AuditProgress
 		Events: advance.Events, Verification: advance.Verification, BaseHead: advance.BaseHead,
 		Full: advance.Full, Checkpoint: advance.Checkpoint,
 	}, nil
+}
+
+// PriorActsAt is PriorActs answered from this reader's own verified dedup
+// index instead of a fresh scan, and only when that index stands at exactly
+// head of the log named by genesis. held is false when it does not, and the
+// caller must ask somewhere else: this never reads a log to catch up.
+//
+// The index holds what a scan of the same head would hold, keyed by the same
+// identity Submit consults — target log, actor key, namespace and key — so a
+// key answers here exactly as PriorActs would answer it. The index drops
+// payload bytes, so each matched event's payload is read again from Git by the
+// payload tree its own signed intent names, decoded afresh from the signature,
+// through the audit reader, which hashes every object it returns against the
+// identifier asked for. An index entry whose tree differs from what its
+// signature names is refused rather than read.
+func (r *Reader) PriorActsAt(ctx context.Context, genesis, head string, dedupKeys []string) (prior map[string]Event, held bool, err error) {
+	r.mu.Lock()
+	if head == "" || r.logCache.target != genesis || r.logCache.head != head {
+		r.mu.Unlock()
+		return nil, false, nil
+	}
+	matched := make(map[string]Event, len(dedupKeys))
+	for _, key := range dedupKeys {
+		if event, exists := r.log.Dedup[key]; exists {
+			matched[key] = event
+		}
+	}
+	r.mu.Unlock()
+	prior = make(map[string]Event, len(matched))
+	if len(matched) == 0 {
+		return prior, true, nil
+	}
+	desc, err := Descriptor(ctx, r.store, genesis)
+	if err != nil {
+		return nil, true, err
+	}
+	batch, err := r.store.OpenAuditBatch(ctx, desc.ObjectFormat)
+	if err != nil {
+		return nil, true, err
+	}
+	defer batch.Close()
+	for key, event := range matched {
+		decoded, err := intent.Verify(event.Signed)
+		if err != nil {
+			return nil, true, fmt.Errorf("event %s: %w", event.Commit, err)
+		}
+		if decoded.PayloadTree != event.PayloadTree {
+			return nil, true, fmt.Errorf("event %s: indexed payload tree differs from the one its signature names", event.Commit)
+		}
+		// The caller gets copies: the signed bytes, and the intent decoded
+		// afresh from them, so nothing it changes reaches the index.
+		event.Signed = cloneSigned(event.Signed)
+		event.Intent = decoded
+		_, tree, err := gitstore.ParseTypedOID(decoded.PayloadTree)
+		if err != nil {
+			return nil, true, err
+		}
+		event.Payload, event.Attachments, err = batch.PayloadTree(tree, desc.PayloadCeiling, true)
+		if err != nil {
+			return nil, true, fmt.Errorf("event %s payload: %w", event.Commit, err)
+		}
+		prior[key] = event
+	}
+	return prior, true, nil
+}
+
+// ReplayAt is CheckReplay answered from this reader's own verified dedup
+// index, and only when that index stands at exactly head of the log the
+// request targets. held is false when it does not. A request whose key the
+// index holds under a different signed intent is refused with
+// ErrIdempotencyConflict, as Submit and CheckReplay refuse it.
+func (r *Reader) ReplayAt(head string, request Request) (replay, held bool, err error) {
+	decoded, err := intent.Verify(request.Signed)
+	if err != nil {
+		return false, false, nil
+	}
+	_, target, err := gitstore.ParseTypedOID(decoded.Target)
+	if err != nil {
+		return false, false, nil
+	}
+	key, err := request.Signed.DedupKey()
+	if err != nil {
+		return false, false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if head == "" || r.logCache.target != target || r.logCache.head != head {
+		return false, false, nil
+	}
+	_, replay, err = dedupPrior(r.log.Dedup, key, request.Signed)
+	return replay, true, err
+}
+
+// StandsAt reports whether this reader holds a verified log of genesis at
+// exactly head.
+func (r *Reader) StandsAt(genesis, head string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return head != "" && r.logCache.target == genesis && r.logCache.head == head
+}
+
+// verifiedReads counts every complete verified read of a log this process
+// begins: a cold scan from genesis, or the authentication of one checkpoint
+// candidate together with its suffix. coldScans counts the cold scans alone.
+// Both are reporting only; nothing in this package reads them back.
+var verifiedReads, coldScans atomic.Int64
+
+// VerifiedReads reports how many complete verified reads of a log this process
+// has begun, and how many of those were cold scans from genesis. A descendant
+// delta or a cache hit is not a complete read and is not counted. It exists so
+// a test can hold a command to the number of times it reads the whole log.
+func VerifiedReads() (complete, cold int64) {
+	return verifiedReads.Load(), coldScans.Load()
 }
 
 func recordVerify(ctx context.Context, path observe.Path, started time.Time, items int, err error) {
@@ -1072,7 +1246,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 		log, deltaErr := scanAfter(ctx, store, c.log, head, loadPayload)
 		if deltaErr == nil {
 			events := log.Events
-			if c.checkpointWritable() && !c.checkpointOversized {
+			if c.checkpointWritable() && !c.checkpointOversized && !c.seeded {
 				c.checkpointEvents.appendEvents(events)
 			}
 			if writeCheckpointOnAdvance {
@@ -1134,8 +1308,9 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 	// the named history may have changed, so one fresh publication attempt is
 	// warranted. Ordinary appends cannot make an oversized history smaller.
 	c.checkpointOversized = false
+	c.seeded = false
 	checkpointCurrent := fromCheckpoint && !checkpointAdvanced
-	if c.checkpoint.enabled() && c.checkpoint.SigningKey != "" && !checkpointCurrent {
+	if c.checkpointWritable() && !checkpointCurrent {
 		var checkpointErr error
 		if streamed {
 			checkpointErr = writeCheckpointCache(ctx, store, log, streamedCheckpoint, c.checkpoint)
@@ -1177,7 +1352,7 @@ func (c *logCache) advance(ctx context.Context, store gitstore.Store, target str
 }
 
 func (c *logCache) checkpointWritable() bool {
-	return c.checkpoint.enabled() && c.checkpoint.SigningKey != ""
+	return c.checkpoint.publishable()
 }
 
 func (c *logCache) maybeWriteCheckpoint(ctx context.Context, store gitstore.Store, log scannedLog) {
@@ -1211,6 +1386,20 @@ func (c *logCache) append(ctx context.Context, store gitstore.Store, key string,
 	c.log.Verification.Events++
 	c.head = event.Commit
 	if !c.checkpointWritable() || c.checkpointOversized {
+		return
+	}
+	if c.seeded {
+		// A cache seeded from a reader holds no checkpoint material for the
+		// log it started from, so it cannot publish one. When one falls due,
+		// it forgets that log and reads the whole of it again at once — from
+		// the checkpoint, when one verifies — which rebuilds the material and
+		// publishes at this same position, the ordinary cadence. Should that
+		// read fail, the next submission makes it instead.
+		if checkpointDue(c.log.Verification.Depth, c.checkpointAttempt) {
+			target := c.target
+			c.target, c.head = "", ""
+			_, _ = c.advance(ctx, store, target, true, false, nil, nil)
+		}
 		return
 	}
 	c.checkpointEvents.append(event)
@@ -1288,6 +1477,8 @@ func scanHead(ctx context.Context, store gitstore.Store, genesis, head string, l
 // are still built completely, and any callback or later audit failure returns
 // no trusted result.
 func scanHeadInto(ctx context.Context, store gitstore.Store, genesis, head string, loadPayload bool, report *AuditProgress, accept func(Event) error) (result scannedLog, resultErr error) {
+	verifiedReads.Add(1)
+	coldScans.Add(1)
 	sequence, err := store.RevList(ctx, head)
 	if err != nil {
 		return scannedLog{}, err
@@ -1679,9 +1870,14 @@ func loadCommit(batch *gitstore.AuditBatch, desc GenesisDescriptor, genesis stri
 	return event, "", false, nil
 }
 
+// eventWithoutPayload is an event as the verified dedup index keeps it: no
+// payload, and signed bytes of its own. The index outlives the read that
+// filled it, and the same event is handed to the caller of that read, so the
+// index must not share the caller's buffers.
 func eventWithoutPayload(event Event) Event {
 	event.Payload = nil
 	event.Attachments = nil
+	event.Signed = cloneSigned(event.Signed)
 	return event
 }
 

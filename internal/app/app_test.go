@@ -1652,7 +1652,16 @@ func TestSnapshotCheckpointIsGitBackedReusableAndRepairable(t *testing.T) {
 	actRecord(t, ctx, workspace, "human", Act{
 		Verb: VerbState, Kind: workroom.KindAssert, Text: "checkpointed", RestsOn: []string{seed.ID}, IdempotencyKey: "checkpointed",
 	})
-	want, err := workspace.Snapshot(ctx)
+	// The process that signed the act read the log once, before the act, and
+	// publishes checkpoints at the ordinary cadence rather than after every
+	// act (TestAnAppendingProcessKeepsTheCheckpointCadence pins that cadence),
+	// so its checkpoint stands one act behind. A fresh reader, whose load runs
+	// past that checkpoint, publishes one at the head.
+	publisher, err := Open(ctx, workspace.Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := publisher.Snapshot(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

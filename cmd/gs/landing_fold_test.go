@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/generalbusiness-ai/gitseq/internal/app"
+	"github.com/generalbusiness-ai/gitseq/internal/kernel"
 	"github.com/generalbusiness-ai/gitseq/internal/mergeplan"
 	"github.com/generalbusiness-ai/gitseq/internal/observe"
 	"github.com/generalbusiness-ai/gitseq/internal/workroom"
@@ -223,17 +224,21 @@ func keyedChain(t *testing.T) (context.Context, string, *app.Workspace, ed25519.
 	return ctx, repo, workspace, private, acts
 }
 
-// One preflight of a batch answers every label's key from one verified read
-// of the log. It used to read the whole log once per labelled act, which on a
-// large landing was most of its wall time.
+// One preflight of a batch answers every label's key from the verified read
+// the workspace already holds, and so scans the log not at all. It used to
+// read the whole log once per labelled act, which on a large landing was most
+// of its wall time, and then once per preflight.
 func TestABatchPreflightReadsTheLogOnce(t *testing.T) {
 	ctx, _, workspace, private, acts := keyedChain(t)
 	scans := fullLogScans(t)
+	completeBefore, _ := kernel.VerifiedReads()
 	if position, failure := preflightAdmission(ctx, workspace, "", "operator", private, acts, false); failure != nil {
 		t.Fatalf("act %d: %v", position, failure)
 	}
-	if got := scans(); got != 1 {
-		t.Fatalf("a preflight of %d labelled acts read the whole log %d times, want once", len(acts), got)
+	completeAfter, _ := kernel.VerifiedReads()
+	if got := scans(); got != 0 || completeAfter != completeBefore {
+		t.Fatalf("a preflight of %d labelled acts scanned the log cold %d times and made %d complete reads, want none of either",
+			len(acts), got, completeAfter-completeBefore)
 	}
 	report, err := runBatch(ctx, workspace, "", "operator", private, acts, false)
 	if err != nil {
@@ -245,11 +250,12 @@ func TestABatchPreflightReadsTheLogOnce(t *testing.T) {
 }
 
 // gs batch runs two preflights before it appends: the fold's judgement of the
-// whole chain, then admission. Each asks the log about every key, and each
-// does it in one verified read, so the whole command reads the log three
-// times — the command's own cold load of the workroom, then one read per
-// preflight — however many keyed acts the chain carries. A lookup per act in
-// either preflight would add five reads for this chain.
+// whole chain, then admission. Each asks the log about every key, and both are
+// answered from the index of the command's own one load of the workroom, so
+// no preflight scans the log cold however many keyed acts the chain carries.
+// The command makes one other complete read: the scratch fold a chain of two
+// or more acts is judged in, a recorded limit. A lookup per act in either
+// preflight would add five reads for this chain.
 func TestBatchCommandReadsTheLogOncePerPreflight(t *testing.T) {
 	_, repo, workspace, _, acts := keyedChain(t)
 	before, err := workspace.Snapshot(context.Background())
@@ -265,14 +271,19 @@ func TestBatchCommandReadsTheLogOncePerPreflight(t *testing.T) {
 		t.Fatal(err)
 	}
 	scans := fullLogScans(t)
+	completeBefore, _ := kernel.VerifiedReads()
 	output, err := quiet(t, func() error {
 		return batchCommand(context.Background(), []string{"--repo", repo, "--as", "operator", path})
 	})
 	if err != nil {
 		t.Fatalf("gs batch: %v\n%s", err, output)
 	}
-	if got := scans(); got != 3 {
-		t.Fatalf("gs batch of %d keyed acts read the whole log %d times, want 3: one load and one per preflight", len(acts), got)
+	completeAfter, _ := kernel.VerifiedReads()
+	if got := scans(); got != 0 {
+		t.Fatalf("gs batch of %d keyed acts scanned the whole log cold %d times, want none", len(acts), got)
+	}
+	if got := completeAfter - completeBefore; got != 2 {
+		t.Fatalf("gs batch of %d keyed acts read the whole log %d times, want 2: one load and the chain's scratch fold", len(acts), got)
 	}
 	if !strings.Contains(output, `"replayed": 2`) || !strings.Contains(output, `"landed": 4`) {
 		t.Fatalf("the batch did not replay its prefix and land the rest: %s", output)
@@ -288,10 +299,11 @@ func TestBatchCommandReadsTheLogOncePerPreflight(t *testing.T) {
 
 // gs artifact asks whether this head already published each path, and whether
 // that pointer has since been retired, before it builds the chain. The answer
-// for every path comes from one verified read of the log, as does each of the
-// batch's two preflights, so with the command's own cold load the log is read
-// four times. A lookup per path in any of those checks would add three reads
-// for four paths.
+// for every path, and for each of the batch's two preflights, comes from the
+// index of the command's own one load of the log, so nothing scans it cold.
+// The one other complete read is the scratch fold the four-act chain is
+// judged in, a recorded limit. A lookup per path in any of those checks would
+// add three reads for four paths.
 func TestArtifactReadsTheLogOncePerCheck(t *testing.T) {
 	f := newWorkflowFixture(t)
 	paths := []string{"scan-a.txt", "scan-b.txt", "scan-c.txt", "scan-d.txt"}
@@ -299,14 +311,19 @@ func TestArtifactReadsTheLogOncePerCheck(t *testing.T) {
 	promise := f.promiseLane(t, lane, "operator")
 	f.snapshot(t)
 	scans := fullLogScans(t)
+	completeBefore, _ := kernel.VerifiedReads()
 	if _, err := quiet(t, func() error {
 		return artifactCommand(f.ctx, append([]string{"--repo", f.repo, "--as", "operator",
 			"--head", lane.head, "--branch", lane.branch, "--promise", promise}, paths...))
 	}); err != nil {
 		t.Fatalf("gs artifact: %v", err)
 	}
-	if got := scans(); got != 4 {
-		t.Fatalf("gs artifact of %d paths read the whole log %d times, want 4: one load and one per check", len(paths), got)
+	completeAfter, _ := kernel.VerifiedReads()
+	if got := scans(); got != 0 {
+		t.Fatalf("gs artifact of %d paths scanned the whole log cold %d times, want none", len(paths), got)
+	}
+	if got := completeAfter - completeBefore; got != 2 {
+		t.Fatalf("gs artifact of %d paths read the whole log %d times, want 2: one load and the chain's scratch fold", len(paths), got)
 	}
 }
 

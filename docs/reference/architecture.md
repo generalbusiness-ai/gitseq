@@ -137,7 +137,9 @@ The kernel owns:
   with duplicates, so a trailer the actor did not sign is refused even when its
   value is empty;
 - idempotency namespaces, keys, replay, conflicting-retry detection, and the
-  verified read-only exact-replay check used before mutable client preflight;
+  verified read-only exact-replay check used before mutable client preflight,
+  answered either by a fresh scan or from a reader's own verified dedup index
+  at exactly the head that reader verified;
 - bounds on intent fields, causal-reference counts, envelopes, payloads, and
   attachments, and the exported form of that same accounting for an act that
   is not signed yet, so the application can apply the kernel's one measurement
@@ -222,6 +224,44 @@ kernel verification, complete application folding, frontier persistence and
 the projection gate all succeed. This changes the transfer shape, not
 signature, ordering, bounds, compare-and-swap or application-interpretation
 authority.
+
+#### One verified read per process
+
+What a reader has verified may be reused inside the process that verified
+it, at exactly the head it verified, and nowhere else. Nothing here persists:
+the checkpoint still carries event material only, and every process still
+verifies every actor signature in what it reads.
+
+- A reader answers retry lookups and exact-replay checks from its own dedup
+  index, keyed by the same target, actor key, namespace and key that `Submit`
+  consults, and only while it stands at exactly the head the caller names.
+  The index drops payload bytes, so each matched payload is read again by the
+  payload tree its own signature names, through the audit reader that hashes
+  every object against the identifier asked for. A different signed intent
+  under a held key is the same idempotency conflict `Submit` refuses.
+- A submitter may start from a copy of a reader's verified frontier, dedup
+  index and positions. The copy is a starting point only: every submission
+  still reads the ref, reuses the copy only at exactly the head it was
+  verified at, verifies any descendant delta, re-reads the whole log for
+  anything else, and keeps the compare-and-swap and the post-dedup callback.
+  The checkpoint material stays with the reader, and a seeded submitter
+  collects none of its own until a full read. When a checkpoint falls due on
+  it, it drops the copy and at once makes that full read — from the
+  checkpoint when one verifies — which rebuilds the material and publishes at
+  that position, so a process that only appends keeps the ordinary
+  checkpoint cadence.
+- A reader verifying commits its own process sequenced uses `CatchUp`: the
+  same verified delta, publishing no checkpoint, because the submitter that
+  appended those commits publishes for them. A process that signs its own
+  acts and reads each back before the next therefore writes one checkpoint
+  per interval, not one from each cache.
+- A consume-only reader authenticates and uses a signed checkpoint like any
+  other, and writes nothing: no checkpoint, even with the signing key, and no
+  repair of the checkpoint ref or the host pointer.
+
+`kernel.VerifiedReads` counts the complete verified reads a process begins —
+a cold scan, or one checkpoint candidate with its suffix — so a test can hold
+a command to the number it makes. It is reporting only.
 
 ### 3. Nexus and live runtime
 
@@ -753,6 +793,14 @@ that swap only where the ref had been rolled back to exactly that observed
 head inside the window, which is the rollback the strict rule refuses before
 the ref moves. A read updates no ref, so admitting its stale verification
 changes nothing beyond which verified world its own caller is handed.
+
+Admission is not such a read and never consults the witness. Its private
+reader leaves the witness where it stands, and when admission judges the
+session snapshot's fold instead, it uses that fold only at the exact head it
+judges and never takes the snapshot's refusal as its own. A rewound or
+sibling world that the witness refuses to a reader is still judged, by the
+private reader, because the event extends that world whatever a reader
+would say about the journey there.
 
 #### Host identity
 
@@ -1289,9 +1337,40 @@ that deployed transition was one step from `@14` to `@15`; the later step to
 state surface — `gs state`, `gs batch`, the MCP state and review tools, and
 the canonical guarded review path. It runs once before signing for early
 feedback, and authoritatively through the kernel's post-dedup callback against
-the exact pre-sequence frontier, read from a private verified world that
-shares nothing with reader snapshots, checkpoint cadence, or the rollback
-witness.
+the exact pre-sequence frontier. Both halves judge a verified fold at exactly
+the head they judge. A head names its whole verified history, so every fold
+there renders the same projection, and admission uses whichever this process
+already holds: the projection it last rendered at that head, or the session
+snapshot's own fold when both that fold and the session reader stand at
+exactly that head, rendered into a copy admission owns. A fold this process
+advanced over its own submission stands at the new head before its reader
+does, and is reused only once a snapshot read has verified that delta.
+Failing both, it reads its private verified world. That
+reader starts from a signed checkpoint when one verifies, but publishes none,
+repairs neither checkpoint selector, and never touches the rollback witness.
+The authoritative half never takes or waits for a reader snapshot, so it never
+inherits the rollback witness's refusal, and a rewound or sibling frontier is
+judged by the private reader. The pre-signing half may take the session
+snapshot first, so the one verified read a signing command makes is also the
+world it is judged against. A world is reused only from this process's own
+verified reads, never from a resident's response or a caller's projection.
+Guarded retirement and reassignment, whose checks need a fold of their own,
+always read the private world.
+
+Two further whole-log reads remain, as recorded limits. A chain of two or
+more acts is judged before signing in a scratch fold that `PreflightChain`
+builds from a read of its own. The session fold backs every reader's
+projection and has no copy operation, and a second fold cannot be built from
+what the session already holds: the fold keeps no transport records, and the
+checkpoint material a reader with the sequencer key retains holds payloads
+and attachments but not the signed intent — actor, `rests_on`, schema — that
+a record is folded from. Building it in memory would need either a deep copy
+of the fold state or every verified event held for the life of the session.
+And a seeded submitter in a long-lived process makes one full read, from the
+checkpoint when one verifies, each time a checkpoint falls due, to rebuild the
+material it publishes from (layer 2). A read-only caller that never takes the
+session snapshot also still asks the kernel's own fresh scan when the session
+reader does not stand at the head.
 
 An undefined state kind refuses before signing with no override:
 command-shaped kinds point at their dedicated commands and tools, and any
