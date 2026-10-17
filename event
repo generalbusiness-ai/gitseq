@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/session_snapshot.go","body":{"commit":"69018ecd43a4cbf0983a1b4d53bcd7d7646c8b63","path":"cmd/gs/session_snapshot.go"}}
+{"kind":"artifact","text":"Merge published the current artifact at cmd/gs/session_snapshot_test.go","body":{"commit":"69018ecd43a4cbf0983a1b4d53bcd7d7646c8b63","path":"cmd/gs/session_snapshot_test.go"}}
