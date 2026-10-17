@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/residentclient/client_test.go","body":{"commit":"69018ecd43a4cbf0983a1b4d53bcd7d7646c8b63","path":"internal/residentclient/client_test.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:21e475f5387ba5b851a646eb64278023a5a73430","text":"Merge retired a covered predecessor; the successor is at cmd/gs/session_snapshot.go."}
