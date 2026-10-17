@@ -1,1 +1,1 @@
-{"kind":"artifact","text":"Merge published the current artifact at internal/workroom/kinds.go","body":{"commit":"0e3b02a1030b4772aec3e4cfff7b8e5e3ac664e9","path":"internal/workroom/kinds.go"}}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:19cf07d90afc27e785796a4f66f18327640107c7","text":"Merge retired a covered predecessor; the successor is at internal/app/request_authoring.go."}
