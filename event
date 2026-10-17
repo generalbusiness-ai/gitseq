@@ -1,1 +1,1 @@
-{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a3a0f7157e71c17e94962252d7a5e6edc57a94ee","text":"Merge retired a covered predecessor; the successor is at internal/app/verified_world_test.go."}
+{"target":"git:sha1:5d2622748872b7e2dec3fe5c59e4be73a35e0bc8#git:sha1:a4f6be8bb31b7cd06286b49620d759cecec3bc82","text":"Merge retired a covered predecessor; the successor is at internal/kernel/checkpoint.go."}
