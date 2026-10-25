@@ -1,9 +1,9 @@
 module github.com/generalbusiness-ai/gitseq
 
-go 1.26.9
+go 1.26.10
 
 require (
-	github.com/btcsuite/btcd/btcec/v2 v2.5.0
+	github.com/btcsuite/btcd/btcec/v2 v2.5.1
 	github.com/fxamacker/cbor/v2 v2.9.6
 	github.com/ncruces/go-sqlite3 v0.35.6
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.72.0
@@ -23,7 +23,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
