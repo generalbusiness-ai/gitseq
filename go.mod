@@ -4,7 +4,7 @@ go 1.26.9
 
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0
-	github.com/fxamacker/cbor/v2 v2.9.6
+	github.com/fxamacker/cbor/v2 v2.10.0
 	github.com/ncruces/go-sqlite3 v0.35.6
 	go.opentelemetry.io/contrib/instrumentation/runtime v0.72.0
 	go.opentelemetry.io/otel v1.47.0
